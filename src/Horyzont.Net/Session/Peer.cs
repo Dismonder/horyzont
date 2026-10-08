@@ -15,7 +15,6 @@ internal sealed class Peer
         DropWindowStart = nowTicks;
         Reliable = new MessageBucket(options.ReliableMessagesPerSecond, nowTicks);
         Unreliable = new MessageBucket(options.UnreliableMessagesPerSecond, nowTicks);
-        Inputs = new InputBuffer(options.InputBufferCapacity);
     }
 
     public ConnectionId Connection { get; }
@@ -47,7 +46,8 @@ internal sealed class Peer
 
     public int DropsInWindow { get; set; }
 
-    public InputBuffer Inputs { get; }
+    /// <summary>Gets or sets the input buffer, allocated when the player joins; null before the handshake.</summary>
+    public InputBuffer? Inputs { get; set; }
 
     /// <summary>Gets a value indicating whether the player passed OnPlayerJoining and has not left.</summary>
     public bool IsJoined => State is PeerState.Loading or PeerState.InGame;

@@ -25,15 +25,19 @@ public sealed class SessionHarness : IDisposable
 
     public SessionHarness(ServerOptions? options = null, LinkConditions? conditions = null, TransportOptions? transportOptions = null)
     {
+        Clock = new SkewableClock(Time);
         Network = new InMemoryNetwork(Time, conditions);
         TransportOptions = transportOptions ?? TransportOptions.Default;
         ServerTransport = Network.CreateTransport("server", TransportOptions);
         ServerTransport.Listen(new InMemoryEndpoint("server"));
         Options = options ?? new ServerOptions { BuildHash = Build };
-        Server = new ServerSession(ServerTransport, Options, ServerHooks, Time, Logger);
+        Server = new ServerSession(ServerTransport, Options, ServerHooks, Clock, Logger);
     }
 
     public FakeTimeProvider Time { get; } = new(new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero));
+
+    /// <summary>Gets the clock of the sessions: monotonic time of <see cref="Time"/>, wall time that tests may shift.</summary>
+    public SkewableClock Clock { get; }
 
     public InMemoryNetwork Network { get; }
 
@@ -73,7 +77,7 @@ public sealed class SessionHarness : IDisposable
         var name = "client" + (_clients.Count + _raw.Count + 1);
         var transport = Network.CreateTransport(name, TransportOptions, fakeSteamId);
         var hooks = new RecordingClientHooks();
-        var session = new ClientSession(transport, new ClientOptions { BuildHash = buildHash ?? Build }, hooks, Time);
+        var session = new ClientSession(transport, new ClientOptions { BuildHash = buildHash ?? Build }, hooks, Clock);
         hooks.Session = session;
         var client = new TestClient(name, transport, session, hooks, identity ?? DevIdentity((ulong)(_clients.Count + 1000)), password);
         _clients.Add(client);

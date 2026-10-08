@@ -11,6 +11,13 @@ public sealed record ServerOptions
     /// <summary>Gets the most players in the states Loading and InGame together.</summary>
     public int MaxPlayers { get; init; } = 8;
 
+    /// <summary>
+    /// Gets the most connections outside the states Loading and InGame (awaiting ClientHello or closing). Further
+    /// connections are refused with <see cref="Core.Protocol.HandshakeRejectCode.ServerFull"/> before any per-connection
+    /// state is allocated, so the server never holds more than <see cref="MaxPlayers"/> + this many connections.
+    /// </summary>
+    public int MaxPendingConnections { get; init; } = 16;
+
     /// <summary>Gets the server password; empty means no password.</summary>
     public string Password { get; init; } = "";
 

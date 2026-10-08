@@ -18,6 +18,9 @@ namespace Horyzont.Net.Session;
 /// </summary>
 public sealed class ClientSession
 {
+    /// <summary>Pings awaiting their Pong; older ones are forgotten (a Pong that late is not a useful sample).</summary>
+    private const int MaxOutstandingPings = 8;
+
     private readonly ITransport _transport;
     private readonly ClientOptions _options;
     private readonly IClientGameHooks _hooks;
@@ -25,7 +28,10 @@ public sealed class ClientSession
     private readonly ILogger _logger;
     private readonly TransportSink _sink;
     private readonly ByteWriter _writer = new(2048);
-    private readonly RttEstimator _rtt = new();
+    private readonly ulong[] _outstandingPings = new ulong[MaxOutstandingPings];
+    private readonly long _origin;
+    private RttEstimator _rtt = new();
+    private int _outstandingCount;
     private byte[] _helloFrame = [];
     private ConnectionId _connection;
     private long _connectStarted;
@@ -39,7 +45,7 @@ public sealed class ClientSession
     /// <param name="transport">Transport; the caller owns it.</param>
     /// <param name="options">Settings.</param>
     /// <param name="hooks">Game callbacks.</param>
-    /// <param name="time">Clock of the handshake timeout, pings and round-trip times.</param>
+    /// <param name="time">Clock of the handshake timeout, pings and round-trip times; only its monotonic timestamp is used.</param>
     /// <param name="logger">Optional logger.</param>
     public ClientSession(ITransport transport, ClientOptions options, IClientGameHooks hooks, TimeProvider time, ILogger<ClientSession>? logger = null)
     {
@@ -55,12 +61,16 @@ public sealed class ClientSession
         _time = time;
         _logger = (ILogger?)logger ?? NullLogger.Instance;
         _sink = new TransportSink(this);
+        _origin = time.GetTimestamp();
     }
 
     /// <summary>Gets the session state.</summary>
     public ClientState State { get; private set; }
 
-    /// <summary>Gets the smoothed round-trip time measured with Ping and Pong; zero before the first Pong.</summary>
+    /// <summary>
+    /// Gets the smoothed round-trip time of the current connection, measured with Ping and the Pong answering it; zero
+    /// before the first such Pong. Unsolicited and repeated Pongs are not samples.
+    /// </summary>
     public TimeSpan Rtt => _rtt.Smoothed;
 
     /// <summary>Gets the number of frames dropped without ending the session (diagnostics and tests).</summary>
@@ -93,6 +103,8 @@ public sealed class ClientSession
         _remoteCode = null;
         _notified = false;
         _nextIntentSeq = 0;
+        _rtt = new RttEstimator();
+        _outstandingCount = 0;
         _connectStarted = Now();
         State = ClientState.Connecting;
         _connection = _transport.Connect(server);
@@ -111,7 +123,9 @@ public sealed class ClientSession
         else if (State is ClientState.Loading or ClientState.InGame && now >= _nextPing)
         {
             _nextPing = now + _options.PingInterval.Ticks;
-            SendMessage(new Ping(ToMicros(now)));
+            var sent = ToMicros(now);
+            RememberPing(sent);
+            SendMessage(new Ping(sent));
         }
     }
 
@@ -185,7 +199,36 @@ public sealed class ClientSession
     private static TransportChannel ToTransport(DeliveryChannel channel) =>
         channel == DeliveryChannel.ReliableOrdered ? TransportChannel.ReliableOrdered : TransportChannel.Unreliable;
 
-    private long Now() => _time.GetUtcNow().UtcTicks;
+    /// <summary>Monotonic time since construction in <see cref="TimeSpan"/> ticks; wall-clock changes do not move it.</summary>
+    private long Now() => _time.GetElapsedTime(_origin).Ticks;
+
+    private void RememberPing(ulong sentMicros)
+    {
+        if (_outstandingCount == MaxOutstandingPings)
+        {
+            Array.Copy(_outstandingPings, 1, _outstandingPings, 0, MaxOutstandingPings - 1);
+            _outstandingCount--;
+        }
+
+        _outstandingPings[_outstandingCount++] = sentMicros;
+    }
+
+    /// <summary>Removes the ping a Pong answers.</summary>
+    /// <returns>False when no outstanding ping carries <paramref name="sentMicros"/> (unsolicited or repeated Pong).</returns>
+    private bool TakePing(ulong sentMicros)
+    {
+        for (var i = 0; i < _outstandingCount; i++)
+        {
+            if (_outstandingPings[i] == sentMicros)
+            {
+                Array.Copy(_outstandingPings, i + 1, _outstandingPings, i, _outstandingCount - i - 1);
+                _outstandingCount--;
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private void Require(ClientState state)
     {
@@ -292,10 +335,10 @@ public sealed class ClientSession
                 Close(disconnect.Code, sendMessage: false);
                 break;
             case Pong pong:
-                var now = ToMicros(Now());
-                if (pong.ClientTimeMicros <= now)
+                // Only the first Pong answering an outstanding Ping of this connection is a sample (K1-07 review F4).
+                if (TakePing(pong.ClientTimeMicros))
                 {
-                    _rtt.AddSample(TimeSpan.FromMicroseconds(now - pong.ClientTimeMicros));
+                    _rtt.AddSample(TimeSpan.FromMicroseconds(ToMicros(Now()) - pong.ClientTimeMicros));
                 }
 
                 _hooks.OnMessage(pong);

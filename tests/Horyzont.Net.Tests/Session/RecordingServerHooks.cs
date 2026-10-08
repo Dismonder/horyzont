@@ -22,6 +22,9 @@ public sealed class RecordingServerHooks : IServerGameHooks
 
     public List<(PlayerId Player, Message Message)> ClientMessages { get; } = [];
 
+    /// <summary>When true, <see cref="OnPlayerLeft"/> records the call and then throws.</summary>
+    public bool ThrowOnLeft { get; set; }
+
     public PlayerId OnPlayerJoining(PlatformIdentity identity, string displayName)
     {
         var player = new PlayerId(_nextPlayer++);
@@ -61,6 +64,10 @@ public sealed class RecordingServerHooks : IServerGameHooks
     {
         Calls.Add("OnPlayerLeft");
         Left.Add((player, reason));
+        if (ThrowOnLeft)
+        {
+            throw new InvalidOperationException("OnPlayerLeft failed (test).");
+        }
     }
 
     public PlayerId PlayerOf(PlatformIdentity identity) => Joined.Single(j => j.Identity == identity).Player;

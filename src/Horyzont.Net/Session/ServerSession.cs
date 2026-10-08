@@ -30,7 +30,11 @@ public sealed class ServerSession
     private readonly Dictionary<PlayerId, Peer> _byPlayer = [];
     private readonly List<Peer> _peers = [];
     private readonly List<PlayerId> _playersInGame = [];
+    private readonly HashSet<PlatformIdentity> _joinedIdentities = [];
+    private readonly List<ConnectionId> _refused = [];
+    private readonly byte[] _serverFullFrame;
     private readonly byte _clientHelloFormatVersion;
+    private readonly long _origin;
     private Tick _currentTick;
     private long _now;
     private bool _shuttingDown;
@@ -40,7 +44,7 @@ public sealed class ServerSession
     /// <param name="transport">Listening transport; the caller owns it and calls <see cref="ITransport.Listen"/>.</param>
     /// <param name="options">Settings.</param>
     /// <param name="hooks">Game callbacks.</param>
-    /// <param name="time">Clock of timeouts and rate limits.</param>
+    /// <param name="time">Clock of timeouts and rate limits; only its monotonic timestamp is used.</param>
     /// <param name="logger">Optional logger.</param>
     public ServerSession(ITransport transport, ServerOptions options, IServerGameHooks hooks, TimeProvider time, ILogger<ServerSession>? logger = null)
     {
@@ -49,6 +53,7 @@ public sealed class ServerSession
         ArgumentNullException.ThrowIfNull(hooks);
         ArgumentNullException.ThrowIfNull(time);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.MaxPlayers);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.MaxPendingConnections);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.InputBufferCapacity);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.ReliableMessagesPerSecond);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.UnreliableMessagesPerSecond);
@@ -67,6 +72,8 @@ public sealed class ServerSession
         _sink = new TransportSink(this);
         Interest = new InterestManager(options.InterestHysteresisMeters);
         _clientHelloFormatVersion = CurrentClientHelloFormatVersion();
+        _serverFullFrame = EncodeFrame(new HandshakeReject(HandshakeRejectCode.ServerFull, RejectDetail(HandshakeRejectCode.ServerFull)));
+        _origin = time.GetTimestamp();
     }
 
     /// <summary>Gets the interest sets used by <see cref="SendToInterested"/>; the game calls its Update at 10 Hz.</summary>
@@ -77,6 +84,9 @@ public sealed class ServerSession
 
     /// <summary>Gets a value indicating whether <see cref="Shutdown"/> was called and every connection is closed.</summary>
     public bool IsShutdownComplete => _shuttingDown && _peers.Count == 0;
+
+    /// <summary>Gets the number of connections the session holds state for, in any state (diagnostics and tests).</summary>
+    internal int ConnectionCount => _peers.Count;
 
     /// <summary>Gets the number of frames decoded (diagnostics and tests).</summary>
     internal long FramesDecoded { get; private set; }
@@ -91,6 +101,7 @@ public sealed class ServerSession
         _currentTick = currentTick;
         _now = Now();
         _transport.Poll(_sink);
+        DisconnectRefused();
         _now = Now();
 
         for (var i = _peers.Count - 1; i >= 0; i--)
@@ -174,9 +185,9 @@ public sealed class ServerSession
     /// <returns>False when no input is buffered or the player is not InGame.</returns>
     public bool TryTakeInput(PlayerId player, out PlayerInput input, out uint seq)
     {
-        if (_byPlayer.TryGetValue(player, out var peer) && peer.State == PeerState.InGame)
+        if (_byPlayer.TryGetValue(player, out var peer) && peer.State == PeerState.InGame && peer.Inputs is { } inputs)
         {
-            return peer.Inputs.TryTake(out input, out seq);
+            return inputs.TryTake(out input, out seq);
         }
 
         input = default;
@@ -226,6 +237,13 @@ public sealed class ServerSession
         }
     }
 
+    private static byte[] EncodeFrame(Message message)
+    {
+        var writer = new ByteWriter(256);
+        MessageCodec.Write(writer, message);
+        return writer.WrittenSpan.ToArray();
+    }
+
     private static byte CurrentClientHelloFormatVersion()
     {
         // The codec owns the format version; read it from a frame it writes instead of duplicating the constant.
@@ -245,7 +263,8 @@ public sealed class ServerSession
         _ => "Rejected.",
     };
 
-    private long Now() => _time.GetUtcNow().UtcTicks;
+    /// <summary>Monotonic time since construction in <see cref="TimeSpan"/> ticks; wall-clock changes do not move it.</summary>
+    private long Now() => _time.GetElapsedTime(_origin).Ticks;
 
     private void Maintain(Peer peer)
     {
@@ -270,6 +289,15 @@ public sealed class ServerSession
     {
         if (_byConnection.ContainsKey(connection.Value))
         {
+            return;
+        }
+
+        // Admission before any per-connection state: joined peers are bounded by MaxPlayers, the rest by
+        // MaxPendingConnections (K1-07 review F2).
+        if (_peers.Count - _byPlayer.Count >= _options.MaxPendingConnections)
+        {
+            _transport.Send(connection, TransportChannel.ReliableOrdered, _serverFullFrame);
+            _refused.Add(connection);
             return;
         }
 
@@ -303,6 +331,17 @@ public sealed class ServerSession
         }
     }
 
+    private void DisconnectRefused()
+    {
+        // Disconnecting while the transport delivers events could disturb its iteration, so refusals wait until here.
+        foreach (var connection in _refused)
+        {
+            _transport.Disconnect(connection);
+        }
+
+        _refused.Clear();
+    }
+
     private void OnReceived(ConnectionId connection, TransportChannel channel, ReadOnlySpan<byte> payload)
     {
         if (!_byConnection.TryGetValue(connection.Value, out var peer))
@@ -310,6 +349,21 @@ public sealed class ServerSession
             return;
         }
 
+        // The whole per-peer handling is guarded, including rate limiting and violation recovery (K1-07 review F1).
+        try
+        {
+            ReceiveLimited(peer, channel, payload);
+        }
+#pragma warning disable CA1031 // Bad data or a failing game hook must not take the server down; Fail logs it and closes this peer only.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            Fail(peer, ex);
+        }
+    }
+
+    private void ReceiveLimited(Peer peer, TransportChannel channel, ReadOnlySpan<byte> payload)
+    {
         if (peer.State == PeerState.Closing)
         {
             SilentlyDropped++;
@@ -331,12 +385,6 @@ public sealed class ServerSession
         catch (ProtocolViolationException ex)
         {
             Violation(peer, ex.Message);
-        }
-#pragma warning disable CA1031 // Bad data or a failing game hook must not take the server down; Fail logs it and closes this peer only.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            Fail(peer, ex);
         }
     }
 
@@ -412,7 +460,7 @@ public sealed class ServerSession
 
                 break;
             case InputBatch batch:
-                peer.Inputs.Add(batch.FirstSeq, batch.Inputs);
+                peer.Inputs?.Add(batch.FirstSeq, batch.Inputs);
                 break;
             case Ping ping:
                 SendMessage(peer, new Pong(ping.ClientTimeMicros, _currentTick));
@@ -430,16 +478,7 @@ public sealed class ServerSession
 
     private void HandleHello(Peer peer, ClientHello hello)
     {
-        var identityConnected = false;
-        for (var i = 0; i < _peers.Count; i++)
-        {
-            if (_peers[i].IsJoined && _peers[i].Identity == hello.Identity)
-            {
-                identityConnected = true;
-                break;
-            }
-        }
-
+        var identityConnected = _joinedIdentities.Contains(hello.Identity);
         var remote = _transport.GetRemoteEndpoint(peer.Connection);
         var code = HandshakeValidator.Validate(hello, new HandshakeContext(_options, remote, identityConnected, _byPlayer.Count));
         if (code is { } rejected)
@@ -457,7 +496,9 @@ public sealed class ServerSession
         peer.Player = player;
         peer.Identity = hello.Identity;
         peer.State = PeerState.Loading;
+        peer.Inputs = new InputBuffer(_options.InputBufferCapacity);
         _byPlayer.Add(player, peer);
+        _joinedIdentities.Add(hello.Identity);
         _logger.PlayerJoined(player.Value, peer.Connection.Value);
         SendMessage(peer, _hooks.CreateHello(player));
     }
@@ -535,9 +576,19 @@ public sealed class ServerSession
     private void LeaveGame(Peer peer, DisconnectCode code)
     {
         _byPlayer.Remove(peer.Player);
+        _joinedIdentities.Remove(peer.Identity);
         _playersInGame.Remove(peer.Player);
         _logger.PlayerLeft(peer.Player.Value, peer.Connection.Value, code);
-        _hooks.OnPlayerLeft(peer.Player, code);
+        try
+        {
+            _hooks.OnPlayerLeft(peer.Player, code);
+        }
+#pragma warning disable CA1031 // Cleanup hooks run on every close path (violations, floods, timeouts, Kick, Shutdown); one failure must not stop the others.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _logger.LeftHookFailed(peer.Player.Value, peer.Connection.Value, ex);
+        }
     }
 
     private void Remove(Peer peer)

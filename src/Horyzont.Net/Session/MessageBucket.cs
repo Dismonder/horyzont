@@ -1,7 +1,7 @@
 namespace Horyzont.Net.Session;
 
 /// <summary>
-/// Token bucket of messages per second with a burst of two seconds, refilled lazily from the session clock. Units are
+/// Token bucket of messages per second with a burst of two seconds, refilled lazily from the monotonic session clock. Units are
 /// messages × <see cref="TimeSpan.TicksPerSecond"/>, so refills are exact integers.
 /// </summary>
 internal sealed class MessageBucket
@@ -23,7 +23,7 @@ internal sealed class MessageBucket
     }
 
     /// <summary>Takes one message token.</summary>
-    /// <param name="nowTicks">Current time in ticks.</param>
+    /// <param name="nowTicks">Current monotonic time in ticks; it never decreases.</param>
     /// <returns>False when the bucket is empty; the message must be dropped.</returns>
     public bool TryTake(long nowTicks)
     {
