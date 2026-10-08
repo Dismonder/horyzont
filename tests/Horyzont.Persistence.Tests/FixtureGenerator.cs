@@ -37,9 +37,10 @@ public sealed class FixtureGenerator
             await h.FlushAndPump();
         }
 
-        // Fold the WAL into the main file: the repository ignores *-wal files.
-        RawDb.Execute(dir.WorldPath, "PRAGMA journal_mode = DELETE;");
+        // Fold the WAL into the main file (the repository ignores *-wal files); pooled terrain readers must close first.
         SqliteConnection.ClearAllPools();
+        RawDb.Execute(dir.WorldPath, "PRAGMA journal_mode = DELETE;");
+        Assert.False(File.Exists(dir.WorldPath + "-wal"));
         File.Copy(dir.WorldPath, target);
     }
 

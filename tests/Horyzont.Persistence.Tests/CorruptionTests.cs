@@ -40,6 +40,23 @@ public sealed class CorruptionTests
     }
 
     [Fact]
+    public async Task JournalPayloadTrailingByte_WithMatchingCrc_ThrowsCorruptedWithOpId()
+    {
+        using var dir = new TempDirectory();
+        await JournalTests.RecordOps(dir.WorldPath, 3);
+        var payload = (byte[])RawDb.Scalar(dir.WorldPath, "SELECT payload FROM journal WHERE op_id = 2;")!;
+        byte[] longer = [.. payload, 0];
+        RawDb.Execute(
+            dir.WorldPath, "UPDATE journal SET payload = $p, crc = $c WHERE op_id = 2;",
+            ("$p", longer), ("$c", (long)System.IO.Hashing.Crc32.HashToUInt32(longer)));
+
+        var error = Assert.Throws<WorldCorruptedException>(() => WorldHarness.LoadAndReplay(dir.WorldPath));
+
+        Assert.Equal(new OpId(2), error.OpId);
+        Assert.IsType<Core.Serialization.ProtocolViolationException>(error.InnerException);
+    }
+
+    [Fact]
     public async Task ConstructBlobDamaged_ThrowsCorrupted()
     {
         using var dir = new TempDirectory();
