@@ -297,13 +297,22 @@ CI: job `game` w `ci.yml` (Windows) pobiera ostatnie udane artefakty `engine-win
 
 ## Kroki
 
-- [ ] Etap A: `global.json`, `Directory.Build.props`, `tests/Directory.Build.props`, `Directory.Packages.props`, `.editorconfig`.
-- [ ] Etap A: projekty bibliotek z `AssemblyMarker`; `Horyzont.Testing` z paczką `FakeTimeProvider`.
-- [ ] Etap A: projekty testów z testami od Sonnet 5.5; `Horyzont.sln` (format `.sln`) ze wszystkimi projektami poza `game/`.
+- [x] Etap A: `global.json`, `Directory.Build.props`, `tests/Directory.Build.props`, `Directory.Packages.props`, `.editorconfig`.
+- [x] Etap A: projekty bibliotek z `AssemblyMarker`; `Horyzont.Testing` z paczką `FakeTimeProvider`.
+- [x] Etap A: projekty testów z testami od Sonnet 5.5; `Horyzont.sln` (format `.sln`) ze wszystkimi projektami poza `game/`.
 - [ ] Etap A: `ci.yml` i `nightly.yml`; zielone CI na obu systemach.
-- [ ] Etap A: sprawdzenia ręczne (niżej) opisane w PR.
+- [x] Etap A: sprawdzenia ręczne (niżej) opisane w PR.
 - [ ] Etap B: `game/` z `Boot`; test akceptacyjny 1 i 2.
 - [ ] Etap B: job `game` w CI.
+
+## Odstępstwa (etap A)
+
+- `xunit.v3.mtp-off` zamiast `xunit.v3`: xUnit v3 4.x domyślnie włącza Microsoft Testing Platform, a SDK .NET 10 odrzuca wtedy `dotnet test` w trybie VSTest (błąd „Testing with VSTest target is no longer supported”). Wariant `mtp-off` to ten sam xUnit v3 bez MTP; `FsCheck.Xunit.v3` 3.4.0 zależy tylko od `xunit.v3.extensibility.core`, więc działa z nim. Decyzja wpisana do `docs/ZASADY.md`, punkt 8.
+- `tests/Directory.Build.props`: `GenerateDocumentationFile` zostaje `true`, a testy wyłączają tylko CS1591. Przy `false` kompilator przerywa build błędem `EnableGenerateDocumentationFile`, bo IDE0005 działa w buildzie wyłącznie z generowaną dokumentacją.
+- Projekty testów mają `<Using Include="Xunit" />` (testy z planu nie mają `using Xunit;`).
+- `LayeringTests.RepoRoot()`: klamry wokół ciała `while`, bo `csharp_prefer_braces = true:warning` z tego samego planu wywracał build (IDE0011).
+- `.editorconfig` bez domyślnej sekcji nazewnictwa z `dotnet new editorconfig` (np. `s_` dla pól statycznych), która kłóciła się z regułami projektu; pozostałe domyślne opcje C# zostały.
+- Wersje paczek z 2026-10-08: Microsoft.Extensions.Logging(.Abstractions), System.IO.Hashing, Microsoft.Data.Sqlite 10.0.12; LiteNetLib 2.1.4; Steamworks.NET 2024.8.0; Microsoft.Extensions.TimeProvider.Testing 10.10.0; FsCheck i FsCheck.Xunit.v3 3.4.0; Microsoft.NET.Test.Sdk 18.10.1; xunit.v3.mtp-off 4.0.1; xunit.runner.visualstudio 4.0.0.
 
 ## Odbiór
 
