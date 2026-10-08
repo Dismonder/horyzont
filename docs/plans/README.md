@@ -34,11 +34,12 @@ Plany K1 i K2 leżą w tym katalogu. Plany kolejnych pakietów Opus 5.5 pisze ze
 
 Bramkę prowadzi Opus 5.5 na gałęzi `pakiet/k1-bramka`. Test end-to-end powstaje dopiero tu, bo jako jedyny potrzebuje jednocześnie Persistence (K1-05) i sesji (K1-07), które idą równolegle.
 
-- [ ] CI zielone na Windows i Linux, testy akceptacyjne wszystkich siedmiu pakietów przechodzą.
-- [ ] `python tools/engine/build.py smoke` wypisuje `SMOKE OK`, a projekt `game/` uruchamia się bez grafiki z `--smoke`.
+- [x] CI zielone na Windows i Linux, testy akceptacyjne wszystkich siedmiu pakietów przechodzą.
+  Testy UDP z K1-06 dostały na bramce zapas na przestoje planisty runnera (timeout połączenia 2 s, limit testu 30 s); nightly z testami Soak uruchomiony ręcznie na `main` przy zamknięciu bramki.
+- [x] `python tools/engine/build.py smoke` wypisuje `SMOKE OK`, a projekt `game/` uruchamia się bez grafiki z `--smoke`.
 - [x] Nowy projekt `tests/Horyzont.Integration.Tests` (referencje: Core, Persistence, Net, Testing; dodany do `Horyzont.sln`) z testem end-to-end w pamięci. Serwer z `ServerSimulation`, `PersistenceWriter` na pliku tymczasowym i dwóch klientów przez `InMemoryTransport` przyjmuje intencje i zapisuje dziennik, a po symulowanej awarii wczytanie z powtórką daje ten sam skrót stanu. Haki gry dla testu (`IServerGameHooks` nad `ServerSimulation`) żyją w tym projekcie.
-- [ ] Opus 5.5 przegląda całość w świeżej sesji i pisze plany K2 (pakiety K2-08 … K2-13).
-  Przegląd: wykonany (PR #9); plany K2: w PR #9, czekają na odpowiedzi właściciela na pytania otwarte.
+- [x] Opus 5.5 przegląda całość w świeżej sesji i pisze plany K2 (pakiety K2-08 … K2-13).
+  Przegląd: 6 recenzentów Sonnet 5.5, 2 opinie GPT-6.1 Sol, synteza i weryfikacja Opus 5.5; blokujące B1–B3 poprawione w PR #9, B4 to scalenie K1-02B (#4). Plany K2 sprawdził krzyżowo GPT-6.1 Sol, a rozstrzygnięcia D1–D17 są wpisane w plany. Pytania do właściciela mają w planach warianty domyślne; pakiet rusza z domyślnym wariantem, jeśli właściciel nie odpowie przed jego startem.
 
 ## Pakiety K2
 
