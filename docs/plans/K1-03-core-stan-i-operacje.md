@@ -672,6 +672,7 @@ Zakresy kodów dla kolejnych pakietów są przydzielone z góry, żeby Kosmos i 
 - **Dodatkowe publiczne API** (potrzebne walidacji, testom i K1-05/K1-07): `CellPos.FromChunk`, `Construct.LocalToParent`/`ParentToLocal`/`TryGetChunk`/`ChunkCount`/`BoundsMin`/`BoundsMax`, `WorldState.TryToPlanetFrame`, `PlayerStore.TryGetByEntity`/`Count`, `ConstructStore.Count`, `TerrainVersionTable.Count`, `ConstructHeaderRecord.From`, `PlayerRecord.From`, `ReplayFailedException.Kind`.
 - **Kolejność pracy:** testy akceptacyjne powstały w tej samej sesji co kod, ale po nim (nie przed). Wszystkie z tabeli istnieją i przechodzą; test „złoty” sprawdza dodatkowo, że każdy `OperationKind` ma rekord operacji.
 - `ConstructChunkRecord`, `ClientHello`, `TerrainBlockData`, `EntitySpawn`: tablice w rekordach z wyłączonym CA1819 (rekord jest właścicielem tablicy, zgodnie z kontraktem dekodera).
+- Po review: `ConstructRaycast.Raycast` sprawdza też konstrukcje zagnieżdżone w innych konstrukcjach danej ramki, przechodząc łańcuchem rodziców, żeby zagnieżdżona konstrukcja zasłaniała linię wzroku. `WorldStateBuilder` odrzuca chunki spoza zakresu komórek (−128..127 chunków na oś) i nieznormalizowane kwaterniony konstrukcji i graczy (`Geometry.IsRotation`).
 
 ## Odbiór
 

@@ -3,6 +3,7 @@ using System.Text;
 
 using Horyzont.Core.Ids;
 using Horyzont.Core.Protocol;
+using Horyzont.Core.Simulation;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -144,7 +145,7 @@ public sealed class WorldStateBuilder
         foreach (var header in _constructs)
         {
             CheckEntity(state, header.Id);
-            if (!Enum.IsDefined(header.Mode) || !IsFinite(header.Origin) || !IsFinite(header.Rotation))
+            if (!Enum.IsDefined(header.Mode) || !IsFinite(header.Origin) || !Geometry.IsRotation(header.Rotation))
             {
                 throw new InvalidDataException($"Construct {header.Id.Value} has an invalid header.");
             }
@@ -154,6 +155,11 @@ public sealed class WorldStateBuilder
 
         foreach (var chunk in _chunks)
         {
+            if (!IsChunkInRange(chunk.Key.Chunk))
+            {
+                throw new InvalidDataException($"Construct {chunk.Key.Construct.Value} has chunk {chunk.Key.Chunk} outside the cell range.");
+            }
+
             foreach (var value in chunk.Blocks)
             {
                 var block = new BlockState(value);
@@ -198,6 +204,13 @@ public sealed class WorldStateBuilder
         return state;
     }
 
+    /// <summary>True when every cell of the chunk is in <see cref="CellPos.IsInBounds"/> (no shift, so no overflow).</summary>
+    private static bool IsChunkInRange(ChunkPos chunk)
+    {
+        const int Limit = CellPos.Limit / ConstructChunk.Size;
+        return chunk.X >= -Limit && chunk.X < Limit && chunk.Y >= -Limit && chunk.Y < Limit && chunk.Z >= -Limit && chunk.Z < Limit;
+    }
+
     private static void LoadPlayer(WorldState state, PlayerRecord record)
     {
         if (record.Player.IsNone || record.Player.Value >= state.PlayerIds.NextValue)
@@ -208,7 +221,7 @@ public sealed class WorldStateBuilder
         CheckEntity(state, record.Entity);
         if (string.IsNullOrEmpty(record.DisplayName)
             || Encoding.UTF8.GetByteCount(record.DisplayName) > ProtocolConstants.MaxDisplayNameBytes
-            || !IsFinite(record.Position) || !IsFinite(record.BodyRotation) || !float.IsFinite(record.Pitch))
+            || !IsFinite(record.Position) || !Geometry.IsRotation(record.BodyRotation) || !float.IsFinite(record.Pitch))
         {
             throw new InvalidDataException($"Player {record.Player.Value} has invalid values.");
         }
@@ -267,7 +280,4 @@ public sealed class WorldStateBuilder
     }
 
     private static bool IsFinite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
-
-    private static bool IsFinite(Quaternion q) =>
-        float.IsFinite(q.X) && float.IsFinite(q.Y) && float.IsFinite(q.Z) && float.IsFinite(q.W);
 }

@@ -171,6 +171,67 @@ public sealed class CheckpointTests
         Assert.Throws<InvalidDataException>(() => missingFrame.Build());
     }
 
+    [Theory]
+    [InlineData(128, 0, 0)]
+    [InlineData(-129, 0, 0)]
+    [InlineData(0, 128, 0)]
+    [InlineData(0, 0, -129)]
+    [InlineData(1 << 28, 0, 0)]
+    public void Builder_ChunkOutsideCellRange_Throws(int x, int y, int z)
+    {
+        var builder = ValidBuilder(Quaternion.Identity, new ChunkPos(x, y, z));
+
+        Assert.Throws<InvalidDataException>(() => builder.Build());
+    }
+
+    [Fact]
+    public void Builder_ChunkAtRangeEdge_Loads()
+    {
+        var state = ValidBuilder(Quaternion.Identity, new ChunkPos(127, -128, 127)).Build();
+
+        Assert.True(state.Constructs.TryGet(new EntityId(1), out var construct));
+        Assert.Equal(1, construct.BlockCount);
+    }
+
+    [Fact]
+    public void Builder_ConstructRotationNotNormalized_Throws()
+    {
+        var builder = ValidBuilder(new Quaternion(0, 0, 0, 2), default);
+
+        Assert.Throws<InvalidDataException>(() => builder.Build());
+    }
+
+    [Fact]
+    public void Builder_PlayerRotationNotNormalized_Throws()
+    {
+        var builder = ValidBuilder(Quaternion.Identity, default);
+        builder.AddPlayer(new PlayerRecord(
+            new PlayerId(1), new PlatformIdentity(IdentityPlatform.Dev, 1), "x", new EntityId(2), FrameRef.Of(SimFixture.Planet), 0, null,
+            new Vector3(0, 4000, 0), new Quaternion(0, 0, 0, 0), 0, false));
+
+        Assert.Throws<InvalidDataException>(() => builder.Build());
+    }
+
+    /// <summary>World with construct 1 (one block in <paramref name="chunk"/>) and room for entity 2 and player 1.</summary>
+    private static WorldStateBuilder ValidBuilder(Quaternion constructRotation, ChunkPos chunk)
+    {
+        var template = Testing.WorldFactory.CreateDefault();
+        var builder = new WorldStateBuilder(new WorldId(Guid.NewGuid()), 1);
+        builder.SetProgress(OpId.None, default, 3, 2);
+        builder.AddPlanet(Testing.WorldFactory.HomePlanetParams);
+        foreach (var entry in template.BlockTypes.Entries)
+        {
+            builder.AddBlockType(entry);
+        }
+
+        builder.AddConstruct(new ConstructHeaderRecord(
+            new EntityId(1), FrameRef.Of(SimFixture.Planet), 0, ConstructMode.Static, new Vector3(0, 4000, 0), constructRotation, 1));
+        var blocks = new uint[ConstructChunk.CellCount];
+        blocks[0] = BlockState.Create(1, 0).Packed;
+        builder.AddChunk(new ConstructChunkRecord(new ConstructChunkKey(new EntityId(1), chunk), blocks));
+        return builder;
+    }
+
     internal static WorldState Load(WorldState live, IReadOnlyList<WorldCheckpoint> checkpoints)
     {
         var constructs = new SortedDictionary<ulong, ConstructHeaderRecord>();
