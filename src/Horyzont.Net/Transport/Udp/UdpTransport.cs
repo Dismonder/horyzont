@@ -24,6 +24,7 @@ public sealed partial class UdpTransport : ITransport
     private readonly ILogger<UdpTransport> _logger;
     private readonly Dictionary<ulong, PeerLink> _connections = [];
     private readonly List<PeerLink> _closing = [];
+    private readonly List<PeerLink> _pendingConnects = [];
     private readonly Queue<(ConnectionId Connection, TransportDisconnectReason Reason)> _localEvents = new();
     private ITransportEvents? _events;
     private ulong _nextConnectionId = 1;
@@ -111,9 +112,19 @@ public sealed partial class UdpTransport : ITransport
         }
 
         var link = new PeerLink(new ConnectionId(_nextConnectionId++), new UdpEndpoint(udp.Host, udp.Port));
-        link.Peer = _manager.Connect(new IPEndPoint(address, udp.Port), ConnectionKey);
-        link.Peer.Tag = link;
+        var target = new IPEndPoint(address, udp.Port);
         _connections.Add(link.Id.Value, link);
+        if (IsEndpointBusy(target))
+        {
+            // LiteNetLib keeps one peer per remote endpoint and would hand back the one still shutting down.
+            link.Target = target;
+            _pendingConnects.Add(link);
+        }
+        else
+        {
+            StartConnect(link, target);
+        }
+
         return link.Id;
     }
 
@@ -129,19 +140,36 @@ public sealed partial class UdpTransport : ITransport
         if (_connections.TryGetValue(connection.Value, out var link) && link.IsOpen)
         {
             var method = channel == TransportChannel.ReliableOrdered ? DeliveryMethod.ReliableOrdered : DeliveryMethod.Unreliable;
-            link.Peer!.Send(payload, 0, method);
+            if (channel == TransportChannel.ReliableOrdered)
+            {
+                // LiteNetLib exposes no count of unacknowledged packets, so every reliable send asks for a delivery
+                // event; Disconnect waits for them all (see FinishClosing).
+                link.PendingReliable++;
+                link.Peer!.SendWithDeliveryEvent(payload.ToArray(), method, link);
+            }
+            else
+            {
+                link.Peer!.Send(payload, 0, method);
+            }
         }
     }
 
     /// <inheritdoc />
-    /// <remarks>The disconnect is sent once the reliable queue of the connection is empty.</remarks>
+    /// <remarks>The disconnect is sent once every reliable message of the connection is acknowledged by the peer, or the connection is lost.</remarks>
     public void Disconnect(ConnectionId connection)
     {
         if (_connections.Remove(connection.Value, out var link))
         {
+            _localEvents.Enqueue((connection, TransportDisconnectReason.Local));
+            if (link.Peer is null)
+            {
+                // Still waiting for the previous connection to the same endpoint to finish closing.
+                _pendingConnects.Remove(link);
+                return;
+            }
+
             link.Closing = true;
             _closing.Add(link);
-            _localEvents.Enqueue((connection, TransportDisconnectReason.Local));
         }
     }
 
@@ -167,6 +195,7 @@ public sealed partial class UdpTransport : ITransport
             }
 
             FinishClosing();
+            StartPendingConnects();
         }
         finally
         {
@@ -212,6 +241,7 @@ public sealed partial class UdpTransport : ITransport
 
         _connections.Clear();
         _closing.Clear();
+        _pendingConnects.Clear();
     }
 
     private static TransportDisconnectReason Map(DisconnectReason reason) => reason switch
@@ -228,21 +258,55 @@ public sealed partial class UdpTransport : ITransport
     [LoggerMessage(Level = LogLevel.Warning, Message = "UDP network error {Error} from {Address}")]
     private static partial void LogNetworkError(ILogger logger, SocketError error, string address);
 
+    private void StartConnect(PeerLink link, IPEndPoint target)
+    {
+        link.Peer = _manager.Connect(target, ConnectionKey);
+        link.Peer.Tag = link;
+    }
+
+    private bool IsEndpointBusy(IPEndPoint target)
+    {
+        foreach (var closing in _closing)
+        {
+            if (closing.Peer is { } peer && peer.Port == target.Port && peer.Address.Equals(target.Address))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void StartPendingConnects()
+    {
+        for (var i = _pendingConnects.Count - 1; i >= 0; i--)
+        {
+            var link = _pendingConnects[i];
+            if (!IsEndpointBusy(link.Target!))
+            {
+                _pendingConnects.RemoveAt(i);
+                StartConnect(link, link.Target!);
+            }
+        }
+    }
+
     private void FinishClosing()
     {
         for (var i = _closing.Count - 1; i >= 0; i--)
         {
             var link = _closing[i];
-            var peer = link.Peer;
-            if (peer is null || peer.ConnectionState != ConnectionState.Connected)
+            var peer = link.Peer!;
+            if (!link.DisconnectSent
+                && (peer.ConnectionState != ConnectionState.Connected || link.PendingReliable <= 0))
             {
-                _closing.RemoveAt(i);
-                peer?.Disconnect();
-            }
-            else if (peer.GetPacketsCountInReliableQueue(0, true) == 0)
-            {
-                _closing.RemoveAt(i);
+                link.DisconnectSent = true;
                 peer.Disconnect();
+            }
+
+            // The peer keeps its endpoint slot in the manager until the shutdown completes.
+            if (link.DisconnectSent && (link.Released || peer.ConnectionState == ConnectionState.Disconnected))
+            {
+                _closing.RemoveAt(i);
             }
         }
     }
@@ -256,6 +320,16 @@ public sealed partial class UdpTransport : ITransport
         public NetPeer? Peer { get; set; }
 
         public bool Closing { get; set; }
+
+        /// <summary>Gets or sets the endpoint to connect to once the previous peer of that endpoint is gone.</summary>
+        public IPEndPoint? Target { get; set; }
+
+        public bool DisconnectSent { get; set; }
+
+        public bool Released { get; set; }
+
+        /// <summary>Gets or sets the number of reliable messages sent but not yet acknowledged by the peer.</summary>
+        public int PendingReliable { get; set; }
 
         public bool IsOpen => !Closing && Peer is { ConnectionState: ConnectionState.Connected };
     }
@@ -272,15 +346,31 @@ public sealed partial class UdpTransport : ITransport
                 owner._connections.Add(link.Id.Value, link);
             }
 
-            owner._events?.OnConnected(link.Id);
+            // A connection closed locally while still connecting was reported as disconnected already.
+            if (!link.Closing)
+            {
+                owner._events?.OnConnected(link.Id);
+            }
+        }
+
+        public void OnMessageDelivered(NetPeer peer, object userData)
+        {
+            if (userData is PeerLink link)
+            {
+                link.PendingReliable--;
+            }
         }
 
         public void OnPeerDisconnected(NetPeer peer, DisconnectInfo disconnectInfo)
         {
             // Peers that never became connections (rejected requests) carry no link; closed-by-us links were reported already.
-            if (peer.Tag is PeerLink link && !link.Closing && owner._connections.Remove(link.Id.Value))
+            if (peer.Tag is PeerLink link)
             {
-                owner._events?.OnDisconnected(link.Id, Map(disconnectInfo.Reason));
+                link.Released = true;
+                if (!link.Closing && owner._connections.Remove(link.Id.Value))
+                {
+                    owner._events?.OnDisconnected(link.Id, Map(disconnectInfo.Reason));
+                }
             }
         }
 
