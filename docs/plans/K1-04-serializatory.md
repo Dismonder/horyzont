@@ -231,7 +231,7 @@ W CI każda właściwość ma 2 000 przypadków; w testach nocnych (`Category=So
 
 ## Kroki
 
-- [ ] (Sonnet) Generatory i wszystkie testy z tabeli, czerwone.
+- [x] (Sonnet) Generatory i wszystkie testy z tabeli, czerwone.
 - [ ] `ProtocolViolationException`, `ByteWriter`, `ByteReader` z typami podstawowymi.
 - [ ] Typy Core i `Quantization`.
 - [ ] `OperationCodec`, `IntentCodec`.
