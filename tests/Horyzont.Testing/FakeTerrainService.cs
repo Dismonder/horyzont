@@ -20,7 +20,7 @@ public sealed class FakeTerrainService(float surfaceRadius = 4000f, float voxelS
 {
     private readonly Dictionary<TerrainBlockKey, byte[]> _blocks = [];
     private readonly List<TerrainBlockKey> _keys = [];
-    private readonly int _marginVoxels = marginVoxels ?? new GameRules().TerrainEditMarginVoxels;
+    private readonly int _marginVoxels = marginVoxels ?? TerrainRules.EditMarginVoxels;
 
     public float SurfaceRadius { get; set; } = surfaceRadius;
 
@@ -38,6 +38,9 @@ public sealed class FakeTerrainService(float surfaceRadius = 4000f, float voxelS
     public List<LoadedArea> BlockingLoads { get; } = [];
 
     public List<TerrainEditOp> AppliedEdits { get; } = [];
+
+    /// <summary>When set, <see cref="LoadAreaBlocking"/> throws it (a failing disk read).</summary>
+    public Exception? ThrowOnLoad { get; set; }
 
     /// <summary>When set, <see cref="ApplyEdit"/> throws it.</summary>
     public Exception? ThrowOnApply { get; set; }
@@ -62,6 +65,11 @@ public sealed class FakeTerrainService(float surfaceRadius = 4000f, float voxelS
 
     public void LoadAreaBlocking(PlanetId planet, Vector3 center, float radius)
     {
+        if (ThrowOnLoad is { } exception)
+        {
+            throw exception;
+        }
+
         var area = new LoadedArea(planet, center, radius);
         BlockingLoads.Add(area);
         LoadedAreas.Add(area);

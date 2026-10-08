@@ -102,7 +102,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.WrongPlanet;
         }
 
-        if (tool.Radius < rules.MinToolRadius || tool.Radius > rules.MaxToolRadius || !Enum.IsDefined(tool.Mode)
+        if (tool.Radius < rules.MinToolRadius || tool.Radius > Math.Min(rules.MaxToolRadius, TerrainRules.MaxEditRadiusMeters) || !Enum.IsDefined(tool.Mode)
             || (tool.Mode == TerrainEditMode.Remove && tool.MaterialId != 0))
         {
             return RejectReason.InvalidParameters;
@@ -136,7 +136,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.OutsideAtmosphere;
         }
 
-        var loadRadius = tool.Radius + (rules.TerrainEditMarginVoxels * planet.VoxelSizeMeters);
+        var loadRadius = tool.Radius + (TerrainRules.EditMarginVoxels * planet.VoxelSizeMeters);
         if (!terrain.IsAreaLoaded(tool.Planet, center, loadRadius))
         {
             return RejectReason.AreaNotLoaded;
