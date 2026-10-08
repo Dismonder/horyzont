@@ -84,6 +84,7 @@ W kodzie wołanym co tick (symulacja, sieć, meshing) obowiązuje:
 
 - TDD: test akceptacyjny pakietu powstaje przed kodem, a każda poprawka błędu zaczyna się od testu, który ten błąd pokazuje.
 - xUnit; nazwy `Metoda_Scenariusz_OczekiwanyWynik`, po angielsku. Testy właściwości w FsCheck.
+- xUnit v3 przez paczkę `xunit.v3.mtp-off` (z `xunit.runner.visualstudio` i `Microsoft.NET.Test.Sdk`), a właściwości przez `FsCheck.Xunit.v3`. SDK .NET 10 uruchamia projekty Microsoft Testing Platform tylko w trybie MTP, który nie zna składni `--filter "Category!=Soak&Category!=Manual"`; wariant `mtp-off` zostawia VSTest i komendy z punktu 10. Projekt testów ma `<Using Include="Xunit" />`.
 - Testy są deterministyczne: bez `Thread.Sleep` i realnego czasu; czas przez `FakeTimeProvider` (paczka `Microsoft.Extensions.TimeProvider.Testing`, dostępna przez `tests/Horyzont.Testing`), sieć przez `InMemoryTransport` z `Horyzont.Net`, teren przez `FakeTerrainService` z `tests/Horyzont.Testing`.
 - Prawdziwy czas wolno mieć tylko w testach transportów UDP i Steam oraz w testach `Soak`; każdy taki test ma jawny limit czasu.
 - Kategorie przez `[Trait("Category", ...)]`: bez kategorii (szybkie, zawsze w CI), `Slow` (CI), `Soak` (nocne), `Manual` (wymagają człowieka albo Steama; wynik wpisuje się do PR).
