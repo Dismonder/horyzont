@@ -92,7 +92,7 @@ tests/Horyzont.Architecture.Tests/LayeringTests.cs             + Horyzont.Constr
 
 game/Horyzont.Game.csproj                                      + ProjectReference Horyzont.Constructs
 game/project.godot                                             nazwy warstw fizyki 3D (layer_names/3d_physics)
-game/src/Shared/PhysicsLayers.cs                               Terrain = 1, Constructs = 2, Players = 3 (bity)
+game/src/Shared/Physics/CollisionLayers.cs                     Terrain = 1, Constructs = 2, ServerBodies = 3, ClientBodies = 4
 game/src/Constructs/ConstructWorld.cs                          Node3D: API pakietu
 game/src/Constructs/ConstructWorldOptions.cs
 game/src/Constructs/ConstructWorldMode.cs                      RenderAndCollision | CollisionOnly
@@ -125,7 +125,7 @@ Katalogi testów silnika (`game/tests/`) i ich runner przyjmij z uprzęży, któ
 | `ConstructWorld` (`Initialize`, `OnApplied`, `RebuildAll`, `SetViewers`, `ShutdownAsync`, `ChunkMeshApplied`, `TryGetConstructNode`) | `game/src/Constructs/ConstructWorld.cs` | K2-13 krok 0 (skład w `GameComposition`, start, zamknięcie), K2-13 (odświeżenie po operacji), K3-15 |
 | `BlockMeshFactory.CreateBlockMesh(ushort typeId, byte orientation)` i `BlockVisuals.Material` | `game/src/Constructs/` | K2-13 (`BlockGhostPreview`) |
 | `BlockContentLoader.Load()` | `game/src/Constructs/BlockContentLoader.cs` | K2-13 krok 0 (composition root K2-10) |
-| `PhysicsLayers` | `game/src/Shared/PhysicsLayers.cs` | K2-09 (teren), K2-11 (postać) — Pytanie P5 |
+| `CollisionLayers` | `game/src/Shared/Physics/CollisionLayers.cs` | K2-09 (teren), K2-11 (postać: `ServerBodies`, `ClientBodies`), K2-13 (promień podglądu) |
 
 #### Core: tabela orientacji (FORMAT)
 
@@ -357,7 +357,7 @@ public sealed partial class ConstructWorld : Node3D
 11. **Tryby.** Solo i host: jedna instancja `ConstructWorld` w trybie `RenderAndCollision` nad `WorldStateConstructSource` serwera; jej kolizje służą fizyce serwera i nie są dublowane (spec, Architektura). Serwer dedykowany: `CollisionOnly`, bez `MeshInstance3D` i bez `BlockVisuals`. Zdalny klient w K2: brak źródła (budowle zdalne pojawiają się w K3-15, które poda `IConstructSource` lustra i woła `OnApplied`).
 12. **Zasięg.** Siatka renderu dla budowli, których prostopadłościan (`BoundsMin/Max` w ramie planety) jest w `RenderRadiusMeters` od widza; kolizja w `CollisionRadiusMeters` od gracza (fizyka serwera i predykcja); wyładowanie po przekroczeniu zasięgu + `HysteresisMeters`. Bez widzów (testy, pusty serwer) — wszystko. Pytanie P6.
 13. **Poza w Godocie.** `ConstructNode.Transform = new Transform3D(new Basis(rotation), origin)` z ramy planety; w podprojekcie 1 planeta domowa ma środek w początku świata Godota (K2-13 decyzja 10). Konwersja przez jedną funkcję (K2-11, jeśli istnieje; inaczej `ConstructNode.ToGodot`), żeby od K5 dało się podmienić ramy. `ChunkNode.Position = chunk * 16`.
-14. **Warstwy fizyki.** `PhysicsLayers.Constructs` (bit 2) dla `StaticBody3D` chunków, `CollisionMask = 0` (statyczne). Teren i gracze dostają bity 1 i 3, o ile K2-09/K2-11 nie ustaliły innych (Pytanie P5). `ConcavePolygonShape3D.BackfaceCollision = false`.
+14. **Warstwy fizyki.** `CollisionLayers.Constructs` (warstwa 2) dla `StaticBody3D` chunków, `CollisionMask = 0` (statyczne). Plik `CollisionLayers` (`Terrain = 1`, `Constructs = 2`, `ServerBodies = 3`, `ClientBodies = 4`, maski jako `const uint`) zakłada ten pakiet, bo jest scalany przed K2-09 i K2-11 (rozstrzygnięte na bramce K1, dawne P5). `ConcavePolygonShape3D.BackfaceCollision = false`.
 15. **Treść z dysku jest walidowana jak dane wejściowe (lekcja 6).** `BlockTypeCatalog.Parse`: `formatVersion` = 1; klucz `^[a-z0-9_]+:[a-z0-9_/]+$`, unikalny, różny od `core:missing`; kształt `cube`|`mesh`; `mesh` wymagane dokładnie dla kształtu `mesh` i rozwiązywalne; materiał istniejący; ≤ 255 materiałów; liczba typów + 1 ≤ `ProtocolConstants.MaxBlockTypes`; siatka `ShapeMesh` z indeksami w zakresie, liczbą indeksów podzielną przez 3, skończonymi wartościami w [0,1]³ ± 0,001. Błąd → `InvalidDataException` ze ścieżką JSON; gra nie startuje (treść jest nasza, błąd jest błędem builda).
 
 ## Testy akceptacyjne (napisz najpierw)
@@ -406,7 +406,7 @@ Fikstury `ConstructFixtures` (w `tests/Horyzont.Testing`, przez publiczny `World
 - [ ] 6. `NaiveFaceOracle`, testy meshera (przykłady, właściwości, alokacje) → `ChunkMeshInput`, `ChunkMeshData`, `ChunkMesher` (render i kolizja). Zielone, w tym test alokacji.
 - [ ] 7. `ConstructDirtyChunksTests`, `WorldStateConstructSourceTests`, `ChunkRemeshQueueTests` → `Sources/*`, `Scheduling/*`. Zielone.
 - [ ] 8. `ConstructFixtures` i `MesherTimingTests` `[Slow]`; wpisz czasy do opisu PR.
-- [ ] 9. Gra: `PhysicsLayers` i nazwy warstw w `project.godot`; `BlockContentLoader`, `GodotShapeMeshResolver`, `BlockVisuals` + `blocks.gdshader`, `ChunkMeshUploader`, `MeshWorkerPool`, `ConstructChunkNode`, `ConstructNode`, `ConstructWorld`, `BlockMeshFactory`. Logowanie wyłącznie `[LoggerMessage]`.
+- [ ] 9. Gra: `CollisionLayers` i nazwy warstw w `project.godot`; `BlockContentLoader`, `GodotShapeMeshResolver`, `BlockVisuals` + `blocks.gdshader`, `ChunkMeshUploader`, `MeshWorkerPool`, `ConstructChunkNode`, `ConstructNode`, `ConstructWorld`, `BlockMeshFactory`. Logowanie wyłącznie `[LoggerMessage]`.
 - [ ] 10. Testy silnika `ConstructWorldTests` (najpierw czerwone na pustych metodach), potem implementacja do zielonego.
 - [ ] 11. `ConstructHitchTests` `[Slow]` na Windows i Linux w CI. Przy przekroczeniu: profiler Godota, zmniejszenie budżetu, podział przesyłania kolizji na osobne klatki od siatki, ewentualnie `RenderingServer.MeshAddSurface` z buforem bajtów (Pułapki); bez podnoszenia progu.
 - [ ] 12. Pomiar `[Manual]` z GPU (w tym Checkerboard) na maszynie właściciela; wynik w PR.
@@ -447,7 +447,7 @@ Fikstury `ConstructFixtures` (w `tests/Horyzont.Testing`, przez publiczny `World
 - **P2. Kształty i bloki bez kolizji a walidacja.** Core (raycast, kolizja z graczem) traktuje każdy blok jako pełny sześcian; płyty i skosy fizycznie są mniejsze, a bloki bez kolizji i tak blokują stawianie w graczu. Domyślnie: zostaje tak w podprojekcie 1; zmiana to nowa wersja formatu intencji/operacji w osobnym pakiecie.
 - **P3. Definicja „budowla 64³ bez przycięć > 50 ms”.** Domyślnie: wzory Solid, Building, Random35, scenariusze „pojawienie się” i „10 s edycji po 20/s”; bramka CI na wolnym przebiegu bez grafiki plus pomiar ręczny z GPU w PR; Checkerboard (najgorszy przypadek, 3,1 mln wierzchołków) tylko raport.
 - **P4. Opóźnienie odświeżenia własnej edycji.** Rozstrzygnięte na bramce K1: p99 ≤ 100 ms od zastosowania operacji do podmiany siatki w trybie solo/host to kontrakt; K2-13 czeka na `ChunkMeshApplied` z tym terminem (D14).
-- **P5. Numery warstw fizyki.** Domyślnie: 1 Terrain, 2 Constructs, 3 Players w `game/src/Shared/PhysicsLayers.cs`; pakiet scalany jako drugi (K2-09, K2-11) dopasowuje się do istniejącego pliku.
+- **P5. Numery warstw fizyki.** Rozstrzygnięte na bramce K1: `game/src/Shared/Physics/CollisionLayers.cs` z `Terrain = 1`, `Constructs = 2`, `ServerBodies = 3`, `ClientBodies = 4` (nazwy z K2-11), zakłada K2-12.
 - **P6. Zasięg siatek i kolizji.** Domyślnie: render 1000 m od widza, kolizja 128 m od gracza, histereza 64 m; bez LOD budowli w podprojekcie 1.
 - **P7. Wygląd sześcianu niezależny od orientacji w K2.** Jeden materiał na typ; tekstury per ściana (np. pień drzewa, strzałka) dopiero z kierunkiem artystycznym K8-50 — wtedy klucz łączenia w greedy dostanie materiał ściany po `ToBlock`. Domyślnie: tak.
 - **P8. Uprząż testów silnika.** Jeśli K2-12 rusza przed K2-08/K2-09, dodaje gdUnit4Net tak, jak opisał K2-09 krok 3; drugi pakiet przechodzi na tę uprząż. Domyślnie: tak, bez osobnego pakietu.
