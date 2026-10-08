@@ -56,7 +56,7 @@ public sealed class MigrationTests
         Assert.Equal(2L, RawDb.Long(path, "PRAGMA user_version;"));
         Assert.Equal(1L, RawDb.Long(path, "SELECT COUNT(*) FROM test_m2;"));
         var copy = Assert.Single(Directory.GetFiles(dir.BackupsPath));
-        Assert.Equal("20261008-093015-pre-migration.db", Path.GetFileName(copy));
+        Assert.Equal("20261008-093015-000001-pre-migration.db", Path.GetFileName(copy));
         Assert.Equal(1L, RawDb.Long(copy, "PRAGMA user_version;"));
         Assert.Equal("delete", RawDb.Scalar(copy, "PRAGMA journal_mode;"));
 
