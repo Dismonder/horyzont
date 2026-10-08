@@ -42,3 +42,53 @@ jobs:
 
       - name: Format
         run: dotnet format Horyzont.sln --verify-no-changes --no-restore
+
+  game:
+    # Needs the engine from engine.yml on main: the matrix runners above have no engine packages.
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download engine from the last successful engine.yml run on main
+        run: |
+          run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow engine.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          if [ -z "$run_id" ]; then
+            echo "::error::No successful engine.yml run on main; merge K1-01 and let engine.yml finish first."
+            exit 1
+          fi
+          echo "engine run $run_id"
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-windows-editor -D engine-ci/editor
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-nupkgs -D engine-ci/nupkgs
+
+      - name: Activate engine packages
+        run: python tools/engine/build.py activate --from engine-ci/nupkgs
+
+      - name: Build game
+        run: dotnet build game/Horyzont.Game.csproj -nologo
+
+      - name: Format game
+        run: dotnet format game/Horyzont.Game.csproj --verify-no-changes --no-restore
+
+      - name: Boot smoke
+        run: |
+          editor=engine-ci/editor/godot.windows.editor.double.x86_64.mono.console.exe
+          "$editor" --headless --path game --import
+          "$editor" --headless --path game -- --smoke | tee boot.log
+          grep -q "BOOT OK .*real_t=double" boot.log
