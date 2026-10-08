@@ -21,6 +21,7 @@ public sealed class SteamTransport : ITransport
     private readonly Dictionary<uint, Connection> _byHandle = [];
     private readonly Dictionary<ulong, Connection> _byId = [];
     private readonly List<Connection> _outgoing = [];
+    private readonly List<Connection> _remoteClosed = [];
     private readonly Queue<PendingEvent> _pending = new();
     private readonly IntPtr[] _messages = new IntPtr[BatchSize];
     private readonly Callback<SteamNetConnectionStatusChangedCallback_t> _statusCallback;
@@ -80,6 +81,10 @@ public sealed class SteamTransport : ITransport
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// When Steam refuses a reliable message (for example <c>k_EResultLimitExceeded</c> because the send buffer is full)
+    /// the connection is closed and reported with <see cref="TransportDisconnectReason.TransportError"/>.
+    /// </remarks>
     public void Send(ConnectionId connection, TransportChannel channel, ReadOnlySpan<byte> payload)
     {
         var limit = channel == TransportChannel.ReliableOrdered ? ReliableLimit : UnreliableLimit;
@@ -88,7 +93,7 @@ public sealed class SteamTransport : ITransport
             throw new ArgumentException($"Payload of {payload.Length} bytes exceeds the {limit} byte limit of the channel.", nameof(payload));
         }
 
-        if (!_byId.TryGetValue(connection.Value, out var c) || !c.Established || c.Closing)
+        if (!_byId.TryGetValue(connection.Value, out var c) || !c.Established || c.Closing || c.CloseReason is not null)
         {
             return;
         }
@@ -112,6 +117,12 @@ public sealed class SteamTransport : ITransport
         if (result == EResult.k_EResultOK)
         {
             c.BytesSent += payload.Length;
+        }
+        else if (channel == TransportChannel.ReliableOrdered && result != EResult.k_EResultNoConnection)
+        {
+            // A reliable message must never vanish silently (for example when the send buffer is full), so the
+            // connection fails instead. A lost unreliable message is within the channel contract.
+            Fail(c);
         }
     }
 
@@ -165,6 +176,8 @@ public sealed class SteamTransport : ITransport
                 Dispatch(count, events);
             }
         }
+
+        FinishRemoteClosures(events);
     }
 
     /// <inheritdoc />
@@ -228,6 +241,7 @@ public sealed class SteamTransport : ITransport
         _byHandle.Clear();
         _byId.Clear();
         _outgoing.Clear();
+        _remoteClosed.Clear();
     }
 
     private SteamNetworkingConfigValue_t[] BuildConfig()
@@ -345,9 +359,45 @@ public sealed class SteamTransport : ITransport
 
     private void Close(Connection c, TransportDisconnectReason reason)
     {
+        // The handle stays open (and registered) until Poll has delivered the messages still queued on it:
+        // closing it here would discard data the peer sent before a graceful disconnect.
+        if (c.CloseReason is null && !c.Closing)
+        {
+            c.CloseReason = reason;
+            _remoteClosed.Add(c);
+        }
+    }
+
+    private void FinishRemoteClosures(ITransportEvents events)
+    {
+        for (var i = 0; i < _remoteClosed.Count; i++)
+        {
+            var c = _remoteClosed[i];
+            if (c.Closing)
+            {
+                continue;
+            }
+
+            Forget(c);
+            c.Closing = true;
+            SteamNetworkingSockets.CloseConnection(c.Handle, 0, "closed", false);
+
+            // An incoming connection that never raised OnConnected is not reported either.
+            if (c.Established || c.Outgoing)
+            {
+                events.OnDisconnected(new ConnectionId(c.Id), c.CloseReason!.Value);
+            }
+        }
+
+        _remoteClosed.Clear();
+    }
+
+    private void Fail(Connection c)
+    {
         Forget(c);
-        SteamNetworkingSockets.CloseConnection(c.Handle, 0, "closed", false);
-        _pending.Enqueue(new PendingEvent(PendingKind.Disconnected, c.Id, reason));
+        c.Closing = true;
+        SteamNetworkingSockets.CloseConnection(c.Handle, 0, "send failed", false);
+        _pending.Enqueue(new PendingEvent(PendingKind.Disconnected, c.Id, TransportDisconnectReason.TransportError));
     }
 
     private void Dispatch(int count, ITransportEvents events)
@@ -397,6 +447,9 @@ public sealed class SteamTransport : ITransport
         public bool Established { get; set; }
 
         public bool Closing { get; set; }
+
+        /// <summary>Gets or sets why the connection ended remotely; it is closed locally once Poll drained its messages.</summary>
+        public TransportDisconnectReason? CloseReason { get; set; }
 
         public long BytesSent { get; set; }
 
