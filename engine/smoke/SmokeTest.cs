@@ -27,8 +27,8 @@ public partial class SmokeTest : Node
         if (!ClassDB.ClassExists("VoxelLodTerrain"))
             failures.Add("Voxel Tools module missing in engine");
 
-        if (Environment.Version.Major < 10)
-            failures.Add($".NET runtime {Environment.Version} is older than 10");
+        if (System.Environment.Version.Major < 10)
+            failures.Add($".NET runtime {System.Environment.Version} is older than 10");
 
         GD.Print(failures.Count == 0 ? "SMOKE OK" : "SMOKE FAIL: " + string.Join("; ", failures));
         GetTree().Quit(failures.Count == 0 ? 0 : 1);

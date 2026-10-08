@@ -206,15 +206,24 @@ Jeśli Godot 4.7.2 nie uruchomi projektu w `net10.0` (oficjalny GodotSharp 4.7.0
 
 ## Kroki
 
-- [ ] Szkielet `build.py`: parser komend, klucz konfiguracji, flagi z `engine.json`, logowanie, `--dry-run`, `--target`.
-- [ ] `fetch` z zapisem STAMP, porównaniem commitu z `ed1daf0bf` i barierami MSBuild.
-- [ ] `editor`, potem `glue`, potem `assemblies` z `--precision=double` i paczkami w `engine/out/<klucz>/nupkgs`.
-- [ ] `nuget.config` w korzeniu repo i `activate`.
-- [ ] Projekt `engine/smoke/` i komenda `smoke` ze sprawdzeniem źródła paczek; uruchomienie testów 2 i 4.
-- [ ] `templates` dla Windows; `all` na Windows.
+- [x] Szkielet `build.py`: parser komend, klucz konfiguracji, flagi z `engine.json`, logowanie, `--dry-run`, `--target`.
+- [x] `fetch` z zapisem STAMP, porównaniem commitu z `ed1daf0bf` i barierami MSBuild.
+- [x] `editor`, potem `glue`, potem `assemblies` z `--precision=double` i paczkami w `engine/out/<klucz>/nupkgs`.
+- [x] `nuget.config` w korzeniu repo i `activate`.
+- [x] Projekt `engine/smoke/` i komenda `smoke` ze sprawdzeniem źródła paczek; uruchomienie testów 2 i 4.
+- [x] `templates` dla Windows; `all` na Windows.
 - [ ] Ścieżka Linux (`templates` dla `linuxbsd`), uruchomiona w CI.
 - [ ] `engine.yml` z jobami na cel, cache i artefaktami; zielone CI.
-- [ ] Aktualizacja `docs/SETUP.md` (czasy, rozmiary, napotkane problemy).
+- [x] Aktualizacja `docs/SETUP.md` (czasy, rozmiary, napotkane problemy).
+
+## Odstępstwa i decyzje wykonawcy
+
+- `SmokeTest.cs` używa `System.Environment.Version` zamiast `Environment.Version` z planu: przy `using Godot;` nazwa jest niejednoznaczna z `Godot.Environment` (CS0104).
+- `smoke` buduje projekt dymny z `--no-incremental`. Paczki wszystkich wariantów mają ten sam numer wersji i znaczniki czasu z archiwum, więc przyrostowy build po `activate` zostawiał `Smoke.dll` skompilowany pod poprzednie paczki i test 4 nie wracał do `SMOKE OK`.
+- `scons()` zakłada katalog nadrzędny cache SCons przed uruchomieniem, bo SCons tworzy katalog cache atomowo i bez rodzica przerywa build.
+- Dodatkowe opcje `--scons-cache` (zmienna `HORYZONT_SCONS_CACHE`) i `--cache-limit` (`HORYZONT_SCONS_CACHE_LIMIT`), żeby CI mogło zmieścić cache wszystkich celów w limicie GitHuba.
+- Commit `engine/smoke/SmokeTest.cs.uid` generowanego przez Godota 4.7 (zalecenie Godota: pliki `.uid` trzymać w repozytorium).
+- Wyniki lokalne (Windows, VS 2026 Community): test 1 (`all` od zera, około 70 min), 2, 3 (drugie `all` 8,6 s) i 4 zaliczone 2026-10-08. Ścieżka Linux i test 5 czekają na CI.
 
 ## Odbiór
 

@@ -167,6 +167,9 @@ class Context:
         return "".join(captured)
 
     def scons(self, step: str, target: dict) -> None:
+        if not self.dry_run:
+            # SCons creates the cache directory atomically next to it, so the parent must exist.
+            Path(self.args.scons_cache).parent.mkdir(parents=True, exist_ok=True)
         cmd: list[str | Path] = [sys.executable, "-m", "SCons", f"-j{self.args.jobs}"] + scons_flags(self.config, target, self.args)
         self.run(step, cmd, GODOT_SRC)
 
@@ -467,7 +470,9 @@ def step_smoke(ctx: Context) -> None:
     else:
         print(f"[smoke] active packages: key {ctx.key}, variant {active.get('variant')}")
     check_smoke_framework(ctx)
-    ctx.run("smoke", ["dotnet", "build", SMOKE_PROJECT, "-nologo"], REPO)
+    # Packages of every variant share one version number and keep the timestamps from the archive, so an incremental
+    # build would keep a Smoke.dll compiled against the previously active packages.
+    ctx.run("smoke", ["dotnet", "build", SMOKE_PROJECT, "-nologo", "--no-incremental"], REPO)
     if not ctx.dry_run:
         check_package_sources()
 
