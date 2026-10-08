@@ -31,6 +31,6 @@ jobs:
       - name: Build
         run: dotnet build Horyzont.sln -c Release --no-restore
 
-      # No Soak tests exist yet; the job stays green until packages add them.
+      # Includes CrashHostSoakTests (K1-05); its crash host is built above as part of the solution.
       - name: Soak tests
         run: dotnet test Horyzont.sln -c Release --no-build --filter "Category=Soak"

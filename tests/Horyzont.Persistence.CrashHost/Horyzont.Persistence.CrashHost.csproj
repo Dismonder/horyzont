@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Horyzont.Persistence/Horyzont.Persistence.csproj" />
+    <ProjectReference Include="../../src/Horyzont.Core/Horyzont.Core.csproj" />
+    <ProjectReference Include="../Horyzont.Testing/Horyzont.Testing.csproj" />
+  </ItemGroup>
+</Project>

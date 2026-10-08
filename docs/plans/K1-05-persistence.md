@@ -209,15 +209,15 @@ Wyrocznia: ta sama sekwencja intencji z tego samego ziarna na świeżym świecie
 
 ## Kroki
 
-- [ ] Testy z tabeli (czerwone), rozszerzenie `FakeTerrainService` i `CrashHost`.
-- [ ] `WorldDatabase`, `M0001_Initial`, `MigrationRunner`, `WorldCreator`.
-- [ ] `PersistenceWriter` z partiami dziennika, `JournalSink`, zdarzeniami.
-- [ ] Checkpoint w jednej transakcji; stan awarii, `ClearFault`, `CheckpointFailed`.
-- [ ] `WorldLoader` z weryfikacją CRC i ciągłości.
-- [ ] `TerrainBlockStore`, `BackupService`.
-- [ ] Punkty awarii i testy wstrzykiwania; `Fixtures/world-v1.db` zapisany w repo.
-- [ ] Test zabijania procesu w nocnym CI.
-- [ ] Komentarze XML; zielone CI.
+- [x] Testy z tabeli (czerwone), rozszerzenie `FakeTerrainService` i `CrashHost`.
+- [x] `WorldDatabase`, `M0001_Initial`, `MigrationRunner`, `WorldCreator`.
+- [x] `PersistenceWriter` z partiami dziennika, `JournalSink`, zdarzeniami.
+- [x] Checkpoint w jednej transakcji; stan awarii, `ClearFault`, `CheckpointFailed`.
+- [x] `WorldLoader` z weryfikacją CRC i ciągłości.
+- [x] `TerrainBlockStore`, `BackupService`.
+- [x] Punkty awarii i testy wstrzykiwania; `Fixtures/world-v1.db` zapisany w repo.
+- [x] Test zabijania procesu w nocnym CI.
+- [x] Komentarze XML; zielone CI (lokalnie: build bez ostrzeżeń, testy, `dotnet format`; CI do potwierdzenia w PR).
 
 ## Odbiór
 
@@ -230,3 +230,20 @@ Testy z tabeli przechodzą (Soak w nocnym przebiegu: 50 z 50), przegląd GPT-6.1
 - Nie wołaj `RequeueAfterFailedCheckpoint` ani `CompleteCheckpoint` z wątku zapisu; tylko przez zdarzenie na pętli serwera.
 - `synchronous=FULL` w WAL jest wolniejsze od `NORMAL`, ale tylko ono gwarantuje trwałość zatwierdzonej partii po utracie zasilania.
 - `Fixtures/world-v1.db` commituj po `PRAGMA journal_mode=DELETE`, inaczej część danych może zostać w pliku `-wal`, którego `.gitignore` nie wpuszcza do repozytorium.
+
+## Odstępstwa i decyzje wykonawcy
+
+- Core bez zmian. `Horyzont.Testing` dostał `WorldScript` (deterministyczne intencje z ziarna, najwyżej jedna operacja na krok, wspólne dla testów, `CrashHost` i wyroczni) i dane bloków w `FakeTerrainService` (XxHash64 poprzednich danych i pól edycji, bez kodeka; `BlockSource`, `GetBlockData`, `Blocks`).
+- `PersistenceOptions.BackupsDirectory` (domyślnie `backups` obok pliku świata) i `WorldLoadOptions.BackupsToKeep` (10): plan nie mówił, skąd wątek zapisu i `WorldLoader` biorą katalog i limit rotacji.
+- Kopie co `BackupInterval` zleca sam wątek zapisu timerem `TimeProvider`; kopię przy starcie zleca gra przez `BackupAsync("startup")`. Nieudana kopia zwraca `false` i loguje błąd, ale nie przełącza w stan awarii, bo nie dotyka pliku świata.
+- Nazwa kopii to `<yyyyMMdd-HHmmss>-<numer>-<reason>.db` (przegląd Sol, P2): `numer` (sześć cyfr z zerami, o jeden większy od najwyższej opublikowanej kopii) wyznacza kolejność tworzenia, więc rotacja nie zależy od powodu, zegara ani ponownego użycia nazwy i nigdy nie usuwa właśnie zrobionej kopii (np. `pre-migration` przy `keep = 1`). Kopia powstaje jako `<nazwa>.db.partial` i dostaje nazwę końcową atomowym `File.Move` dopiero po zamknięciu; `List` i rotacja widzą tylko kopie opublikowane, a kolejna kopia usuwa pozostałe `.partial` po przerwanym procesie.
+- `CheckpointAsync` rzuca `ArgumentException`, gdy wersja z `WorldCheckpoint.TerrainVersions` nie ma danych w `TerrainBlocks` z tą samą wersją (błąd wywołującego, para wersja–dane w bazie musi być spójna). Dane bloku spoza `TerrainVersions` (albo z inną wersją) też dają `ArgumentException` bez dotykania bazy (przegląd Sol, P1): starsze cofnęłyby zapisaną wersję, a nowsze od granicy należą do operacji, które zostają w dzienniku i powtórzyłyby się przy odtwarzaniu. Blok wyładowany przez Voxel Tools, jeśli zmieniony, i tak jest w `TerrainVersions`. Wyjątek zamiast `CheckpointFailed`, bo to błąd wywołującego, jak brak danych; wywołujący sam woła `RequeueAfterFailedCheckpoint`.
+- Wątek zapisu pilnuje ciągłości: wpis z `OpId` innym niż poprzedni + 1 nie jest zapisywany i przełącza w stan awarii. Granica checkpointu spoza przedziału [ostatni checkpoint, `DurableOpId`] też. `ClearFault` najpierw czyta z bazy faktyczny postęp (największy `op_id` dziennika albo `last_checkpoint_op_id`) i pomija wpisy już trwałe, więc commit, który zgłosił błąd po dotarciu na dysk, nie zapisze się drugi raz.
+- Błąd `IOException` w `AfterCheckpointCommit`: dane są na dysku, więc writer zgłasza `CheckpointCommitted` i dodatkowo `WriterFaulted`. Zdarzenia trafiają do kolejki przed wynikiem zadania.
+- Błąd `IOException` w `AfterJournalCommit` udaje commit o nieznanym wyniku (przegląd Sol, P2 testy): wiersze są na dysku, ale writer traktuje partię jak nieudaną, czyli wpisy zostają w pamięci, `DurableOpId` nie rośnie i nie ma `JournalCommitted`. `ClearFault` czyta postęp z bazy, pomija wpisy już zapisane, podnosi `DurableOpId` i zgłasza `JournalCommitted` dla nich, a potem zapisuje resztę.
+- Sufit `OpId` = `long.MaxValue` (przegląd Sol, P3): kolumny `op_id` są ze znakiem, więc `DELETE ... <= barrier`, `ORDER BY` i `MAX` psułyby się od 2^63. Zamiast predykatów bez znaku (prościej i bez kosztu dla zapytań): wątek zapisu odmawia wpisu powyżej sufitu i przechodzi w stan awarii, zanim cokolwiek zgłosi jako trwałe; `WorldLoader` (i odczyt postępu w writerze) traktuje ujemne `op_id` w dzienniku albo `last_checkpoint_op_id` jako uszkodzenie (`WorldCorruptedException`). Przy 60 operacjach na sekundę sufit to miliardy lat.
+- `SimulatedCrashException`: polecenie w trakcie i zaległe w kolejce kończą się wynikiem `false` (checkpoint także `CheckpointFailed`), bez żadnego zapisu, żeby testy nie wisiały.
+- `PersistenceWriter.ProbeAsync` (internal, dla testów): punkt synchronizacji, który nie zatwierdza partii; dzięki niemu testy partii są deterministyczne bez czekania w czasie rzeczywistym.
+- `M0001_Initial` jest `internal` (nazwa z podkreśleniem; testy biorą ją z `MigrationRunner.All[0]`). `MigrationRunner` ma też publiczne `Validate`, `LatestVersion` i `Run`. `user_version = 0` przy wczytaniu daje `WorldCorruptedException`.
+- `FaultInjectionTests`: checkpoint co 20 operacji jest pomijany, gdy poprzedni jest w locie, a zlecony czeka na wynik; bez tego wątek zapisu nie nadążał za pętlą testu i punkty awarii checkpointu prawie nie padały. Zmierzone: wszystkie 40 przypadków kończy się awarią.
+- `Fixtures/world-v1.db` generuje test `FixtureGenerator` (`Category=Manual`, odmawia nadpisania istniejącego pliku); plik w repozytorium jest w trybie `DELETE`.

@@ -1,0 +1,17 @@
+namespace Horyzont.Core.Serialization;
+
+/// <summary>First byte of every SQLite blob written by <see cref="StateCodec"/>.</summary>
+public enum BlobKind : byte
+{
+    /// <summary>A construct header record.</summary>
+    ConstructHeader = 1,
+
+    /// <summary>A player record.</summary>
+    Player = 2,
+
+    /// <summary>The block array of one construct chunk.</summary>
+    ConstructChunk = 3,
+
+    /// <summary>Planet parameters.</summary>
+    PlanetParams = 4,
+}

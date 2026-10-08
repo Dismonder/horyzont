@@ -6,6 +6,7 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3.mtp-off" />
     <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="FsCheck.Xunit.v3" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
@@ -14,5 +15,10 @@
     <ProjectReference Include="../../src/Horyzont.Persistence/Horyzont.Persistence.csproj" />
     <ProjectReference Include="../../src/Horyzont.Core/Horyzont.Core.csproj" />
     <ProjectReference Include="../Horyzont.Testing/Horyzont.Testing.csproj" />
+    <!-- Built first so CrashHostSoakTests can start it from its own output directory. -->
+    <ProjectReference Include="../Horyzont.Persistence.CrashHost/Horyzont.Persistence.CrashHost.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Fixtures/*.db" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
