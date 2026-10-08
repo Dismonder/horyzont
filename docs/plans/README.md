@@ -36,7 +36,7 @@ Bramkę prowadzi Opus 5.5 na gałęzi `pakiet/k1-bramka`. Test end-to-end powsta
 
 - [ ] CI zielone na Windows i Linux, testy akceptacyjne wszystkich siedmiu pakietów przechodzą.
 - [ ] `python tools/engine/build.py smoke` wypisuje `SMOKE OK`, a projekt `game/` uruchamia się bez grafiki z `--smoke`.
-- [ ] Nowy projekt `tests/Horyzont.Integration.Tests` (referencje: Core, Persistence, Net, Testing; dodany do `Horyzont.sln`) z testem end-to-end w pamięci. Serwer z `ServerSimulation`, `PersistenceWriter` na pliku tymczasowym i dwóch klientów przez `InMemoryTransport` przyjmuje intencje i zapisuje dziennik, a po symulowanej awarii wczytanie z powtórką daje ten sam skrót stanu. Haki gry dla testu (`IServerGameHooks` nad `ServerSimulation`) żyją w tym projekcie.
+- [x] Nowy projekt `tests/Horyzont.Integration.Tests` (referencje: Core, Persistence, Net, Testing; dodany do `Horyzont.sln`) z testem end-to-end w pamięci. Serwer z `ServerSimulation`, `PersistenceWriter` na pliku tymczasowym i dwóch klientów przez `InMemoryTransport` przyjmuje intencje i zapisuje dziennik, a po symulowanej awarii wczytanie z powtórką daje ten sam skrót stanu. Haki gry dla testu (`IServerGameHooks` nad `ServerSimulation`) żyją w tym projekcie.
 - [ ] Opus 5.5 przegląda całość w świeżej sesji i pisze plany K2 (pakiety K2-08 … K2-13).
 
 ## Szablon planu pakietu
