@@ -6,4 +6,42 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Horyzont.Core.Tests" />
   </ItemGroup>
+
+  <!--
+    Generates BuildInfo.g.cs with the build commit: HORYZONT_COMMIT (CI), otherwise `git rev-parse HEAD`, otherwise "dev".
+    WriteOnlyWhenDifferent keeps the file timestamp when the commit did not change, so Core is not rebuilt needlessly.
+  -->
+  <Target Name="GenerateBuildInfo" BeforeTargets="BeforeCompile;CoreCompile">
+    <PropertyGroup>
+      <_HoryzontBuildInfoFile>$(IntermediateOutputPath)BuildInfo.g.cs</_HoryzontBuildInfoFile>
+      <_HoryzontCommit>$(HORYZONT_COMMIT)</_HoryzontCommit>
+    </PropertyGroup>
+    <Exec Command="git rev-parse HEAD" Condition="'$(_HoryzontCommit)' == ''" WorkingDirectory="$(MSBuildProjectDirectory)"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" StandardOutputImportance="low"
+          StandardErrorImportance="low" EchoOff="true" ContinueOnError="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_HoryzontGitOutput" />
+      <Output TaskParameter="ExitCode" PropertyName="_HoryzontGitExitCode" />
+    </Exec>
+    <PropertyGroup>
+      <_HoryzontCommit Condition="'$(_HoryzontCommit)' == '' and '$(_HoryzontGitExitCode)' == '0'">$(_HoryzontGitOutput.Trim())</_HoryzontCommit>
+      <_HoryzontCommit Condition="'$(_HoryzontCommit)' == ''">dev</_HoryzontCommit>
+      <_HoryzontCommit>$([System.Text.RegularExpressions.Regex]::Replace($(_HoryzontCommit), '[^0-9A-Za-z._/-]', ''))</_HoryzontCommit>
+      <_HoryzontCommit Condition="'$(_HoryzontCommit)' == ''">dev</_HoryzontCommit>
+    </PropertyGroup>
+    <ItemGroup>
+      <_HoryzontBuildInfoLine Include="// &lt;auto-generated /&gt;" />
+      <_HoryzontBuildInfoLine Include="namespace Horyzont.Core%3B" />
+      <_HoryzontBuildInfoLine Include="public static partial class BuildInfo" />
+      <_HoryzontBuildInfoLine Include="{" />
+      <_HoryzontBuildInfoLine Include="    /// &lt;summary&gt;Commit this build was made from, or &lt;c&gt;dev&lt;/c&gt; when unknown.&lt;/summary&gt;" />
+      <_HoryzontBuildInfoLine Include="    public const string Commit = &quot;$(_HoryzontCommit)&quot;%3B" />
+      <_HoryzontBuildInfoLine Include="}" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(_HoryzontBuildInfoFile)" Lines="@(_HoryzontBuildInfoLine)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <Compile Remove="$(_HoryzontBuildInfoFile)" />
+      <Compile Include="$(_HoryzontBuildInfoFile)" />
+      <FileWrites Include="$(_HoryzontBuildInfoFile)" />
+    </ItemGroup>
+  </Target>
 </Project>

@@ -13,6 +13,7 @@ concurrency:
 env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
+  HORYZONT_COMMIT: ${{ github.sha }}
 
 jobs:
   build-and-test:
