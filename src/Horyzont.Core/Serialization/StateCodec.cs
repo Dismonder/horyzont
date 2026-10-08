@@ -1,113 +1,420 @@
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
+using Horyzont.Core.Protocol;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
+using Horyzont.Core.World.Constructs;
 
 namespace Horyzont.Core.Serialization;
 
 /// <summary>Binary codec for checkpoint records, registry entries, chunk blocks and SQLite blobs.</summary>
 public static class StateCodec
 {
+    private const byte CurrentFormatVersion = 1;
+    private const int ChunkCellCount = 4096;
+
     /// <summary>Writes a construct header record without a prefix.</summary>
     /// <param name="w">Target writer.</param>
     /// <param name="h">Record.</param>
-    public static void WriteConstructHeader(ByteWriter w, ConstructHeaderRecord h) => throw new NotImplementedException();
+    public static void WriteConstructHeader(ByteWriter w, ConstructHeaderRecord h)
+    {
+        ArgumentNullException.ThrowIfNull(w);
+        ArgumentNullException.ThrowIfNull(h);
+
+        if (h.Mode < ConstructMode.Static || h.Mode > ConstructMode.Ship)
+        {
+            throw new ArgumentException($"Invalid ConstructMode {(byte)h.Mode}.", nameof(h));
+        }
+
+        w.WriteVarUInt(h.Id.Value);
+        CoreCodecPrimitives.WriteFrameRef(w, h.Parent);
+        w.WriteVarUInt(h.ParentSeq);
+        w.WriteByte((byte)h.Mode);
+        w.WriteVector3(h.Origin);
+        w.WriteQuaternion(h.Rotation);
+        w.WriteVarUInt(h.Version);
+    }
 
     /// <summary>Reads a construct header record.</summary>
     /// <param name="r">Reader.</param>
     /// <returns>The record.</returns>
-    public static ConstructHeaderRecord ReadConstructHeader(ref ByteReader r) => throw new NotImplementedException();
+    public static ConstructHeaderRecord ReadConstructHeader(ref ByteReader r)
+    {
+        var id = new EntityId(r.ReadVarUInt());
+        var parent = CoreCodecPrimitives.ReadFrameRef(ref r);
+        uint parentSeq = r.ReadVarUInt32();
+        byte modeByte = r.ReadByte();
+        if (modeByte > (byte)ConstructMode.Ship)
+        {
+            throw new ProtocolViolationException($"Unknown construct mode {modeByte}.");
+        }
+
+        var origin = r.ReadVector3();
+        var rotation = r.ReadQuaternion();
+        uint version = r.ReadVarUInt32();
+
+        return new ConstructHeaderRecord(id, parent, parentSeq, (ConstructMode)modeByte, origin, rotation, version);
+    }
 
     /// <summary>Writes a player record without a prefix.</summary>
     /// <param name="w">Target writer.</param>
     /// <param name="p">Record.</param>
-    public static void WritePlayer(ByteWriter w, PlayerRecord p) => throw new NotImplementedException();
+    public static void WritePlayer(ByteWriter w, PlayerRecord p)
+    {
+        ArgumentNullException.ThrowIfNull(w);
+        ArgumentNullException.ThrowIfNull(p);
+
+        w.WriteVarUInt(p.Player.Value);
+        CoreCodecPrimitives.WritePlatformIdentity(w, p.Identity);
+        w.WriteString(p.DisplayName, ProtocolConstants.MaxDisplayNameBytes);
+        w.WriteVarUInt(p.Entity.Value);
+        CoreCodecPrimitives.WriteFrameRef(w, p.Frame);
+        w.WriteVarUInt(p.ParentSeq);
+        CoreCodecPrimitives.WriteOptionalCellPos(w, p.Seat);
+        w.WriteVector3(p.Position);
+        w.WriteQuaternion(p.BodyRotation);
+        w.WriteSingle(p.Pitch);
+        w.WriteBool(p.IsOnline);
+    }
 
     /// <summary>Reads a player record.</summary>
     /// <param name="r">Reader.</param>
     /// <returns>The record.</returns>
-    public static PlayerRecord ReadPlayer(ref ByteReader r) => throw new NotImplementedException();
+    public static PlayerRecord ReadPlayer(ref ByteReader r)
+    {
+        var player = new PlayerId(r.ReadVarUInt());
+        var identity = CoreCodecPrimitives.ReadPlatformIdentity(ref r);
+        string displayName = r.ReadString(ProtocolConstants.MaxDisplayNameBytes);
+        var entity = new EntityId(r.ReadVarUInt());
+        var frame = CoreCodecPrimitives.ReadFrameRef(ref r);
+        uint parentSeq = r.ReadVarUInt32();
+        var seat = CoreCodecPrimitives.ReadOptionalCellPos(ref r);
+        var position = r.ReadVector3();
+        var bodyRotation = r.ReadQuaternion();
+        float pitch = r.ReadSingle();
+        bool isOnline = r.ReadBool();
+
+        return new PlayerRecord(player, identity, displayName, entity, frame, parentSeq, seat, position, bodyRotation, pitch, isOnline);
+    }
 
     /// <summary>Writes planet parameters without a prefix.</summary>
     /// <param name="w">Target writer.</param>
     /// <param name="p">Record.</param>
-    public static void WritePlanet(ByteWriter w, PlanetParams p) => throw new NotImplementedException();
+    public static void WritePlanet(ByteWriter w, PlanetParams p)
+    {
+        ArgumentNullException.ThrowIfNull(w);
+        ArgumentNullException.ThrowIfNull(p);
+
+        w.WriteVarUInt(p.Id.Value);
+        w.WriteVarUInt(p.System.Value);
+        w.WriteUInt64(p.Seed);
+        w.WriteString(p.GeneratorProfile, ProtocolConstants.MaxRegistryKeyBytes);
+        w.WriteSingle(p.RadiusMeters);
+        w.WriteSingle(p.VoxelSizeMeters);
+        w.WriteSingle(p.Gravity);
+        w.WriteSingle(p.AtmosphereHeightMeters);
+        w.WriteSingle(p.CoreDepthMeters);
+        w.WriteSingle(p.DayLengthSeconds);
+    }
 
     /// <summary>Reads planet parameters.</summary>
     /// <param name="r">Reader.</param>
     /// <returns>The record.</returns>
-    public static PlanetParams ReadPlanet(ref ByteReader r) => throw new NotImplementedException();
+    public static PlanetParams ReadPlanet(ref ByteReader r)
+    {
+        var id = new PlanetId(r.ReadVarUInt());
+        var system = new SystemId(r.ReadVarUInt());
+        ulong seed = r.ReadUInt64();
+        string profile = r.ReadString(ProtocolConstants.MaxRegistryKeyBytes);
+        float radius = r.ReadSingle();
+        float voxel = r.ReadSingle();
+        float gravity = r.ReadSingle();
+        float atmosphere = r.ReadSingle();
+        float core = r.ReadSingle();
+        float day = r.ReadSingle();
+
+        return new PlanetParams(id, system, seed, profile, radius, voxel, gravity, atmosphere, core, day);
+    }
 
     /// <summary>Writes a registry entry; the id must be in 1..<paramref name="maxId"/>.</summary>
     /// <param name="w">Target writer.</param>
     /// <param name="e">Entry.</param>
     /// <param name="maxId">Largest allowed id (2048 for block types, 255 for materials).</param>
-    public static void WriteRegistryEntry(ByteWriter w, RegistryEntry e, int maxId) => throw new NotImplementedException();
+    public static void WriteRegistryEntry(ByteWriter w, RegistryEntry e, int maxId)
+    {
+        ArgumentNullException.ThrowIfNull(w);
+        if (e.Id < 1 || e.Id > maxId)
+        {
+            throw new ArgumentException($"Registry entry id {e.Id} must be in 1..{maxId}.", nameof(e));
+        }
+
+        w.WriteVarUInt(e.Id);
+        w.WriteString(e.Key, ProtocolConstants.MaxRegistryKeyBytes);
+    }
 
     /// <summary>Reads a registry entry.</summary>
     /// <param name="r">Reader.</param>
     /// <param name="maxId">Largest allowed id.</param>
     /// <returns>The entry.</returns>
-    public static RegistryEntry ReadRegistryEntry(ref ByteReader r, int maxId) => throw new NotImplementedException();
+    public static RegistryEntry ReadRegistryEntry(ref ByteReader r, int maxId)
+    {
+        ulong idUlong = r.ReadVarUInt();
+        if (idUlong < 1 || idUlong > (ulong)maxId)
+        {
+            throw new ProtocolViolationException($"Registry entry id {idUlong} must be in 1..{maxId}.");
+        }
+
+        string key = r.ReadString(ProtocolConstants.MaxRegistryKeyBytes);
+        return new RegistryEntry((ushort)idUlong, key);
+    }
 
     /// <summary>Writes the 4096 blocks of a chunk as canonical run-length encoding.</summary>
     /// <param name="w">Target writer.</param>
     /// <param name="blocks">Exactly 4096 packed block states.</param>
-    public static void WriteChunkBlocks(ByteWriter w, ReadOnlySpan<uint> blocks) => throw new NotImplementedException();
+    public static void WriteChunkBlocks(ByteWriter w, ReadOnlySpan<uint> blocks)
+    {
+        ArgumentNullException.ThrowIfNull(w);
+        if (blocks.Length != ChunkCellCount)
+        {
+            throw new ArgumentException($"Blocks span must contain exactly {ChunkCellCount} elements (got {blocks.Length}).", nameof(blocks));
+        }
+
+        // Validate all block states first and count maximal runs
+        uint currentVal = blocks[0];
+        if (!new BlockState(currentVal).IsWellFormed)
+        {
+            throw new ArgumentException("Block state is not well-formed.", nameof(blocks));
+        }
+
+        int runCount = 1;
+        for (int i = 1; i < blocks.Length; i++)
+        {
+            uint val = blocks[i];
+            if (!new BlockState(val).IsWellFormed)
+            {
+                throw new ArgumentException("Block state is not well-formed.", nameof(blocks));
+            }
+
+            if (val != currentVal)
+            {
+                runCount++;
+                currentVal = val;
+            }
+        }
+
+        w.WriteVarUInt((ulong)runCount);
+
+        int runLength = 1;
+        currentVal = blocks[0];
+        for (int i = 1; i < blocks.Length; i++)
+        {
+            uint val = blocks[i];
+            if (val == currentVal)
+            {
+                runLength++;
+            }
+            else
+            {
+                w.WriteVarUInt((ulong)runLength);
+                w.WriteUInt32(currentVal);
+                currentVal = val;
+                runLength = 1;
+            }
+        }
+
+        w.WriteVarUInt((ulong)runLength);
+        w.WriteUInt32(currentVal);
+    }
 
     /// <summary>Reads run-length encoded chunk blocks.</summary>
     /// <param name="r">Reader.</param>
     /// <returns>A new array of 4096 packed block states.</returns>
-    public static uint[] ReadChunkBlocks(ref ByteReader r) => throw new NotImplementedException();
+    public static uint[] ReadChunkBlocks(ref ByteReader r)
+    {
+        ulong runCountUlong = r.ReadVarUInt();
+        if (runCountUlong < 1 || runCountUlong > ChunkCellCount)
+        {
+            throw new ProtocolViolationException($"Run count {runCountUlong} must be 1..{ChunkCellCount}.");
+        }
+
+        int runCount = (int)runCountUlong;
+        // Each run takes at least 1 byte (length) + 4 bytes (value) = 5 bytes
+        if (r.Remaining < runCount * 5)
+        {
+            throw new ProtocolViolationException($"Declared {runCount} runs exceed remaining data of {r.Remaining} bytes.");
+        }
+
+        var blocks = new uint[ChunkCellCount];
+        int totalLength = 0;
+        uint? previousVal = null;
+
+        for (int i = 0; i < runCount; i++)
+        {
+            ulong lenUlong = r.ReadVarUInt();
+            if (lenUlong < 1 || lenUlong > (ulong)(ChunkCellCount - totalLength))
+            {
+                throw new ProtocolViolationException($"Run length {lenUlong} out of bounds.");
+            }
+
+            int len = (int)lenUlong;
+            uint val = r.ReadUInt32();
+            if (!new BlockState(val).IsWellFormed)
+            {
+                throw new ProtocolViolationException("Malformed block state in chunk RLE.");
+            }
+
+            if (previousVal.HasValue && val == previousVal.Value)
+            {
+                throw new ProtocolViolationException("Adjacent runs with identical value in chunk RLE.");
+            }
+
+            previousVal = val;
+            blocks.AsSpan(totalLength, len).Fill(val);
+            totalLength += len;
+        }
+
+        if (totalLength != ChunkCellCount)
+        {
+            throw new ProtocolViolationException($"Sum of run lengths is {totalLength}, expected {ChunkCellCount}.");
+        }
+
+        return blocks;
+    }
 
     /// <summary>Writes a chunk position followed by its run-length encoded blocks.</summary>
     /// <param name="w">Target writer.</param>
     /// <param name="c">Chunk record.</param>
-    public static void WriteChunk(ByteWriter w, ConstructChunkRecord c) => throw new NotImplementedException();
+    public static void WriteChunk(ByteWriter w, ConstructChunkRecord c)
+    {
+        ArgumentNullException.ThrowIfNull(w);
+        ArgumentNullException.ThrowIfNull(c);
+
+        CoreCodecPrimitives.WriteChunkPos(w, c.Key.Chunk);
+        WriteChunkBlocks(w, c.Blocks);
+    }
 
     /// <summary>Reads a chunk position and blocks; the key gets <paramref name="construct"/>.</summary>
     /// <param name="r">Reader.</param>
     /// <param name="construct">Owning construct.</param>
     /// <returns>The chunk record.</returns>
-    public static ConstructChunkRecord ReadChunk(ref ByteReader r, EntityId construct) => throw new NotImplementedException();
+    public static ConstructChunkRecord ReadChunk(ref ByteReader r, EntityId construct)
+    {
+        var chunkPos = CoreCodecPrimitives.ReadChunkPos(ref r);
+        var blocks = ReadChunkBlocks(ref r);
+        return new ConstructChunkRecord(new ConstructChunkKey(construct, chunkPos), blocks);
+    }
 
     /// <summary>Encodes a construct header as a SQLite blob.</summary>
     /// <param name="h">Record.</param>
     /// <returns>The blob.</returns>
-    public static byte[] EncodeConstructHeaderBlob(ConstructHeaderRecord h) => throw new NotImplementedException();
+    public static byte[] EncodeConstructHeaderBlob(ConstructHeaderRecord h)
+    {
+        var w = new ByteWriter();
+        w.WriteByte((byte)BlobKind.ConstructHeader);
+        w.WriteByte(CurrentFormatVersion);
+        WriteConstructHeader(w, h);
+        return w.WrittenSpan.ToArray();
+    }
 
     /// <summary>Decodes a construct header blob.</summary>
     /// <param name="blob">Blob bytes.</param>
     /// <returns>The record.</returns>
-    public static ConstructHeaderRecord DecodeConstructHeaderBlob(ReadOnlySpan<byte> blob) => throw new NotImplementedException();
+    public static ConstructHeaderRecord DecodeConstructHeaderBlob(ReadOnlySpan<byte> blob)
+    {
+        ValidateBlobHeader(blob, BlobKind.ConstructHeader);
+        var r = new ByteReader(blob.Slice(2));
+        var result = ReadConstructHeader(ref r);
+        r.EnsureEnd();
+        return result;
+    }
 
     /// <summary>Encodes a player record as a SQLite blob.</summary>
     /// <param name="p">Record.</param>
     /// <returns>The blob.</returns>
-    public static byte[] EncodePlayerBlob(PlayerRecord p) => throw new NotImplementedException();
+    public static byte[] EncodePlayerBlob(PlayerRecord p)
+    {
+        var w = new ByteWriter();
+        w.WriteByte((byte)BlobKind.Player);
+        w.WriteByte(CurrentFormatVersion);
+        WritePlayer(w, p);
+        return w.WrittenSpan.ToArray();
+    }
 
     /// <summary>Decodes a player blob.</summary>
     /// <param name="blob">Blob bytes.</param>
     /// <returns>The record.</returns>
-    public static PlayerRecord DecodePlayerBlob(ReadOnlySpan<byte> blob) => throw new NotImplementedException();
+    public static PlayerRecord DecodePlayerBlob(ReadOnlySpan<byte> blob)
+    {
+        ValidateBlobHeader(blob, BlobKind.Player);
+        var r = new ByteReader(blob.Slice(2));
+        var result = ReadPlayer(ref r);
+        r.EnsureEnd();
+        return result;
+    }
 
     /// <summary>Encodes chunk blocks as a SQLite blob; the chunk key lives in table columns.</summary>
     /// <param name="blocks">Exactly 4096 packed block states.</param>
     /// <returns>The blob.</returns>
-    public static byte[] EncodeChunkBlob(ReadOnlySpan<uint> blocks) => throw new NotImplementedException();
+    public static byte[] EncodeChunkBlob(ReadOnlySpan<uint> blocks)
+    {
+        var w = new ByteWriter();
+        w.WriteByte((byte)BlobKind.ConstructChunk);
+        w.WriteByte(CurrentFormatVersion);
+        WriteChunkBlocks(w, blocks);
+        return w.WrittenSpan.ToArray();
+    }
 
     /// <summary>Decodes a chunk blob.</summary>
     /// <param name="blob">Blob bytes.</param>
     /// <returns>A new array of 4096 packed block states.</returns>
-    public static uint[] DecodeChunkBlob(ReadOnlySpan<byte> blob) => throw new NotImplementedException();
+    public static uint[] DecodeChunkBlob(ReadOnlySpan<byte> blob)
+    {
+        ValidateBlobHeader(blob, BlobKind.ConstructChunk);
+        var r = new ByteReader(blob.Slice(2));
+        var result = ReadChunkBlocks(ref r);
+        r.EnsureEnd();
+        return result;
+    }
 
     /// <summary>Encodes planet parameters as a SQLite blob.</summary>
     /// <param name="p">Record.</param>
     /// <returns>The blob.</returns>
-    public static byte[] EncodePlanetBlob(PlanetParams p) => throw new NotImplementedException();
+    public static byte[] EncodePlanetBlob(PlanetParams p)
+    {
+        var w = new ByteWriter();
+        w.WriteByte((byte)BlobKind.PlanetParams);
+        w.WriteByte(CurrentFormatVersion);
+        WritePlanet(w, p);
+        return w.WrittenSpan.ToArray();
+    }
 
     /// <summary>Decodes a planet blob.</summary>
     /// <param name="blob">Blob bytes.</param>
     /// <returns>The record.</returns>
-    public static PlanetParams DecodePlanetBlob(ReadOnlySpan<byte> blob) => throw new NotImplementedException();
+    public static PlanetParams DecodePlanetBlob(ReadOnlySpan<byte> blob)
+    {
+        ValidateBlobHeader(blob, BlobKind.PlanetParams);
+        var r = new ByteReader(blob.Slice(2));
+        var result = ReadPlanet(ref r);
+        r.EnsureEnd();
+        return result;
+    }
+
+    private static void ValidateBlobHeader(ReadOnlySpan<byte> blob, BlobKind expectedKind)
+    {
+        if (blob.Length < 2)
+        {
+            throw new ProtocolViolationException($"Blob too short ({blob.Length} bytes).");
+        }
+
+        if (blob[0] != (byte)expectedKind)
+        {
+            throw new ProtocolViolationException($"Blob kind {blob[0]} does not match expected {(byte)expectedKind}.");
+        }
+
+        if (blob[1] != CurrentFormatVersion)
+        {
+            throw new ProtocolViolationException($"Unsupported blob format version {blob[1]}.");
+        }
+    }
 }
