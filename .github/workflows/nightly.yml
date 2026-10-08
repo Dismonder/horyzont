@@ -1,0 +1,36 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  soak:
+    name: soak (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Horyzont.sln
+
+      - name: Build
+        run: dotnet build Horyzont.sln -c Release --no-restore
+
+      # No Soak tests exist yet; the job stays green until packages add them.
+      - name: Soak tests
+        run: dotnet test Horyzont.sln -c Release --no-build --filter "Category=Soak"
