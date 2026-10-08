@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Horyzont.Core/Horyzont.Core.csproj" />
+  </ItemGroup>
+</Project>
