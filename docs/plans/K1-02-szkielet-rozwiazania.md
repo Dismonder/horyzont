@@ -300,9 +300,9 @@ CI: job `game` w `ci.yml` (Windows) pobiera ostatnie udane artefakty `engine-win
 - [x] Etap A: `global.json`, `Directory.Build.props`, `tests/Directory.Build.props`, `Directory.Packages.props`, `.editorconfig`.
 - [x] Etap A: projekty bibliotek z `AssemblyMarker`; `Horyzont.Testing` z paczką `FakeTimeProvider`.
 - [x] Etap A: projekty testów z testami od Sonnet 5.5; `Horyzont.sln` (format `.sln`) ze wszystkimi projektami poza `game/`.
-- [ ] Etap A: `ci.yml` i `nightly.yml`; zielone CI na obu systemach.
+- [x] Etap A: `ci.yml` i `nightly.yml`; zielone CI na obu systemach.
 - [x] Etap A: sprawdzenia ręczne (niżej) opisane w PR.
-- [ ] Etap B: `game/` z `Boot`; test akceptacyjny 1 i 2.
+- [x] Etap B: `game/` z `Boot`; test akceptacyjny 1 i 2.
 - [ ] Etap B: job `game` w CI.
 
 ## Odstępstwa (etap A)
@@ -329,3 +329,13 @@ Etap B: testy akceptacyjne 1–3.
 - `engine/smoke/` ma własne `Directory.Build.props` i `Directory.Packages.props`; nie usuwaj ich.
 - `ImplicitUsings` włączone: nie dodawaj `using System;` i podobnych, bo IDE0005 wywróci build.
 - Bez `--format sln` powstanie `Horyzont.slnx`, a `RepoRoot()` w teście warstw nie znajdzie korzenia.
+
+## Odstępstwa (etap B)
+
+- `game/Horyzont.Game.csproj` ma literał `<TargetFramework>net10.0</TargetFramework>` zamiast `$(HoryzontTargetFramework)`. Edytor Godota 4.7.2 przy imporcie „aktualizuje” projekt z wartością, której nie umie odczytać: przepisuje ją na `net8.0` i zostawia kopię `Horyzont.Game.csproj.old`. Przy zmianie wersji .NET trzeba poprawić oba miejsca.
+- `GenerateDocumentationFile` jest `true` z `NoWarn CS1591`, jak w `tests/Directory.Build.props`, a nie `false`. Przy `false` build przerywa błąd `EnableGenerateDocumentationFile`, bo `EnforceCodeStyleInBuild` z IDE0005 wymaga pliku dokumentacji.
+- `game/Horyzont.Game.sln` ma format, który tworzy edytor Godota (konfiguracje Debug, ExportDebug, ExportRelease). Plik napisano ręcznie, bo tryb `--headless` nie tworzy rozwiązania. `dotnet build game/Horyzont.Game.sln` przechodzi.
+- `real_t` w `Boot` pochodzi z symbolu `GODOT_REAL_T_IS_DOUBLE`, który ustawia `GodotFloat64`.
+- Test 1 sprawdzono edytorem z `engine/out/504563595eea` w trybie `--headless`: `--import`, potem `--build-solutions --quit` (krok `dotnet_build_project` DONE), na końcu uruchomienie sceny `Boot`. Wynik: bez argumentów lista trybów, kod 0. Otwarcia okna edytora nie sprawdzano.
+- Test 2 (2026-10-08): `BOOT OK engine=4.7.2-stable (custom_build) real_t=double dotnet=10.0.12`, kod 0.
+- Job `game` w CI pobiera silnik tylko z udanego przebiegu `engine.yml` na `main`. Do czasu scalenia K1-01 i zielonego `engine.yml` na `main` job kończy się czytelnym błędem, więc test 3 czeka na scalenie.

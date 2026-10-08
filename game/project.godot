@@ -1,0 +1,23 @@
+; Engine configuration file.
+; Game project (docs/plans/K1-02-szkielet-rozwiazania.md, stage B).
+
+config_version=5
+
+[application]
+
+config/name="Horyzont"
+run/main_scene="res://scenes/Boot.tscn"
+config/features=PackedStringArray("4.7", "C#", "Forward Plus")
+
+[dotnet]
+
+project/assembly_name="Horyzont.Game"
+
+[physics]
+
+common/physics_ticks_per_second=60
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+rendering_device/driver.windows="vulkan"
