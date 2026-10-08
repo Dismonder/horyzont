@@ -1,0 +1,336 @@
+using System.IO.Hashing;
+
+using Horyzont.Core.Checkpoints;
+using Horyzont.Core.Ids;
+using Horyzont.Core.Operations;
+using Horyzont.Core.Protocol;
+using Horyzont.Core.Protocol.Messages;
+using Horyzont.Core.Serialization;
+using Horyzont.Core.World.Blocks;
+using Horyzont.Core.World.Constructs;
+using Horyzont.Core.World.Terrain;
+using Horyzont.Persistence.Backup;
+using Horyzont.Persistence.Migrations;
+
+using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
+
+namespace Horyzont.Persistence;
+
+/// <summary>
+/// Reads a world: integrity check, migrations after a copy, registry growth, state of the last checkpoint and the checked
+/// journal tail. Runs before the writer thread exists.
+/// </summary>
+public static class WorldLoader
+{
+    /// <summary>Loads the world file.</summary>
+    /// <param name="path">World file.</param>
+    /// <param name="options">Migrations, backups directory and registry keys of the game content.</param>
+    /// <param name="time">Clock of the pre-migration copy name.</param>
+    /// <param name="logger">Logger.</param>
+    /// <returns>The world and its journal tail.</returns>
+    /// <exception cref="FileNotFoundException">The file does not exist.</exception>
+    /// <exception cref="WorldCorruptedException">The file fails the integrity check or holds damaged or inconsistent data.</exception>
+    /// <exception cref="WorldFromNewerVersionException">The schema is newer than the newest migration.</exception>
+    /// <exception cref="InvalidOperationException">The migration list is not contiguous from 1, or the content has too many registry keys.</exception>
+    public static LoadedWorld Load(string path, WorldLoadOptions options, TimeProvider time, ILogger logger)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(time);
+        ArgumentNullException.ThrowIfNull(logger);
+        var latest = MigrationRunner.LatestVersion(options.Migrations);
+        using var database = WorldDatabase.Open(path);
+        var connection = database.Connection;
+        try
+        {
+            var check = database.QuickCheck();
+            if (check != "ok")
+            {
+                throw new WorldCorruptedException($"Integrity check failed: {check}");
+            }
+
+            var version = database.UserVersion;
+            if (version == 0)
+            {
+                throw new WorldCorruptedException("The file has no world schema (user_version 0).");
+            }
+
+            if (version > latest)
+            {
+                throw new WorldFromNewerVersionException(version, latest);
+            }
+
+            if (version < latest)
+            {
+                var backup = new BackupService(options.BackupsDirectory, options.BackupsToKeep, time).CreateBackup(connection, "pre-migration");
+                PersistenceLog.PreMigrationBackup(logger, version, latest, backup);
+                MigrationRunner.Run(connection, options.Migrations);
+            }
+
+            GrowRegistries(connection, "block_types", options.BlockTypeKeys, ProtocolConstants.MaxBlockTypes, logger);
+            GrowRegistries(connection, "materials", options.MaterialKeys, ProtocolConstants.MaxMaterials, logger);
+            var loaded = ReadWorld(connection);
+            PersistenceLog.WorldLoaded(logger, database.Path, loaded.LastCheckpointOpId.Value, loaded.JournalTail.Count);
+            return loaded;
+        }
+        catch (SqliteException e) when (WorldDatabase.IsCorruption(e))
+        {
+            throw new WorldCorruptedException($"'{database.Path}' is damaged.", e);
+        }
+    }
+
+    private static void GrowRegistries(SqliteConnection connection, string table, IReadOnlyList<string> keys, int maxId, ILogger logger)
+    {
+        if (keys.Count == 0)
+        {
+            return;
+        }
+
+        var known = new HashSet<string>(StringComparer.Ordinal);
+        long maxExisting = 0;
+        using (var select = Sql.Command(connection, null, $"SELECT id, key FROM {table};"))
+        using (var reader = select.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                maxExisting = Math.Max(maxExisting, reader.GetInt64(0));
+                known.Add(reader.GetString(1));
+            }
+        }
+
+        using var transaction = connection.BeginTransaction();
+        var next = maxExisting + 1;
+        foreach (var key in keys)
+        {
+            if (!known.Add(key))
+            {
+                continue;
+            }
+
+            if (next > maxId)
+            {
+                throw new InvalidOperationException($"The game content has more than {maxId} entries for {table}.");
+            }
+
+            WorldCreator.InsertRegistry(connection, transaction, table, (ushort)next, key);
+            PersistenceLog.RegistryKeyAdded(logger, table, key, (int)next);
+            next++;
+        }
+
+        transaction.Commit();
+    }
+
+    private static LoadedWorld ReadWorld(SqliteConnection connection)
+    {
+        var meta = ReadMeta(connection);
+        try
+        {
+            var worldId = new WorldId(new Guid(MetaBytes(meta, Sql.MetaWorldId)));
+            var lastCheckpoint = new OpId(Sql.FromDb(MetaInteger(meta, Sql.MetaLastCheckpointOpId)));
+            var builder = new WorldStateBuilder(worldId, Sql.FromDb(MetaInteger(meta, Sql.MetaGalaxySeed)));
+            builder.SetProgress(
+                lastCheckpoint,
+                new Tick(Sql.FromDb(MetaInteger(meta, Sql.MetaLastCheckpointTick))),
+                Sql.FromDb(MetaInteger(meta, Sql.MetaNextEntityId)),
+                Sql.FromDb(MetaInteger(meta, Sql.MetaNextPlayerId)));
+            ReadRegistry(connection, "block_types", entry => builder.AddBlockType(entry));
+            ReadRegistry(connection, "materials", entry => builder.AddMaterial(entry));
+            ReadPlanets(connection, builder);
+            ReadConstructs(connection, builder);
+            ReadPlayers(connection, builder);
+            ReadTerrainVersions(connection, builder);
+            var state = builder.Build();
+            var tail = ReadJournal(connection, lastCheckpoint);
+            return new LoadedWorld(state, tail, lastCheckpoint, MetaText(meta, Sql.MetaGameVersion));
+        }
+        catch (Exception e) when (e is ProtocolViolationException or InvalidDataException or InvalidCastException or OverflowException
+                                      or ArgumentException or FormatException)
+        {
+            throw new WorldCorruptedException($"The world data is damaged: {e.Message}", e);
+        }
+    }
+
+    private static Dictionary<string, object> ReadMeta(SqliteConnection connection)
+    {
+        var meta = new Dictionary<string, object>(StringComparer.Ordinal);
+        using var command = Sql.Command(connection, null, "SELECT key, value FROM meta;");
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            meta[reader.GetString(0)] = reader.GetValue(1);
+        }
+
+        return meta;
+    }
+
+    private static long MetaInteger(Dictionary<string, object> meta, string key) =>
+        meta.TryGetValue(key, out var value) && value is long number
+            ? number
+            : throw new InvalidDataException($"Meta key '{key}' is missing or not an integer.");
+
+    private static string MetaText(Dictionary<string, object> meta, string key) =>
+        meta.TryGetValue(key, out var value) && value is string text
+            ? text
+            : throw new InvalidDataException($"Meta key '{key}' is missing or not text.");
+
+    private static byte[] MetaBytes(Dictionary<string, object> meta, string key) =>
+        meta.TryGetValue(key, out var value) && value is byte[] { Length: 16 } bytes
+            ? bytes
+            : throw new InvalidDataException($"Meta key '{key}' is missing or not 16 bytes.");
+
+    private static void ReadRegistry(SqliteConnection connection, string table, Action<RegistryEntry> add)
+    {
+        using var command = Sql.Command(connection, null, $"SELECT id, key FROM {table} ORDER BY id;");
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var id = reader.GetInt64(0);
+            if (id is < 1 or > ushort.MaxValue)
+            {
+                throw new InvalidDataException($"Registry {table} has id {id}.");
+            }
+
+            add(new RegistryEntry((ushort)id, reader.GetString(1)));
+        }
+    }
+
+    private static void ReadPlanets(SqliteConnection connection, WorldStateBuilder builder)
+    {
+        using var command = Sql.Command(connection, null, "SELECT planet_id, params FROM planets ORDER BY planet_id;");
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var id = Sql.FromDb(reader.GetInt64(0));
+            var planet = StateCodec.DecodePlanetBlob((byte[])reader.GetValue(1));
+            if (planet.Id.Value != id)
+            {
+                throw new InvalidDataException($"Planet row {id} holds planet {planet.Id.Value}.");
+            }
+
+            builder.AddPlanet(planet);
+        }
+    }
+
+    private static void ReadConstructs(SqliteConnection connection, WorldStateBuilder builder)
+    {
+        using (var command = Sql.Command(connection, null, "SELECT entity_id, kind, data FROM entities ORDER BY entity_id;"))
+        using (var reader = command.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                var id = Sql.FromDb(reader.GetInt64(0));
+                var kind = reader.GetInt64(1);
+                if (kind != (long)EntityKind.Construct)
+                {
+                    throw new InvalidDataException($"Entity {id} has unknown kind {kind}.");
+                }
+
+                var header = StateCodec.DecodeConstructHeaderBlob((byte[])reader.GetValue(2));
+                if (header.Id.Value != id)
+                {
+                    throw new InvalidDataException($"Entity row {id} holds construct {header.Id.Value}.");
+                }
+
+                builder.AddConstruct(header);
+            }
+        }
+
+        using (var command = Sql.Command(
+            connection, null,
+            "SELECT construct_id, chunk_x, chunk_y, chunk_z, data FROM construct_chunks ORDER BY construct_id, chunk_x, chunk_y, chunk_z;"))
+        using (var reader = command.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                var key = new ConstructChunkKey(
+                    new EntityId(Sql.FromDb(reader.GetInt64(0))),
+                    new ChunkPos(checked((int)reader.GetInt64(1)), checked((int)reader.GetInt64(2)), checked((int)reader.GetInt64(3))));
+                builder.AddChunk(new ConstructChunkRecord(key, StateCodec.DecodeChunkBlob((byte[])reader.GetValue(4))));
+            }
+        }
+    }
+
+    private static void ReadPlayers(SqliteConnection connection, WorldStateBuilder builder)
+    {
+        using var command = Sql.Command(
+            connection, null, "SELECT player_id, platform, platform_id, entity_id, data FROM players ORDER BY player_id;");
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var id = Sql.FromDb(reader.GetInt64(0));
+            var record = StateCodec.DecodePlayerBlob((byte[])reader.GetValue(4));
+            if (record.Player.Value != id
+                || (long)record.Identity.Platform != reader.GetInt64(1)
+                || Sql.ToDb(record.Identity.Value) != reader.GetInt64(2)
+                || Sql.ToDb(record.Entity.Value) != reader.GetInt64(3))
+            {
+                throw new InvalidDataException($"Player row {id} does not match its blob.");
+            }
+
+            builder.AddPlayer(record);
+        }
+    }
+
+    private static void ReadTerrainVersions(SqliteConnection connection, WorldStateBuilder builder)
+    {
+        using var command = Sql.Command(
+            connection, null,
+            "SELECT planet_id, lod, block_x, block_y, block_z, version FROM terrain_blocks ORDER BY planet_id, lod, block_x, block_y, block_z;");
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var key = new TerrainBlockKey(
+                new PlanetId(Sql.FromDb(reader.GetInt64(0))),
+                checked((byte)reader.GetInt64(1)),
+                checked((int)reader.GetInt64(2)),
+                checked((int)reader.GetInt64(3)),
+                checked((int)reader.GetInt64(4)));
+            builder.AddTerrainVersion(new TerrainBlockVersion(key, checked((uint)reader.GetInt64(5))));
+        }
+    }
+
+    private static List<JournalEntry> ReadJournal(SqliteConnection connection, OpId lastCheckpoint)
+    {
+        var tail = new List<JournalEntry>();
+        var expected = lastCheckpoint.Next;
+        using var command = Sql.Command(connection, null, "SELECT op_id, tick, kind, actor, payload, crc FROM journal ORDER BY op_id;");
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var id = new OpId(Sql.FromDb(reader.GetInt64(0)));
+            if (id != expected)
+            {
+                throw new WorldCorruptedException(expected, $"the journal continues with operation {id.Value}.");
+            }
+
+            var payload = (byte[])reader.GetValue(4);
+            if (Crc32.HashToUInt32(payload) != Sql.FromDb(reader.GetInt64(5)))
+            {
+                throw new WorldCorruptedException(id, "CRC mismatch.");
+            }
+
+            Operation operation;
+            try
+            {
+                var frame = new ByteReader(payload);
+                operation = OperationCodec.Read(ref frame);
+                frame.EnsureEnd();
+            }
+            catch (ProtocolViolationException e)
+            {
+                throw new WorldCorruptedException(id, e.Message, e);
+            }
+
+            if ((long)operation.Kind != reader.GetInt64(2))
+            {
+                throw new WorldCorruptedException(id, "the kind column does not match the payload.");
+            }
+
+            PlayerId? actor = reader.IsDBNull(3) ? null : new PlayerId(Sql.FromDb(reader.GetInt64(3)));
+            tail.Add(new JournalEntry(id, new Tick(Sql.FromDb(reader.GetInt64(1))), actor, operation));
+            expected = expected.Next;
+        }
+
+        return tail;
+    }
+}
