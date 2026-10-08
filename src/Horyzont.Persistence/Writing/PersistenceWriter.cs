@@ -113,7 +113,9 @@ public sealed class PersistenceWriter : IAsyncDisposable
     /// </summary>
     /// <param name="request">The checkpoint.</param>
     /// <returns>True when committed; false when the write failed or the writer is faulted.</returns>
-    /// <exception cref="ArgumentException">A terrain version has no payload with the same version, or a payload key repeats.</exception>
+    /// <exception cref="ArgumentException">
+    /// A terrain version has no payload with the same version, a payload key repeats, or a payload is not one of the captured versions.
+    /// </exception>
     public Task<bool> CheckpointAsync(CheckpointRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -229,10 +231,18 @@ public sealed class PersistenceWriter : IAsyncDisposable
 
         foreach (var version in request.Core.TerrainVersions)
         {
-            if (!payloads.TryGetValue(version.Key, out var payloadVersion) || payloadVersion != version.Version)
+            if (!payloads.Remove(version.Key, out var payloadVersion) || payloadVersion != version.Version)
             {
                 throw new ArgumentException($"Terrain block {version.Key} version {version.Version} has no matching payload.", nameof(request));
             }
+        }
+
+        // A payload outside the captured versions is either older than the saved row (the version would go back) or newer than
+        // the barrier (its operation stays in the journal and would be replayed on top of it).
+        if (payloads.Count > 0)
+        {
+            var (key, version) = payloads.First();
+            throw new ArgumentException($"Terrain block {key} version {version} is not a version captured by the checkpoint.", nameof(request));
         }
     }
 
