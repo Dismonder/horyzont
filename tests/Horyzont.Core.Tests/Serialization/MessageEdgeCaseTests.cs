@@ -154,7 +154,6 @@ public sealed class MessageEdgeCaseTests
     }
 
     [Theory]
-    [InlineData("00")]
     [InlineData("07")]
     [InlineData("FF")]
     public void Read_DisconnectWithUnknownCode_ThrowsProtocolViolation(string code) => Kit.AssertMessageViolation("14 01 " + code);

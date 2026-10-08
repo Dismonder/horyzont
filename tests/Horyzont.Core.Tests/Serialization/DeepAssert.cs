@@ -26,15 +26,23 @@ public static class DeepAssert
         }
     }
 
-    private static string? Compare(object? expected, object? actual, bool tolerant, string path)
+    private const int MaxDepth = 64;
+
+    private static string? Compare(object? expected, object? actual, bool tolerant, string path, int depth = 0)
     {
+        if (depth > MaxDepth)
+        {
+            return $"{path}: comparison exceeded depth {MaxDepth} (cyclic or self-producing member)";
+        }
+
         if (expected is null || actual is null)
         {
             return expected is null && actual is null ? null : $"{path}: expected {Show(expected)} but was {Show(actual)}";
         }
 
         var type = expected.GetType();
-        if (type != actual.GetType())
+        var sequences = expected is IEnumerable && expected is not string && actual is IEnumerable && actual is not string;
+        if (!sequences && type != actual.GetType())
         {
             return $"{path}: expected type {type.Name} but was {actual.GetType().Name}";
         }
@@ -64,7 +72,7 @@ public static class DeepAssert
             return expected.Equals(actual) ? null : $"{path}: expected {Show(expected)} but was {Show(actual)}";
         }
 
-        if (expected is byte[] eb)
+        if (expected is byte[] eb && actual is byte[])
         {
             return eb.AsSpan().SequenceEqual((byte[])actual) ? null : $"{path}: byte arrays differ (lengths {eb.Length} and {((byte[])actual).Length})";
         }
@@ -80,7 +88,7 @@ public static class DeepAssert
 
             for (var i = 0; i < el.Count; i++)
             {
-                var m = Compare(el[i], al[i], tolerant, $"{path}[{i}]");
+                var m = Compare(el[i], al[i], tolerant, $"{path}[{i}]", depth + 1);
                 if (m is not null)
                 {
                     return m;
@@ -90,15 +98,26 @@ public static class DeepAssert
             return null;
         }
 
-        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead && p.GetIndexParameters().Length == 0).ToList();
-        if (properties.Count == 0)
+        const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+        var members = new List<(string Name, FieldInfo Field)>();
+        foreach (var field in type.GetFields(flags))
+        {
+            // Public fields and compiler backing fields of auto properties; computed getters have neither.
+            var isBacking = field.Name.StartsWith('<') && field.Name.EndsWith(">k__BackingField", StringComparison.Ordinal);
+            if (field.IsPublic || isBacking)
+            {
+                members.Add((isBacking ? field.Name[1..field.Name.IndexOf('>')] : field.Name, field));
+            }
+        }
+
+        if (members.Count == 0)
         {
             return expected.Equals(actual) ? null : $"{path}: expected {Show(expected)} but was {Show(actual)}";
         }
 
-        foreach (var property in properties)
+        foreach (var (name, field) in members)
         {
-            var m = Compare(property.GetValue(expected), property.GetValue(actual), tolerant, $"{path}.{property.Name}");
+            var m = Compare(field.GetValue(expected), field.GetValue(actual), tolerant, $"{path}.{name}", depth + 1);
             if (m is not null)
             {
                 return m;

@@ -127,13 +127,12 @@ public sealed class ChannelLimitTests
     [Fact]
     public void Read_ReliableFrameOverTheUnreliableLimit_IsNotRejectedForItsSize()
     {
-        // 2 + 1024 + ... bytes of ClientHello are far above 1150 and must still decode: the limit depends on the channel of the message type.
-        var hello = (ClientHello)MaxOf(MessageType.ClientHello);
-
-        var frame = Kit.Encode(hello with { AuthTicket = new byte[ProtocolConstants.MaxAuthTicketBytes] });
+        // A worst-case ConstructState is about 246 KB (plan, limits section), far above 1150 B, and must still decode: the limit depends on the
+        // channel of the message type. ClientHello cannot serve here: its worst case is below 1150 B.
+        var frame = Kit.Encode(MaxOf(MessageType.ConstructState));
 
         Assert.True(frame.Length > ProtocolConstants.MaxUnreliableMessageBytes);
-        Assert.IsType<ClientHello>(MessageCodec.Read(frame));
+        Assert.IsType<ConstructState>(MessageCodec.Read(frame));
     }
 
     [Fact]
