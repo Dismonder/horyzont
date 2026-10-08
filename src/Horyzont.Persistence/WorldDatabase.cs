@@ -1,6 +1,7 @@
 using System.Globalization;
 
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
 
 namespace Horyzont.Persistence;
 
@@ -12,6 +13,28 @@ public sealed class WorldDatabase : IDisposable
 {
     private const int SqliteCorrupt = 11;
     private const int SqliteNotADatabase = 26;
+    private const int SqliteIoErr = 10;
+
+    // Extended IOERR codes that are plausibly a lock conflict with another process (a scanner or indexer that has just
+    // opened or mapped the file, or a handle of the killed process that is still being torn down), so a pause helps:
+    // - TRUNCATE (1546): SetEndOfFile fails with ERROR_USER_MAPPED_FILE while another process has the file mapped (the
+    //   case seen on CI: recovery truncating a stale -shm); SQLite's own retry loop does not cover it.
+    // - SHMOPEN (4618), SHMSIZE (4874): the same conflict while opening or resizing the -shm file.
+    // - LOCK (3850), ACCESS (3338), DELETE (2570): sharing violations on lock, probe and delete of the -wal/-shm files.
+    // Deliberately absent: READ, WRITE, FSYNC, NOMEM, CORRUPTFS and the like, which are real faults, and CORRUPT/NOTADB,
+    // which are damage; retrying them only delays the error.
+    private static readonly int[] _transientIoExtendedCodes = [1546, 4618, 4874, 3850, 3338, 2570];
+
+    // Total budget about 1.6 s; the observed conflict cleared within 250 ms.
+    private static readonly TimeSpan[] _retryDelays =
+    [
+        TimeSpan.FromMilliseconds(25),
+        TimeSpan.FromMilliseconds(50),
+        TimeSpan.FromMilliseconds(100),
+        TimeSpan.FromMilliseconds(200),
+        TimeSpan.FromMilliseconds(400),
+        TimeSpan.FromMilliseconds(800),
+    ];
 
     private WorldDatabase(string path, SqliteConnection connection)
     {
@@ -30,10 +53,11 @@ public sealed class WorldDatabase : IDisposable
 
     /// <summary>Opens an existing world file and applies the pragmas.</summary>
     /// <param name="path">World file.</param>
+    /// <param name="logger">Logs each retry of a transient Windows I/O error; optional.</param>
     /// <returns>The database.</returns>
     /// <exception cref="FileNotFoundException">The file does not exist.</exception>
     /// <exception cref="WorldCorruptedException">The file is not a readable SQLite database.</exception>
-    public static WorldDatabase Open(string path)
+    public static WorldDatabase Open(string path, ILogger? logger = null)
     {
         var fullPath = System.IO.Path.GetFullPath(path);
         if (!File.Exists(fullPath))
@@ -41,7 +65,7 @@ public sealed class WorldDatabase : IDisposable
             throw new FileNotFoundException("The world file does not exist.", fullPath);
         }
 
-        return OpenCore(fullPath, SqliteOpenMode.ReadWrite);
+        return OpenCore(fullPath, SqliteOpenMode.ReadWrite, logger);
     }
 
     /// <summary>Runs <c>PRAGMA quick_check</c>.</summary>
@@ -100,6 +124,45 @@ public sealed class WorldDatabase : IDisposable
         Execute(connection, "PRAGMA synchronous = FULL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA temp_store = MEMORY;");
     }
 
+    /// <summary>True for an I/O error that is plausibly a short lock conflict with another process.</summary>
+    internal static bool IsTransientIo(SqliteException exception) =>
+        exception.SqliteErrorCode == SqliteIoErr && Array.IndexOf(_transientIoExtendedCodes, exception.SqliteExtendedErrorCode) >= 0;
+
+    /// <summary>
+    /// Opens a connection and applies the pragmas, retrying with backoff (about 1.6 s in total) while a transient I/O error
+    /// persists; every failed attempt disposes its connection. After the budget the last SQLite error is thrown.
+    /// </summary>
+    internal static SqliteConnection OpenConnection(string connectionString, bool readOnly, ILogger? logger = null)
+    {
+        var path = new SqliteConnectionStringBuilder(connectionString).DataSource;
+        for (var attempt = 0; ; attempt++)
+        {
+            var connection = new SqliteConnection(connectionString);
+            try
+            {
+                connection.Open();
+                ApplyPragmas(connection, readOnly);
+                return connection;
+            }
+            catch (SqliteException e) when (IsTransientIo(e) && attempt < _retryDelays.Length)
+            {
+                connection.Dispose();
+                var delay = _retryDelays[attempt];
+                if (logger is not null)
+                {
+                    PersistenceLog.OpenRetried(logger, path, attempt + 1, e.SqliteExtendedErrorCode, (int)delay.TotalMilliseconds);
+                }
+
+                Thread.Sleep(delay);
+            }
+            catch
+            {
+                connection.Dispose();
+                throw;
+            }
+        }
+    }
+
     /// <summary>True for SQLite errors that mean a damaged file.</summary>
     internal static bool IsCorruption(SqliteException exception) =>
         exception.SqliteErrorCode is SqliteCorrupt or SqliteNotADatabase;
@@ -123,25 +186,16 @@ public sealed class WorldDatabase : IDisposable
         return command.ExecuteScalar();
     }
 
-    private static WorldDatabase OpenCore(string fullPath, SqliteOpenMode mode)
+    private static WorldDatabase OpenCore(string fullPath, SqliteOpenMode mode, ILogger? logger = null)
     {
-        var connection = new SqliteConnection(ConnectionString(fullPath, mode, pooling: false));
         try
         {
-            connection.Open();
-            ApplyPragmas(connection, readOnly: false);
+            var connection = OpenConnection(ConnectionString(fullPath, mode, pooling: false), readOnly: false, logger);
+            return new WorldDatabase(fullPath, connection);
         }
         catch (SqliteException e) when (IsCorruption(e))
         {
-            connection.Dispose();
             throw new WorldCorruptedException($"'{fullPath}' is not a readable world database.", e);
         }
-        catch
-        {
-            connection.Dispose();
-            throw;
-        }
-
-        return new WorldDatabase(fullPath, connection);
     }
 }

@@ -39,7 +39,7 @@ public static class WorldLoader
         ArgumentNullException.ThrowIfNull(time);
         ArgumentNullException.ThrowIfNull(logger);
         var latest = MigrationRunner.LatestVersion(options.Migrations);
-        using var database = WorldDatabase.Open(path);
+        using var database = WorldDatabase.Open(path, logger);
         var connection = database.Connection;
         try
         {

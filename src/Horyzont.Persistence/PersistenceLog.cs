@@ -39,4 +39,7 @@ internal static partial class PersistenceLog
 
     [LoggerMessage(EventId = 117, Level = LogLevel.Information, Message = "Skipping journal entries up to operation {OpId}: already durable before the fault")]
     internal static partial void SkippedDurable(ILogger logger, ulong opId);
+
+    [LoggerMessage(EventId = 118, Level = LogLevel.Warning, Message = "Opening {Path} hit a transient I/O error (SQLite {ExtendedCode}); retry {Attempt} in {DelayMs} ms")]
+    internal static partial void OpenRetried(ILogger logger, string path, int attempt, int extendedCode, int delayMs);
 }

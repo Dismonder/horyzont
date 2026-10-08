@@ -28,9 +28,7 @@ public sealed class TerrainBlockStore : IDisposable
     /// <returns>False when the block was never saved (the generator produces it).</returns>
     public bool TryLoad(TerrainBlockKey key, out uint version, out byte[] data)
     {
-        using var connection = new SqliteConnection(_connectionString);
-        connection.Open();
-        WorldDatabase.ApplyPragmas(connection, readOnly: true);
+        using var connection = WorldDatabase.OpenConnection(_connectionString, readOnly: true);
         using var command = Sql.Command(
             connection, null,
             "SELECT version, data FROM terrain_blocks WHERE planet_id = $p AND lod = $lod AND block_x = $x AND block_y = $y AND block_z = $z;");
