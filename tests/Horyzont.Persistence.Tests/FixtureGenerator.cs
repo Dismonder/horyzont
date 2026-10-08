@@ -1,7 +1,6 @@
 using Horyzont.Persistence.Tests.Support;
 using Horyzont.Testing;
 
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Horyzont.Persistence.Tests;
@@ -38,7 +37,7 @@ public sealed class FixtureGenerator
         }
 
         // Fold the WAL into the main file (the repository ignores *-wal files); pooled terrain readers must close first.
-        SqliteConnection.ClearAllPools();
+        dir.ReleasePools();
         RawDb.Execute(dir.WorldPath, "PRAGMA journal_mode = DELETE;");
         Assert.False(File.Exists(dir.WorldPath + "-wal"));
         File.Copy(dir.WorldPath, target);

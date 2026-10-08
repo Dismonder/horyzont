@@ -43,8 +43,8 @@ public sealed class K1GateTests : IDisposable
 
     public void Dispose()
     {
-        // Pooled read connections keep the file open on Windows until the pools are cleared.
-        SqliteConnection.ClearAllPools();
+        // Pooled read connections keep the file open on Windows until this world's pool is cleared.
+        new TerrainBlockStore(WorldPath).Close();
         try
         {
             Directory.Delete(_dir, recursive: true);

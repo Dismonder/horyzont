@@ -53,6 +53,54 @@ public sealed class TerrainBlockStoreTests
     }
 
     [Fact]
+    public async Task Close_OtherStoreInUse_DoesNotAffectIt()
+    {
+        using var inUse = new TempDirectory();
+        using var other = new TempDirectory();
+        foreach (var dir in new[] { inUse, other })
+        {
+            var world = WorldState.CreateNew(WorldFactory.DefaultWorldId, 1, [], [], []);
+            WorldCreator.Create(dir.WorldPath, world, WorldHarness.Options, new FakeTimeProvider());
+            await using var writer = new PersistenceWriter(
+                WorldDatabase.Open(dir.WorldPath), WorldHarness.Options, new FakeTimeProvider(), Faults.NoFaults.Instance,
+                NullLogger<PersistenceWriter>.Instance);
+            Assert.True(await writer.CheckpointAsync(Checkpoint(1)));
+        }
+
+        using var store = new TerrainBlockStore(inUse.WorldPath);
+        using var otherStore = new TerrainBlockStore(other.WorldPath);
+        using var stop = new CancellationTokenSource();
+        var failures = new ConcurrentQueue<Exception>();
+        var reader = Task.Factory.StartNew(
+            () =>
+            {
+                try
+                {
+                    while (!stop.IsCancellationRequested)
+                    {
+                        Assert.True(store.TryLoad(_keys[0], out _, out _));
+                    }
+                }
+                catch (Exception e)
+                {
+                    failures.Enqueue(e);
+                }
+            },
+            TaskCreationOptions.LongRunning);
+
+        for (var i = 0; i < 300; i++)
+        {
+            Assert.True(otherStore.TryLoad(_keys[1], out _, out _));
+            otherStore.Close();
+        }
+
+        await stop.CancelAsync();
+        await reader.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        Assert.Empty(failures);
+        Assert.True(store.TryLoad(_keys[0], out _, out _));
+    }
+
+    [Fact]
     public async Task TryLoad_EightThreadsDuringCheckpoints_ConsistentVersionDataPairs()
     {
         using var dir = new TempDirectory();
