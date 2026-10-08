@@ -21,6 +21,7 @@ public sealed class CrashHostSoakTests
         var cancel = TestContext.Current.CancellationToken;
         var host = HostPath();
         var random = new Random(20261008);
+        var maxRestored = 0UL;
         for (var run = 0; run < Runs; run++)
         {
             var seed = (ulong)(1000 + run);
@@ -37,7 +38,11 @@ public sealed class CrashHostSoakTests
                 $"Run {run}: reported DURABLE {lastDurable}, restored only {restored.State.LastOpId.Value}.");
             Assert.Equal(StateHasher.Hash(oracle.State), StateHasher.Hash(restored.State));
             WorldHarness.AssertSameTerrain(oracle.State, oracleTerrain, terrain);
+            maxRestored = Math.Max(maxRestored, restored.State.LastOpId.Value);
         }
+
+        // Guards against a host that never got going: the comparisons above would pass trivially.
+        Assert.True(maxRestored > 100, $"The longest run restored only {maxRestored} operations.");
     }
 
     private static async Task<ulong> RunAndKill(string host, string world, ulong seed, TimeSpan killAfter, CancellationToken cancel)
@@ -76,7 +81,11 @@ public sealed class CrashHostSoakTests
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
         await Task.Delay(killAfter, cancel);
-        Assert.False(process.HasExited, $"Crash host exited early ({process.ExitCode}): {string.Join('\n', errors)}");
+        if (process.HasExited)
+        {
+            Assert.Fail($"Crash host exited early ({process.ExitCode}): {string.Join('\n', errors)}");
+        }
+
         process.Kill(entireProcessTree: true);
         await process.WaitForExitAsync(cancel).WaitAsync(TimeSpan.FromSeconds(30), cancel);
         return lastDurable;
