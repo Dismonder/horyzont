@@ -212,8 +212,8 @@ Jeśli Godot 4.7.2 nie uruchomi projektu w `net10.0` (oficjalny GodotSharp 4.7.0
 - [x] `nuget.config` w korzeniu repo i `activate`.
 - [x] Projekt `engine/smoke/` i komenda `smoke` ze sprawdzeniem źródła paczek; uruchomienie testów 2 i 4.
 - [x] `templates` dla Windows; `all` na Windows.
-- [ ] Ścieżka Linux (`templates` dla `linuxbsd`), uruchomiona w CI.
-- [ ] `engine.yml` z jobami na cel, cache i artefaktami; zielone CI.
+- [x] Ścieżka Linux (`templates` dla `linuxbsd`), uruchomiona w CI.
+- [x] `engine.yml` z jobami na cel, cache i artefaktami; zielone CI.
 - [x] Aktualizacja `docs/SETUP.md` (czasy, rozmiary, napotkane problemy).
 
 ## Odstępstwa i decyzje wykonawcy
@@ -223,7 +223,7 @@ Jeśli Godot 4.7.2 nie uruchomi projektu w `net10.0` (oficjalny GodotSharp 4.7.0
 - `scons()` zakłada katalog nadrzędny cache SCons przed uruchomieniem, bo SCons tworzy katalog cache atomowo i bez rodzica przerywa build.
 - Dodatkowe opcje `--scons-cache` (zmienna `HORYZONT_SCONS_CACHE`) i `--cache-limit` (`HORYZONT_SCONS_CACHE_LIMIT`), żeby CI mogło zmieścić cache wszystkich celów w limicie GitHuba.
 - Commit `engine/smoke/SmokeTest.cs.uid` generowanego przez Godota 4.7 (zalecenie Godota: pliki `.uid` trzymać w repozytorium).
-- Wyniki lokalne (Windows, VS 2026 Community): test 1 (`all` od zera, około 70 min), 2, 3 (drugie `all` 8,6 s) i 4 zaliczone 2026-10-08. Ścieżka Linux i test 5 czekają na CI.
+- Wyniki lokalne (Windows, VS 2026 Community): test 1 (`all` od zera, około 70 min), 2, 3 (drugie `all` 8,6 s) i 4 zaliczone 2026-10-08. Test 5 zaliczony w PR #3: wszystkie cztery joby `engine.yml` zielone, w tym `template-linux-release`; artefakty edytora, paczek i trzech szablonów są do pobrania.
 
 ## Odbiór
 
