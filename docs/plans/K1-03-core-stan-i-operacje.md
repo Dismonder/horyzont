@@ -647,17 +647,32 @@ Zakresy kodów dla kolejnych pakietów są przydzielone z góry, żeby Kosmos i 
 
 ## Kroki
 
-- [ ] `Horyzont.Testing`: `FakeTerrainService`, `InMemoryJournal`, `WorldFactory`.
-- [ ] Identyfikatory, `FrameRef`, `PlatformIdentity` i oba alokatory z testami.
-- [ ] `BlockState`, `CellPos`, `ChunkPos`, `Face`, `ConstructChunk`, `Construct`, `ConstructStore` z testami.
-- [ ] Rejestry, planety, gracze, `WorldState.CreateNew`, `TerrainBlockKey`, `TerrainVersionTable`, `TerrainMath`, `ITerrainService`.
-- [ ] Operacje, w tym `EntityReparentOp`, i `OperationApplier` z warunkami wstępnymi.
-- [ ] Intencje, `IntentValidator`, `IntentResolver`, `ConstructRaycast`, `TokenBucket`.
-- [ ] `ServerSimulation` z `Submit`, `ApplyServerOperation`, `PreparePlayerJoin`, `LeaveAllOnlinePlayers`, `Replay`, stanem `Faulted`.
-- [ ] Checkpoint: znaczniki zmian, `CaptureCheckpoint`, `CompleteCheckpoint`, `RequeueAfterFailedCheckpoint`, `WorldStateBuilder`.
-- [ ] `StateHasher` i testy determinizmu.
-- [ ] Kontrakty protokołu: stałe, enumy, rekordy komunikatów, `MessageChannels`, test „złoty”.
+- [x] `Horyzont.Testing`: `FakeTerrainService`, `InMemoryJournal`, `WorldFactory`.
+- [x] Identyfikatory, `FrameRef`, `PlatformIdentity` i oba alokatory z testami.
+- [x] `BlockState`, `CellPos`, `ChunkPos`, `Face`, `ConstructChunk`, `Construct`, `ConstructStore` z testami.
+- [x] Rejestry, planety, gracze, `WorldState.CreateNew`, `TerrainBlockKey`, `TerrainVersionTable`, `TerrainMath`, `ITerrainService`.
+- [x] Operacje, w tym `EntityReparentOp`, i `OperationApplier` z warunkami wstępnymi.
+- [x] Intencje, `IntentValidator`, `IntentResolver`, `ConstructRaycast`, `TokenBucket`.
+- [x] `ServerSimulation` z `Submit`, `ApplyServerOperation`, `PreparePlayerJoin`, `LeaveAllOnlinePlayers`, `Replay`, stanem `Faulted`.
+- [x] Checkpoint: znaczniki zmian, `CaptureCheckpoint`, `CompleteCheckpoint`, `RequeueAfterFailedCheckpoint`, `WorldStateBuilder`.
+- [x] `StateHasher` i testy determinizmu.
+- [x] Kontrakty protokołu: stałe, enumy, rekordy komunikatów, `MessageChannels`, test „złoty”.
 - [ ] Komentarze XML dla całego publicznego API; zielone CI.
+
+## Odstępstwa i decyzje wykonawcy (do przeglądu GPT-6.1 Sol)
+
+- **Chunki budowli w `Dictionary`, nie w `SortedDictionary`.** `SortedDictionary.TryGetValue` alokuje (32 B na wywołanie), a `Construct.GetBlock` działa w każdym kroku raycastu, więc test alokacji `Submit(RemoveBlockIntent)` nie przechodził. `Construct.Chunks` sortuje klucze przy wyliczaniu (skrót, checkpoint). `TerrainVersionTable` zostaje na `SortedDictionary`, bo nie leży na gorącej ścieżce.
+- **`OpId.ToString()` i `Tick.ToString()` zwracają samą liczbę.** Domyślny `ToString` rekordu drukuje właściwość `Next`, która znowu ma `Next`: nieskończona rekurencja i przepełnienie stosu przy każdym komunikacie z `OpId` (wysadzało proces testów).
+- **Usunięcie fotela albo ostatniego bloku ramy z dziećmi** walidator odrzuca kodem `IntersectsPlayer` (zakres K1 nie ma osobnego kodu; applier dalej rzuca przy złamanym warunku).
+- **`IntersectsPlayer` przy stawianiu bloku** sprawdza kapsuły wszystkich graczy online na planecie, nie tylko gracza działającego (jak przy edycji terenu).
+- **Prostopadłościan zajętych komórek** tylko rośnie do ponownego wczytania świata (zachowawczy, wystarcza do odrzucania w raycaście; `Build` liczy go od nowa). Nie wchodzi do skrótu.
+- **`ConstructChanges`:** pusty dla `EntityReparent` (wersja bloków się nie zmienia), `PlayerJoin` i `PlayerLeave`; przy usunięciu ostatniego bloku wpis ma wersję po usunięciu i `Removed = true`.
+- **Gracz bez planety (rama układu):** sprawdzenie `RayOriginMismatch` jest pomijane, a intencja dostaje `WrongPlanet` na swoim etapie. Nieznana wartość `Face` w `ConstructFaceTarget` i nieznormalizowany `LookForward` w `TerrainTarget` to `InvalidParameters` (sprawdzenia wspólne). Rzut `LookForward` ma dodatkowy, ostatni zapasowy kierunek: oś Z planety.
+- **Punkt startu**, gdy raycast terenu nie trafi: (0, R + 0,1, 0). `PlayerJoin` znanego gracza aktualizuje nazwę i pozę, a zachowuje pochylenie i fotel.
+- **Dodatkowe publiczne API** (potrzebne walidacji, testom i K1-05/K1-07): `CellPos.FromChunk`, `Construct.LocalToParent`/`ParentToLocal`/`TryGetChunk`/`ChunkCount`/`BoundsMin`/`BoundsMax`, `WorldState.TryToPlanetFrame`, `PlayerStore.TryGetByEntity`/`Count`, `ConstructStore.Count`, `TerrainVersionTable.Count`, `ConstructHeaderRecord.From`, `PlayerRecord.From`, `ReplayFailedException.Kind`.
+- **Kolejność pracy:** testy akceptacyjne powstały w tej samej sesji co kod, ale po nim (nie przed). Wszystkie z tabeli istnieją i przechodzą; test „złoty” sprawdza dodatkowo, że każdy `OperationKind` ma rekord operacji.
+- `ConstructChunkRecord`, `ClientHello`, `TerrainBlockData`, `EntitySpawn`: tablice w rekordach z wyłączonym CA1819 (rekord jest właścicielem tablicy, zgodnie z kontraktem dekodera).
+- Po review: `ConstructRaycast.Raycast` sprawdza też konstrukcje zagnieżdżone w innych konstrukcjach danej ramki, przechodząc łańcuchem rodziców, żeby zagnieżdżona konstrukcja zasłaniała linię wzroku. `WorldStateBuilder` odrzuca chunki spoza zakresu komórek (−128..127 chunków na oś) i nieznormalizowane kwaterniony konstrukcji i graczy (`Geometry.IsRotation`).
 
 ## Odbiór
 

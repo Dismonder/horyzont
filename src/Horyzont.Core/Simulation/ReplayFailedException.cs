@@ -1,0 +1,45 @@
+using Horyzont.Core.Ids;
+using Horyzont.Core.Operations;
+
+namespace Horyzont.Core.Simulation;
+
+/// <summary>A journal entry could not be replayed. Replay stops; operations are never skipped.</summary>
+public sealed class ReplayFailedException : Exception
+{
+    /// <summary>Creates the exception.</summary>
+    public ReplayFailedException()
+    {
+    }
+
+    /// <summary>Creates the exception.</summary>
+    /// <param name="message">Message.</param>
+    public ReplayFailedException(string message)
+        : base(message)
+    {
+    }
+
+    /// <summary>Creates the exception.</summary>
+    /// <param name="message">Message.</param>
+    /// <param name="innerException">Cause.</param>
+    public ReplayFailedException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+
+    /// <summary>Creates the exception for an entry.</summary>
+    /// <param name="opId">Operation number.</param>
+    /// <param name="kind">Operation kind.</param>
+    /// <param name="reason">Why it failed.</param>
+    public ReplayFailedException(OpId opId, OperationKind kind, string reason)
+        : base($"Replay of operation {opId.Value} ({kind}) failed: {reason}")
+    {
+        OpId = opId;
+        Kind = kind;
+    }
+
+    /// <summary>Operation that failed.</summary>
+    public OpId OpId { get; }
+
+    /// <summary>Kind of the operation that failed.</summary>
+    public OperationKind? Kind { get; }
+}
