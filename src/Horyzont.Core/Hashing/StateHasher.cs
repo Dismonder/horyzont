@@ -13,7 +13,7 @@ namespace Horyzont.Core.Hashing;
 
 /// <summary>
 /// XxHash64 of a canonical byte stream of the state: exactly what checkpoints plus journal replay restore.
-/// Excludes CurrentTick, player kinematics and the pose of <see cref="ConstructMode.Ship"/> constructs (they change
+/// Excludes CurrentTick, the kinematics of online players (the pose of offline players is hashed) and the pose of <see cref="ConstructMode.Ship"/> constructs (they change
 /// outside the journal) and terrain voxels (outside Core; only block versions are hashed). Floats are hashed bitwise.
 /// </summary>
 public static class StateHasher
@@ -109,6 +109,14 @@ public static class StateHasher
             }
 
             U32(hash, player.IsOnline ? 1u : 0u);
+            if (!player.IsOnline)
+            {
+                // An offline pose is deterministic (set only by PlayerLeaveOp, PlayerJoinOp and EntityReparentOp, restored from the
+                // checkpoint); an online pose comes from physics outside the journal and stays out of the hash.
+                Vec(hash, player.Position);
+                Quat(hash, player.BodyRotation);
+                F32(hash, player.Pitch);
+            }
         }
 
         return hash.GetCurrentHashAsUInt64();
