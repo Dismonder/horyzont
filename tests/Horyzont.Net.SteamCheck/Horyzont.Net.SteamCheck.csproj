@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Horyzont.Net/Horyzont.Net.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Development App ID 480 next to the executable; never exported with the game. -->
+    <None Include="steam_appid.txt" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Native Steam libraries from the Steamworks SDK redistributable_bin, kept in third_party/steamworks (Git LFS). -->
+    <None Include="../../third_party/steamworks/**/*.dll;../../third_party/steamworks/**/*.so" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
