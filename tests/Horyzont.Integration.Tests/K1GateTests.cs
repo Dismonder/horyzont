@@ -3,6 +3,7 @@ using System.Numerics;
 using Horyzont.Core.Hashing;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
+using Horyzont.Core.Operations;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.World;
 using Horyzont.Integration.Tests.Support;
@@ -63,7 +64,7 @@ public sealed class K1GateTests : IDisposable
         var terrain = new FakeTerrainService();
         var faults = new ArmedFaults();
         await using var writer = new PersistenceWriter(WorldDatabase.Open(WorldPath), options, _time, faults, NullLogger<PersistenceWriter>.Instance);
-        var sink = new HashingJournalSink(loaded.State, new JournalSink(writer));
+        var sink = new HashingJournalSink(loaded.State, () => terrain.Blocks, new JournalSink(writer));
         var sim = new ServerSimulation(loaded.State, terrain, sink, new GameRules(), NullLogger<ServerSimulation>.Instance);
         var hooks = new SimulationServerHooks(sim);
 
@@ -113,48 +114,72 @@ public sealed class K1GateTests : IDisposable
         Assert.Equal(playerA, hooksA.Hello!.YourPlayer);
 
         var expectedReplies = 0;
-        void SubmitRound(float xa, float za, float xb, float zb)
+        void SubmitRound(Func<PlayerId, Intent> forAlice, Func<PlayerId, Intent> forBob)
         {
-            alice.SubmitIntent(PlaceStone(sim, terrain, playerA, xa, za));
-            bob.SubmitIntent(PlaceStone(sim, terrain, playerB, xb, zb));
+            alice.SubmitIntent(forAlice(playerA));
+            bob.SubmitIntent(forBob(playerB));
             expectedReplies++;
             Assert.True(RunUntil(() => hooksA.Replies.Count == expectedReplies && hooksB.Replies.Count == expectedReplies), "intent replies missing");
         }
 
-        // Phase 1: valid intents from both clients, then flush and a checkpoint (recovery uses checkpoint + tail).
-        SubmitRound(-3f, 0f, 3f, 0f);
-        SubmitRound(0f, -3f, 0f, 3f);
+        void PlaceRound(float xa, float za, float xb, float zb) =>
+            SubmitRound(p => PlaceStone(sim, terrain, p, xa, za), p => PlaceStone(sim, terrain, p, xb, zb));
+
+        void DigRound(float xa, float za, float xb, float zb) =>
+            SubmitRound(p => Dig(sim, terrain, p, xa, za), p => Dig(sim, terrain, p, xb, zb));
+
+        // Phase 1: block placements and terrain digs from both clients, then flush and a checkpoint (recovery = checkpoint + tail).
+        PlaceRound(-3f, 0f, 3f, 0f);
+        DigRound(5f, 1.5f, -5f, -1.5f);
         Assert.True(await writer.FlushAsync());
         DrainWriterEvents(writer, sim.State);
 
         var core = sim.State.CaptureCheckpoint();
         var blocks = core.TerrainVersions.Select(v => new TerrainBlockPayload(v.Key, v.Version, terrain.GetBlockData(v.Key))).ToList();
+        Assert.NotEmpty(blocks);
+        Assert.All(blocks, b => Assert.NotEmpty(b.Data));
         Assert.True(await writer.CheckpointAsync(new CheckpointRequest(core, blocks)));
         DrainWriterEvents(writer, sim.State);
         Assert.False(sim.State.IsCheckpointInFlight);
 
-        // Phase 2: more intents after the checkpoint; the flush makes them durable.
-        SubmitRound(-3f, -3f, 3f, 3f);
+        // Phase 2: more placements and digs after the checkpoint; the flush makes them durable.
+        PlaceRound(0f, -3f, 0f, 3f);
+        DigRound(1.5f, 5f, -1.5f, -5f);
         Assert.True(await writer.FlushAsync());
+        DrainWriterEvents(writer, sim.State);
         var durableBeforeCrash = writer.DurableOpId;
         Assert.True(durableBeforeCrash >= sim.State.LastOpId);
-        Assert.All(hooks.Results, r => Assert.True(r.Result.IsAccepted, $"rejected: {r.Result.Reason}"));
-        Assert.All(hooksA.Replies.Concat(hooksB.Replies), r => Assert.Equal(RejectReason.None, r.Reason));
-        Assert.Equal(6, hooks.Results.Count);
 
-        // Phase 3: the process dies right after the next journal commit.
+        // Phase 3: the process dies right after the next journal commit (rows on disk, DurableOpId not advanced).
         faults.Arm(FaultPoint.AfterJournalCommit);
-        SubmitRound(-3f, 3f, 3f, -3f);
+        DigRound(6f, -2f, -6f, 2f);
         Assert.False(await writer.FlushAsync());
         Assert.True(faults.Crashed);
         Assert.True(writer.IsFaulted);
+
+        // Every intent of every round, including the crash round, was accepted and answered with a real OpId.
+        Assert.Equal(10, hooks.Results.Count);
+        Assert.All(hooks.Results, r => Assert.True(r.Result.IsAccepted, $"rejected: {r.Result.Reason}"));
+        Assert.Equal(5, hooksA.Replies.Count);
+        Assert.Equal(5, hooksB.Replies.Count);
+        Assert.All(hooksA.Replies.Concat(hooksB.Replies), r =>
+        {
+            Assert.Equal(RejectReason.None, r.Reason);
+            Assert.NotEqual(OpId.None, r.AppliedOpId);
+        });
         var liveLast = sim.State.LastOpId;
         Assert.Equal(StateHasher.Hash(sim.State), sink.HashAt[liveLast]);
+
+        // The batch committed at the fault point is on disk even though DurableOpId never covered it: it must survive.
+        var committedLast = new OpId((ulong)MaxCommittedOpId());
+        Assert.True(committedLast > durableBeforeCrash, "the crash batch must contain committed operations");
+        Assert.True(committedLast <= liveLast);
 
         // Recovery: load the file, replay the tail into a fresh simulation.
         var recovered = WorldLoader.Load(WorldPath, LoadOptions, new FakeTimeProvider(), NullLogger.Instance);
         Assert.True(recovered.LastCheckpointOpId > OpId.None, "recovery must start from the checkpoint");
         Assert.NotEmpty(recovered.JournalTail);
+        Assert.Contains(recovered.JournalTail, e => e.Operation is TerrainEditOp);
         var store = new TerrainBlockStore(WorldPath);
         var recoveredTerrain = new FakeTerrainService { BlockSource = key => store.TryLoad(key, out _, out var data) ? data : null };
         var fresh = new ServerSimulation(recovered.State, recoveredTerrain, new InMemoryJournal(), new GameRules(), NullLogger<ServerSimulation>.Instance);
@@ -163,9 +188,42 @@ public sealed class K1GateTests : IDisposable
             fresh.Replay(entry);
         }
 
-        Assert.True(fresh.State.LastOpId >= durableBeforeCrash, $"lost durable operations: {fresh.State.LastOpId.Value} < {durableBeforeCrash.Value}");
-        Assert.True(fresh.State.LastOpId <= liveLast);
-        Assert.Equal(sink.HashAt[fresh.State.LastOpId], StateHasher.Hash(fresh.State));
+        Assert.Equal(committedLast, fresh.State.LastOpId);
+        Assert.Equal(sink.HashAt[committedLast], StateHasher.Hash(fresh.State));
+
+        // Terrain bytes (not part of the state hash) equal the live terrain at exactly that operation.
+        var expectedTerrain = sink.TerrainAt[committedLast];
+        Assert.NotEmpty(expectedTerrain);
+        foreach (var (key, bytes) in expectedTerrain)
+        {
+            Assert.NotEmpty(bytes);
+            Assert.Equal(bytes, recoveredTerrain.GetBlockData(key));
+        }
+
+        foreach (var version in fresh.State.TerrainVersions.All)
+        {
+            Assert.Equal(
+                expectedTerrain.TryGetValue(version.Key, out var live) ? live : [],
+                recoveredTerrain.GetBlockData(version.Key));
+        }
+    }
+
+    private long MaxCommittedOpId()
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = WorldPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COALESCE(MAX(op_id), 0) FROM journal";
+        return (long)command.ExecuteScalar()!;
+    }
+
+    private static TerrainToolIntent Dig(ServerSimulation sim, FakeTerrainService terrain, PlayerId player, float x, float z)
+    {
+        sim.State.Players.TryGet(player, out var p);
+        var eye = p!.EyePosition(sim.Rules);
+        var r = terrain.SurfaceRadius;
+        var ground = new Vector3(x, MathF.Sqrt((r * r) - (x * x) - (z * z)), z);
+        return new TerrainToolIntent(WorldFactory.HomePlanet, eye, Vector3.Normalize(ground - eye), 1f, TerrainEditMode.Remove, 0);
     }
 
     private static PlaceBlockIntent PlaceStone(ServerSimulation sim, FakeTerrainService terrain, PlayerId player, float x, float z)
