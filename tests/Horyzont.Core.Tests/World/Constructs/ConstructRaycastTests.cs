@@ -106,4 +106,34 @@ public sealed class ConstructRaycastTests
         Assert.Equal(Face.PosY, hit.Face);
         Assert.Equal(5.5f, hit.Distance, 3);
     }
+
+    [Fact]
+    public void Raycast_HitsNestedConstructThroughParentChain()
+    {
+        var state = WorldFactory.CreateDefault();
+        var outer = Add(state, 1, new Vector3(10f, 0f, 0f), Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 2));
+        var inner = state.Constructs.Create(new EntityId(2), FrameRef.Of(outer.Id), new Vector3(0f, 0f, 2f), Quaternion.Identity);
+        inner.SetBlock(new CellPos(0, 0, 0), BlockState.Create(1, 0));
+
+        // Outer rotated +90 degrees about Y maps its local +Z to planet +X: the inner cell spans x in [12, 13], z in [-1, 0].
+        var found = ConstructRaycast.Raycast(state.Constructs, _frame, new Vector3(0f, 0.5f, -0.5f), Vector3.UnitX, 30f, out var hit);
+
+        Assert.True(found);
+        Assert.Equal(new EntityId(2), hit.Construct);
+        Assert.Equal(new CellPos(0, 0, 0), hit.Cell);
+        Assert.Equal(12f, hit.Distance, 3);
+    }
+
+    [Fact]
+    public void Raycast_NestedConstructUnderAnotherPlanet_IsIgnored()
+    {
+        var state = WorldFactory.CreateWith(WorldFactory.HomePlanetParams, WorldFactory.HomePlanetParams with { Id = new PlanetId(2) });
+        var outer = state.Constructs.Create(new EntityId(1), FrameRef.Of(new PlanetId(2)), Vector3.Zero, Quaternion.Identity);
+        var inner = state.Constructs.Create(new EntityId(2), FrameRef.Of(outer.Id), Vector3.Zero, Quaternion.Identity);
+        inner.SetBlock(new CellPos(0, 0, 0), BlockState.Create(1, 0));
+
+        var found = ConstructRaycast.Raycast(state.Constructs, _frame, new Vector3(-5f, 0.5f, 0.5f), Vector3.UnitX, 20f, out _);
+
+        Assert.False(found);
+    }
 }

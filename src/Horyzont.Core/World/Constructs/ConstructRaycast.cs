@@ -7,7 +7,10 @@ namespace Horyzont.Core.World.Constructs;
 /// <summary>Ray against constructs of one frame (Amanatides–Woo in each construct's space). Does not allocate.</summary>
 public static class ConstructRaycast
 {
-    /// <summary>Finds the nearest occupied cell hit by a ray among constructs whose parent is <paramref name="frame"/>.</summary>
+    /// <summary>
+    /// Finds the nearest occupied cell hit by a ray among constructs placed in <paramref name="frame"/>, directly or nested in
+    /// other constructs of that frame.
+    /// </summary>
     /// <param name="store">Constructs.</param>
     /// <param name="frame">Frame of the ray.</param>
     /// <param name="origin">Ray origin in <paramref name="frame"/>.</param>
@@ -25,12 +28,14 @@ public static class ConstructRaycast
         for (var i = 0; i < all.Count; i++)
         {
             var construct = all[i];
-            if (construct.Parent != frame || construct.BlockCount == 0)
+            if (construct.BlockCount == 0
+                || !TryToParentSpace(store, construct, frame, origin, direction, all.Count, out var o, out var d))
             {
                 continue;
             }
 
-            if (RaycastOne(construct, origin, direction, best, out var cell, out var face, out var distance)
+            // Frame changes are rigid, so distances along the ray stay the same in the construct's parent space.
+            if (RaycastOne(construct, o, d, best, out var cell, out var face, out var distance)
                 && (!found || distance < best))
             {
                 found = true;
@@ -40,6 +45,33 @@ public static class ConstructRaycast
         }
 
         return found;
+    }
+
+    /// <summary>
+    /// Moves a ray from <paramref name="frame"/> into the parent space of <paramref name="construct"/> along its parent
+    /// chain. False when the chain does not lead to <paramref name="frame"/> within <paramref name="depth"/> steps.
+    /// </summary>
+    private static bool TryToParentSpace(
+        ConstructStore store, Construct construct, FrameRef frame, Vector3 origin, Vector3 direction, int depth, out Vector3 o, out Vector3 d)
+    {
+        o = origin;
+        d = direction;
+        if (construct.Parent == frame)
+        {
+            return true;
+        }
+
+        if (depth <= 0
+            || construct.Parent.Kind != FrameKind.Construct
+            || !store.TryGet(new EntityId(construct.Parent.Id), out var parent)
+            || !TryToParentSpace(store, parent, frame, origin, direction, depth - 1, out o, out d))
+        {
+            return false;
+        }
+
+        o = parent.ParentToLocal(o);
+        d = Vector3.Transform(d, Quaternion.Inverse(parent.Rotation));
+        return true;
     }
 
     /// <summary>Ray against one construct, in the parent frame of the construct.</summary>
