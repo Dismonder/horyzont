@@ -1,0 +1,9 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <GodotFloat64>true</GodotFloat64>
+    <RootNamespace>Smoke</RootNamespace>
+    <AssemblyName>Smoke</AssemblyName>
+  </PropertyGroup>
+</Project>

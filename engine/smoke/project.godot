@@ -1,0 +1,17 @@
+; Engine smoke test (docs/plans/K1-01-pipeline-silnika.md).
+
+config_version=5
+
+[application]
+
+config/name="HoryzontSmoke"
+run/main_scene="res://Main.tscn"
+config/features=PackedStringArray("4.7", "C#", "Forward Plus")
+
+[dotnet]
+
+project/assembly_name="Smoke"
+
+[rendering]
+
+rendering_device/driver.windows="vulkan"
