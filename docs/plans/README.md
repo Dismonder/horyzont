@@ -1,4 +1,4 @@
-# Plany wykonawcze: K1 Fundament
+# Plany wykonawcze: K1 Fundament i K2 Planeta
 
 K1 to siedem pakietów, po których rozwiązanie ma zbudowany silnik, kontrakty Core, zapis odporny na awarie i działającą warstwę sieciową; dopiero na tym fundamencie powstaje planeta (K2).
 
@@ -18,7 +18,7 @@ K1-02 dzieli się na etap A (rozwiązanie .NET bez silnika) i etap B (projekt Go
 
 Identyfikator pakietu to kamień milowy i numer z [planu projektu](../plan/plan-projektu.md): K1-01 … K1-07, dalej K2-08 … K2-13, K3-14 … K3-18 i K4-19 w Planecie, K5-20 … K5-28 w Kosmosie, K6-29 … K6-40 w Przetrwaniu, K7-41 … K7-49 w Walce, K8-50 … K8-57 w Treści na EA i K9-58 … K9-65 w Wydaniu. Etap pakietu dostaje literę (K1-02A, K1-02B), a gałąź nazywa się od identyfikatora (`pakiet/k2-08-generator`).
 
-Plany K1 leżą w tym katalogu. Plany kolejnych pakietów Opus 5.5 pisze ze specyfikacji podprojektu (`docs/spec/`), zanim pakiet ruszy, bo zależą od kodu, który jeszcze nie istnieje. Specyfikacje podają już zakres, kontrakty, kody, testy i odbiór każdego pakietu.
+Plany K1 i K2 leżą w tym katalogu. Plany kolejnych pakietów Opus 5.5 pisze ze specyfikacji podprojektu (`docs/spec/`), zanim pakiet ruszy, bo zależą od kodu, który jeszcze nie istnieje. Specyfikacje podają już zakres, kontrakty, kody, testy i odbiór każdego pakietu.
 
 ## Kolejność startu
 
@@ -38,6 +38,46 @@ Bramkę prowadzi Opus 5.5 na gałęzi `pakiet/k1-bramka`. Test end-to-end powsta
 - [ ] `python tools/engine/build.py smoke` wypisuje `SMOKE OK`, a projekt `game/` uruchamia się bez grafiki z `--smoke`.
 - [x] Nowy projekt `tests/Horyzont.Integration.Tests` (referencje: Core, Persistence, Net, Testing; dodany do `Horyzont.sln`) z testem end-to-end w pamięci. Serwer z `ServerSimulation`, `PersistenceWriter` na pliku tymczasowym i dwóch klientów przez `InMemoryTransport` przyjmuje intencje i zapisuje dziennik, a po symulowanej awarii wczytanie z powtórką daje ten sam skrót stanu. Haki gry dla testu (`IServerGameHooks` nad `ServerSimulation`) żyją w tym projekcie.
 - [ ] Opus 5.5 przegląda całość w świeżej sesji i pisze plany K2 (pakiety K2-08 … K2-13).
+  Przegląd: wykonany (PR #9); plany K2: w PR #9, czekają na odpowiedzi właściciela na pytania otwarte.
+
+## Pakiety K2
+
+| Pakiet | Plan | Prowadzi | Testy akceptacyjne pisze | Przegląd | Zależy od |
+| --- | --- | --- | --- | --- | --- |
+| K2-08 | [Planeta: generator i parametry](K2-08-generator-planety.md) | Sonnet 5.5 | Sonnet 5.5 | Opus 5.5 | etap A (K2-08A, `editor-linux`): K1-02B; etap B: K2-08A |
+| K2-09 | [Adapter Voxel Tools](K2-09-adapter-voxel-tools.md) | Opus 5.5 | Opus 5.5 | GPT-6.1 Sol (`high`) + Opus 5.5 w świeżej sesji (Core) | bramka K1 (PR #9: B1–B3), K1-05, K1-02B, K2-08 |
+| K2-10 | [Tryby gry](K2-10-tryby-gry.md) | Sonnet 5.5 | Sonnet 5.5 (tabelę zamykania i E3–E9 sprawdza Opus 5.5) | Opus 5.5 w świeżej sesji + GPT-6.1 Sol (`medium`: wątki, zamykanie, E6/E7) | K1-07, K2-09 |
+| K2-11 | [Postać i kamera](K2-11-postac-i-kamera.md) | Sonnet 5.5 | Sonnet 5.5 (testy Core przegląda Opus 5.5) | Opus 5.5 | K2-08, K2-10 (pośrednio K2-09) |
+| K2-12 | [Budowle](K2-12-budowle.md) | GPT-6.1 Sol | GPT-6.1 Sol | Opus 5.5 | K1-02B, K1-03, K2-08A |
+| K2-13 | [Narzędzia](K2-13-narzedzia.md) | Sonnet 5.5 | Sonnet 5.5 (testy Core przegląda Opus 5.5) | Opus 5.5 | K2-09, K2-10, K2-11, K2-12 |
+
+K2-08A to osobny mały PR z celem `editor-linux` w `engine/engine.json`; bez niego testy silnika nie ruszą na Linuksie, więc czekają na niego K2-08B i K2-12. K2-12 nie czeka na resztę K2: wpięcie budowli w `GameComposition` K2-10 robi K2-13 w kroku 0.
+
+### Kolejność startu K2
+
+| Fala | Pakiety (mogą iść równolegle) | Warunek startu |
+| --- | --- | --- |
+| 1 | K2-08A (Sonnet) | bramka K1 zakończona, K1-02B scalony |
+| 2 | K2-08B (Sonnet), K2-12 (Sol) | K2-08A scalony i `engine.yml` na `main` zielony |
+| 3 | K2-09 (Opus) | K2-08 scalony; bramka K1 (PR #9: B1–B3) scalona |
+| 4 | K2-10 (Sonnet) | K2-09 scalony z E1–E2 |
+| 5 | K2-11 (Sonnet) | K2-10 scalony (`ProtocolVersion` = 2 na `main`) |
+| 6 | K2-13 (Sonnet) | K2-11 i K2-12 scalone |
+| Bramka K2 | przegląd całości i plany K3 | wszystkie pakiety K2 scalone, zielone CI i przebieg nocny na `main` |
+
+### Warunki wejścia E1–E9 z przeglądu bramki K1
+
+| Punkty | Właściciel |
+| --- | --- |
+| E1–E2 (kopie zapasowe: walidacja `reason`, kopia poza wątkiem zapisu według pomiaru) | K2-09 |
+| E3–E9 (writer przy zamykaniu, kontrakt `OnPlayerJoining`, Prepare+Apply, `ITransport.IsDrained`, termin zamykania UDP, połączenia podczas zamykania, kod rozłączenia klienta) | K2-10 |
+
+### Reguły wspólne K2 (decyzje bramki K1)
+
+- **Semantyka edycji terenu jest wersjonowana (D1).** Ogon dziennika zapisany inną wersją semantyki terenu (`TerrainEditSemantics.SemanticsVersion` + `voxel.ref`, K2-09) nie jest powtarzany nową implementacją: świat otwiera się w trybie bezpiecznym z jasnym błędem, a odzyskanie z samego checkpointu to jawna akcja właściciela (K2-10, `--recover-from-checkpoint`). Zmiana `OperationApplier.cs` albo `ITerrainService.ApplyEdit` bez podbicia formatu operacji jest dozwolona tylko wtedy, gdy pierwszy krok pakietu zatwierdza zamrożony korpus złoty dzienników (oczekiwane skróty `StateHasher` i listy wersji bloków nagrane z `main`), a jego test przechodzi po zmianie bez zmian; inaczej podbicie formatu operacji z powtórką starej wersji.
+- **`ProtocolVersion` (D4).** Pakiet, który podbija wersję protokołu, ustawia ją na (wartość na `main` w chwili scalenia) + 1; test sprawdza udokumentowaną wartość; rebase aktualizuje i stałą, i test. Kolejność K2: K2-10 → 2, K2-11 → 3.
+- **Jedna kolejność zamykania (D8).** Kanoniczna tabela jest w K2-10 („Kolejność zamykania”); K2-09, K2-11 i K2-13 tylko dokładają do niej swoje kroki. `TerrainBlockStore.Close()` tylko po `ServerTerrainBlocks.CloseAsync() == true`.
+- **Wspólna walidacja edycji terenu (D2).** `TerrainRules.CheckEdit` w Core (właściciel K2-09) używają i `OperationApplier`, i powtórka dziennika przed ładowaniem terenu.
 
 ## Szablon planu pakietu
 
