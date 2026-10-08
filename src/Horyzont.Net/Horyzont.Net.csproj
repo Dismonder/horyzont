@@ -1,5 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <PackageReference Include="LiteNetLib" />
+    <PackageReference Include="Steamworks.NET" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../Horyzont.Core/Horyzont.Core.csproj" />
   </ItemGroup>
 </Project>
