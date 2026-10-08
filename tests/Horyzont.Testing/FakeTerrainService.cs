@@ -1,7 +1,10 @@
+using System.Buffers.Binary;
+using System.IO.Hashing;
 using System.Numerics;
 
 using Horyzont.Core.Ids;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Simulation;
 using Horyzont.Core.World.Terrain;
 
 namespace Horyzont.Testing;
@@ -9,10 +12,23 @@ namespace Horyzont.Testing;
 /// <summary>
 /// Terrain of every planet is a sphere of <see cref="SurfaceRadius"/> around the planet centre. Records edits and lets
 /// tests control which areas are loaded. Raycasts do not allocate.
+/// Every edited block has deterministic "voxel data": XxHash64 of its previous data and the edit, so two services that applied the
+/// same edits to the same starting data agree byte for byte. Blocks absent from memory come from <see cref="BlockSource"/>
+/// (persistence tests point it at the saved blocks) or start empty, like generator output.
 /// </summary>
-public sealed class FakeTerrainService(float surfaceRadius = 4000f) : ITerrainService
+public sealed class FakeTerrainService(float surfaceRadius = 4000f, float voxelSizeMeters = 1f, int? marginVoxels = null) : ITerrainService
 {
+    private readonly Dictionary<TerrainBlockKey, byte[]> _blocks = [];
+    private readonly List<TerrainBlockKey> _keys = [];
+    private readonly int _marginVoxels = marginVoxels ?? new GameRules().TerrainEditMarginVoxels;
+
     public float SurfaceRadius { get; set; } = surfaceRadius;
+
+    /// <summary>Saved data of a block that is not in memory; null when the block was never saved.</summary>
+    public Func<TerrainBlockKey, byte[]?>? BlockSource { get; set; }
+
+    /// <summary>Blocks in memory (edited or loaded from <see cref="BlockSource"/>).</summary>
+    public IReadOnlyDictionary<TerrainBlockKey, byte[]> Blocks => _blocks;
 
     /// <summary>When true every area counts as loaded; otherwise only <see cref="LoadedAreas"/>.</summary>
     public bool AllAreasLoaded { get; set; } = true;
@@ -49,7 +65,19 @@ public sealed class FakeTerrainService(float surfaceRadius = 4000f) : ITerrainSe
         var area = new LoadedArea(planet, center, radius);
         BlockingLoads.Add(area);
         LoadedAreas.Add(area);
+        TerrainMath.AffectedBlocks(planet, center, radius, voxelSizeMeters, 0, _keys);
+        foreach (var key in _keys)
+        {
+            if (!_blocks.ContainsKey(key) && BlockSource?.Invoke(key) is { } saved)
+            {
+                _blocks[key] = saved;
+            }
+        }
     }
+
+    /// <summary>Current data of a block: memory, then <see cref="BlockSource"/>, else empty (generator output).</summary>
+    public byte[] GetBlockData(TerrainBlockKey key) =>
+        _blocks.TryGetValue(key, out var data) ? data : BlockSource?.Invoke(key) ?? [];
 
     public bool Raycast(PlanetId planet, Vector3 origin, Vector3 direction, float maxDistance, out TerrainHit hit)
     {
@@ -89,5 +117,22 @@ public sealed class FakeTerrainService(float surfaceRadius = 4000f) : ITerrainSe
         }
 
         AppliedEdits.Add(edit);
+        TerrainMath.AffectedBlocks(edit.Planet, edit.Center, edit.Radius, voxelSizeMeters, _marginVoxels, _keys);
+        Span<byte> fields = stackalloc byte[27];
+        BinaryPrimitives.WriteUInt64LittleEndian(fields, edit.Planet.Value);
+        fields[8] = (byte)edit.Shape;
+        BinaryPrimitives.WriteSingleLittleEndian(fields[9..], edit.Center.X);
+        BinaryPrimitives.WriteSingleLittleEndian(fields[13..], edit.Center.Y);
+        BinaryPrimitives.WriteSingleLittleEndian(fields[17..], edit.Center.Z);
+        BinaryPrimitives.WriteSingleLittleEndian(fields[21..], edit.Radius);
+        fields[25] = (byte)edit.Mode;
+        fields[26] = edit.MaterialId;
+        foreach (var key in _keys)
+        {
+            var hash = new XxHash64();
+            hash.Append(GetBlockData(key));
+            hash.Append(fields);
+            _blocks[key] = hash.GetCurrentHash();
+        }
     }
 }
