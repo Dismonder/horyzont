@@ -86,15 +86,18 @@ public sealed class CompositeTransport : ITransport
     }
 
     /// <inheritdoc />
+    /// <exception cref="ArgumentException">The payload exceeds the limit this transport advertises for the channel.</exception>
     public void Send(ConnectionId connection, TransportChannel channel, ReadOnlySpan<byte> payload)
     {
+        // The advertised limit holds for every connection, whatever the limit of its inner transport (K1-07 review F5).
+        if (payload.Length > (channel == TransportChannel.ReliableOrdered ? MaxReliablePayload : MaxUnreliablePayload))
+        {
+            throw new ArgumentException("The payload exceeds the channel limit.", nameof(payload));
+        }
+
         if (_toInner.TryGetValue(connection.Value, out var target))
         {
             _inner[target.Index].Send(target.Inner, channel, payload);
-        }
-        else if (payload.Length > (channel == TransportChannel.ReliableOrdered ? MaxReliablePayload : MaxUnreliablePayload))
-        {
-            throw new ArgumentException("The payload exceeds the channel limit.", nameof(payload));
         }
     }
 

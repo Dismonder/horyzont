@@ -103,4 +103,33 @@ public sealed class CompositeTransportTests
         Assert.Equal((events.Connected[0], TransportDisconnectReason.Local), Assert.Single(events.Disconnected));
         Assert.Throws<ArgumentException>(() => composite.GetRemoteEndpoint(events.Connected[0]));
     }
+
+    [Fact]
+    public void Send_KnownConnectionAboveCompositeLimit_Throws()
+    {
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var network = new InMemoryNetwork(time);
+        var options = TransportOptions.Default;
+        using var memory = network.CreateTransport("host", options);
+        using var udp = new UdpTransport(options);
+        using var composite = new CompositeTransport([memory, udp]);
+        composite.Listen(new InMemoryEndpoint("host"));
+        using var client = network.CreateTransport("local", options);
+        client.Connect(new InMemoryEndpoint("host"));
+        var events = new Transport.RecordingEvents();
+        composite.Poll(events);
+        var connection = Assert.Single(events.Connected);
+        Assert.True(memory.MaxUnreliablePayload > composite.MaxUnreliablePayload, "the test needs inner transports with different limits");
+
+        Assert.Throws<ArgumentException>(() => composite.Send(connection, TransportChannel.Unreliable, new byte[composite.MaxUnreliablePayload + 1]));
+        if (memory.MaxReliablePayload > composite.MaxReliablePayload)
+        {
+            Assert.Throws<ArgumentException>(() => composite.Send(connection, TransportChannel.ReliableOrdered, new byte[composite.MaxReliablePayload + 1]));
+        }
+
+        composite.Send(connection, TransportChannel.Unreliable, new byte[composite.MaxUnreliablePayload]);
+        var clientEvents = new Transport.RecordingEvents();
+        client.Poll(clientEvents);
+        Assert.Equal(composite.MaxUnreliablePayload, Assert.Single(clientEvents.Received).Payload.Length);
+    }
 }
