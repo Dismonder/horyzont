@@ -153,11 +153,27 @@ Każdy krok wypisuje `PASS` albo `FAIL`. Wynik obu maszyn (data, konta, wersja S
 
 ## Kroki
 
-- [ ] Typy i interfejs w `Horyzont.Net.Transport`; testy kontraktu i `UdpLossyRelay` (czerwone).
-- [ ] `InMemoryNetwork` i `InMemoryTransport` z symulacją łącza i `Partition`; testy zielone.
-- [ ] `UdpTransport`; testy zielone na Windows i Linux w CI.
-- [ ] `SteamTransport` i `SteamCheck`; ręczny scenariusz na dwóch maszynach, wynik w PR.
-- [ ] Komentarze XML; zielone CI.
+- [x] Typy i interfejs w `Horyzont.Net.Transport`; testy kontraktu i `UdpLossyRelay` (czerwone).
+- [x] `InMemoryNetwork` i `InMemoryTransport` z symulacją łącza i `Partition`; testy zielone.
+- [x] `UdpTransport`; testy zielone na Windows (lokalnie); Linux dopiero w CI.
+- [ ] `SteamTransport` i `SteamCheck` napisane i budują się; ręczny scenariusz na dwóch maszynach i wynik w PR do zrobienia przez człowieka.
+- [ ] Komentarze XML gotowe (build z `GenerateDocumentationFile` przechodzi); zielone CI po wypchnięciu gałęzi.
+
+## Odstępstwa
+
+- `LiteNetLib` 2.1.4 (wersja już przypięta w `Directory.Packages.props`); pole `IPv6Enabled = false`, serwer wiąże się na adresie IPv4 podanym w `UdpEndpoint`.
+- `MaxUnreliablePayload` w UDP to stała `1164 - 1 = 1163` (nagłówek `PacketProperty` jest w LiteNetLib niepubliczny), a nie odczyt z `NetPeer.GetMaxSinglePacketSize`; pokrywa to test `SendUnreliable_1150Bytes_Arrives` i `MaxUnreliablePayload_Default_IsAtLeast1150`.
+- Limity: `MaxReliablePayload` = 512 KiB we wszystkich trzech transportach (maksimum Steama, co najmniej 256 KiB z planu), `MaxUnreliablePayload` = 1200 B w pamięci i na Steamie.
+- `UdpTransport` i `SteamTransport` nie przyjmują `TimeProvider`: nie mają logiki zależnej od czasu (limity czasu robią LiteNetLib i Steam). `UdpTransport` przyjmuje opcjonalny `ILogger<UdpTransport>` (błędy sieci przez `[LoggerMessage]`).
+- `Disconnect` w UDP czeka z wysłaniem rozłączenia, aż kolejka niezawodna połączenia będzie pusta (`GetPacketsCountInReliableQueue`), a zdarzenie `Local` zgłasza od razu w następnym `Poll`.
+- Transport w pamięci: `RttMs` w `GetStats` wynika ze skonfigurowanych warunków łącza, `PacketLoss` to zaobserwowany odsetek porzuconych wiadomości zawodnych. `GetRemoteEndpoint` dla nieznanego połączenia rzuca `ArgumentException`, a `GetStats` zwraca zera.
+- Kontrakt: `Send` przed `OnConnected` jest ignorowany (połączenie jeszcze nie istnieje dla wysyłania).
+- `TransportOptions` jest zwykłym rekordem z jawnym konstruktorem (walidacja), więc nie ma dekonstrukcji pozycyjnej.
+- Testy z `Timeout` w xUnit v3 mają wyłączone ostrzeżenie xUnit1069 w `TransportContractTests`: pętle oczekiwania mają własny termin.
+- Test `Poll_Idle_DoesNotAllocate` mierzy połączoną parę (a nie sam serwer bez połączeń).
+- Biblioteki natywne Steama: paczka NuGet Steamworks.NET 2024.8.0 zawiera tylko zarządzaną bibliotekę (bez `steam_api64.dll` i `libsteam_api.so`). `third_party/steamworks/` nie istnieje: SDK trzeba pobrać ręcznie z konta partnera Steam i dodać pliki (LFS); `SteamCheck` kopiuje je do wyjścia, jeśli są.
+- `SteamTransport` i `SteamCheck` kompilują się, ale nie były uruchamiane (brak dwóch maszyn i kont Steam); ścieżka Steam jest niezweryfikowana.
+- `SteamCheck` dodany do `Horyzont.sln` (budowany w CI, bez testów).
 
 ## Odbiór
 

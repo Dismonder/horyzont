@@ -1,5 +1,6 @@
 using Horyzont.Net.Transport;
 using Horyzont.Net.Transport.InMemory;
+
 using Microsoft.Extensions.Time.Testing;
 
 namespace Horyzont.Net.Tests.Transport;
