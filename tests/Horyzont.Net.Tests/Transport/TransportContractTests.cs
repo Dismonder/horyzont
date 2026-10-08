@@ -152,6 +152,73 @@ public abstract class TransportContractTests<TFactory> : IDisposable
     }
 
     [Fact(Timeout = 10_000)]
+    public void SendReliable_ThenDisconnectOverLossyLink_DeliversEverythingBeforeDisconnected()
+    {
+        Server();
+        World.SetLoss(0.30, 0);
+        var (server, client, _, clientConn) = ConnectPair();
+        const int total = 20;
+
+        for (var i = 0; i < total; i++)
+        {
+            client.Transport.Send(clientConn, TransportChannel.ReliableOrdered, Indexed(i, i == total - 1 ? 100 * 1024 : 300));
+        }
+
+        client.Transport.Disconnect(clientConn);
+
+        Assert.True(World.PumpUntil(() => server.Events.Disconnected.Count == 1, _longWait));
+        var received = server.Events.ReceivedOn(TransportChannel.ReliableOrdered).ToList();
+        Assert.Equal(total, received.Count);
+        for (var i = 0; i < total; i++)
+        {
+            Assert.Equal(i, BinaryPrimitives.ReadInt32LittleEndian(received[i].Payload));
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
+    public void SendReliable_AcrossShortPartition_ArrivesInOrderAfterHeal()
+    {
+        var (server, client, _, clientConn) = ConnectPair();
+        var half = TimeSpan.FromMilliseconds(100);
+
+        SendRange(client, clientConn, 0, 3);
+        World.Pump(half);
+        World.Partition();
+        SendRange(client, clientConn, 3, 7);
+        World.Pump(half);
+        World.Heal();
+        SendRange(client, clientConn, 7, 10);
+
+        Assert.True(World.PumpUntil(() => server.Events.ReceivedOn(TransportChannel.ReliableOrdered).Count() >= 10, _longWait));
+        World.Pump(TimeSpan.FromMilliseconds(200));
+        var received = server.Events.ReceivedOn(TransportChannel.ReliableOrdered).ToList();
+        Assert.Equal(10, received.Count);
+        for (var i = 0; i < 10; i++)
+        {
+            Assert.Equal(i, BinaryPrimitives.ReadInt32LittleEndian(received[i].Payload));
+        }
+
+        Assert.Empty(server.Events.Disconnected);
+    }
+
+    [Fact(Timeout = 10_000)]
+    public void Connect_ImmediatelyAfterDisconnect_NewConnectionEstablishes()
+    {
+        var (server, client, _, firstConn) = ConnectPair();
+
+        client.Transport.Disconnect(firstConn);
+        var secondConn = client.Transport.Connect(World.ServerEndpoint);
+
+        Assert.True(World.PumpUntil(() => client.Events.Connected.Contains(secondConn) && server.Events.Connected.Count == 2, _longWait));
+        World.Pump(TimeSpan.FromMilliseconds(300));
+        Assert.NotEqual(firstConn, secondConn);
+        Assert.DoesNotContain(client.Events.Disconnected, d => d.Connection == secondConn);
+
+        client.Transport.Send(secondConn, TransportChannel.ReliableOrdered, new byte[] { 7 });
+        Assert.True(World.PumpUntil(() => server.Events.Received.Count == 1, _longWait));
+    }
+
+    [Fact(Timeout = 10_000)]
     public void Send_AfterDisconnect_IsIgnored()
     {
         var (server, client, serverConn, clientConn) = ConnectPair();
@@ -216,6 +283,14 @@ public abstract class TransportContractTests<TFactory> : IDisposable
         }
 
         Assert.Equal(before, GC.GetAllocatedBytesForCurrentThread());
+    }
+
+    private static void SendRange(TransportNode node, ConnectionId connection, int from, int to)
+    {
+        for (var i = from; i < to; i++)
+        {
+            node.Transport.Send(connection, TransportChannel.ReliableOrdered, Indexed(i, 32));
+        }
     }
 
     private static byte[] Indexed(int index, int length)

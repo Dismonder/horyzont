@@ -36,6 +36,8 @@ public sealed class UdpWorld : ITransportWorld, ITransportWorldFactory
 
     public void Partition() => _relay!.Partitioned = true;
 
+    public void Heal() => _relay!.Partitioned = false;
+
     public void Pump(TimeSpan duration) => PumpUntil(() => false, duration);
 
     public bool PumpUntil(Func<bool> condition, TimeSpan max)

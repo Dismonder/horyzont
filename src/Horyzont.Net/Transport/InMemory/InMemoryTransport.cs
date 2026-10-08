@@ -134,6 +134,11 @@ public sealed class InMemoryTransport : ITransport
             }
 
             var c = _connectionList[i];
+            if (c.Held is { Count: > 0 } && !c.Link.Partitioned)
+            {
+                FlushHeld(c, now);
+            }
+
             if (now - c.LastReceived >= timeout)
             {
                 Remove(c);
@@ -199,6 +204,19 @@ public sealed class InMemoryTransport : ITransport
     private void Remove(Connection connection)
     {
         connection.State = ConnectionState.Closed;
+        if (connection.Held is not null)
+        {
+            foreach (var held in connection.Held)
+            {
+                if (held.Payload is not null)
+                {
+                    ArrayPool<byte>.Shared.Return(held.Payload);
+                }
+            }
+
+            connection.Held.Clear();
+        }
+
         _connections.Remove(connection.Id);
         _connectionList.Remove(connection);
     }
@@ -311,8 +329,24 @@ public sealed class InMemoryTransport : ITransport
         var packet = new InMemoryPacket(kind, this, c.Id, c.RemoteConnection, channel, buffer, payload.Length);
         if (c.Link.Partitioned)
         {
-            Discard(c, packet);
+            // A real reliable stream retransmits across a short outage, so ordered data is retained and delivered in
+            // order after Heal; everything else (keep-alives, unreliable data, disconnects) is lost with the link.
+            if (kind is InMemoryPacketKind.Data or InMemoryPacketKind.ConnectRequest or InMemoryPacketKind.ConnectAccept
+                && channel == TransportChannel.ReliableOrdered)
+            {
+                (c.Held ??= []).Add(packet);
+            }
+            else
+            {
+                Discard(c, packet);
+            }
+
             return;
+        }
+
+        if (c.Held is { Count: > 0 })
+        {
+            FlushHeld(c, now);
         }
 
         if (kind == InMemoryPacketKind.Data && channel == TransportChannel.Unreliable)
@@ -338,6 +372,16 @@ public sealed class InMemoryTransport : ITransport
         }
 
         c.Remote.Enqueue(c.Link, packet, ref c.LastOrderedDue, now);
+    }
+
+    private static void FlushHeld(Connection c, long now)
+    {
+        foreach (var held in c.Held!)
+        {
+            c.Remote.Enqueue(c.Link, held, ref c.LastOrderedDue, now);
+        }
+
+        c.Held!.Clear();
     }
 
     private static void Discard(Connection c, InMemoryPacket packet)
@@ -409,6 +453,8 @@ public sealed class InMemoryTransport : ITransport
         public long UnreliableSent { get; set; }
 
         public long UnreliableDropped { get; set; }
+
+        public List<InMemoryPacket>? Held { get; set; }
 
         public long LastOrderedDue;
     }

@@ -20,6 +20,9 @@ public interface ITransportWorld : IDisposable
     /// <summary>Drops all traffic between the server and every client.</summary>
     void Partition();
 
+    /// <summary>Restores traffic after <see cref="Partition"/>.</summary>
+    void Heal();
+
     /// <summary>Polls all transports repeatedly for <paramref name="duration"/> of (fake or real) time.</summary>
     void Pump(TimeSpan duration);
 

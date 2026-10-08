@@ -70,6 +70,15 @@ public sealed class InMemoryWorld : ITransportWorld, ITransportWorldFactory
         }
     }
 
+    public void Heal()
+    {
+        _partitioned = false;
+        foreach (var name in _clientNames)
+        {
+            _network.Heal("server", name);
+        }
+    }
+
     public void Pump(TimeSpan duration) => PumpUntil(() => false, duration);
 
     public bool PumpUntil(Func<bool> condition, TimeSpan max)
