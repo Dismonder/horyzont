@@ -1,0 +1,41 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.idea/
+TestResults/
+*.trx
+BenchmarkDotNet.Artifacts/
+
+# NuGet (repozytorium ma własny folder paczek, patrz nuget.config)
+/.nuget/packages/
+
+# Python (tools/engine)
+__pycache__/
+
+# Godot
+.godot/
+*.translation
+export_presets.cfg.bak
+/game/build/
+
+# Silnik budowany lokalnie (K1-01)
+/engine/src/
+/engine/out/
+/engine/nuget-local/
+
+# Zapisy, cache i logi z uruchomień deweloperskich (zakotwiczone, żeby nie łapać katalogów kodu o tych nazwach)
+/saves/
+/cache/
+/logs/
+/game/saves/
+/game/cache/
+/game/logs/
+*.db-wal
+*.db-shm
+
+# System
+.DS_Store
+Thumbs.db

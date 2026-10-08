@@ -1,0 +1,120 @@
+# Zasady projektu
+
+Ten plik obowiązuje każdego wykonawcę: człowieka, Claude Code, Codex i Antigravity. Gdy plan pakietu jest sprzeczny z tym plikiem, wygrywa ten plik. Gdy kod jest sprzeczny ze specyfikacją, wygrywa specyfikacja, dopóki nie zostanie zmieniona po przeglądzie Opus 5.5.
+
+## 1. Źródła prawdy
+
+| Co | Gdzie |
+| --- | --- |
+| Co budujemy i dlaczego | [spec/](spec/) (specyfikacje podprojektów 1–6) |
+| Kto robi który pakiet | [plan/plan-projektu.md](plan/plan-projektu.md) |
+| Jak zrobić konkretny pakiet | [plans/](plans/README.md) |
+| Jak piszemy kod | ten plik |
+
+Każda sesja pracy zaczyna się od przeczytania tego pliku i planu pakietu. Niejasność albo sprzeczność w planie zatrzymuje pracę: zapisz pytanie w opisie PR i eskaluj, nie zgaduj.
+
+## 2. Architektura i granice
+
+- Projekty `Horyzont.Core`, `Horyzont.Persistence` i `Horyzont.Net` nie mogą odwoływać się do Godota (pilnuje tego test w `tests/Horyzont.Architecture.Tests`).
+- Kierunek zależności: `Core` ← `Persistence`, `Core` ← `Net`, wszystkie ← `game/`. Core nie zależy od niczego poza BCL, `Microsoft.Extensions.Logging.Abstractions` i `System.IO.Hashing`.
+- Serwer jest autorytatywny. Klient wysyła wyłącznie intencje i wejście; jedyne lokalne zmiany po stronie klienta to przewidywany ruch własnej postaci i podgląd własnych edycji, które serwer potwierdza albo nadpisuje.
+- Zero mutowalnego stanu statycznego. Zależności składa jedno miejsce startowe (composition root) w `game/src/Boot/`.
+- Każda zmiana świata to operacja z `Horyzont.Core.Operations`, stosowana przez `ServerSimulation` i zapisywana w dzienniku. Nie ma innej drogi zmiany stanu świata.
+- Kanoniczny stan każdego bytu to rama rodzica (`FrameRef`), licznik przepięć `ParentSeq` i poza lokalna w tej ramie (`System.Numerics.Vector3` i `Quaternion`, metry). Pozycja w świecie jest zawsze wartością pochodną: zapis, dziennik i sieć znają wyłącznie pozycje lokalne.
+- Ramy składa się tylko w podwójnej precyzji (`Vector3D`, `QuaternionD` i `FrameMath` w Core, od K5-20). Pojedyncza precyzja wystarcza wewnątrz ramy planety albo budowli.
+- Gracz w dzienniku, zapisie i sieci to wewnętrzny `PlayerId`. Tożsamość platformy (`PlatformIdentity`, np. SteamID) służy tylko do łączenia z kontem, banów i administratorów.
+
+## 3. Kontrakty chronione
+
+Każda zmiana w `src/Horyzont.Core/` wymaga przeglądu Opus 5.5, bo cały Core definiuje formaty dziennika, zapisu i protokołu. Poza przeglądem zmiana w tych ścieżkach wymaga podbicia odpowiedniej wersji:
+
+| Ścieżka | Co podbić przy zmianie |
+| --- | --- |
+| `src/Horyzont.Core/Operations/`, `src/Horyzont.Core/Intents/`, `src/Horyzont.Core/Simulation/OperationApplier.cs` | wersję formatu operacji albo intencji w kodeku (K1-04); stare dzienniki muszą odtwarzać się identycznie, więc zmiana semantyki stosowania też jest zmianą formatu |
+| `src/Horyzont.Core/Ids/` (w tym `FrameRef`, `PlatformIdentity`), `src/Horyzont.Core/World/` (typy zapisywane: `BlockState`, `CellPos`, `ChunkPos`, `Face`, `BlockShape`, `ConstructMode`, `TerrainBlockKey`, `TerrainBlockVersion`, `PlanetParams`, `RegistryEntry`), `src/Horyzont.Core/Checkpoints/` | wersję formatu każdej ramki, która zawiera zmieniony typ (operacje, intencje, komunikaty, bloby), i odczyt starej wersji w Persistence |
+| `src/Horyzont.Core/Hashing/` | opis w PR: skróty zapisane w testach i raportach przestają się zgadzać |
+| `src/Horyzont.Core/Protocol/`, `src/Horyzont.Core/Serialization/` | `ProtocolConstants.ProtocolVersion` albo wersję formatu komunikatu |
+| `src/Horyzont.Persistence/Migrations/` | nowa migracja z następnym wolnym numerem w chwili scalenia do `main`; istniejących migracji nigdy się nie edytuje, a numery są ciągłe od 1 |
+| `engine/engine.json`, `nuget.config`, `global.json`, `Directory.Build.props`, `Directory.Packages.props` | opis zmiany w PR i zielony test dymny silnika |
+
+Zamrożone na zawsze, bez względu na wersję protokołu: początek ramki `ClientHello` (typ, wersja formatu, `ProtocolVersion`) i cały format `HandshakeReject`. Dzięki temu klient każdej wersji dostaje czytelną prośbę o aktualizację. Każda zmiana formatu `ClientHello` podbija też `ProtocolVersion`.
+
+Nowe kody operacji, intencji, odmów, komunikatów i blobów biorą numery wyłącznie z zakresu swojego podprojektu (tabela zakresów w K1-03). Dzięki temu podprojekty 2 i 3 powstają równolegle bez konfliktów numeracji.
+
+## 4. Determinizm (Core)
+
+Kod stosujący operacje (`OperationApplier`, `ServerSimulation`, wszystko, co liczy skrót stanu) musi dawać ten sam wynik przy każdym uruchomieniu:
+
+- bez `DateTime.Now`, `Stopwatch`, `Environment.TickCount`; czas symulacji to `Tick`, a czas rzeczywisty (sieć, zapis, limity czasu) tylko przez `TimeProvider` przekazany z zewnątrz;
+- bez `Random` przy stosowaniu operacji; losowość tylko przy rozwiązywaniu intencji, a jej wynik trafia do operacji;
+- bez iteracji po `Dictionary`/`HashSet`, gdy kolejność wpływa na wynik; używaj `SortedDictionary` albo jawnego sortowania;
+- bez równoległości w stosowaniu operacji;
+- bez czytania treści gry (przedmioty, receptury, pojemności, generatory) w warunkach wstępnych appliera: operacja niesie każdą wartość z treści, od której zależy jej stosowanie (np. limit stosu, pojemność zbiornika), więc ogon dziennika odtwarza się tak samo po aktualizacji treści;
+- bez pytania terenu ani generatora przy stosowaniu: istnienie obiektów generatora i trafienia w teren sprawdza walidator, a wynik trafia do operacji;
+- stan zmienia się tylko operacjami: także zdarzenia czasowe (odrastanie, rozliczenie stacji, znikanie przedmiotów) są operacjami serwera, a checkpoint zapisuje wyłącznie ich skutki;
+- wartości zmiennoprzecinkowe w skrótach i formatach zapisywane bitowo; NaN i nieskończoności odrzucane na granicy (walidacja, deserializacja).
+
+## 5. Styl C#
+
+- Kod, identyfikatory i komentarze po angielsku; dokumentacja w `docs/` po polsku.
+- Ustawienia z `Directory.Build.props`: `Nullable` włączone, ostrzeżenia jako błędy, analizatory `latest-recommended`, `InvariantGlobalization`.
+- Przestrzenie nazw na poziomie pliku, jeden publiczny typ na plik, nazwa pliku = nazwa typu.
+- Klasy `sealed`, chyba że dziedziczenie jest zaplanowane. Małe niemutowalne dane to `readonly record struct`, zamknięte hierarchie to `abstract record` z konstruktorem `private protected`.
+- Pola prywatne `_camelCase`, stałe i publiczne składowe `PascalCase`, interfejsy z prefiksem `I`, metody asynchroniczne z sufiksem `Async`.
+- Publiczne API w Core, Persistence i Net ma komentarze XML (`GenerateDocumentationFile` z ostrzeżeniami jako błędami to wymusza).
+- Bez `async void` (wyjątek: handlery sygnałów Godota, które same łapią wyjątki), bez `.Result` i `.Wait()` na wątku gry.
+
+## 6. Wydajność w pętlach ticku
+
+W kodzie wołanym co tick (symulacja, sieć, meshing) obowiązuje:
+
+- brak alokacji w stanie ustalonym: `Span<T>`, `stackalloc` dla małych buforów, `ArrayPool<T>` dla dużych;
+- brak LINQ, lambd przechwytujących zmienne i boxingu;
+- kolekcje alokowane raz i czyszczone (`Clear()`), nie tworzone od nowa;
+- test alokacji (`GC.GetAllocatedBytesForCurrentThread`) dla każdej gorącej ścieżki, którą plan pakietu tak oznacza.
+
+## 7. Błędy i logowanie
+
+- Walidacja danych gry zwraca wynik (`RejectReason`, `ValidationResult`), nie rzuca wyjątków.
+- Wyjątki tylko dla złamanych niezmienników (błąd w naszym kodzie) i dla uszkodzonych danych z sieci albo dysku (`ProtocolViolationException`, łapany na granicy połączenia).
+- Nigdy nie połykaj wyjątków. `catch` bez ponownego rzucenia musi zalogować błąd i mieć komentarz, dlaczego to bezpieczne.
+- Logowanie przez `ILogger<T>` (`Microsoft.Extensions.Logging.Abstractions`), wyłącznie metodami generowanymi atrybutem `[LoggerMessage]`: nie alokują w gorących ścieżkach, a bezpośrednie `logger.LogX(...)` łamie regułę CA1848 przy ostrzeżeniach jako błędach. W `game/` adapter pisze do pliku z rotacją i do konsoli Godota. Każdy wpis o sesji ma identyfikator gracza, a o operacji jej `OpId`.
+
+## 8. Testy
+
+- TDD: test akceptacyjny pakietu powstaje przed kodem, a każda poprawka błędu zaczyna się od testu, który ten błąd pokazuje.
+- xUnit; nazwy `Metoda_Scenariusz_OczekiwanyWynik`, po angielsku. Testy właściwości w FsCheck.
+- Testy są deterministyczne: bez `Thread.Sleep` i realnego czasu; czas przez `FakeTimeProvider` (paczka `Microsoft.Extensions.TimeProvider.Testing`, dostępna przez `tests/Horyzont.Testing`), sieć przez `InMemoryTransport` z `Horyzont.Net`, teren przez `FakeTerrainService` z `tests/Horyzont.Testing`.
+- Prawdziwy czas wolno mieć tylko w testach transportów UDP i Steam oraz w testach `Soak`; każdy taki test ma jawny limit czasu.
+- Kategorie przez `[Trait("Category", ...)]`: bez kategorii (szybkie, zawsze w CI), `Slow` (CI), `Soak` (nocne), `Manual` (wymagają człowieka albo Steama; wynik wpisuje się do PR).
+- Pakiet nie jest skończony, dopóki jego testy akceptacyjne nie przechodzą w CI.
+
+## 9. Git i przegląd
+
+- Gałąź na pakiet: `pakiet/k1-03-core` (identyfikator pakietu małymi literami plus krótka nazwa).
+- Commity małe, w formacie Conventional Commits po angielsku: `feat:`, `fix:`, `test:`, `refactor:`, `perf:`, `docs:`, `build:`, `ci:`, `chore:`.
+- Jeden PR na pakiet. Opis PR: co zrobiono, wynik testów akceptacyjnych, odstępstwa od planu, otwarte pytania.
+- Scalanie tylko z zielonym CI i po przeglądzie według reguł z planu projektu: pakiet Opus → drugi przegląd GPT-6.1 Sol; pakiet GPT-6.1 Sol → Opus 5.5; pakiet Sonnet 5.5 → Opus 5.5 przy zmianie kontraktów, inaczej na bramce; pakiet Gemini 3.8 Flash → Sonnet 5.5.
+- Historia liniowa: squash albo rebase.
+
+## 10. Komendy
+
+```
+dotnet build Horyzont.sln
+dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"
+dotnet format Horyzont.sln --verify-no-changes
+python tools/engine/build.py all        # pełne budowanie silnika (K1-01)
+python tools/engine/build.py smoke      # sam test dymny silnika
+```
+
+## 11. Definicja ukończenia pakietu
+
+- [ ] Testy akceptacyjne z planu pakietu przechodzą w CI.
+- [ ] Przegląd według reguł z punktu 9, uwagi rozwiązane.
+- [ ] Brak `TODO` bez odnośnika do zgłoszenia.
+- [ ] Checklista w planie pakietu odhaczona, a odstępstwa opisane w planie.
+- [ ] Nowe zasady wynikłe z pakietu dopisane do tego pliku.
+
+## 12. Eskalacja
+
+Po dwóch nieudanych podejściach do tego samego testu wykonawca przekazuje zadanie wyżej (Gemini 3.8 Flash → Sonnet 5.5 → GPT-6.1 Sol albo Opus 5.5) i załącza: test, log, opis prób. Zmiana kontraktu chronionego zawsze trafia do Opus 5.5.

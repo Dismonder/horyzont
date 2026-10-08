@@ -1,0 +1,26 @@
+{
+  "godot": {
+    "repository": "https://github.com/godotengine/godot.git",
+    "ref": "4.7.2-stable"
+  },
+  "voxel": {
+    "repository": "https://github.com/Zylann/godot_voxel.git",
+    "ref": "v1.7"
+  },
+  "build": {
+    "precision": "double",
+    "dotnet": true,
+    "dotnetTargetFramework": "net10.0",
+    "sconsFlags": {
+      "all": ["d3d12=no", "accesskit=no", "angle=no"],
+      "template_release": ["production=yes", "lto=none"]
+    }
+  },
+  "targets": [
+    { "name": "editor-windows", "runner": "windows", "platform": "windows", "target": "editor" },
+    { "name": "template-windows-debug", "runner": "windows", "platform": "windows", "target": "template_debug" },
+    { "name": "template-windows-release", "runner": "windows", "platform": "windows", "target": "template_release" },
+    { "name": "template-linux-release", "runner": "linux", "platform": "linuxbsd", "target": "template_release" }
+  ],
+  "nugetFeed": "engine/nuget-local"
+}
