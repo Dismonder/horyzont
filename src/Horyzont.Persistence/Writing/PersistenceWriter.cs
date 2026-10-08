@@ -476,6 +476,10 @@ public sealed class PersistenceWriter : IAsyncDisposable
 
             _faults.Hit(FaultPoint.BeforeJournalCommit);
             transaction.Commit();
+
+            // An error reported here may come after the rows reached the disk: the outcome is unknown, so the entries stay
+            // pending and are not acknowledged; ClearFault reads the disk and skips those already saved.
+            _faults.Hit(FaultPoint.AfterJournalCommit);
         }
         catch (Exception e) when (e is not SimulatedCrashException)
         {
@@ -486,17 +490,6 @@ public sealed class PersistenceWriter : IAsyncDisposable
         var upTo = _pending[^1].Entry.Id;
         _pending.Clear();
         Volatile.Write(ref _durableOpId, Sql.ToDb(upTo.Value));
-        try
-        {
-            _faults.Hit(FaultPoint.AfterJournalCommit);
-        }
-        catch (Exception e) when (e is not SimulatedCrashException)
-        {
-            _events.Enqueue(new JournalCommitted(upTo));
-            Fault(e);
-            return;
-        }
-
         _events.Enqueue(new JournalCommitted(upTo));
     }
 
@@ -729,7 +722,9 @@ public sealed class PersistenceWriter : IAsyncDisposable
 
         if (durable > DurableOpId)
         {
+            // Entries of a commit with an unknown outcome are on disk after all: acknowledge them now.
             Volatile.Write(ref _durableOpId, Sql.ToDb(durable.Value));
+            _events.Enqueue(new JournalCommitted(durable));
         }
 
         if (_pending.Count > 0 ? _pending[0].Entry.Id != durable.Next : _lastAccepted < durable)

@@ -55,23 +55,61 @@ public sealed class JournalFailureTests
         Assert.Equal(hash, StateHasher.Hash(sim.State));
     }
 
+    /// <summary>The commit reached the disk but reported an error: the entries stay pending and are not acknowledged.</summary>
     [Fact]
-    public async Task ErrorAfterJournalCommit_NoDuplicateAfterClearFault()
+    public async Task AmbiguousJournalCommit_ClearFaultSkipsEntriesOnDisk_NoDuplicateNoGap()
+    {
+        using var dir = new TempDirectory();
+        ulong hash;
+        await using (var h = WorldHarness.CreateNew(dir.WorldPath, ScriptedFaults.DiskErrorAt(FaultPoint.AfterJournalCommit)))
+        {
+            h.FaultsExpected = true;
+            var p = h.Join(1);
+            h.Leave(p);
+
+            Assert.False(await h.Writer.FlushAsync());
+            h.Pump();
+            Assert.True(h.Writer.IsFaulted);
+            Assert.Equal(OpId.None, h.Writer.DurableOpId);
+            Assert.DoesNotContain(h.Events, e => e is JournalCommitted);
+            Assert.Equal([1L, 2L], RawDb.JournalIds(dir.WorldPath));
+
+            h.Join(1);
+            h.Writer.ClearFault();
+            Assert.True(await h.Writer.FlushAsync());
+            h.Pump();
+
+            Assert.False(h.Writer.IsFaulted);
+            Assert.Equal(new OpId(3), h.Writer.DurableOpId);
+            Assert.Equal([1L, 2L, 3L], RawDb.JournalIds(dir.WorldPath));
+            Assert.Equal(
+                [new JournalCommitted(new OpId(2)), new JournalCommitted(new OpId(3))],
+                h.Events.OfType<JournalCommitted>().ToList());
+            hash = StateHasher.Hash(h.State);
+        }
+
+        var (loaded, sim, _) = WorldHarness.LoadAndReplay(dir.WorldPath);
+        Assert.Equal(3, loaded.JournalTail.Count);
+        Assert.Equal(hash, StateHasher.Hash(sim.State));
+    }
+
+    [Fact]
+    public async Task AmbiguousJournalCommit_NothingNewPending_ClearFaultReportsDiskProgress()
     {
         using var dir = new TempDirectory();
         await using var h = WorldHarness.CreateNew(dir.WorldPath, ScriptedFaults.DiskErrorAt(FaultPoint.AfterJournalCommit));
         h.FaultsExpected = true;
-        var p = h.Join(1);
-        h.Leave(p);
-
-        Assert.False(await h.Writer.FlushAsync());
-        Assert.Equal(new OpId(2), h.Writer.DurableOpId);
-
         h.Join(1);
+        Assert.False(await h.Writer.FlushAsync());
+
         h.Writer.ClearFault();
         Assert.True(await h.Writer.FlushAsync());
+        h.Pump();
 
-        Assert.Equal([1L, 2L, 3L], RawDb.JournalIds(dir.WorldPath));
+        Assert.False(h.Writer.IsFaulted);
+        Assert.Equal(new OpId(1), h.Writer.DurableOpId);
+        Assert.Equal(new JournalCommitted(new OpId(1)), Assert.Single(h.Events.OfType<JournalCommitted>()));
+        Assert.Equal([1L], RawDb.JournalIds(dir.WorldPath));
     }
 
     [Fact]

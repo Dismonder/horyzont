@@ -6,7 +6,10 @@ public enum FaultPoint
     /// <summary>Journal rows are inserted, the transaction is not committed yet.</summary>
     BeforeJournalCommit,
 
-    /// <summary>The journal batch is committed, the writer has not reported it yet.</summary>
+    /// <summary>
+    /// The journal batch is committed, the writer has not reported it yet. An error here is an ambiguous commit: the writer treats
+    /// it as failed (entries stay pending, nothing is acknowledged) although the rows are on disk.
+    /// </summary>
     AfterJournalCommit,
 
     /// <summary>Part of the checkpoint rows are written.</summary>
