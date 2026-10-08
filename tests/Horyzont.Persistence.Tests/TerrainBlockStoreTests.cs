@@ -103,4 +103,57 @@ public sealed class TerrainBlockStoreTests
         Assert.True(store.TryLoad(_keys[5], out var last, out _));
         Assert.Equal(40u, last);
     }
+
+    /// <summary>
+    /// Readers overlap a checkpoint transaction that has written every new row but is paused before its commit: they see only the
+    /// committed pairs, and after the commit only the new ones.
+    /// </summary>
+    [Fact]
+    public async Task TryLoad_EightThreadsAroundPausedCheckpointCommit_SeeOnlyCommittedPairs()
+    {
+        using var dir = new TempDirectory();
+        var world = WorldState.CreateNew(WorldFactory.DefaultWorldId, 1, [], [], []);
+        WorldCreator.Create(dir.WorldPath, world, WorldHarness.Options, new FakeTimeProvider());
+        using var faults = new PausingFaults(Faults.FaultPoint.BeforeCheckpointCommit, hit: 2);
+        await using var writer = new PersistenceWriter(
+            WorldDatabase.Open(dir.WorldPath), WorldHarness.Options, new FakeTimeProvider(), faults, NullLogger<PersistenceWriter>.Instance);
+        Assert.True(await writer.CheckpointAsync(Checkpoint(1)));
+        var store = new TerrainBlockStore(dir.WorldPath);
+
+        var pending = writer.CheckpointAsync(Checkpoint(2));
+        Assert.True(faults.Reached.Wait(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
+
+        var during = await ReadFromEightThreads(store);
+        Assert.False(pending.IsCompleted);
+        faults.Release.Set();
+        Assert.True(await pending);
+        var after = await ReadFromEightThreads(store);
+
+        Assert.Equal(8 * 4 * _keys.Length, during.Count);
+        Assert.All(during, read => Assert.Equal((1u, true), (read.Version, read.Consistent)));
+        Assert.All(after, read => Assert.Equal((2u, true), (read.Version, read.Consistent)));
+    }
+
+    private static async Task<List<(uint Version, bool Consistent)>> ReadFromEightThreads(TerrainBlockStore store)
+    {
+        using var start = new Barrier(8);
+        var reads = await Task.WhenAll(Enumerable.Range(0, 8).Select(t => Task.Factory.StartNew(
+            () =>
+            {
+                start.SignalAndWait();
+                var results = new List<(uint, bool)>();
+                for (var round = 0; round < 4; round++)
+                {
+                    foreach (var key in _keys)
+                    {
+                        var found = store.TryLoad(key, out var version, out var data);
+                        results.Add((version, found && data.AsSpan().SequenceEqual(Data(key, version))));
+                    }
+                }
+
+                return results;
+            },
+            TaskCreationOptions.LongRunning))).WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        return [.. reads.SelectMany(r => r)];
+    }
 }
