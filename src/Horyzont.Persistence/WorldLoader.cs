@@ -126,7 +126,7 @@ public static class WorldLoader
         try
         {
             var worldId = new WorldId(new Guid(MetaBytes(meta, Sql.MetaWorldId)));
-            var lastCheckpoint = new OpId(Sql.FromDb(MetaInteger(meta, Sql.MetaLastCheckpointOpId)));
+            var lastCheckpoint = new OpId(Sql.OpIdFromDb(MetaInteger(meta, Sql.MetaLastCheckpointOpId)));
             var builder = new WorldStateBuilder(worldId, Sql.FromDb(MetaInteger(meta, Sql.MetaGalaxySeed)));
             builder.SetProgress(
                 lastCheckpoint,
@@ -297,7 +297,13 @@ public static class WorldLoader
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
-            var id = new OpId(Sql.FromDb(reader.GetInt64(0)));
+            var stored = reader.GetInt64(0);
+            if (stored < 0)
+            {
+                throw new WorldCorruptedException(expected, $"the journal has operation id {stored}, above the supported ceiling.");
+            }
+
+            var id = new OpId((ulong)stored);
             if (id != expected)
             {
                 throw new WorldCorruptedException(expected, $"the journal continues with operation {id.Value}.");

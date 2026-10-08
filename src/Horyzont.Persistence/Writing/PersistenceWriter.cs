@@ -385,6 +385,14 @@ public sealed class PersistenceWriter : IAsyncDisposable
     private void AcceptJournal(JournalCommand command)
     {
         var entry = command.Entry;
+        if (entry.Id.Value > Sql.MaxOpId)
+        {
+            // Signed SQL would order it before every saved row; refuse it before it can be reported durable.
+            Fault(new InvalidOperationException(
+                $"Journal entry {entry.Id.Value} is above the supported ceiling {Sql.MaxOpId}; nothing after {_lastAccepted.Value} is written."));
+            return;
+        }
+
         if (entry.Id != _lastAccepted.Next)
         {
             // A gap or a repeat would break replay; refuse it and every later entry instead of writing it.
@@ -746,10 +754,16 @@ public sealed class PersistenceWriter : IAsyncDisposable
     private (OpId Durable, OpId LastCheckpoint) ReadDurableProgress()
     {
         var connection = _db.Connection;
-        var lastCheckpoint = Sql.FromDb((long)(WorldDatabase.ExecuteScalar(
+        var lastCheckpoint = Sql.OpIdFromDb((long)(WorldDatabase.ExecuteScalar(
             connection, $"SELECT value FROM meta WHERE key = '{Sql.MetaLastCheckpointOpId}';") ?? 0L));
+        if (WorldDatabase.ExecuteScalar(connection, "SELECT MIN(op_id) FROM journal;") is long min)
+        {
+            // A negative id would hide from MAX; the loader rejects it as damage, so the writer does too.
+            _ = Sql.OpIdFromDb(min);
+        }
+
         var journalMax = WorldDatabase.ExecuteScalar(connection, "SELECT MAX(op_id) FROM journal;");
-        var durable = journalMax is long max ? Math.Max(Sql.FromDb(max), lastCheckpoint) : lastCheckpoint;
+        var durable = journalMax is long max ? Math.Max(Sql.OpIdFromDb(max), lastCheckpoint) : lastCheckpoint;
         return (new OpId(durable), new OpId(lastCheckpoint));
     }
 

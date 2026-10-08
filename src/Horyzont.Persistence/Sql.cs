@@ -14,8 +14,19 @@ internal static class Sql
     internal const string MetaGameVersion = "game_version";
     internal const string MetaCreatedUtc = "created_utc";
 
+    /// <summary>
+    /// Highest supported operation id: ids are compared, ordered and deleted by range in SQL, which is signed, so an id above
+    /// <see cref="long.MaxValue"/> would sort before every other one.
+    /// </summary>
+    internal const ulong MaxOpId = long.MaxValue;
+
     /// <summary><see cref="ulong"/> stored in an INTEGER column.</summary>
     internal static long ToDb(ulong value) => unchecked((long)value);
+
+    /// <summary>Operation id column read back; a negative value is outside <see cref="MaxOpId"/> and means damaged data.</summary>
+    /// <exception cref="InvalidDataException">The value is negative.</exception>
+    internal static ulong OpIdFromDb(long value) =>
+        value >= 0 ? (ulong)value : throw new InvalidDataException($"Operation id {value} is negative.");
 
     /// <summary>INTEGER column read back as <see cref="ulong"/>.</summary>
     internal static ulong FromDb(long value) => unchecked((ulong)value);
