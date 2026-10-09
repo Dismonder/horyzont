@@ -40,6 +40,8 @@ public sealed partial class CameraRig : Node3D
     /// <summary>Gets the camera mode of the body camera: <see cref="CameraMode.ThirdPerson"/> by default.</summary>
     public CameraMode BodyMode { get; private set; } = CameraMode.ThirdPerson;
 
+    private PhysicsRayQueryParameters3D? _armQuery;
+
     /// <summary>Switches between first and third person.</summary>
     public void ToggleBodyMode()
     {
@@ -73,7 +75,10 @@ public sealed partial class CameraRig : Node3D
             return wanted;
         }
 
-        using var query = PhysicsRayQueryParameters3D.Create(from, to, CollisionLayers.TerrainMask | CollisionLayers.ConstructsMask);
+        // One query object per rig; the dictionary IntersectRay returns is allocated by the engine API and cannot be avoided.
+        var query = _armQuery ??= new PhysicsRayQueryParameters3D { CollisionMask = CollisionLayers.TerrainMask | CollisionLayers.ConstructsMask };
+        query.From = from;
+        query.To = to;
         var hit = GetWorld3D().DirectSpaceState.IntersectRay(query);
         if (hit.Count == 0)
         {

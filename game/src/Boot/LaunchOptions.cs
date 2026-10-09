@@ -163,7 +163,7 @@ public sealed record LaunchOptions
         RequireOnly(reader, "--data-dir", mode, ProcessMode.Solo, ProcessMode.Host, ProcessMode.DedicatedServer);
         RequireOnly(reader, "--restore-latest-backup", mode, ProcessMode.Solo, ProcessMode.Host, ProcessMode.DedicatedServer);
         RequireOnly(reader, "--recover-from-checkpoint", mode, ProcessMode.Solo, ProcessMode.Host, ProcessMode.DedicatedServer);
-        RequireOnly(reader, "--dev", mode, ProcessMode.DedicatedServer);
+        RequireOnly(reader, "--dev", mode, ProcessMode.DedicatedServer, ProcessMode.Client);
         RequireOnly(reader, "--seed", mode, ProcessMode.Solo, ProcessMode.Host, ProcessMode.DedicatedServer);
         RequireOnly(reader, "--dev-speed", mode, ProcessMode.Solo, ProcessMode.Host);
         RequireOnly(reader, "--dev-tools-demo", mode, ProcessMode.Solo, ProcessMode.Host);

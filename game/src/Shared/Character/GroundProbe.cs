@@ -14,12 +14,16 @@ namespace Horyzont.Game.Character;
 /// the blocks load, so a body placed before that would fall through the planet (K2-11, "spawn before collisions"). The probe is a
 /// physics ray straight down the planet "up", on the terrain layer only.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage(
+    "Design", "CA1001:Types that own disposable fields should be disposable",
+    Justification = "The ray query is a reference-counted Godot object that the engine frees with the last reference; the probe lives as long as its character.")]
 public sealed class GroundProbe
 {
     /// <summary>How far above the feet the ray starts (metres), so feet slightly inside the surface still find it.</summary>
     public const float StartAbove = 1f;
 
     private readonly PlanetId _planet;
+    private PhysicsRayQueryParameters3D? _query;
 
     /// <summary>Initializes a new instance of the <see cref="GroundProbe"/> class.</summary>
     /// <param name="planet">The planet whose frame positions are in.</param>
@@ -35,8 +39,11 @@ public sealed class GroundProbe
     {
         ArgumentNullException.ThrowIfNull(world);
         var up = TerrainMath.UpAt(feet);
-        using var query = PhysicsRayQueryParameters3D.Create(
-            PlanetFrames.ToGodot(_planet, feet + (up * StartAbove)), PlanetFrames.ToGodot(_planet, feet - (up * below)), CollisionLayers.TerrainMask);
+
+        // One query object per probe; the dictionary IntersectRay returns is allocated by the engine API and cannot be avoided.
+        var query = _query ??= new PhysicsRayQueryParameters3D { CollisionMask = CollisionLayers.TerrainMask };
+        query.From = PlanetFrames.ToGodot(_planet, feet + (up * StartAbove));
+        query.To = PlanetFrames.ToGodot(_planet, feet - (up * below));
         var hit = world.DirectSpaceState.IntersectRay(query);
         if (hit.Count == 0)
         {

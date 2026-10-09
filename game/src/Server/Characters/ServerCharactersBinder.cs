@@ -57,6 +57,9 @@ public sealed class ServerCharactersBinder : IServerTickParticipant, IServerPlay
     /// <summary>Gets the characters once the world has started; null before.</summary>
     public ServerCharacters? Characters => _characters;
 
+    /// <summary>Gets the sender of the own-state snapshots once the world has started; null before.</summary>
+    public OwnStateSender? Sender => _sender;
+
     /// <summary>Registers the binder as the tick participant and the player observer of a server runtime.</summary>
     /// <param name="runtime">The runtime, not started yet.</param>
     public void Register(ServerRuntime runtime)
@@ -83,7 +86,11 @@ public sealed class ServerCharactersBinder : IServerTickParticipant, IServerPlay
     public void OnPlayerReady(PlayerId player) => Ensure(_runtime ?? throw new InvalidOperationException("The binder is not registered.")).Spawn(player);
 
     /// <inheritdoc />
-    public void OnPlayerLeaving(PlayerId player, DisconnectCode reason) => _characters?.Despawn(player);
+    public void OnPlayerLeaving(PlayerId player, DisconnectCode reason)
+    {
+        _characters?.Despawn(player);
+        _sender?.Forget(player);
+    }
 
     private ServerCharacters Ensure(ServerRuntime runtime)
     {

@@ -4,6 +4,7 @@ using Horyzont.Client;
 using Horyzont.Client.Session;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.World;
+using Horyzont.Game.Frames;
 using Horyzont.Game.Planet.Sky;
 
 namespace Horyzont.Game.Client.Sky;
@@ -138,6 +139,6 @@ public sealed partial class ClientDayNight : Node, IClientSessionListener
         _environment.BackgroundEnergyMultiplier = skyEnergy;
         _environment.AmbientLightEnergy = Mathf.Lerp(0.04f, 1f, Daylight);
         _sun!.LightEnergy = 1.4f * Daylight;
-        _environment.SkyRotation = new Basis(new Quaternion(Vector3.Up, new Vector3(up.X, up.Y, up.Z))).GetEuler();
+        _environment.SkyRotation = new Basis(new Quaternion(Vector3.Up, PlanetFrames.ToGodotDirection(planet.Id, up))).GetEuler();
     }
 }

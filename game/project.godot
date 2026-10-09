@@ -143,3 +143,8 @@ common/physics_interpolation=true
 
 renderer/rendering_method="forward_plus"
 rendering_device/driver.windows="vulkan"
+
+[voxel]
+
+; The C# wrapper of the VoxelBuffer handed to a stream callback holds one extra reference by design; Voxel Tools recommends turning this check off for C#.
+ownership_checks=false

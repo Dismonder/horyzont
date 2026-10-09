@@ -124,6 +124,9 @@ public sealed class GameComposition
     /// <summary>Gets the characters of the server (null in client mode, with characters off, and before the world has started).</summary>
     public ServerCharacters? ServerCharacters => _characters?.Characters;
 
+    /// <summary>Gets the sender of the own-state snapshots (solo, host and dedicated server); null before the world has started.</summary>
+    public OwnStateSender? OwnState => _characters?.Sender;
+
     /// <summary>Gets the local player (prediction, camera); null in dedicated server mode and with characters off.</summary>
     public LocalPlayer? LocalPlayer { get; }
 
@@ -184,7 +187,9 @@ public sealed class GameComposition
         var loggers = env.Loggers;
         var rules = new GameRules();
         var movement = ScaledMovement(launch.DevSpeed);
-        var devFlight = launch.Mode == ProcessMode.DedicatedServer ? launch.Dev : env.DevBuild;
+        // Solo and host own the server, so the build decides. A dedicated server follows its --dev flag, and a connecting client must be
+        // started with --dev too (ServerHello does not carry the permission); the server has to run with --dev as well.
+        var devFlight = launch.Mode is ProcessMode.DedicatedServer or ProcessMode.Client ? launch.Dev : env.DevBuild;
         ServerCharactersBinder? characters = null;
         LocalPlayer? localPlayer = null;
         ClientDayNight? dayNight = null;
