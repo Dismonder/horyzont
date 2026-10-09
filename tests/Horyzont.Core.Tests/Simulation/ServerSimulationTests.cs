@@ -46,6 +46,22 @@ public sealed class ServerSimulationTests
     }
 
     [Fact]
+    public void Applied_ThrowingSubscriber_DoesNotFaultOrUndoTheOperation()
+    {
+        var f = new SimFixture();
+        f.Sim.Applied += _ => throw new InvalidOperationException("subscriber");
+        var p = f.Join();
+
+        var results = Enumerable.Range(0, 5).Select(_ => f.Sim.Submit(p, f.Dig(p, f.Ground(2)))).ToList();
+
+        Assert.All(results, r => Assert.True(r.IsAccepted));
+        Assert.False(f.Sim.IsFaulted);
+        Assert.Equal(6, f.Journal.Entries.Count);
+        Assert.Equal(RejectReason.RateLimited, f.Sim.Submit(p, f.Dig(p, f.Ground(2))).Reason);
+        Assert.Equal(6, f.Journal.Entries.Count);
+    }
+
+    [Fact]
     public void Submit_SixthTerrainEditInOneTick_RejectedUntilTheWindowOfOneSecondPasses()
     {
         var f = new SimFixture();

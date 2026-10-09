@@ -54,9 +54,9 @@ public sealed class ServerSimulation
     public GameRules Rules { get; }
 
     /// <summary>
-    /// Raised on the calling thread after an operation of <see cref="Submit"/> or <see cref="ApplyServerOperation"/> was applied and
-    /// journaled (not for <see cref="Replay"/>). The simulation does not guard against a subscriber that throws: the exception reaches
-    /// the caller of the submit, so a subscriber has to catch its own failures.
+    /// Raised on the calling thread after an operation of <see cref="Submit"/> or <see cref="ApplyServerOperation"/> was applied,
+    /// journaled and (for an intent) charged to the limiter (not for <see cref="Replay"/>). A subscriber that throws does not fault the
+    /// simulation and does not change the result: the exception is logged and swallowed, because the operation is already journaled.
     /// </summary>
     public event Action<AppliedOperation>? Applied;
 
@@ -95,6 +95,7 @@ public sealed class ServerSimulation
             buckets!.TerrainWindow.Record(State.CurrentTick.Value);
         }
 
+        RaiseApplied(applied);
         return IntentResult.Accepted(applied);
     }
 
@@ -143,7 +144,9 @@ public sealed class ServerSimulation
             throw new InvalidOperationException($"{operation.Kind} breaks a precondition: {failure}");
         }
 
-        return ApplyAndJournal(null, operation);
+        var applied = ApplyAndJournal(null, operation);
+        RaiseApplied(applied);
+        return applied;
     }
 
     /// <summary>Applies a <see cref="PlayerLeaveOp"/> with the current kinematics for every online player, by player id.</summary>
@@ -264,9 +267,23 @@ public sealed class ServerSimulation
             throw;
         }
 
-        // After the journal: a subscriber (K2-13: the construct view of a host) sees only operations that are applied and journaled.
-        Applied?.Invoke(applied);
         return applied;
+    }
+
+    // After the journal and the limiter bookkeeping: a subscriber (K2-13: the construct view of a host) sees only operations that are
+    // applied and journaled; its failure must not undo or fault anything.
+    private void RaiseApplied(AppliedOperation applied)
+    {
+        try
+        {
+            Applied?.Invoke(applied);
+        }
+#pragma warning disable CA1031 // Subscriber code is foreign; the operation is already journaled.
+        catch (Exception exception)
+#pragma warning restore CA1031
+        {
+            SimulationLog.AppliedSubscriberFailed(_logger, exception, applied.Id.Value);
+        }
     }
 
     private PlayerBuckets? BucketsOf(PlayerId player)
