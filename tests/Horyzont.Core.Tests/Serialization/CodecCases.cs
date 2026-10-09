@@ -133,6 +133,12 @@ public static class CodecCases
                 CodecGen.ChunkBlocks,
                 b => StateCodec.EncodeChunkBlob(b),
                 d => StateCodec.DecodeChunkBlob(d)) with { MaxChunks = 1 },
+            Blob(
+                "TerrainBlockBlob",
+                BlobKind.TerrainBlock,
+                CodecGen.TerrainBlockBlob,
+                b => StateCodec.EncodeTerrainBlockBlob(b.VoxelFormat, b.Voxels),
+                d => StateCodec.DecodeTerrainBlockBlob(d)),
         ];
     }
 

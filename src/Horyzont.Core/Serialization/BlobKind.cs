@@ -14,4 +14,7 @@ public enum BlobKind : byte
 
     /// <summary>Planet parameters.</summary>
     PlanetParams = 4,
+
+    /// <summary>The voxels of one LOD 0 terrain block (K2-09); the payload format is opaque to Core.</summary>
+    TerrainBlock = 5,
 }

@@ -102,7 +102,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             versions[i] = new TerrainBlockVersion(_affected[i], state.TerrainVersions.Bump(_affected[i]));
         }
 
-        terrain.ApplyEdit(op);
+        terrain.ApplyEdit(op, versions);
         return versions;
     }
 
@@ -143,32 +143,14 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
 
     private string? CheckTerrainEdit(TerrainEditOp op)
     {
-        if (!state.Planets.TryGet(op.Planet, out _))
+        if (!state.Planets.TryGet(op.Planet, out var planet))
         {
             return "unknown planet";
         }
 
-        if (op.Shape != TerrainShape.Sphere || !Enum.IsDefined(op.Mode))
+        if (!TerrainRules.CheckEdit(op, planet, out var failure))
         {
-            return "unknown shape or mode";
-        }
-
-        if (!Geometry.IsFinite(op.Center) || !float.IsFinite(op.Radius) || op.Radius <= 0)
-        {
-            return "invalid centre or radius";
-        }
-
-        // Journal entries are untrusted input: bound the work Apply and Replay do (AffectedBlocks grows with the radius).
-        // Every operation the validator produces is inside these bounds (tool radius <= MaxEditRadiusMeters, centre inside the atmosphere).
-        if (op.Radius > TerrainRules.MaxEditRadiusMeters)
-        {
-            return "radius too large";
-        }
-
-        state.Planets.TryGet(op.Planet, out var planet);
-        if (op.Center.Length() > planet!.RadiusMeters + planet.AtmosphereHeightMeters + TerrainRules.MaxEditRadiusMeters)
-        {
-            return "centre out of range";
+            return failure;
         }
 
         if (op.Mode == TerrainEditMode.Remove ? op.MaterialId != 0 : !state.Materials.IsKnown(op.MaterialId))

@@ -10,6 +10,7 @@ using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
+using Horyzont.Core.Serialization;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -465,6 +466,12 @@ public static class CodecGen
         from version in VarU32
         from data in Bytes(ProtocolConstants.MaxTerrainBlockDataBytes)
         select new TerrainBlockData(key, version, data);
+
+    /// <summary>Terrain block blobs (envelope fields; the voxel payload is opaque to Core).</summary>
+    public static Gen<TerrainBlockBlob> TerrainBlockBlob { get; } =
+        from voxelFormat in Gen.Choose(1, 255)
+        from voxels in Bytes(ProtocolConstants.MaxTerrainBlockDataBytes - 7)
+        select new TerrainBlockBlob((byte)voxelFormat, voxels);
 
     /// <summary>Terrain checksum messages.</summary>
     public static Gen<TerrainChecksums> TerrainChecksums { get; } =
