@@ -285,6 +285,38 @@ public class TerrainEditTests
 
     [TestCase(Timeout = 300000)]
     [RequireGodotRuntime]
+    public async Task Raycast_ThinSolidBetweenSamples_Hits()
+    {
+        await using var scene = EngineTestScene.Create();
+        await using var world = await TerrainTestWorld.CreateAsync(scene);
+        world.AddViewer(TerrainTestWorld.Ground(0, 0));
+        AssertThat(await world.WaitLoaded(TerrainTestWorld.Ground(0, 0), 24)).IsTrue();
+        var tool = world.Node.Tool;
+        tool.Channel = TerrainChannels.Sdf;
+        var y = (int)S + 10;
+        for (var dx = -2; dx <= 2; dx++)
+        {
+            for (var dy = -1; dy <= 2; dy++)
+            {
+                for (var dz = -1; dz <= 2; dz++)
+                {
+                    tool.SetVoxelF(new Vector3I(dx, y + dy, dz), 1f);
+                }
+            }
+        }
+
+        // One solid voxel with air (+1) around it: along y = z = 0.25 the solid part is -1/9 < x < 1/9, between samples 0.5 m apart.
+        tool.SetVoxelF(new Vector3I(0, y, 0), -1f);
+
+        var hit = world.Service.Raycast(WorldFactory.HomePlanet, new Vector3(-0.25f, y + 0.25f, 0.25f), Vector3.UnitX, 1f, out var thin);
+
+        AssertThat(hit).IsTrue();
+        AssertThat(Math.Abs(thin.Position.X + (1f / 9f))).IsLess(0.01f);
+        AssertThat(Math.Abs(thin.Distance - (0.25f - (1f / 9f)))).IsLess(0.01f);
+    }
+
+    [TestCase(Timeout = 300000)]
+    [RequireGodotRuntime]
     public async Task TerrainService_OtherThread_Throws()
     {
         await using var scene = EngineTestScene.Create();

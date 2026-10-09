@@ -188,8 +188,10 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
 
     /// <inheritdoc />
     /// <remarks>
-    /// A ray march over the SDF with trilinear samples (<see cref="TerrainEditSemantics.RaycastStepMeters"/>), a binary search
-    /// after the sign change and the normal from the SDF gradient. Allocates no managed memory.
+    /// A ray march over the SDF with trilinear samples, stepping by the sampled distance (sphere tracing, scaled by
+    /// <see cref="TerrainEditSemantics.RaycastSdfStepFactor"/>, at least <see cref="TerrainEditSemantics.RaycastMinStepMeters"/>, at
+    /// most <see cref="TerrainEditSemantics.RaycastMaxSteps"/> steps), a binary search after the sign change and the normal from the
+    /// SDF gradient. Allocates no managed memory.
     /// </remarks>
     public bool Raycast(PlanetId planet, Vector3 origin, Vector3 direction, float maxDistance, out TerrainHit hit)
     {
@@ -204,7 +206,7 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
 
         var tool = entry.Node.Tool;
         var o = TerrainVectors.ToGodot(origin);
-        var d = TerrainVectors.ToGodot(direction);
+        var d = TerrainVectors.ToGodot(direction).Normalized();
         double near = 0;
         var sdfNear = Sample(tool, o);
         double far;
@@ -216,9 +218,19 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
         }
         else
         {
+            var steps = 0;
             while (true)
             {
-                far = Math.Min(near + TerrainEditSemantics.RaycastStepMeters, maxDistance);
+                if (++steps > TerrainEditSemantics.RaycastMaxSteps)
+                {
+                    return false;
+                }
+
+                // The sampled SDF is about the distance to the surface (in voxels of 1 m, divided by the edit SDF scale); the factor
+                // keeps the step short of it where the trilinear field is steeper than 1, the minimum step bounds the work.
+                var step = Math.Max(
+                    sdfNear * TerrainEditSemantics.RaycastSdfStepFactor / TerrainEditSemantics.SdfScale, TerrainEditSemantics.RaycastMinStepMeters);
+                far = Math.Min(near + step, maxDistance);
                 sdfFar = Sample(tool, o + (d * far));
                 if (sdfFar < 0)
                 {

@@ -38,10 +38,24 @@ public static class TerrainEditSemantics
     /// </summary>
     public const float MaterialSphereRadiusOffset = 0f;
 
-    /// <summary>Step of the ray march of <c>Raycast</c> in metres.</summary>
-    public const float RaycastStepMeters = 0.5f;
+    // Raycast parameters: the result feeds operations but is not replayed, so changing them needs no SemanticsVersion bump.
 
-    /// <summary>Binary search iterations of <c>Raycast</c> after a sign change (0.5 m / 2^10, about 0.5 mm).</summary>
+    /// <summary>
+    /// Share of the sampled SDF distance the ray march of <c>Raycast</c> advances per step (sphere tracing). Below 1 because the
+    /// trilinear field can be steeper than a true distance (up to √3 for 1-Lipschitz voxels, more next to edited voxels).
+    /// </summary>
+    public const double RaycastSdfStepFactor = 0.5;
+
+    /// <summary>
+    /// Shortest step of the ray march in metres (0.1 voxel): near the surface the march never advances less, so a solid interval of
+    /// at least this length on the ray is never stepped over.
+    /// </summary>
+    public const double RaycastMinStepMeters = 0.1;
+
+    /// <summary>Most steps of one ray march; a ray still in the air after them misses.</summary>
+    public const int RaycastMaxSteps = 1024;
+
+    /// <summary>Binary search iterations of <c>Raycast</c> after a sign change (near the surface the last step is the minimum step: 0.1 m / 2^10, about 0.1 mm).</summary>
     public const int RaycastBinarySearchIterations = 10;
 
     /// <summary>Compression of the voxel payload in the blob (zstd; decoding does not depend on it).</summary>
