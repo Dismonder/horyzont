@@ -43,16 +43,16 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.RayOriginMismatch;
         }
 
-        if (!bucket.HasToken)
+        if (!bucket.HasToken || (intent is TerrainToolIntent && !buckets.TerrainWindow.CanAccept(state.CurrentTick.Value)))
         {
             return RejectReason.RateLimited;
         }
 
         return intent switch
         {
-            TerrainToolIntent tool => ValidateTerrainTool(tool, hasPlanet, playerPlanet, out facts),
+            TerrainToolIntent tool => ValidateTerrainTool(tool, hasPlanet, playerPlanet, eye, out facts),
             PlaceBlockIntent { Target: ConstructFaceTarget face } place => ValidatePlaceOnFace(place, face, hasPlanet, playerPlanet, eye, out facts),
-            PlaceBlockIntent { Target: TerrainTarget target } place => ValidatePlaceOnTerrain(place, target, hasPlanet, playerPlanet, out facts),
+            PlaceBlockIntent { Target: TerrainTarget target } place => ValidatePlaceOnTerrain(place, target, hasPlanet, playerPlanet, eye, out facts),
             RemoveBlockIntent remove => ValidateRemove(remove, hasPlanet, playerPlanet, eye, out facts),
             _ => RejectReason.InvalidParameters,
         };
@@ -89,7 +89,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
         }
     }
 
-    private RejectReason ValidateTerrainTool(TerrainToolIntent tool, bool hasPlanet, PlanetId playerPlanet, out IntentFacts facts)
+    private RejectReason ValidateTerrainTool(TerrainToolIntent tool, bool hasPlanet, PlanetId playerPlanet, Vector3 eye, out IntentFacts facts)
     {
         facts = default;
         if (!state.Planets.TryGet(tool.Planet, out var planet))
@@ -116,6 +116,11 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
         if (!terrain.Raycast(tool.Planet, tool.RayOrigin, tool.RayDirection, rules.ReachMeters, out var hit))
         {
             return RejectReason.NoHit;
+        }
+
+        if (Vector3.Distance(eye, hit.Position) > rules.ReachMeters)
+        {
+            return RejectReason.OutOfReach;
         }
 
         if (ConstructRaycast.Raycast(state.Constructs, FrameRef.Of(tool.Planet), tool.RayOrigin, tool.RayDirection, hit.Distance, out var blocker)
@@ -220,7 +225,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
     }
 
     private RejectReason ValidatePlaceOnTerrain(
-        PlaceBlockIntent place, TerrainTarget target, bool hasPlanet, PlanetId playerPlanet, out IntentFacts facts)
+        PlaceBlockIntent place, TerrainTarget target, bool hasPlanet, PlanetId playerPlanet, Vector3 eye, out IntentFacts facts)
     {
         facts = default;
         var block = CheckBlockType(place);
@@ -242,6 +247,11 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
         if (!terrain.Raycast(target.Planet, target.RayOrigin, target.RayDirection, rules.ReachMeters, out var hit))
         {
             return RejectReason.NoHit;
+        }
+
+        if (Vector3.Distance(eye, hit.Position) > rules.ReachMeters)
+        {
+            return RejectReason.OutOfReach;
         }
 
         if (ConstructRaycast.Raycast(state.Constructs, FrameRef.Of(target.Planet), target.RayOrigin, target.RayDirection, hit.Distance, out var blocker)

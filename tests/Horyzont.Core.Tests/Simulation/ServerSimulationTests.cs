@@ -31,7 +31,7 @@ public sealed class ServerSimulationTests
     }
 
     [Fact]
-    public void Submit_SixthTerrainEditInOneTick_RejectedUntilTwelveTicks()
+    public void Submit_SixthTerrainEditInOneTick_RejectedUntilTheWindowOfOneSecondPasses()
     {
         var f = new SimFixture();
         var p = f.Join();
@@ -42,6 +42,12 @@ public sealed class ServerSimulationTests
 
         Assert.Equal(RejectReason.RateLimited, f.Sim.Submit(p, f.Dig(p, f.Ground(2))).Reason);
         f.Ticks(11);
+        Assert.Equal(RejectReason.RateLimited, f.Sim.Submit(p, f.Dig(p, f.Ground(2))).Reason);
+
+        // K2-13 W3 (gate decision D13): the bucket alone would accept at tick 12, the sliding window holds the five edits until tick 60.
+        f.Ticks(1);
+        Assert.Equal(RejectReason.RateLimited, f.Sim.Submit(p, f.Dig(p, f.Ground(2))).Reason);
+        f.Ticks(47);
         Assert.Equal(RejectReason.RateLimited, f.Sim.Submit(p, f.Dig(p, f.Ground(2))).Reason);
         f.Ticks(1);
         Assert.True(f.Sim.Submit(p, f.Dig(p, f.Ground(2))).IsAccepted);

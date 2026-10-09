@@ -83,6 +83,11 @@ public sealed class ServerSimulation
 
         var applied = ApplyAndJournal(player, operation);
         IntentValidator.BucketFor(intent, buckets!)!.Consume();
+        if (intent is TerrainToolIntent)
+        {
+            buckets!.TerrainWindow.Record(State.CurrentTick.Value);
+        }
+
         return IntentResult.Accepted(applied);
     }
 
