@@ -16,8 +16,8 @@ public sealed class ServerTerrainBlocksConcurrencyTests
         [new(0.5f, 3999.5f, 0.5f), new(15.5f, 3999f, -0.5f), new(-16f, 3990f, 16f), new(1f, 4001f, 30f)];
 
     /// <summary>
-    /// Eight threads read blocks while the server thread edits, checkpoints and commits: every (version, blob) read equals the blob
-    /// recorded for that version, and per thread the version of a key never decreases.
+    /// Eight threads read blocks while the server thread edits, checkpoints and commits: every (version, blob) read is at least the
+    /// version published (Record returned) before the call, equals the blob recorded for that version, and per thread the version of a key never decreases.
     /// </summary>
     [Fact]
     public async Task TryLoad_EightThreadsDuringEditsAndCheckpoints_PairsMatchOracleAndNeverGoBack()
@@ -46,6 +46,7 @@ public sealed class ServerTerrainBlocksConcurrencyTests
                 while (!stop.IsCancellationRequested)
                 {
                     var key = keyArray[random.Next(keyArray.Length)];
+                    var published = server.Published.GetValueOrDefault(key);
                     var result = server.Blocks.TryLoad(key, out var version, out var blob);
                     reads[t]++;
                     if (result == TerrainBlockLookup.Unavailable)
@@ -54,8 +55,18 @@ public sealed class ServerTerrainBlocksConcurrencyTests
                         continue;
                     }
 
-                    if (result == TerrainBlockLookup.Found
-                        && (!server.Recorded.TryGetValue((key, version), out var expected) || !expected.AsSpan().SequenceEqual(blob)))
+                    if (result == TerrainBlockLookup.NotEdited)
+                    {
+                        if (published != 0)
+                        {
+                            failures.Enqueue($"{key} not edited although version {published} was published before the call");
+                        }
+                    }
+                    else if (version < published)
+                    {
+                        failures.Enqueue($"{key} returned version {version} below the published {published}");
+                    }
+                    else if (!server.Recorded.TryGetValue((key, version), out var expected) || !expected.AsSpan().SequenceEqual(blob))
                     {
                         failures.Enqueue($"{key} version {version} has data of another version");
                     }

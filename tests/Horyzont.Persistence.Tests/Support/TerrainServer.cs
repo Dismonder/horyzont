@@ -55,6 +55,9 @@ internal sealed class TerrainServer : IAsyncDisposable
     /// <summary>Every recorded (key, version) with its blob: the oracle of concurrent readers.</summary>
     public ConcurrentDictionary<(TerrainBlockKey Key, uint Version), byte[]> Recorded { get; } = new();
 
+    /// <summary>The newest version per key whose <c>Record</c> call has returned (readers on other threads may rely on it).</summary>
+    public ConcurrentDictionary<TerrainBlockKey, uint> Published { get; } = new();
+
     public bool FaultsExpected { get; set; }
 
     public static TerrainServer CreateNew(string path, IPersistenceFaults? faults = null, TerrainBufferOptions? options = null)
@@ -85,6 +88,7 @@ internal sealed class TerrainServer : IAsyncDisposable
                 var blob = terrain.GetBlockData(version.Key);
                 server.Recorded[(version.Key, version.Version)] = blob;
                 blocks.Record(version.Key, version.Version, blob);
+                server.Published[version.Key] = version.Version;
             }
         };
 
