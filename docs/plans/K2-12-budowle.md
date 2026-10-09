@@ -405,7 +405,7 @@ Fikstury `ConstructFixtures` (w `tests/Horyzont.Testing`, przez publiczny `World
 - [x] 5. `BlockRenderTableTests` → `BlockRenderInfo`, `BlockRenderTable`. Zielone.
 - [x] 6. `NaiveFaceOracle`, testy meshera (przykłady, właściwości, alokacje) → `ChunkMeshInput`, `ChunkMeshData`, `ChunkMesher` (render i kolizja). Zielone, w tym test alokacji.
 - [x] 7. `ConstructDirtyChunksTests`, `WorldStateConstructSourceTests`, `ChunkRemeshQueueTests` → `Sources/*`, `Scheduling/*`. Zielone.
-- [ ] 8. `ConstructFixtures` i `MesherTimingTests` `[Slow]`; wpisz czasy do opisu PR.
+- [x] 8. `ConstructFixtures` i `MesherTimingTests` `[Slow]`; wpisz czasy do opisu PR.
 - [ ] 9. Gra: `CollisionLayers` i nazwy warstw w `project.godot`; `BlockContentLoader`, `GodotShapeMeshResolver`, `BlockVisuals` + `blocks.gdshader`, `ChunkMeshUploader`, `MeshWorkerPool`, `ConstructChunkNode`, `ConstructNode`, `ConstructWorld`, `BlockMeshFactory`. Logowanie wyłącznie `[LoggerMessage]`.
 - [ ] 10. Testy silnika `ConstructWorldTests` (najpierw czerwone na pustych metodach), potem implementacja do zielonego.
 - [ ] 11. `ConstructHitchTests` `[Slow]` na Windows i Linux w CI. Przy przekroczeniu: profiler Godota, zmniejszenie budżetu, podział przesyłania kolizji na osobne klatki od siatki, ewentualnie `RenderingServer.MeshAddSurface` z buforem bajtów (Pułapki); bez podnoszenia progu.
