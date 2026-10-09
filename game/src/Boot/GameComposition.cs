@@ -5,13 +5,18 @@ using Godot;
 using Horyzont.Client.Session;
 using Horyzont.Core;
 using Horyzont.Core.Hashing;
+using Horyzont.Core.Motion;
 using Horyzont.Core.Protocol;
+using Horyzont.Core.Simulation;
 using Horyzont.Core.World;
 using Horyzont.Game.Client;
+using Horyzont.Game.Client.Character;
+using Horyzont.Game.Client.Sky;
 using Horyzont.Game.Planet;
 using Horyzont.Game.Planet.Generators;
 using Horyzont.Game.Planet.Rendering;
 using Horyzont.Game.Server;
+using Horyzont.Game.Server.Characters;
 using Horyzont.Net.Session;
 using Horyzont.Net.Transport;
 using Horyzont.Net.Transport.InMemory;
@@ -49,6 +54,7 @@ public sealed class GameComposition
     private readonly Guid _worldId;
     private readonly bool _worldIdFromConfig;
     private readonly OwnTerrainProvider? _ownTerrain;
+    private readonly ServerCharactersBinder? _characters;
     private bool _clientEnded;
     private bool _serverRan;
     private bool _released;
@@ -61,8 +67,12 @@ public sealed class GameComposition
     private GameComposition(
         LaunchOptions launch, GameEnvironment env, Node root, ITransport? serverTransport, ITransport? clientTransport, ServerRuntime? server,
         ClientRuntime? client, ServerNode? serverNode, ClientNode? clientNode, VoxelServerTerrainFactory? terrainFactory, OwnTerrainProvider? ownTerrain,
-        string? savesDir, ServerConfig? config, LocalProfile? profile, Guid worldId, bool worldIdFromConfig)
+        string? savesDir, ServerConfig? config, LocalProfile? profile, Guid worldId, bool worldIdFromConfig, ServerCharactersBinder? characters,
+        LocalPlayer? localPlayer, ClientDayNight? dayNight)
     {
+        _characters = characters;
+        LocalPlayer = localPlayer;
+        DayNight = dayNight;
         _launch = launch;
         _env = env;
         _logger = env.Loggers.CreateLogger<GameComposition>();
@@ -105,6 +115,18 @@ public sealed class GameComposition
 
     /// <summary>Gets the terrain the client sees; set by <see cref="StartAsync"/> in solo and host mode.</summary>
     public IClientTerrainProvider? ClientTerrain => ClientNode?.TerrainProvider;
+
+    /// <summary>Gets the characters of the server (null in client mode, with characters off, and before the world has started).</summary>
+    public ServerCharacters? ServerCharacters => _characters?.Characters;
+
+    /// <summary>Gets the local player (prediction, camera); null in dedicated server mode and with characters off.</summary>
+    public LocalPlayer? LocalPlayer { get; }
+
+    /// <summary>Gets the sun and sky of the client; null in dedicated server mode and with characters off.</summary>
+    public ClientDayNight? DayNight { get; }
+
+    /// <summary>Gets the movement rules the server characters and the local player share in this process.</summary>
+    public MovementRules Movement { get; private init; } = new();
 
     /// <summary>Gets the world file; null in client mode.</summary>
     public string? WorldPath => _savesDir is null ? null : WorldPathOf(_savesDir, _worldId);
@@ -149,6 +171,12 @@ public sealed class GameComposition
 
         var buildHash = BuildInfo.ComputeBuildHash(GeneratorProfiles.BuildHashComponent);
         var loggers = env.Loggers;
+        var rules = new GameRules();
+        var movement = ScaledMovement(launch.DevSpeed);
+        var devFlight = launch.Mode == ProcessMode.DedicatedServer ? launch.Dev : env.DevBuild;
+        ServerCharactersBinder? characters = null;
+        LocalPlayer? localPlayer = null;
+        ClientDayNight? dayNight = null;
         ServerRuntime? server = null;
         ClientRuntime? client = null;
         ITransport? serverTransport = null;
@@ -192,7 +220,7 @@ public sealed class GameComposition
             {
                 case ProcessMode.Solo:
                 case ProcessMode.Host:
-                    network = new InMemoryNetwork(env.Time);
+                    network = new InMemoryNetwork(env.Time, env.LocalLink);
                     var local = network.CreateTransport("server", TransportOptions.Default);
                     listen.Add(new InMemoryEndpoint("server"));
                     if (launch.Mode == ProcessMode.Host)
@@ -229,10 +257,18 @@ public sealed class GameComposition
                 CheckpointInterval = dedicated ? config!.CheckpointInterval : TimeSpan.FromSeconds(60),
                 MaterialKeys = TerrainMaterials.Keys,
                 RecoverFromCheckpoint = launch.RecoverFromCheckpoint,
+                Rules = rules,
+                NewPlayerSpawn = env.Characters ? SpawnLocator.ForNewPlayer : null,
             };
             var seed = launch.GalaxySeed;
             server = new ServerRuntime(
                 launch.Mode, runtimeOptions, serverTransport, factory, () => NewWorld(worldId, seed), env.Time, loggers);
+
+            if (env.Characters)
+            {
+                characters = new ServerCharactersBinder(serverNode!, factory, rules, movement, devFlight, loggers);
+                characters.Register(server);
+            }
 
             DedicatedConsole? console = null;
             if (dedicated && env.ConsoleInput is not null)
@@ -257,6 +293,11 @@ public sealed class GameComposition
 
             client = new ClientRuntime(clientTransport!, new ClientOptions { BuildHash = buildHash }, isHostLocal, env.Time, loggers);
             clientNode!.Initialize(client, loggers.CreateLogger<ClientNode>());
+            if (env.Characters)
+            {
+                (localPlayer, dayNight) = CreateClientCharacter(clientNode, client, server, env, rules, movement, devFlight);
+            }
+
             if (!isHostLocal)
             {
                 var terrainParent = new Node3D { Name = "Terrain" };
@@ -270,7 +311,15 @@ public sealed class GameComposition
 
         var composition = new GameComposition(
             launch, env, root, serverTransport, clientTransport, server, client, serverNode, clientNode, factory, own, savesDir, config, profile,
-            worldId, fromConfig);
+            worldId, fromConfig, characters, localPlayer, dayNight)
+        {
+            Movement = movement,
+        };
+        if (env.Characters && env.Render && launch.ScreenshotPath is { } screenshot && clientNode is not null)
+        {
+            root.AddChild(new ScreenshotHook(screenshot, launch.ScreenshotAfterSeconds, env.Print));
+        }
+
         if (clientNode is not null)
         {
             clientNode.SessionEnded += composition.OnClientEnded;
@@ -288,6 +337,52 @@ public sealed class GameComposition
         }
 
         return composition;
+    }
+
+    /// <summary>Walking and sprinting speed scaled by <c>--dev-speed</c> (the accelerations scale with it so the character reaches the speed as fast as before).</summary>
+    private static MovementRules ScaledMovement(float factor)
+    {
+        var movement = new MovementRules();
+        return factor == 1f
+            ? movement
+            : movement with
+            {
+                WalkSpeed = movement.WalkSpeed * factor,
+                SprintSpeed = movement.SprintSpeed * factor,
+                GroundAcceleration = movement.GroundAcceleration * factor,
+                GroundDeceleration = movement.GroundDeceleration * factor,
+            };
+    }
+
+    private static (LocalPlayer Player, ClientDayNight Sky) CreateClientCharacter(
+        ClientNode clientNode, ClientRuntime client, ServerRuntime? server, GameEnvironment env, GameRules rules, MovementRules movement,
+        bool devFlight)
+    {
+        var reader = new LocalInputReader { Name = "Input" };
+        var rig = new CameraRig();
+        DevFlyCamera? dev = devFlight ? new DevFlyCamera(movement) : null;
+        var player = new LocalPlayer { Name = "LocalPlayer" };
+        player.Initialize(clientNode, client, rig, dev, reader, rules, movement, devFlight, env.Render, env.Loggers);
+        Func<ulong?>? hostTick = server is null
+            ? null
+            : () => server.RuntimeState is ServerRuntimeState.Running or ServerRuntimeState.SafeMode ? server.State.CurrentTick.Value : null;
+        var sky = new ClientDayNight(player, hostTick, env.Render);
+        sky.Initialize(client);
+        clientNode.AddChild(reader);
+        clientNode.AddChild(rig);
+        if (dev is not null)
+        {
+            clientNode.AddChild(dev);
+        }
+
+        clientNode.AddChild(player);
+        clientNode.AddChild(sky);
+        if (env.Render)
+        {
+            clientNode.AddChild(new HelpOverlay(player, sky, dev));
+        }
+
+        return (player, sky);
     }
 
     private QuitCoordinator? Quit { get; set; }

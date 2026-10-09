@@ -97,6 +97,9 @@ internal static partial class ServerLog
     [LoggerMessage(EventId = 8106, Level = LogLevel.Debug, Message = "Intent {ClientSeq} of player {Player} refused: the server is read-only")]
     public static partial void IntentRefusedReadOnly(this ILogger logger, ulong player, uint clientSeq);
 
+    [LoggerMessage(EventId = 8107, Level = LogLevel.Error, Message = "A player observer failed while player {Player} was leaving; the leave goes on")]
+    public static partial void ObserverFailed(this ILogger logger, ulong player, Exception exception);
+
     [LoggerMessage(EventId = 8201, Level = LogLevel.Information, Message = "Console command {Command}")]
     public static partial void ConsoleCommand(this ILogger logger, string command);
 

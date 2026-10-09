@@ -336,11 +336,11 @@ Plany K2-08 i K2-10 nie są gotowe w chwili pisania tego planu, więc kolumna �
 | Potrzeba | Od | Rzeczywisty typ (krok 0) |
 | --- | --- | --- |
 | `PlanetTerrain` (węzeł w środku planety, jednostkowa baza; współrzędne voxeli = rama planety), `VoxelTerrainService.TryGetPlanet`, `IsAreaLoaded`; u hosta jedna instancja terenu dla serwera i klienta | K2-09 | `game/src/Terrain/PlanetTerrain.cs`, `VoxelTerrainService.cs` |
-| Kolizje `VoxelLodTerrain` przy widzu `requires_collisions` na serwerze bez grafiki; teren na warstwie `CollisionLayers.Terrain` | K2-08 / K2-09 | |
-| `PlanetParams` planety domowej, wysokość powierzchni w kierunku z generatora CPU (dla `SpawnLocator`; opcjonalnie), maksymalna rzeźba profilu; `DayNightCycle.SunDirection`, węzeł `SunLight` (D12) | K2-08 | |
-| Pętla ticku serwera (miejsce na `ServerCharacters.Step` między `Poll` a tickiem symulacji), implementacja `IServerGameHooks` (`OnPlayerReady`, `OnPlayerLeft`, Prepare+Apply dołączenia), kanoniczna kolejność zamknięcia z `IServerTickParticipant.OnShutdown`, wątek symulacji = wątek główny Godota | K2-10 (+ K2-09) | |
-| Tryb procesu (solo, host, klient, serwer dedykowany), flaga dev, composition root `game/src/Boot/`, `IClientGameHooks.OnMessage` → `LocalPlayer`, `ServerHello` (`YourPlayer`, `YourEntity`, `Planets`, `TickRate`) dla klienta | K2-10 | |
-| Teren klienta zdalnego (osobny `PlanetTerrain` po stronie klienta) | K2-10 | |
+| Kolizje `VoxelLodTerrain` przy widzu `requires_collisions` na serwerze bez grafiki; teren na warstwie `CollisionLayers.Terrain` | K2-08 / K2-09 | `VoxelViewer` (ViewDistance 64, tylko kolizje) jako dziecko ciała; `CollisionLayers.Terrain` |
+| `PlanetParams` planety domowej, wysokość powierzchni w kierunku z generatora CPU (dla `SpawnLocator`; opcjonalnie), maksymalna rzeźba profilu; `DayNightCycle.SunDirection`, węzeł `SunLight` (D12) | K2-08 | `Horyzont.Core.World.PlanetParams`, `PlanetGenesis.CreatePlanet`, `GeneratorProfiles.CreateGenerator`, `GeneratorProbe.Sample`, `PlanetGeneratorV1.MaxReliefMeters`; `DayNightCycle.SunDirection(tick)`; `SunLight` tworzy `ClientDayNight` |
+| Pętla ticku serwera (miejsce na `ServerCharacters.Step` między `Poll` a tickiem symulacji), implementacja `IServerGameHooks` (`OnPlayerReady`, `OnPlayerLeft`, Prepare+Apply dołączenia), kanoniczna kolejność zamknięcia z `IServerTickParticipant.OnShutdown`, wątek symulacji = wątek główny Godota | K2-10 (+ K2-09) | `IServerTickParticipant.OnTick/OnShutdown`, `GameServerHooks`, `ServerRuntime`; nowe: `IServerPlayerObserver`, `NewPlayerSpawn` (Odstępstwo 16) |
+| Tryb procesu (solo, host, klient, serwer dedykowany), flaga dev, composition root `game/src/Boot/`, `IClientGameHooks.OnMessage` → `LocalPlayer`, `ServerHello` (`YourPlayer`, `YourEntity`, `Planets`, `TickRate`) dla klienta | K2-10 | `GameComposition`, `GameEnvironment` (`DevBuild`, `Characters`, `LocalLink`), `LaunchOptions`, `IClientSessionListener`, `ClientRuntime.Hello` |
+| Teren klienta zdalnego (osobny `PlanetTerrain` po stronie klienta) | K2-10 | `VoxelTerrainService` klienta w `GameComposition` |
 | `ServerSimulation.UpdatePlayerKinematics`, `PlayerState` | K1-03 (sprawdzone) | `src/Horyzont.Core/Simulation/ServerSimulation.cs:214` |
 | `ServerSession.TryTakeInput`/`Send`, `ClientSession.SendInputs` | K1-07 (sprawdzone) | `src/Horyzont.Net/Session/` |
 
@@ -438,18 +438,18 @@ Ręczne (`Manual`, wynik w PR):
 
 ## Kroki
 
-- [ ] 0. Warunki wejścia sprawdzone; tabela „Kontrakty konsumowane” wypełniona rzeczywistymi typami K2-08/K2-09/K2-10. Rozpoznanie (wynik w Odstępstwach): (a) kolizje `VoxelLodTerrain` przy widzu bez wizualizacji na serwerze headless (Windows i Linux); (b) jak wykryć gotową kolizję pod stopami (`GroundProbe`: promień fizyki w dół na warstwie `Terrain`); (c) interpolacja fizyki Godota 4.7.2 z `CharacterBody3D`, `SpringArm3D`, `Camera3D`; (d) wielokrotne `MoveAndSlide` w jednym ticku (powtórka korekty) widzi nową pozycję ciała. Odpowiedzi na P1–P9 albo przyjęte wartości domyślne wpisane.
+- [x] 0. Warunki wejścia sprawdzone; tabela „Kontrakty konsumowane” wypełniona rzeczywistymi typami K2-08/K2-09/K2-10. Rozpoznanie (wynik w Odstępstwach): (a) kolizje `VoxelLodTerrain` przy widzu bez wizualizacji na serwerze headless (Windows i Linux); (b) jak wykryć gotową kolizję pod stopami (`GroundProbe`: promień fizyki w dół na warstwie `Terrain`); (c) interpolacja fizyki Godota 4.7.2 z `CharacterBody3D`, `SpringArm3D`, `Camera3D`; (d) wielokrotne `MoveAndSlide` w jednym ticku (powtórka korekty) widzi nową pozycję ciała. Odpowiedzi na P1–P9 albo przyjęte wartości domyślne wpisane.
 - [x] 1. Testy `SurfaceFrame` (przegląd Opus przed kodem) → `SurfaceFrame` → zielone.
 - [x] 2. `IdealSphereBody` w `tests/Horyzont.Testing`; testy `CharacterMotor`/`MotorInput` (przegląd Opus) → `MovementRules`, `MovementMode`, `MotorInput`, `MotorContext`, `MotorOutput`, `CharacterMotor` → zielone, w tym obejście kuli i brak alokacji.
 - [x] 3. Testy kodeka → `InputButtons.DevFly`, `InputButtonsMask`, `ProtocolVersion = 3` (reguła D4), dokumentacja `PlayerInput.Yaw` i `EntityState.MotionFlags` → zielone (wszystkie istniejące testy uścisku dłoni i kodeka dalej zielone). Pominąć bez P1 = „tak” i wpisać „odroczone do X”.
 - [x] 4. Dokładka do `src/Horyzont.Client` i `tests/Horyzont.Client.Tests` z K2-10 (test architektury już jest); testy i kod `OrientationTracker`, `CameraRigMath`, `CameraUpSmoother`, `CameraContinuityMonitor`, `DevFlightSpeed`, `ILocalPlayerView`, `CameraMode`.
 - [x] 5. Testy i kod `InputSequencer`, `PredictionBuffer`, `PredictedState`, `CorrectionPolicy`, `OwnStateValidator`, `ClientLog` (z testami alokacji).
-- [ ] 6. `PlanetFrames`, użycie `CollisionLayers` z K2-12 (warstwy `ServerBodies`/`ClientBodies`; plik zakłada K2-12), `PlayerBody` + scena, `GroundProbe`; test silnika „spawn, zamrożenie, stanie na kuli”.
-- [ ] 7. `IInputSource`/`SessionInputSource`, `ServerCharacters`, `SpawnLocator`, `OwnStateSender`, `ServerCharactersLog`; wpięcie w pętlę serwera K2-10 (kolejność ticku), haki `OnPlayerReady`/`OnPlayerLeft` (Despawn przed `PlayerLeaveOp`), Prepare dołączenia z `SpawnLocator`, `OnShutdown` → `DespawnAll` w kanonicznej kolejności K2-10; testy silnika serwera.
-- [ ] 8. `LocalInputReader`, `LocalPlayer` (predykcja, korekta, bramka kolizji klienta, widzowie), `CameraRig` (TPP domyślnie, `V` przełącza FPP), akcje `InputMap`, rejestracja w composition root; testy `HostLoop_*`, `RemoteClient_*`.
-- [ ] 9. `DevFlyCamera` (F8/F9, widz wizualny za kamerą), lot postaci `DevFly` po stronie klienta; testy `DevCamera_*`, `DevFly_*`.
-- [ ] 9a. `ClientDayNight`: `SunLight` z K2-08 w scenie klienta, zasilany tickiem serwera; test `DayNight_SunFollowsServerTick` (D12).
-- [ ] 10. Test pozy `Kinematics_WalkThenLeave_LiveEqualsReplayEqualsCheckpointPlusTail`.
+- [x] 6. `PlanetFrames`, użycie `CollisionLayers` z K2-12 (warstwy `ServerBodies`/`ClientBodies`; plik zakłada K2-12), `PlayerBody` + scena, `GroundProbe`; test silnika „spawn, zamrożenie, stanie na kuli”.
+- [x] 7. `IInputSource`/`SessionInputSource`, `ServerCharacters`, `SpawnLocator`, `OwnStateSender`, `ServerCharactersLog`; wpięcie w pętlę serwera K2-10 (kolejność ticku), haki `OnPlayerReady`/`OnPlayerLeft` (Despawn przed `PlayerLeaveOp`), Prepare dołączenia z `SpawnLocator`, `OnShutdown` → `DespawnAll` w kanonicznej kolejności K2-10; testy silnika serwera.
+- [x] 8. `LocalInputReader`, `LocalPlayer` (predykcja, korekta, bramka kolizji klienta, widzowie), `CameraRig` (TPP domyślnie, `V` przełącza FPP), akcje `InputMap`, rejestracja w composition root; testy `HostLoop_*`, `RemoteClient_*`.
+- [ ] 9. (częściowo: `DevFlyCamera`, lot `DevFly` i test zgody serwera `ServerCharacters_DevFlyBit_*` gotowe; testy `DevCamera_*` i `DevFly_Character_ServerAndClientAgree` odroczone, weryfikacja ręczna w Manual_OrbitToSurface) `DevFlyCamera` (F8/F9, widz wizualny za kamerą), lot postaci `DevFly` po stronie klienta; testy `DevCamera_*`, `DevFly_*`.
+- [ ] 9a. (częściowo: `ClientDayNight` gotowy i uruchomiony w `--solo`; test `DayNight_SunFollowsServerTick` oraz orientacja nieba niezweryfikowane wzrokowo) `ClientDayNight`: `SunLight` z K2-08 w scenie klienta, zasilany tickiem serwera; test `DayNight_SunFollowsServerTick` (D12).
+- [ ] 10. (odroczone: test pozy nie napisany; pokrycie pośrednie: `ServerCharacters_EveryTick_UpdatesKinematics*`, `ServerCharacters_Despawn_*`) Test pozy `Kinematics_WalkThenLeave_LiveEqualsReplayEqualsCheckpointPlusTail`.
 - [ ] 11. (częściowo: wiersze `docs/ZASADY.md` pkt 2 i 3 dopisane; testy ręczne odroczone do części Godot) Testy ręczne z tabeli, wyniki do opisu PR; dopisanie do `docs/ZASADY.md` pkt 2 reguły „konwersja Godot ↔ rama planety tylko przez `PlanetFrames`” i do pkt 3 informacji, że `SurfaceFrame` definiuje znaczenie `PlayerInput.Yaw` (zmiana = `ProtocolVersion`).
 - [ ] 12. (częściowo: komentarze XML w Core i Client gotowe, build, test i format zielone lokalnie; `python tools/engine/build.py smoke` i CI odroczone do części Godot) Komentarze XML w Core i Client; lokalnie `dotnet build Horyzont.sln`, `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"`, `dotnet format Horyzont.sln --verify-no-changes`, `python tools/engine/build.py smoke`; CI zielone na gałęzi (Windows i Linux, z jobem `game`), po scaleniu zielone na `main` (lekcja 4).
 
@@ -483,6 +483,34 @@ Odstępstwa i decyzje (do przeglądu Opus):
 15. **Test `Kinematics_WalkThenLeave_*`** (krok 10) zależy od `ServerCharacters`, więc odroczony razem z częścią Godot; `CameraRigMath_FirstPerson_OriginEqualsServerEye` porównuje z prawdziwym `PlayerState.EyePosition` (poza ustawiona przez `UpdatePlayerKinematics`).
 
 Wyniki lokalne (z `F:/dev/horyzont-k2-11`): `dotnet build Horyzont.sln` 0 błędów, 0 ostrzeżeń; `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"` zielone (Core 1051, Client 89, Server 84, Net 112, Persistence 124, Constructs 86, Architecture 12, Integration 1); `dotnet format --verify-no-changes` czysto; `git diff cad1f70..HEAD` na korpusie złotym dzienników terenu i `TerrainJournalGoldenCorpusTests.cs` pusty.
+
+### Wykonanie części Godot (kroki 0 i 6–10, 11, 12; 2026-10-09)
+
+Odstępstwa i decyzje (do przeglądu Opus):
+16. **Haki w `Horyzont.Server`:** `IServerPlayerObserver` (`OnPlayerReady`, `OnPlayerLeaving` przed `PlayerLeaveOp`), `NewPlayerSpawn` (poza pierwszego wejścia nowej tożsamości), `ServerRuntime.AddPlayerObserver`, `ServerRuntimeOptions.NewPlayerSpawn`; testy `PlayerObserverTests`. K2-10 nie miał miejsca na pozę startową ani na zwolnienie ciała przed wyjściem.
+17. **`ServerCharactersBinder`** tworzy `ServerCharacters` leniwie, bo symulacja istnieje dopiero po starcie serwera; buduje też `OwnStateSender`.
+18. **Ramię kamery TPP to raycast (`CameraRig.ResolveArm`), nie `SpringArm3D`**, bo SpringArm3D nie pozwala ustawić „góry" kamery na tick bez drgań.
+19. **`PlanetFrames`:** tożsamość (planeta w początku układu Godota); id planety 0 rzuca wyjątek; sprawdzenia skończoności i zakresu.
+20. **Zaokrąglenie do float32 po każdym kroku ciała** (pozycja i prędkość), inaczej ciała serwera i klienta rozjeżdżają się o szum i predykcja daje ciągłe korekty.
+21. **Docisk do podłoża:** chodzące ciała dostają prędkość radialną -0,05 m/s, bo Godot pomija przyciąganie do podłogi, gdy `velocity.dot(up) > 0` nawet o szum; `SafeMargin = 0,001`. Efekt: 2395/2400 ticków na podłodze.
+22. **`SpawnLocator`:** szuka miejsca o nachyleniu <= 0,27 w pierścieniach co 24 m (8 pierścieni) wokół +X; 35–63 ms. Pierwsza próba (proste +X) wypadała na stromym zboczu.
+23. **Zamrożenie do znalezienia gruntu** (`GroundProbe` w promieniu 8 m, limit 30 s, potem `Falling`); ratunek spod rdzenia: `Frozen` na pozycji `rescue`; zagłodzenie wejścia powyżej `MaxStarvedTicks`: krok neutralny.
+24. **Flagi `--dev-speed` (1–64, solo/host), `--screenshot`, `--screenshot-after`;** `GameEnvironment.DevBuild`, `Characters`, `LocalLink`. Test zdalnego klienta idzie przez `LocalLink` (50 ms w każdą stronę, 5% strat), nie przez UDP.
+25. **`HelpOverlay`** (etykieta sterowania i status, F1 przełącza), akcja `release_mouse` (Esc), po przechwyceniu myszy 400 ms ignorowania ruchu (pierwszy zrzut miał kamerę skierowaną w dół).
+26. **Testy:** „mesh gotowy" mierzony obszarem edytowalnym; `ModeFixture.WaitTerrainIdle` czeka na ciszę silnika voxeli przed pomiarem korekt (bez tego 1 z 8 przebiegów miał jedną korektę, bo kolizja pod ciałem jeszcze się przebudowywała).
+27. **`physics/common/physics_interpolation=true`**; wizualnie niezweryfikowane poza zrzutem ekranu.
+
+Rozpoznanie (krok 0): (a) niewizualny `VoxelViewer` (RequiresCollisions, 64 m) buduje kolizje także w trybie headless, promień trafia po 29–48 tickach fizyki, ok. 0,02 m nad idealną kulą; (b) `GroundProbe` przez `DirectSpaceState.IntersectRay` na warstwie Terrain działa; (c) interpolacja fizyki włączona; (d) wiele `MoveAndSlide` w jednym ticku widzi zaktualizowaną pozycję, wynik partii i pojedynczych kroków zgodny do 1 mm (`PlayerBody_RepeatedStepsInOneTick_MatchOneStepPerTick`).
+
+Pomiary: pętla hosta 0 korekt, błąd maks. 0,01 mm; zdalne łącze (50 ms, 5% strat) 4 korekty, błąd końcowy 0 mm; 8 graczy `Step` 0 bajtów alokacji / 600 ticków; przejście przez biegun 0 skoków kamery; spacer po szumie (4x prędkość) 0 skoków, 0 zakopań, 445 m. Znany nieszkodliwy komunikat Voxel Tools „Holding a reference to the passed VoxelBuffer…" z `TerrainStream` (K2-09).
+
+Odroczone: `DevCamera_OrbitToSurface_ViewerFollows_TerrainReadyOnArrival`, `DevFly_Character_ServerAndClientAgree`, `DayNight_SunFollowsServerTick`, `Kinematics_WalkThenLeave_*`, test wyłączania solo, test zdalnego klienta przez UDP; wzrokowa weryfikacja kierunku nieba.
+
+Lista testów ręcznych dla właściciela (nie do zrobienia bez wzroku):
+- [ ] `Manual_WalkAroundPlanet`: `--solo`, bieg (Shift+W) przez bieguny i wokół planety (`--dev-speed 16`): bez skoków kamery, TPP/FPP (V), skok, Esc zwalnia mysz, klik przechwytuje.
+- [ ] `Manual_OrbitToSurface`: F8 kamera deweloperska, F9 orbita i powrót do powierzchni: brak dziur w terenie, widoczny teren, F1 etykieta pomocy.
+- [ ] `Manual_HostAndRemoteClient`: `--host` + `--connect` w LAN: oba chodzą, klient bez przeskoków.
+- [ ] Cykl dnia i nocy: słońce się rusza, niebo obrócone do lokalnej góry wygląda poprawnie.
 
 ## Odbiór
 
