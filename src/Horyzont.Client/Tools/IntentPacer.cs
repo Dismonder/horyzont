@@ -1,0 +1,90 @@
+using Horyzont.Core.Simulation;
+
+namespace Horyzont.Client.Tools;
+
+/// <summary>
+/// Mirror of the server rate limits on client ticks: terrain edits pass a token bucket and the sliding window of one second
+/// (at most <see cref="GameRules.TerrainEditsPerSecond"/> in every window), block edits a token bucket. A held button repeats
+/// every <see cref="TerrainRepeatTicks"/> or <see cref="BlockRepeatTicks"/> ticks, which leaves room for jitter between the client
+/// and the server ticks. The client never sends an intent its mirror would refuse; the server enforces the limits anyway.
+/// </summary>
+public sealed class IntentPacer
+{
+    /// <summary>Ticks between repeats of a held terrain action (about 4.6 per second).</summary>
+    public const int TerrainRepeatTicks = 13;
+
+    /// <summary>Ticks between repeats of a held block action (4 per second).</summary>
+    public const int BlockRepeatTicks = 15;
+
+    private const int MaxCatchUpTicks = 1200;
+
+    private readonly TokenBucket _terrain;
+    private readonly TokenBucket _blocks;
+    private readonly SlidingWindowLimiter _window;
+    private long _lastTick;
+    private long _lastTerrainSend = long.MinValue / 2;
+    private long _lastBlockSend = long.MinValue / 2;
+    private bool _started;
+
+    /// <summary>Initializes a new instance of the <see cref="IntentPacer"/> class.</summary>
+    /// <param name="rules">Game rules (the same defaults as the server build).</param>
+    public IntentPacer(GameRules rules)
+    {
+        ArgumentNullException.ThrowIfNull(rules);
+        _terrain = new TokenBucket(rules.TerrainEditsPerSecond, rules.TerrainEditBurst, rules.TickRate);
+        _blocks = new TokenBucket(rules.BlockEditsPerSecond, rules.BlockEditBurst, rules.TickRate);
+        _window = new SlidingWindowLimiter(Math.Max(1, rules.TerrainEditsPerSecond), rules.TickRate);
+    }
+
+    /// <summary>Asks to send one intent of a class at a client tick; a granted request is consumed.</summary>
+    /// <param name="paceClass">Rate class.</param>
+    /// <param name="repeat">True for a held button (waits for the repeat interval), false for a fresh press.</param>
+    /// <param name="clientTick">Client physics tick, not decreasing.</param>
+    /// <returns>True when the intent may be sent now.</returns>
+    public bool TryAcquire(PaceClass paceClass, bool repeat, long clientTick)
+    {
+        Advance(clientTick);
+        var terrain = paceClass == PaceClass.Terrain;
+        var last = terrain ? _lastTerrainSend : _lastBlockSend;
+        var interval = terrain ? TerrainRepeatTicks : BlockRepeatTicks;
+        if (repeat && clientTick - last < interval)
+        {
+            return false;
+        }
+
+        var bucket = terrain ? _terrain : _blocks;
+        if (!bucket.HasToken || (terrain && !_window.CanAccept((ulong)clientTick)))
+        {
+            return false;
+        }
+
+        bucket.Consume();
+        if (terrain)
+        {
+            _window.Record((ulong)clientTick);
+            _lastTerrainSend = clientTick;
+        }
+        else
+        {
+            _lastBlockSend = clientTick;
+        }
+
+        return true;
+    }
+
+    private void Advance(long clientTick)
+    {
+        if (_started && clientTick > _lastTick)
+        {
+            var ticks = (int)Math.Min(clientTick - _lastTick, MaxCatchUpTicks);
+            for (var i = 0; i < ticks; i++)
+            {
+                _terrain.Refill();
+                _blocks.Refill();
+            }
+        }
+
+        _started = true;
+        _lastTick = Math.Max(_lastTick, clientTick);
+    }
+}
