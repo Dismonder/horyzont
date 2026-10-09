@@ -35,6 +35,14 @@ public class LaunchOptionsTests
     }
 
     [TestCase]
+    public void Parse_DevToolsDemo_SoloAndHostOnly()
+    {
+        AssertThat(LaunchOptions.Parse(["--solo", "--dev-tools-demo"]).DevToolsDemo).IsTrue();
+        AssertThat(LaunchOptions.Parse(["--solo"]).DevToolsDemo).IsFalse();
+        AssertThrown(() => LaunchOptions.Parse(["--connect", "127.0.0.1:27015", "--dev-tools-demo"])).IsInstanceOf<ArgumentException>();
+    }
+
+    [TestCase]
     public void Parse_Connect_ReadsHostAndPort()
     {
         var options = LaunchOptions.Parse(["--connect", "192.168.1.5:27016"]);

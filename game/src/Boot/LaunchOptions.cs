@@ -15,7 +15,7 @@ public sealed record LaunchOptions
 
     private static readonly string[] _flags =
     [
-        "--solo", "--host", "--server", "--restore-latest-backup", "--recover-from-checkpoint", "--dev",
+        "--solo", "--host", "--server", "--restore-latest-backup", "--recover-from-checkpoint", "--dev", "--dev-tools-demo",
     ];
 
     private static readonly string[] _valued =
@@ -68,6 +68,9 @@ public sealed record LaunchOptions
 
     /// <summary>Gets the factor applied to walking and sprinting speed in solo and host mode (<c>--dev-speed</c>, owner question P9); 1 normally.</summary>
     public float DevSpeed { get; init; } = 1f;
+
+    /// <summary>Gets a value indicating whether the tools play a short script (dig, fill, place blocks) once the player aims at the ground (<c>--dev-tools-demo</c>, for screenshots).</summary>
+    public bool DevToolsDemo { get; init; }
 
     /// <summary>Gets the file a screenshot of the game window is saved to (<c>--screenshot</c>); null for none.</summary>
     public string? ScreenshotPath { get; init; }
@@ -163,6 +166,7 @@ public sealed record LaunchOptions
         RequireOnly(reader, "--dev", mode, ProcessMode.DedicatedServer);
         RequireOnly(reader, "--seed", mode, ProcessMode.Solo, ProcessMode.Host, ProcessMode.DedicatedServer);
         RequireOnly(reader, "--dev-speed", mode, ProcessMode.Solo, ProcessMode.Host);
+        RequireOnly(reader, "--dev-tools-demo", mode, ProcessMode.Solo, ProcessMode.Host);
         RequireOnly(reader, "--screenshot", mode, ProcessMode.Solo, ProcessMode.Host, ProcessMode.Client);
         RequireOnly(reader, "--screenshot-after", mode, ProcessMode.Solo, ProcessMode.Host, ProcessMode.Client);
         var screenshot = reader.ValueOf("--screenshot");
@@ -192,6 +196,7 @@ public sealed record LaunchOptions
             RecoverFromCheckpoint = reader.Has("--recover-from-checkpoint"),
             Dev = reader.Has("--dev"),
             DevSpeed = reader.Number("--dev-speed", 1f, 64f) ?? 1f,
+            DevToolsDemo = reader.Has("--dev-tools-demo"),
             ScreenshotPath = screenshot is null ? null : Path.GetFullPath(screenshot),
             ScreenshotAfterSeconds = reader.Number("--screenshot-after", 1f, 3600f) ?? 20f,
         };
