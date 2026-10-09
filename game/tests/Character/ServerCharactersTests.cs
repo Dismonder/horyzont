@@ -225,6 +225,26 @@ public class ServerCharactersTests
         await scene.WaitFrames(2);
     }
 
+    [TestCase(Timeout = 400000)]
+    [RequireGodotRuntime]
+    public async Task ServerCharacters_DevFlyBit_IgnoredWithoutConsent_HonouredWithIt()
+    {
+        foreach (var allowed in new[] { false, true })
+        {
+            await using var scene = EngineTestScene.Create();
+            await using var rig = await CharacterRig.CreateAsync(scene, devFlight: allowed);
+            var player = rig.Join(1, _start);
+            AssertThat(await rig.WaitUnfrozenAsync(player)).IsTrue();
+            uint seq = 0;
+            rig.BeforeStep = tick => rig.Inputs.Enqueue(player, ++seq, new PlayerInput((uint)tick, 0f, 0f, 0f, 0f, InputButtons.DevFly));
+            AssertThat(await rig.WaitTicks(rig.Ticks + 10)).IsTrue();
+            rig.BeforeStep = null;
+
+            AssertThat(rig.Characters.TryGetState(player, out var state)).IsTrue();
+            AssertThat(state.Mode == MovementMode.DevFlying).IsEqual(allowed);
+        }
+    }
+
     [TestCase(Timeout = 600000)]
     [RequireGodotRuntime]
     public async Task ServerCharacters_Step_EightPlayers_DoesNotAllocate()
