@@ -1,6 +1,7 @@
 using Godot;
 
 using Horyzont.Game.Planet.Dev;
+using Horyzont.Game.Planet.Diagnostics;
 
 namespace Horyzont.Game.Boot;
 
@@ -18,6 +19,12 @@ public static class DevModes
     {
         ArgumentNullException.ThrowIfNull(host);
         var args = new DevModeArguments(userArgs);
+        if (args.Has("--generator-report"))
+        {
+            RunGeneratorReport(host, args);
+            return true;
+        }
+
         if (!args.Has("--planet-preview"))
         {
             return false;
@@ -38,5 +45,28 @@ public static class DevModes
         }
 
         return true;
+    }
+
+    private static void RunGeneratorReport(Node host, DevModeArguments args)
+    {
+        try
+        {
+            var directory = args.Directory("--generator-report", mustExist: true)!;
+            var seed = args.GalaxySeed();
+            var dumpKeys = args.ValueOf("--dump-keys");
+            if (dumpKeys is not null && !File.Exists(dumpKeys))
+            {
+                throw new ArgumentException($"--dump-keys: file '{dumpKeys}' does not exist.");
+            }
+
+            GeneratorReport.Run(directory, seed, dumpKeys);
+            host.GetTree().Quit(0);
+        }
+        catch (ArgumentException ex)
+        {
+            GD.PushError(ex.Message);
+            GD.Print($"ARGUMENT ERROR: {ex.Message}");
+            host.GetTree().Quit(ExitBadArguments);
+        }
     }
 }
