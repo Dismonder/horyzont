@@ -10,8 +10,9 @@ namespace Horyzont.Game.Boot;
 /// The single way out of the game: a closed window, SIGINT/SIGTERM/SIGQUIT, the console command <c>stop</c> and the host leaving
 /// all end in the same canonical shutdown (ZASADY, point 7), after which the tree quits with the exit code of the process.
 /// A signal only sets a flag (signals run on a thread pool thread); the shutdown starts on the main thread in the next frame.
-/// The second request during the shutdown is ignored with a log line, the third signal ends the process at once (exit code 130;
-/// the journal is durable every 100 ms).
+/// Further requests during the shutdown are ignored with a log line. Only the third SIGINT (Ctrl+C) ends the process at once
+/// (exit code 130; the journal is durable every 100 ms): SIGTERM, SIGQUIT (CTRL_BREAK) and a closed window never force the exit,
+/// so a service manager or a console closing cannot cut the canonical shutdown short.
 /// </summary>
 public sealed partial class QuitCoordinator : Node
 {
@@ -24,6 +25,8 @@ public sealed partial class QuitCoordinator : Node
     private bool _registerSignals;
     private int _stopRequested;
     private int _requests;
+    private int _interrupts;
+    private Action<int> _forceExit = System.Environment.Exit;
     private bool _shutdownStarted;
     private bool _quitting;
 
@@ -115,24 +118,34 @@ public sealed partial class QuitCoordinator : Node
         }
     }
 
-    private void OnSignal(PosixSignalContext context)
+    /// <summary>Replaces the hard exit of the third SIGINT (tests).</summary>
+    /// <param name="forceExit">Called with the exit code instead of ending the process.</param>
+    internal void UseForceExit(Action<int> forceExit) => _forceExit = forceExit;
+
+    /// <summary>Handles one process signal; runs on a thread pool thread: only flags, the log and the hard exit of the third SIGINT.</summary>
+    /// <param name="signal">The signal.</param>
+    internal void HandleSignal(PosixSignal signal)
     {
-        // Runs on a thread pool thread: only flags, the log and, for the third request, the hard exit.
-        context.Cancel = true;
-        var count = Interlocked.Increment(ref _requests);
-        if (count == 1)
+        var interrupts = signal == PosixSignal.SIGINT ? Interlocked.Increment(ref _interrupts) : 0;
+        if (Interlocked.Increment(ref _requests) == 1)
         {
-            QuitLog.SignalReceived(_logger!, context.Signal);
+            QuitLog.SignalReceived(_logger!, signal);
             RequestStop();
         }
-        else if (count == 2)
+        else if (interrupts >= 3)
         {
-            QuitLog.SecondRequestIgnored(_logger!, context.Signal);
+            _forceExit(130);
         }
         else
         {
-            System.Environment.Exit(130);
+            QuitLog.SecondRequestIgnored(_logger!, signal);
         }
+    }
+
+    private void OnSignal(PosixSignalContext context)
+    {
+        context.Cancel = true;
+        HandleSignal(context.Signal);
     }
 }
 
@@ -147,6 +160,6 @@ internal static partial class QuitLog
     [LoggerMessage(EventId = 9002, Level = LogLevel.Information, Message = "received {Signal}; stopping")]
     internal static partial void SignalReceived(ILogger logger, PosixSignal signal);
 
-    [LoggerMessage(EventId = 9003, Level = LogLevel.Warning, Message = "received {Signal} while stopping; ignored (one more ends the process at once)")]
+    [LoggerMessage(EventId = 9003, Level = LogLevel.Warning, Message = "received {Signal} while stopping; ignored (a third Ctrl+C ends the process at once)")]
     internal static partial void SecondRequestIgnored(ILogger logger, PosixSignal signal);
 }
