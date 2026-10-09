@@ -49,8 +49,9 @@ public static class ConstructFixtures
 
     /// <summary>A world holding one 64³ construct with the pattern; the registry holds <see cref="BlockKeys"/> and core:missing.</summary>
     /// <param name="pattern">Block pattern.</param>
+    /// <param name="cubesOnly">Replaces slabs and slopes by stone cubes (Core treats every block as a full cube).</param>
     /// <returns>The loaded world.</returns>
-    public static WorldState Create(ConstructPattern pattern)
+    public static WorldState Create(ConstructPattern pattern, bool cubesOnly = false)
     {
         var builder = new WorldStateBuilder(WorldFactory.DefaultWorldId, 42);
         builder.SetProgress(default, default, 2, 1);
@@ -77,6 +78,11 @@ public static class ConstructFixtures
                     {
                         var cell = CellPos.FromChunk(new ChunkPos(cx, cy, cz), i);
                         blocks[i] = Cell(pattern, cell.X, cell.Y, cell.Z);
+                        if (cubesOnly && new BlockState(blocks[i]).TypeId is Slab or Slope)
+                        {
+                            blocks[i] = Pack(Stone, 0);
+                        }
+
                         any |= blocks[i] != 0;
                     }
 

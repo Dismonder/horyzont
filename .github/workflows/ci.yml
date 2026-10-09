@@ -45,8 +45,19 @@ jobs:
 
   game:
     # Needs the engine from engine.yml on main: the matrix runners above have no engine packages.
-    runs-on: windows-latest
-    timeout-minutes: 30
+    name: game (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            engine-artifact: engine-windows-editor
+            editor: godot.windows.editor.double.x86_64.mono.console.exe
+          - os: ubuntu-24.04
+            engine-artifact: engine-linux-editor
+            editor: godot.linuxbsd.editor.double.x86_64.mono
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     permissions:
       actions: read
       contents: read
@@ -74,8 +85,15 @@ jobs:
             exit 1
           fi
           echo "engine run $run_id"
-          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-windows-editor -D engine-ci/editor
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n ${{ matrix.engine-artifact }} -D engine-ci/editor
           gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-nupkgs -D engine-ci/nupkgs
+
+      - name: Prepare the Linux editor
+        if: runner.os == 'Linux'
+        run: |
+          chmod +x engine-ci/editor/${{ matrix.editor }}
+          sudo apt-get update
+          sudo apt-get install -y libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 libgl1 libasound2t64 libpulse0 libudev1 libfontconfig1
 
       - name: Activate engine packages
         run: python tools/engine/build.py activate --from engine-ci/nupkgs
@@ -88,7 +106,14 @@ jobs:
 
       - name: Boot smoke
         run: |
-          editor=engine-ci/editor/godot.windows.editor.double.x86_64.mono.console.exe
+          editor=engine-ci/editor/${{ matrix.editor }}
           "$editor" --headless --path game --import
           "$editor" --headless --path game -- --smoke | tee boot.log
           grep -q "BOOT OK .*real_t=double" boot.log
+
+      # Engine tests (game/tests) run in the real engine without graphics; --slow adds the 64^3 frame-time tests.
+      - name: Engine tests
+        run: |
+          editor=engine-ci/editor/${{ matrix.editor }}
+          "$editor" --headless --path game -- --engine-tests --slow | tee engine-tests.log
+          grep -Eq "ENGINE TESTS passed=[1-9][0-9]* failed=0" engine-tests.log
