@@ -14,6 +14,10 @@ env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   HORYZONT_COMMIT: ${{ github.sha }}
+  # Self-hosted runner: MSBuild worker nodes left alive after a job keep DLLs from the workspace .nuget folder loaded,
+  # so the next checkout cannot clean the workspace and hangs.
+  MSBUILDDISABLENODEREUSE: 1
+  DOTNET_CLI_USE_MSBUILD_SERVER: 0
 
 jobs:
   build-and-test:
@@ -124,10 +128,26 @@ jobs:
           # The self-hosted runner shared %LOCALAPPDATA%\Godot with other engine builds, whose stale doc cache made the
           # thread slow enough to hit this every run. ._sc_ gives this editor its own data next to the exe, and
           # --quit-after (overrides the 1 frame set by --import) keeps the editor up until the thread has handed back.
-          touch "$(dirname "$editor")/._sc_"
+          # The marker is removed when the step ends, so the later steps (gdUnit4 adapter, in-engine runner) start the
+          # editor in the normal mode and its connection to the adapter is not delayed by a cold first start.
+          marker="$(dirname "$editor")/._sc_"
+          touch "$marker"
+          trap 'rm -f "$marker"' EXIT
           "$editor" --headless --path game --import --quit-after 1000
           "$editor" --headless --path game -- --smoke | tee boot.log
           grep -q "BOOT OK .*real_t=double" boot.log
+
+      # gdUnit4 uses one fixed machine-wide named pipe (gdunit4-message-pipe). The self-hosted runner shares the PC with
+      # local gdUnit runs; a second run at the same time fails (exit 100) and the adapter then hangs until the session timeout.
+      - name: Wait for a free gdUnit pipe
+        shell: pwsh
+        run: |
+          $deadline = (Get-Date).AddMinutes(30)
+          while (Test-Path '\\.\pipe\gdunit4-message-pipe') {
+            if ((Get-Date) -gt $deadline) { Write-Error 'gdunit4-message-pipe still busy after 30 min'; exit 1 }
+            Write-Host 'gdunit4-message-pipe busy (local gdUnit run), waiting...'
+            Start-Sleep -Seconds 20
+          }
 
       - name: Engine tests (gdUnit4Net, K2-08)
         env:
