@@ -45,15 +45,7 @@ public sealed partial class BackupService
     public string CreateBackup(SqliteConnection source, string reason)
     {
         ArgumentNullException.ThrowIfNull(source);
-        ArgumentException.ThrowIfNullOrEmpty(reason);
-        foreach (var c in reason)
-        {
-            if (!char.IsAsciiLetterOrDigit(c) && c != '-')
-            {
-                throw new ArgumentException("The reason may contain only ASCII letters, digits and '-'.", nameof(reason));
-            }
-        }
-
+        ValidateReason(reason);
         Directory.CreateDirectory(_directory);
         RemoveTemporaryCopies();
         var published = Published();
@@ -95,6 +87,21 @@ public sealed partial class BackupService
 
         Rotate(path);
         return path;
+    }
+
+    /// <summary>Checks a backup reason: not empty, only ASCII letters, digits and '-'.</summary>
+    /// <param name="reason">The reason.</param>
+    /// <exception cref="ArgumentException">The reason is empty or has another character.</exception>
+    internal static void ValidateReason(string reason)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(reason);
+        foreach (var c in reason)
+        {
+            if (!char.IsAsciiLetterOrDigit(c) && c != '-')
+            {
+                throw new ArgumentException("The reason may contain only ASCII letters, digits and '-'.", nameof(reason));
+            }
+        }
     }
 
     /// <summary>Published copies of the directory, oldest first (by creation sequence).</summary>

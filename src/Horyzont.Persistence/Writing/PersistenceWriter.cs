@@ -36,6 +36,7 @@ public sealed class PersistenceWriter : IAsyncDisposable
     private readonly TaskCompletionSource _stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Thread _thread;
     private readonly ITimer? _backupTimer;
+    private readonly string _backupSource;
 
     // Writer thread only.
     private readonly List<PendingEntry> _pending = [];
@@ -44,6 +45,7 @@ public sealed class PersistenceWriter : IAsyncDisposable
     private long _batchGeneration;
     private OpId _lastAccepted;
     private OpId _lastCheckpoint;
+    private Task _backupChain = Task.CompletedTask;
 
     private long _durableOpId;
     private volatile bool _faulted;
@@ -71,6 +73,7 @@ public sealed class PersistenceWriter : IAsyncDisposable
         _logger = logger;
         _backups = new BackupService(
             options.BackupsDirectory ?? Path.Combine(Path.GetDirectoryName(db.Path) ?? ".", "backups"), options.BackupsToKeep, time);
+        _backupSource = WorldDatabase.ConnectionString(Path.GetFullPath(db.Path), SqliteOpenMode.ReadOnly, pooling: false);
         _channel = Channel.CreateUnbounded<WriteCommand>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
 
         // Read before the thread starts; from then on only the thread uses the connection.
@@ -145,12 +148,16 @@ public sealed class PersistenceWriter : IAsyncDisposable
         return completion.Task;
     }
 
-    /// <summary>Copies the world after committing the pending journal (start of the server and every 6 h).</summary>
+    /// <summary>
+    /// Copies the world after committing the pending journal (start of the server and every 6 h). The copy runs off the writer
+    /// thread on its own read-only connection (a WAL snapshot), so journal batches keep committing; copies run one at a time.
+    /// </summary>
     /// <param name="reason">Reason in the file name (ASCII letters, digits, '-').</param>
-    /// <returns>True when the copy was made; false when the writer is faulted or the copy failed.</returns>
+    /// <returns>True when the copy was made; false when the writer is faulted or the copy failed (the writer stays healthy).</returns>
+    /// <exception cref="ArgumentException">The reason is empty or has another character.</exception>
     public Task<bool> BackupAsync(string reason)
     {
-        ArgumentException.ThrowIfNullOrEmpty(reason);
+        BackupService.ValidateReason(reason);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         var completion = NewCompletion();
         if (!Post(new BackupCommand(reason, completion)))
@@ -198,9 +205,15 @@ public sealed class PersistenceWriter : IAsyncDisposable
         _backupTimer?.Dispose();
         _channel.Writer.TryComplete();
         await _stopped.Task.ConfigureAwait(false);
+
+        // Set only by the writer thread, which has stopped; a copy in progress finishes on its own connection.
+        await _backupChain.ConfigureAwait(false);
         _flushTimer?.Dispose();
         _db.Dispose();
     }
+
+    /// <summary>The backups of this writer (tests set <see cref="BackupService.BeforePublish"/>).</summary>
+    internal BackupService Backups => _backups;
 
     /// <summary>Completes when the writer thread has executed every command enqueued before; commits nothing by itself (tests).</summary>
     internal Task ProbeAsync()
@@ -375,7 +388,13 @@ public sealed class PersistenceWriter : IAsyncDisposable
                 Recover();
                 break;
             case ProbeCommand p:
-                p.Completion.TrySetResult(true);
+                // Also after the backups requested before (they run off this thread).
+                _backupChain.ContinueWith(
+                    static (_, completion) => ((TaskCompletionSource<bool>)completion!).TrySetResult(true),
+                    p.Completion,
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
                 break;
             default:
                 throw new InvalidOperationException($"Unknown command {command.GetType().Name}.");
@@ -683,16 +702,38 @@ public sealed class PersistenceWriter : IAsyncDisposable
             return;
         }
 
+        // E2: a copy of a large world takes seconds; it runs on the thread pool, chained after the previous copy, while this
+        // thread keeps committing journal batches. The batch committed above is in the copy's snapshot.
+        _backupChain = _backupChain.ContinueWith(
+            static (_, state) =>
+            {
+                var (writer, backup) = ((PersistenceWriter, BackupCommand))state!;
+                writer.CopyWorld(backup);
+            },
+            (this, command),
+            CancellationToken.None,
+            TaskContinuationOptions.None,
+            TaskScheduler.Default);
+    }
+
+    /// <summary>Makes one copy from a read-only connection; never throws and never faults the writer (E1).</summary>
+    private void CopyWorld(BackupCommand command)
+    {
         try
         {
-            var path = _backups.CreateBackup(_db.Connection, command.Reason);
+            using var source = WorldDatabase.OpenConnection(_backupSource, readOnly: true, _logger);
+            var path = _backups.CreateBackup(source, command.Reason);
             PersistenceLog.BackupCreated(_logger, path, command.Reason);
             command.Completion?.TrySetResult(true);
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or SqliteException)
+        catch (Exception e) when (e is not SimulatedCrashException)
         {
-            // A failed copy does not touch the world file, so the writer stays healthy; the caller sees false.
+            // Not swallowed: logged and reported as false. A failed copy does not touch the world file, so the writer stays healthy.
             PersistenceLog.BackupFailed(_logger, e, command.Reason);
+        }
+        finally
+        {
+            // No-op after success; otherwise the caller sees false.
             command.Completion?.TrySetResult(false);
         }
     }

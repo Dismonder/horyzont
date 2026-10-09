@@ -198,6 +198,100 @@ public sealed class BackupTests
         }
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("bad reason")]
+    [InlineData("pre_migration")]
+    [InlineData("zażółć")]
+    public async Task BackupAsync_InvalidReason_ThrowsAtCaller_WriterStaysHealthy(string reason)
+    {
+        using var dir = new TempDirectory();
+        await using var h = WorldHarness.CreateNew(dir.WorldPath, time: new FakeTimeProvider(_start));
+        h.Join(1);
+
+        Assert.ThrowsAny<ArgumentException>(() => { _ = h.Writer.BackupAsync(reason); });
+
+        h.Ticks(1);
+        h.Join(2);
+        Assert.True(await h.Writer.FlushAsync());
+        h.Pump();
+        Assert.False(h.Writer.IsFaulted);
+        Assert.Equal(h.State.LastOpId, h.Writer.DurableOpId);
+        Assert.False(Directory.Exists(dir.BackupsPath) && Directory.GetFiles(dir.BackupsPath).Length > 0);
+    }
+
+    [Fact]
+    public async Task BackupAsync_CopyThrowsAnyException_FalseWithoutFault()
+    {
+        using var dir = new TempDirectory();
+        await using var h = WorldHarness.CreateNew(dir.WorldPath, time: new FakeTimeProvider(_start));
+        h.Writer.Backups.BeforePublish = _ => throw new InvalidOperationException("copy bug");
+
+        Assert.False(await h.Writer.BackupAsync("startup"));
+
+        Assert.False(h.Writer.IsFaulted);
+        h.Join(1);
+        Assert.True(await h.Writer.FlushAsync());
+        Assert.Equal(h.State.LastOpId, h.Writer.DurableOpId);
+        h.Writer.Backups.BeforePublish = null;
+        Assert.True(await h.Writer.BackupAsync("startup"));
+        Assert.Single(Directory.GetFiles(dir.BackupsPath));
+    }
+
+    /// <summary>E2: a copy held by a gate does not hold the journal; JournalCommitted arrives while the copy waits.</summary>
+    [Fact]
+    public async Task BackupAsync_CopyInProgress_JournalKeepsCommitting()
+    {
+        using var dir = new TempDirectory();
+        await using var h = WorldHarness.CreateNew(dir.WorldPath, time: new FakeTimeProvider(_start));
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        h.Writer.Backups.BeforePublish = _ =>
+        {
+            entered.Set();
+            Assert.True(release.Wait(TimeSpan.FromSeconds(30)));
+        };
+        h.Join(1);
+
+        var backup = h.Writer.BackupAsync("startup");
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
+        h.Ticks(1);
+        h.Join(2);
+        Assert.True(await h.Writer.FlushAsync().WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
+        h.Pump();
+
+        Assert.False(backup.IsCompleted);
+        Assert.Contains(h.Events, e => e is JournalCommitted committed && committed.UpTo == h.State.LastOpId);
+        release.Set();
+        Assert.True(await backup.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
+        var copy = Assert.Single(Directory.GetFiles(dir.BackupsPath));
+        var (loaded, _, _) = WorldHarness.LoadAndReplay(copy, WorldHarness.LoadOptions(copy));
+        Assert.True(loaded.State.Players.TryGet(h.State.Players.Online.First().Player, out _));
+    }
+
+    [Fact]
+    public async Task BackupAsync_TwoRequests_RunOneAfterTheOther()
+    {
+        using var dir = new TempDirectory();
+        await using var h = WorldHarness.CreateNew(dir.WorldPath, time: new FakeTimeProvider(_start));
+        var running = 0;
+        var overlap = false;
+        h.Writer.Backups.BeforePublish = _ =>
+        {
+            overlap |= Interlocked.Increment(ref running) > 1;
+            Thread.Yield();
+            Interlocked.Decrement(ref running);
+        };
+
+        var results = await Task.WhenAll(h.Writer.BackupAsync("a"), h.Writer.BackupAsync("b"), h.Writer.BackupAsync("c"));
+
+        Assert.All(results, Assert.True);
+        Assert.False(overlap);
+        Assert.Equal(
+            ["000001-a.db", "000002-b.db", "000003-c.db"],
+            Directory.GetFiles(dir.BackupsPath).Select(f => Path.GetFileName(f)[16..]).Order(StringComparer.Ordinal).ToList());
+    }
+
     private static (Microsoft.Data.Sqlite.SqliteConnection Source, BackupService Service, FakeTimeProvider Time) Setup(TempDirectory dir, int keep)
     {
         var time = new FakeTimeProvider(_start);
