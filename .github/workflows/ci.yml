@@ -14,6 +14,10 @@ env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
   HORYZONT_COMMIT: ${{ github.sha }}
+  # Self-hosted runner: MSBuild worker nodes left alive after a job keep DLLs from the workspace .nuget folder loaded,
+  # so the next checkout cannot clean the workspace and hangs.
+  MSBUILDDISABLENODEREUSE: 1
+  DOTNET_CLI_USE_MSBUILD_SERVER: 0
 
 jobs:
   build-and-test:
@@ -48,18 +52,18 @@ jobs:
         run: dotnet format Horyzont.sln --verify-no-changes --no-restore
 
   game:
-    # Needs the engine from engine.yml on main: the matrix runners above have no engine packages.
+    # Needs the engine from engine.yml on main: the build-and-test runners above have no engine packages.
     name: game (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-latest
-            engine-artifact: engine-windows-editor
+            editor-artifact: engine-windows-editor
             editor: godot.windows.editor.double.x86_64.mono.console.exe
           # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
-          # - os: ubuntu-24.04
-          #   engine-artifact: engine-linux-editor
+          # - os: ubuntu-latest
+          #   editor-artifact: engine-linux-editor
           #   editor: godot.linuxbsd.editor.double.x86_64.mono
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 45
@@ -94,8 +98,10 @@ jobs:
             exit 1
           fi
           echo "engine run $run_id"
-          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n ${{ matrix.engine-artifact }} -D engine-ci/editor
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n "${{ matrix.editor-artifact }}" -D engine-ci/editor
           gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-nupkgs -D engine-ci/nupkgs
+          # upload-artifact drops the executable bit.
+          chmod +x "engine-ci/editor/${{ matrix.editor }}" || true
 
       # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
       # - name: Prepare the Linux editor
@@ -116,19 +122,40 @@ jobs:
 
       - name: Boot smoke
         run: |
-          editor=engine-ci/editor/${{ matrix.editor }}
+          editor="$PWD/engine-ci/editor/${{ matrix.editor }}"
           # Godot 4.7.2 shutdown bug (docs/plans/K2-12-budowle.md, Odstepstwa): if the editor help cache thread
           # finishes after --import has quit, its deferred call runs after EditorNode is freed and segfaults (exit 139).
           # The self-hosted runner shared %LOCALAPPDATA%\Godot with other engine builds, whose stale doc cache made the
           # thread slow enough to hit this every run. ._sc_ gives this editor its own data next to the exe, and
           # --quit-after (overrides the 1 frame set by --import) keeps the editor up until the thread has handed back.
-          touch "$(dirname "$editor")/._sc_"
+          # The marker is removed when the step ends, so the later steps (gdUnit4 adapter, in-engine runner) start the
+          # editor in the normal mode and its connection to the adapter is not delayed by a cold first start.
+          marker="$(dirname "$editor")/._sc_"
+          touch "$marker"
+          trap 'rm -f "$marker"' EXIT
           "$editor" --headless --path game --import --quit-after 1000
           "$editor" --headless --path game -- --smoke | tee boot.log
           grep -q "BOOT OK .*real_t=double" boot.log
 
+      # gdUnit4 uses one fixed machine-wide named pipe (gdunit4-message-pipe). The self-hosted runner shares the PC with
+      # local gdUnit runs; a second run at the same time fails (exit 100) and the adapter then hangs until the session timeout.
+      - name: Wait for a free gdUnit pipe
+        shell: pwsh
+        run: |
+          $deadline = (Get-Date).AddMinutes(30)
+          while (Test-Path '\\.\pipe\gdunit4-message-pipe') {
+            if ((Get-Date) -gt $deadline) { Write-Error 'gdunit4-message-pipe still busy after 30 min'; exit 1 }
+            Write-Host 'gdunit4-message-pipe busy (local gdUnit run), waiting...'
+            Start-Sleep -Seconds 20
+          }
+
+      - name: Engine tests (gdUnit4Net, K2-08)
+        env:
+          GODOT_BIN: ${{ github.workspace }}/engine-ci/editor/${{ matrix.editor }}
+        run: dotnet test game/Horyzont.Game.csproj --settings game/.runsettings --logger "trx;LogFileName=engine-tests.trx" --results-directory game/TestResults
+
       # Engine tests (game/tests) run in the real engine without graphics. The required step is the logic tests only.
-      - name: Engine tests
+      - name: Engine tests (in-engine runner, K2-12)
         run: |
           editor=engine-ci/editor/${{ matrix.editor }}
           "$editor" --headless --path game -- --engine-tests | tee engine-tests.log
@@ -136,9 +163,63 @@ jobs:
 
       # The 64^3 frame-time tests (--slow) measure wall-clock time on a shared runner (Random35 max frame 41 of 50 ms locally);
       # they report, they do not block, until they were green repeatedly on both runners (K2-12 Odstepstwa).
-      - name: Engine tests (slow, frame-time report)
+      - name: Engine tests (in-engine runner, slow, frame-time report)
         continue-on-error: true
         run: |
           editor=engine-ci/editor/${{ matrix.editor }}
           "$editor" --headless --path game -- --engine-tests --slow | tee engine-tests-slow.log
           grep -Eq "ENGINE TESTS passed=[1-9][0-9]* failed=0" engine-tests-slow.log
+
+      - name: Generator report
+        env:
+          GODOT_BIN: ${{ github.workspace }}/engine-ci/editor/${{ matrix.editor }}
+        run: |
+          mkdir -p generator-report
+          "$GODOT_BIN" --headless --path game -- --generator-report "$PWD/generator-report"
+          ls generator-report
+
+      - name: Upload generator report
+        uses: actions/upload-artifact@v4
+        with:
+          name: generator-report-${{ runner.os }}-editor
+          path: generator-report/*.json
+          if-no-files-found: error
+
+      - name: Upload engine test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-tests-${{ runner.os }}
+          path: game/TestResults/*.trx
+          if-no-files-found: ignore
+
+  generator-consistency:
+    # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
+    if: false
+    # Windows and Linux editors must generate the same LOD 0 blocks (K2-08, collisions depend on it).
+    needs: game
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        # Self-hosted Windows uses the system Python 3.12: the action's installer needs admin rights (HKLM) and hangs there.
+        if: runner.environment == 'github-hosted'
+        with:
+          python-version: "3.12"
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: generator-report-*-editor
+          path: reports
+          merge-multiple: true
+
+      - name: Self-test of the comparison tool
+        run: python -I tools/generator/compare_reports.py --self-test
+
+      - name: Compare Windows and Linux editor reports
+        run: |
+          ls reports
+          python -I tools/generator/compare_reports.py reports/generator-windows-editor.json reports/generator-linux-editor.json --out generator-consistency.md
+          cat generator-consistency.md >> "$GITHUB_STEP_SUMMARY"
