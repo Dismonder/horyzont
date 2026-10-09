@@ -86,7 +86,7 @@ public class DevCameraTests
         AssertThat(player.Compared).IsGreater(50);
         AssertThat(player.Corrections).IsEqual(0);
         // Touching the ground while flying leaves a few millimetres between the two bodies (3.7 mm seen); the correction tolerance is a centimetre.
-        AssertThat(player.MaxAckPositionError).IsLess(0.01f);
+        AssertThat(player.MaxAckPositionError).IsLess(0.001f);
         AssertThat(player.ServerMode).IsEqual(MovementMode.DevFlying);
 
         AssertThat(await fixture.StopAsync()).IsTrue();

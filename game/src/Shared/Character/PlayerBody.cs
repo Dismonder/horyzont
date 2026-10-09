@@ -123,7 +123,27 @@ public sealed partial class PlayerBody : CharacterBody3D
         UpDirection = GlobalBasis.Y;
         _mode = mode;
         OnFloor = onFloor;
+        RefreshContacts(velocity);
         ResetPhysicsInterpolation();
+    }
+
+    /// <summary>
+    /// Lets the engine recompute the floor contact of the new position (the hidden floor state of a CharacterBody3D comes from its last
+    /// move, which belongs to the old position) with a move of zero length, then restores position and velocity exactly.
+    /// </summary>
+    private void RefreshContacts(NumVector3 velocity)
+    {
+        if (_mode == MovementMode.Frozen || !IsInsideTree())
+        {
+            return;
+        }
+
+        var position = GlobalPosition;
+        MotionMode = _mode == MovementMode.DevFlying ? MotionModeEnum.Floating : MotionModeEnum.Grounded;
+        Velocity = Vector3.Zero;
+        MoveAndSlide();
+        GlobalPosition = position;
+        Velocity = PlanetFrames.ToGodotDirection(_planet, velocity);
     }
 
     /// <summary>Sets the mode without moving the body (the server unfreezes a body this way).</summary>
