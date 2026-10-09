@@ -51,7 +51,7 @@ public sealed class ProtocolContractTests
         AssertValues((FrameKind.System, 1), (FrameKind.Planet, 2), (FrameKind.Construct, 3));
         AssertValues((Face.PosX, 0), (Face.NegX, 1), (Face.PosY, 2), (Face.NegY, 3), (Face.PosZ, 4), (Face.NegZ, 5));
         AssertValues((ConstructMode.Static, 0), (ConstructMode.Ship, 1));
-        AssertValues((BlockShape.Cube, 1));
+        AssertValues((BlockShape.Cube, 1), (BlockShape.Mesh, 2));
         AssertValues((BlobKind.ConstructHeader, 1), (BlobKind.Player, 2), (BlobKind.ConstructChunk, 3), (BlobKind.PlanetParams, 4),
             (BlobKind.TerrainBlock, 5));
         AssertValues((TerrainShape.Sphere, 1));

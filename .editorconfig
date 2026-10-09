@@ -216,3 +216,6 @@ dotnet_naming_style.underscore_camel.capitalization = camel_case
 
 [tests/**.cs]
 dotnet_diagnostic.CA1707.severity = none              # podkreślenia w nazwach testów
+
+[game/tests/**.cs]
+dotnet_diagnostic.CA1707.severity = none              # podkreślenia w nazwach testów silnika

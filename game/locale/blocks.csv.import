@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://dgaulexelwvmn"
+
+[deps]
+
+files=["res://locale/blocks.en.translation", "res://locale/blocks.pl.translation"]
+
+source_file="res://locale/blocks.csv"
+dest_files=["res://locale/blocks.en.translation", "res://locale/blocks.pl.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

@@ -14,5 +14,13 @@
     <ProjectReference Include="../src/Horyzont.Core/Horyzont.Core.csproj" />
     <ProjectReference Include="../src/Horyzont.Persistence/Horyzont.Persistence.csproj" />
     <ProjectReference Include="../src/Horyzont.Net/Horyzont.Net.csproj" />
+    <ProjectReference Include="../src/Horyzont.Constructs/Horyzont.Constructs.csproj" />
+  </ItemGroup>
+  <!-- Engine tests (game/tests) and their fixtures exist only in Debug; the export configurations ship neither. -->
+  <ItemGroup Condition="'$(Configuration)' == 'Debug'">
+    <ProjectReference Include="../tests/Horyzont.Testing/Horyzont.Testing.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(Configuration)' != 'Debug'">
+    <Compile Remove="tests/**" />
   </ItemGroup>
 </Project>

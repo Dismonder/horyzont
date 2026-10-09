@@ -17,6 +17,7 @@ Każda sesja pracy zaczyna się od przeczytania tego pliku i planu pakietu. Niej
 
 - Projekty `Horyzont.Core`, `Horyzont.Persistence` i `Horyzont.Net` nie mogą odwoływać się do Godota (pilnuje tego test w `tests/Horyzont.Architecture.Tests`).
 - Kierunek zależności: `Core` ← `Persistence`, `Core` ← `Net`, wszystkie ← `game/`. Core nie zależy od niczego poza BCL, `Microsoft.Extensions.Logging.Abstractions` i `System.IO.Hashing`.
+- Wątki robocze (meshing, strumień terenu) czytają wyłącznie migawki skopiowane na wątku głównym; nigdy `WorldState`, `Construct` ani węzłów Godota.
 - Serwer jest autorytatywny. Klient wysyła wyłącznie intencje i wejście; jedyne lokalne zmiany po stronie klienta to przewidywany ruch własnej postaci i podgląd własnych edycji, które serwer potwierdza albo nadpisuje.
 - `ITerrainService` woła się wyłącznie na wątku głównym Godota (`VoxelTerrainService` rzuca `InvalidOperationException` na innym wątku), więc `ServerSimulation` działa na wątku głównym. Strumień Voxel Tools (wątki robocze) czyta tylko `ITerrainBlockSource` i nie dotyka `WorldState`, `ServerSimulation` ani drzewa sceny (K2-09).
 - Zero mutowalnego stanu statycznego. Zależności składa jedno miejsce startowe (composition root) w `game/src/Boot/`.
@@ -32,7 +33,7 @@ Każda zmiana w `src/Horyzont.Core/` wymaga przeglądu Opus 5.5, bo cały Core d
 | Ścieżka | Co podbić przy zmianie |
 | --- | --- |
 | `src/Horyzont.Core/Operations/`, `src/Horyzont.Core/Intents/`, `src/Horyzont.Core/Simulation/OperationApplier.cs`, `src/Horyzont.Core/Simulation/TerrainRules.cs` (stałe semantyki operacji: margines, limity) | wersję formatu operacji albo intencji w kodeku (K1-04); stare dzienniki muszą odtwarzać się identycznie, więc zmiana semantyki stosowania też jest zmianą formatu |
-| `src/Horyzont.Core/Ids/` (w tym `FrameRef`, `PlatformIdentity`), `src/Horyzont.Core/World/` (typy zapisywane: `BlockState`, `CellPos`, `ChunkPos`, `Face`, `BlockShape`, `ConstructMode`, `TerrainBlockKey`, `TerrainBlockVersion`, `PlanetParams`, `RegistryEntry`), `src/Horyzont.Core/Checkpoints/` | wersję formatu każdej ramki, która zawiera zmieniony typ (operacje, intencje, komunikaty, bloby), i odczyt starej wersji w Persistence |
+| `src/Horyzont.Core/Ids/` (w tym `FrameRef`, `PlatformIdentity`), `src/Horyzont.Core/World/` (typy zapisywane: `BlockState`, `BlockOrientation` (tabela 24 orientacji jest formatem `BlockState`), `CellPos`, `ChunkPos`, `Face`, `BlockShape`, `ConstructMode`, `TerrainBlockKey`, `TerrainBlockVersion`, `PlanetParams`, `RegistryEntry`), `src/Horyzont.Core/Checkpoints/` | wersję formatu każdej ramki, która zawiera zmieniony typ (operacje, intencje, komunikaty, bloby), i odczyt starej wersji w Persistence |
 | `src/Horyzont.Core/Hashing/` | opis w PR: skróty zapisane w testach i raportach przestają się zgadzać |
 | `src/Horyzont.Core/Protocol/`, `src/Horyzont.Core/Serialization/` | `ProtocolConstants.ProtocolVersion` albo wersję formatu komunikatu |
 | `src/Horyzont.Persistence/Migrations/` | nowa migracja z następnym wolnym numerem w chwili scalenia do `main`; istniejących migracji nigdy się nie edytuje, a numery są ciągłe od 1 |
