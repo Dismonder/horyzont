@@ -32,6 +32,7 @@ public sealed class HostConstructs : IServerTickParticipant, IDisposable
     private ServerRuntime? _runtime;
     private BlockVisuals? _visuals;
     private int _tick;
+    private bool _viewDirty;
 
     /// <summary>Initializes a new instance of the <see cref="HostConstructs"/> class.</summary>
     /// <param name="parent">Node the construct world is added to (<c>/Root/Server</c>).</param>
@@ -56,6 +57,15 @@ public sealed class HostConstructs : IServerTickParticipant, IDisposable
 
     /// <summary>Gets the construct world; usable after <see cref="Attach"/>.</summary>
     public ConstructWorld World { get; }
+
+    /// <summary>
+    /// Gets or sets the step that feeds an applied operation to the view (default: <see cref="ConstructWorld.OnApplied"/>); a seam for
+    /// tests that inject a failure.
+    /// </summary>
+    public Action<Operation, IReadOnlyList<ConstructChange>>? ViewUpdate { get; set; }
+
+    /// <summary>Gets the number of resyncs (<see cref="ConstructWorld.RebuildAll"/>) run after a failed view update.</summary>
+    public int ResyncCount { get; private set; }
 
     /// <summary>Gets a value indicating whether <see cref="Attach"/> ran.</summary>
     public bool IsAttached => _runtime is not null;
@@ -95,6 +105,11 @@ public sealed class HostConstructs : IServerTickParticipant, IDisposable
     /// <inheritdoc />
     public void OnTick(ServerRuntime runtime)
     {
+        if (_viewDirty)
+        {
+            Resync(runtime);
+        }
+
         if (_runtime is null || _tick++ % ViewerIntervalTicks != 0)
         {
             return;
@@ -128,15 +143,46 @@ public sealed class HostConstructs : IServerTickParticipant, IDisposable
 
     private void OnApplied(AppliedOperation applied)
     {
-#pragma warning disable CA1031 // The operation is already applied and journaled: a failure of the view must not fail the simulation; it is logged and the view resyncs on the next rebuild.
+#pragma warning disable CA1031 // The operation is already applied and journaled: a failure of the view must not fail the simulation; it is logged and the view resyncs on the next tick (RebuildAll, once per burst of failures).
         try
         {
-            World.OnApplied(applied.Operation, applied.ConstructChanges);
+            if (ViewUpdate is { } update)
+            {
+                update(applied.Operation, applied.ConstructChanges);
+            }
+            else
+            {
+                World.OnApplied(applied.Operation, applied.ConstructChanges);
+            }
         }
         catch (Exception ex)
 #pragma warning restore CA1031
         {
+            _viewDirty = true;
             _logger.LogViewUpdateFailed(applied.Id.Value, ex);
+        }
+    }
+
+    private void Resync(ServerRuntime runtime)
+    {
+        // Cleared first: a rebuild that fails again is logged once and not retried every tick; a new failed operation starts a new burst.
+        _viewDirty = false;
+        var state = runtime.State;
+        if (_runtime is null || state.Planets.All.Count == 0)
+        {
+            return;
+        }
+
+        ResyncCount++;
+#pragma warning disable CA1031 // The server must keep running; the failure is logged.
+        try
+        {
+            World.RebuildAll(FrameRef.Of(state.Planets.All[0].Id));
+        }
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _logger.LogViewResyncFailed(ex);
         }
     }
 }
@@ -145,4 +191,7 @@ internal static partial class HostConstructsLog
 {
     [LoggerMessage(EventId = 9301, Level = LogLevel.Error, Message = "the construct view failed to apply operation {OpId}")]
     internal static partial void LogViewUpdateFailed(this ILogger logger, ulong opId, Exception exception);
+
+    [LoggerMessage(EventId = 9302, Level = LogLevel.Error, Message = "the construct view could not be rebuilt after a failed update")]
+    internal static partial void LogViewResyncFailed(this ILogger logger, Exception exception);
 }

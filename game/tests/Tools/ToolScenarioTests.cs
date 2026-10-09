@@ -146,6 +146,37 @@ public class ToolScenarioTests
 
     [TestCase(Timeout = 400000)]
     [RequireGodotRuntime]
+    public async Task HostConstructs_FailedViewUpdate_ResyncsOnceOnTheNextTick()
+    {
+        await using var scene = EngineTestScene.Create();
+        var rig = await ToolRig.StartSoloAsync(scene, ModeFixture.NewDirectory(), Guid.NewGuid());
+        var constructs = rig.Composition.Constructs!;
+        var world = constructs.World;
+        var failures = 0;
+        constructs.ViewUpdate = (_, _) =>
+        {
+            failures++;
+            throw new InvalidOperationException("injected");
+        };
+
+        rig.Script.Press(ToolRig.Frame(select: ToolKind.Builder));
+        AssertThat(await rig.Fixture.WaitUntil(() => rig.Tools.Preview.Kind == ToolPreviewKind.NewConstructCell, 20)).IsTrue();
+        rig.Script.Press(ToolRig.Frame(secondaryPressed: true));
+        AssertThat(await rig.WaitReplies(1)).IsTrue();
+        AssertThat(rig.Replies[0].Reason).IsEqual(RejectReason.None);
+        AssertThat(failures).IsEqual(1);
+
+        // The view missed the create; the resync of the next tick rebuilds it from the state, and nothing keeps rebuilding afterwards.
+        var id = rig.Composition.Server!.State.Constructs.All[0].Id;
+        AssertThat(await rig.Fixture.WaitUntil(() => world.TryGetConstructNode(id, out _), 10)).IsTrue();
+        AssertThat(constructs.ResyncCount).IsEqual(1);
+        AssertThat(await rig.WaitTicks(40)).IsTrue();
+        AssertThat(constructs.ResyncCount).IsEqual(1);
+        AssertThat(await rig.Fixture.StopAsync()).IsTrue();
+    }
+
+    [TestCase(Timeout = 400000)]
+    [RequireGodotRuntime]
     public async Task Solo_NothingInReach_SendsNothing()
     {
         await using var scene = EngineTestScene.Create();
