@@ -12,6 +12,25 @@ namespace Horyzont.Game.Tests.Constructs;
 public sealed class ConstructWorldTests : EngineTestBase
 {
     [EngineTest]
+    public async Task ReparentAcrossFrames_UpdatesMembershipImmediately()
+    {
+        using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewStateWithTwoPlanets(BlockContentLoader.Load()));
+        w.World.RebuildAll(ConstructTestWorld.Planet);
+        var outgoing = w.Create(new CellPos(2, 2, 2));
+        var incoming = w.Create(new CellPos(2, 2, 2), parent: ConstructTestWorld.OtherPlanet);
+        await Idle(w);
+        w.Apply(new Horyzont.Core.Operations.EntityReparentOp(outgoing, ConstructTestWorld.OtherPlanet, 1,
+            new System.Numerics.Vector3(10, 4000, 0), System.Numerics.Quaternion.Identity, System.Numerics.Vector3.Zero, null));
+        EngineAssert.True(!w.World.TryGetConstructNode(outgoing, out _), "outgoing construct unloaded before another frame");
+        w.Apply(new Horyzont.Core.Operations.EntityReparentOp(incoming, ConstructTestWorld.Planet, 1,
+            new System.Numerics.Vector3(20, 4000, 0), System.Numerics.Quaternion.Identity, System.Numerics.Vector3.Zero, null));
+        EngineAssert.True(w.World.TryGetConstructNode(incoming, out var node), "eligible incoming construct loaded immediately");
+        EngineAssert.Equal(new Vector3(20, 4000, 0), node!.Position, "incoming pose in the shown frame");
+        await Idle(w);
+        AssertChunkMatchesMesher(w, incoming, new ChunkPos(0, 0, 0));
+    }
+
+    [EngineTest]
     public async Task SceneExitWithActiveJobs_ReattachStaysShutdown()
     {
         using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(BlockContentLoader.Load()));

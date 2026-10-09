@@ -156,7 +156,7 @@ public sealed partial class ConstructWorld : Node3D
 
         foreach (var id in _reposedScratch)
         {
-            RefreshPose(id);
+            RefreshMembership(id);
         }
     }
 
@@ -585,6 +585,27 @@ public sealed partial class ConstructWorld : Node3D
         if (_entries.TryGetValue(id, out var entry) && _source.TryGetPose(id, out var pose))
         {
             entry.Node.SetPose(pose);
+        }
+    }
+
+    private void RefreshMembership(EntityId id)
+    {
+        _entries.TryGetValue(id, out var entry);
+        if (!TryEvaluate(id, out var distance, out var collision) || !IsInLoadRange(distance, entry))
+        {
+            Unload(id);
+            return;
+        }
+
+        if (entry is null)
+        {
+            Load(id, distance, collision, RemeshPriority.Edit);
+        }
+        else
+        {
+            _distanceSquared[id] = distance * distance;
+            RefreshPose(id);
+            UpdateCollision(id, entry, distance);
         }
     }
 
