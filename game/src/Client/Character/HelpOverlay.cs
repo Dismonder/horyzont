@@ -16,11 +16,14 @@ public sealed partial class HelpOverlay : CanvasLayer
         "WASD move   Mouse look   Space jump   Shift sprint   V camera (3rd/1st person)   Esc free the mouse (click to capture again)\n"
         + "Dev builds: F fly (character)   F8 free camera   F9 camera to orbit   Wheel = free camera speed   F1 hide this";
 
+    private const double RefreshSeconds = 0.25;
+
     private readonly LocalPlayer _player;
     private readonly ClientDayNight? _dayNight;
     private readonly DevFlyCamera? _dev;
     private Label? _controls;
     private Label? _status;
+    private double _sinceRefresh = RefreshSeconds;
 
     /// <summary>Creates the overlay.</summary>
     /// <param name="player">The local player to report.</param>
@@ -62,10 +65,13 @@ public sealed partial class HelpOverlay : CanvasLayer
     /// <inheritdoc />
     public override void _Process(double delta)
     {
-        if (!Visible || _status is null)
+        _sinceRefresh += delta;
+        if (!Visible || _status is null || _sinceRefresh < RefreshSeconds)
         {
             return;
         }
+
+        _sinceRefresh = 0;
 
         var feet = _player.PredictedFeet;
         var altitude = _player.IsActive || _player.Body is not null ? feet.Length() : 0f;
@@ -86,6 +92,11 @@ public sealed partial class HelpOverlay : CanvasLayer
         if (_player.DevFlyOn)
         {
             text += "\nCHARACTER FLIGHT";
+        }
+
+        if (_player.Notice.Length > 0)
+        {
+            text += "\n" + _player.Notice;
         }
 
         if (_dev is { IsActive: true })

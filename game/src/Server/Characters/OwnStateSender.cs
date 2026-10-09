@@ -37,6 +37,13 @@ public sealed class OwnStateSender
         _characters = characters;
     }
 
+    /// <summary>Gets the number of players whose snapshot counter is kept.</summary>
+    public int TrackedPlayers => _lastSnapshotId.Count;
+
+    /// <summary>Drops the snapshot counter of a player who left, so a rejoin starts a new sequence and the table does not grow.</summary>
+    /// <param name="player">The player.</param>
+    public void Forget(PlayerId player) => _lastSnapshotId.Remove(player);
+
     /// <summary>Sends the snapshots due at this tick.</summary>
     /// <param name="tick">The current tick of the simulation.</param>
     public void Send(Tick tick)

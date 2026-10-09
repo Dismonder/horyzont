@@ -75,6 +75,43 @@ public class UdpClientTests
         AssertThat(await server.StopAsync()).IsTrue();
     }
 
+    /// <summary>
+    /// A debug client started with --dev against a server without it predicts flight while the server walks: after a few corrections in a
+    /// row the client switches the flight off and tells the player.
+    /// </summary>
+    [TestCase(Timeout = 600000)]
+    [RequireGodotRuntime]
+    public async Task RemoteClient_DevFlyRefusedByServer_TurnsFlightOffAndShowsNotice()
+    {
+        await using var scene = EngineTestScene.Create();
+        var serverDir = ModeFixture.NewDirectory();
+        var clientDir = ModeFixture.NewDirectory();
+        var port = ModeFixture.NextPort();
+        var config = Path.Combine(serverDir, "server.json");
+        File.WriteAllText(config, ModeFixture.SimpleConfig(port));
+        var server = await ModeFixture.StartWithCharactersAsync(scene, serverDir, false, false, "--server", "--config", config, "--data-dir", serverDir);
+        AssertThat(server.StartExit).IsNull();
+        var client = await ModeFixture.StartWithCharactersAsync(
+            scene, clientDir, true, false, "--connect", "127.0.0.1:" + port.ToString(CultureInfo.InvariantCulture), "--dev", "--profile", Path.Combine(clientDir, "profile.json"));
+        AssertThat(client.StartExit).IsNull();
+        AssertThat(await client.WaitInGame(120)).IsTrue();
+        var player = client.Composition.LocalPlayer!;
+        AssertThat(await client.WaitUntil(() => player.IsActive, 180)).IsTrue();
+        AssertThat(await client.WaitTerrainIdle()).IsTrue();
+
+        player.InputSource = new HostLoopTests.ScriptedInput(_ => new LocalInputSample(0f, 0f, InputButtons.Jump, 0f, 0f));
+        player.SetDevFly(true);
+        AssertThat(player.DevFlyOn).IsTrue();
+        AssertThat(await client.WaitUntil(() => !player.DevFlyOn, 60)).IsTrue();
+
+        AssertThat(player.Notice).IsEqual("serwer nie pozwala na lot");
+        AssertThat(player.Corrections).IsGreaterEqual(LocalPlayer.DevFlyRefusalCorrections);
+        AssertThat(player.Corrections).IsLess(3 * LocalPlayer.DevFlyRefusalCorrections);
+
+        AssertThat(await client.StopAsync()).IsTrue();
+        AssertThat(await server.StopAsync()).IsTrue();
+    }
+
     private static void Record(string line)
     {
         if (System.Environment.GetEnvironmentVariable("HORYZONT_RECON_OUT") is { Length: > 0 } path)

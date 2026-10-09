@@ -16,6 +16,15 @@ public sealed partial class LocalInputReader : Node, ILocalInputSource
     private const ulong SettleMilliseconds = 400;
     private const float MaxEventPixels = 400f;
 
+    private static readonly StringName _release = new("release_mouse");
+    private static readonly StringName _jump = new("jump");
+    private static readonly StringName _sprint = new("sprint");
+    private static readonly StringName _crouch = new("crouch");
+    private static readonly StringName _left = new("move_left");
+    private static readonly StringName _right = new("move_right");
+    private static readonly StringName _back = new("move_back");
+    private static readonly StringName _forward = new("move_forward");
+
     private ulong _ignoreMotionUntil;
     private float _yaw;
     private float _pitch;
@@ -60,7 +69,7 @@ public sealed partial class LocalInputReader : Node, ILocalInputSource
     /// <inheritdoc />
     public override void _UnhandledInput(InputEvent @event)
     {
-        if (@event.IsActionPressed("release_mouse") && MouseCaptured)
+        if (@event.IsActionPressed(_release) && MouseCaptured)
         {
             Input.MouseMode = Input.MouseModeEnum.Visible;
             GetViewport().SetInputAsHandled();
@@ -85,23 +94,23 @@ public sealed partial class LocalInputReader : Node, ILocalInputSource
     public LocalInputSample Take()
     {
         var buttons = InputButtons.None;
-        if (Input.IsActionPressed("jump"))
+        if (Input.IsActionPressed(_jump))
         {
             buttons |= InputButtons.Jump;
         }
 
-        if (Input.IsActionPressed("sprint"))
+        if (Input.IsActionPressed(_sprint))
         {
             buttons |= InputButtons.Sprint;
         }
 
-        if (Input.IsActionPressed("crouch"))
+        if (Input.IsActionPressed(_crouch))
         {
             buttons |= InputButtons.Crouch;
         }
 
         var sample = new LocalInputSample(
-            Input.GetAxis("move_left", "move_right"), Input.GetAxis("move_back", "move_forward"), buttons, _yaw, _pitch, _wheel);
+            Input.GetAxis(_left, _right), Input.GetAxis(_back, _forward), buttons, _yaw, _pitch, _wheel);
         _yaw = 0f;
         _pitch = 0f;
         _wheel = 0;

@@ -68,6 +68,9 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     private bool _render;
     private bool _devAllowed;
     private bool _devFlyOn;
+    private int _devFlyCorrections;
+    private float _lastYaw;
+    private float _lastPitch;
     private bool _connected;
     private bool _snapCamera;
     private float _tickSeconds = 1f / 60f;
@@ -107,6 +110,12 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
 
     /// <summary>Gets the viewer that streams the visible terrain around the camera; null before the body exists or without rendering.</summary>
     public VoxelViewer? VisualViewer => _visualViewer;
+
+    /// <summary>Corrections in a row while the dev flight is on after which the client assumes the server refuses the flight.</summary>
+    public const int DevFlyRefusalCorrections = 4;
+
+    /// <summary>Gets a one-line note for the HUD (empty when there is none); set when the server refuses the dev flight.</summary>
+    public string Notice { get; private set; } = string.Empty;
 
     /// <summary>Gets a value indicating whether the dev flight of the character is switched on.</summary>
     public bool DevFlyOn => _devFlyOn;
@@ -223,13 +232,18 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     {
         if (_devAllowed && @event.IsActionPressed("dev_fly_toggle"))
         {
-            _devFlyOn = !_devFlyOn;
+            SetDevFly(!_devFlyOn);
         }
     }
 
     /// <summary>Switches the dev flight of the character (the <c>F</c> key); ignored when the build does not allow it.</summary>
     /// <param name="on">Whether the flight is on.</param>
-    public void SetDevFly(bool on) => _devFlyOn = on && _devAllowed;
+    public void SetDevFly(bool on)
+    {
+        _devFlyOn = on && _devAllowed;
+        _devFlyCorrections = 0;
+        Notice = string.Empty;
+    }
 
     /// <summary>Forgets the correction counters (tests measure from a settled state).</summary>
     public void ResetStatistics()
@@ -301,6 +315,28 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         UpdateCamera(driving, devCameraActive);
     }
 
+    /// <summary>
+    /// The motor input of a wire input, with the fallback of the server for an invalid one: neutral, facing the last valid yaw and pitch.
+    /// The client must predict exactly what <c>ServerCharacters</c> does with the same input.
+    /// </summary>
+    /// <param name="wire">The input as it is sent.</param>
+    /// <param name="movement">Movement rules.</param>
+    /// <param name="lastYaw">Yaw of the last valid input; updated on success.</param>
+    /// <param name="lastPitch">Pitch of the last valid input; updated on success.</param>
+    /// <returns>The input the motor gets.</returns>
+    public static MotorInput ValidMotor(in PlayerInput wire, MovementRules movement, ref float lastYaw, ref float lastPitch)
+    {
+        ArgumentNullException.ThrowIfNull(movement);
+        if (MotorInput.TryFrom(wire, movement, out var valid))
+        {
+            lastYaw = valid.Yaw;
+            lastPitch = valid.Pitch;
+            return valid;
+        }
+
+        return MotorInput.Neutral(lastYaw, lastPitch);
+    }
+
     private static bool OnFloorOf(MovementMode mode) => mode is MovementMode.Walking or MovementMode.Sprinting;
 
     private void StepCharacter(in LocalInputSample sample)
@@ -312,10 +348,7 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         orientation.Advance(up, sample.MouseYaw, sample.MousePitch);
         var buttons = sample.Buttons | (_devFlyOn && _devAllowed ? InputButtons.DevFly : InputButtons.None);
         var wire = new PlayerInput(_clientTick, sample.MoveX, sample.MoveY, orientation.YawFor(up), orientation.Pitch, buttons);
-        if (!MotorInput.TryFrom(wire, _movement, out var motor))
-        {
-            motor = MotorInput.Neutral(0f, orientation.Pitch);
-        }
+        var motor = ValidMotor(wire, _movement, ref _lastYaw, ref _lastPitch);
 
         var seq = _sequencer.Record(_clientTick, motor);
         _validator!.NoteSent(seq);
@@ -385,11 +418,13 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         switch (outcome)
         {
             case AckOutcome.InSync:
+                _devFlyCorrections = 0;
                 Compared++;
                 MaxAckPositionError = MathF.Max(MaxAckPositionError, _buffer.LastPositionError);
                 break;
             case AckOutcome.Correct:
                 Corrections++;
+                NoteCorrectionWhileFlying();
                 LastCorrection = string.Create(
                     System.Globalization.CultureInfo.InvariantCulture,
                     $"seq {own.LastProcessedInputSeq}: position error {_buffer.LastPositionError * 1000f:F2} mm, velocity error {_buffer.LastVelocityError:F3} m/s, client mode {_body!.Mode}, server mode {own.Mode}, unacknowledged {_buffer.Count}, predicted feet {_buffer.LastCompared.Feet} velocity {_buffer.LastCompared.Velocity} floor {_buffer.LastCompared.OnFloor}, server feet {own.Feet} velocity {own.Velocity}");
@@ -398,6 +433,19 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
             default:
                 break;
         }
+    }
+
+    private void NoteCorrectionWhileFlying()
+    {
+        if (!_devFlyOn || ++_devFlyCorrections < DevFlyRefusalCorrections)
+        {
+            return;
+        }
+
+        // The server does not honour the flight bit (it runs without --dev): keep predicting what it does instead of fighting it.
+        _devFlyOn = false;
+        _devFlyCorrections = 0;
+        Notice = "serwer nie pozwala na lot";
     }
 
     private void Replay(OwnState own)
