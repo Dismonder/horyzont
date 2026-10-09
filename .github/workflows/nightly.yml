@@ -76,6 +76,9 @@ jobs:
       - name: Activate engine packages
         run: python tools/engine/build.py activate --from engine-ci/nupkgs
 
+      - name: Build game for the editor
+        run: dotnet build game/Horyzont.Game.csproj -nologo
+
       - name: Point the export presets at the engine templates
         run: |
           # Godot reads this path from the file, so it needs D:/... rather than the Git Bash /d/... form.
@@ -148,6 +151,9 @@ jobs:
 
       - name: Activate engine packages
         run: python tools/engine/build.py activate --from engine-ci/nupkgs
+
+      - name: Build game for the editor
+        run: dotnet build game/Horyzont.Game.csproj -nologo
 
       - uses: actions/download-artifact@v4
         with:
