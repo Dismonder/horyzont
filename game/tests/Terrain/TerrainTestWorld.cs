@@ -118,18 +118,19 @@ internal sealed class TerrainTestWorld : IAsyncDisposable
     public static WorldState NewWorldState() =>
         WorldState.CreateNew(WorldFactory.DefaultWorldId, 42, [Planet], [WorldFactory.StoneBlockKey], TerrainMaterials.Keys);
 
-    public static Task<TerrainTestWorld> CreateAsync(EngineTestScene scene, TerrainBufferOptions? options = null, IPersistenceFaults? faults = null)
+    public static Task<TerrainTestWorld> CreateAsync(
+        EngineTestScene scene, TerrainBufferOptions? options = null, IPersistenceFaults? faults = null, Func<VoxelGenerator>? generator = null)
     {
         var time = new FakeTimeProvider();
         var path = NewPath();
         WorldCreator.Create(path, NewWorldState(), Options, time);
-        return OpenAsync(scene, path, options, faults, time);
+        return OpenAsync(scene, path, options, faults, time, generator: generator);
     }
 
     /// <summary>Loads the world, builds the terrain and replays the tail through <see cref="TerrainReplay"/>.</summary>
     public static async Task<TerrainTestWorld> OpenAsync(
         EngineTestScene scene, string path, TerrainBufferOptions? options = null, IPersistenceFaults? faults = null, FakeTimeProvider? time = null,
-        string? savedSemantics = null, bool replay = true)
+        string? savedSemantics = null, bool replay = true, Func<VoxelGenerator>? generator = null)
     {
         time ??= new FakeTimeProvider();
         var loaded = WorldLoader.Load(
@@ -139,7 +140,7 @@ internal sealed class TerrainTestWorld : IAsyncDisposable
             store, loaded.State.TerrainVersions.All, options ?? new TerrainBufferOptions(), time, NullLogger<ServerTerrainBlocks>.Instance);
         var service = new VoxelTerrainService(
             blocks, new TerrainBlockCodec(), TerrainMaterialMap.Build(loaded.State.Materials), NullLogger<VoxelTerrainService>.Instance);
-        var node = scene.Add(service.AddPlanet(Planet, CreateTerrain()));
+        var node = scene.Add(service.AddPlanet(Planet, CreateTerrain(generator)));
         var writer = new PersistenceWriter(WorldDatabase.Open(path), Options, time, faults ?? NoFaults.Instance, NullLogger<PersistenceWriter>.Instance);
         var sim = new ServerSimulation(loaded.State, service, new JournalSink(writer), new GameRules(), NullLogger<ServerSimulation>.Instance);
         var loader = new TerrainAreaLoader(service, time, TerrainAreaLoader.DefaultDeadline);
@@ -176,10 +177,10 @@ internal sealed class TerrainTestWorld : IAsyncDisposable
     }
 
     /// <summary>The K2-08 factory terrain with a flat generator at <see cref="Surface"/>.</summary>
-    public static VoxelLodTerrain CreateTerrain()
+    public static VoxelLodTerrain CreateTerrain(Func<VoxelGenerator>? generator = null)
     {
         var terrain = PlanetTerrainFactory.Create(Planet, PlanetTerrainOptions.Server);
-        terrain.Generator = new VoxelGeneratorFlat { Channel = TerrainChannels.Sdf, Height = Surface };
+        terrain.Generator = generator?.Invoke() ?? new VoxelGeneratorFlat { Channel = TerrainChannels.Sdf, Height = Surface };
         return terrain;
     }
 
