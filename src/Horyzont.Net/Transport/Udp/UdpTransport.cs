@@ -35,7 +35,8 @@ public sealed partial class UdpTransport : ITransport
     /// <summary>Initializes a new instance of the <see cref="UdpTransport"/> class.</summary>
     /// <param name="options">Timeout and keep-alive settings.</param>
     /// <param name="logger">Optional logger for network errors.</param>
-    public UdpTransport(TransportOptions options, ILogger<UdpTransport>? logger = null)
+    /// <param name="time">Clock of the closing deadline; the system clock when omitted.</param>
+    public UdpTransport(TransportOptions options, ILogger<UdpTransport>? logger = null, TimeProvider? time = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         _logger = logger ?? NullLogger<UdpTransport>.Instance;
@@ -57,6 +58,12 @@ public sealed partial class UdpTransport : ITransport
 
     /// <inheritdoc />
     public int MaxUnreliablePayload => Mtu - UnreliableHeaderSize;
+
+    /// <inheritdoc />
+    public bool IsDrained => true;
+
+    /// <summary>Gets the number of connections that are closing (tests).</summary>
+    internal int ClosingCount => _closing.Count;
 
     /// <summary>Gets the UDP port this transport is bound to, or zero before it started.</summary>
     public int LocalPort => _started ? _manager.LocalPort : 0;

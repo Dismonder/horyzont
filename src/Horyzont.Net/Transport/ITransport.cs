@@ -9,6 +9,13 @@ public interface ITransport : IDisposable
     /// <summary>Gets the largest payload accepted on <see cref="TransportChannel.Unreliable"/>; at least 1150 bytes.</summary>
     int MaxUnreliablePayload { get; }
 
+    /// <summary>
+    /// Gets a value indicating whether the transport has no connection that is closing with reliable data still unsent or
+    /// undelivered, so disposing it now loses nothing already handed to <see cref="Send"/> or <see cref="Disconnect"/>.
+    /// A server pumps <see cref="Poll"/> until this is true (or a deadline) before it disposes the transport.
+    /// </summary>
+    bool IsDrained { get; }
+
     /// <summary>Starts accepting connections on <paramref name="endpoint"/>.</summary>
     /// <param name="endpoint">Endpoint of the transport's own kind.</param>
     void Listen(TransportEndpoint endpoint);

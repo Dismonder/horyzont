@@ -212,6 +212,9 @@ public sealed class PersistenceWriter : IAsyncDisposable
         _db.Dispose();
     }
 
+    /// <summary>Completes the command channel without disposing or crashing the writer (tests of the lost-entry guard).</summary>
+    internal void CompleteChannelForTest() => _channel.Writer.TryComplete();
+
     /// <summary>The backups of this writer (tests set <see cref="BackupService.BeforePublish"/>).</summary>
     internal BackupService Backups => _backups;
 

@@ -38,6 +38,9 @@ public sealed class InMemoryTransport : ITransport
     /// <inheritdoc />
     public int MaxUnreliablePayload => UnreliableLimit;
 
+    /// <inheritdoc />
+    public bool IsDrained => true;
+
     private TransportEndpoint Identity => _fakeSteamId is { } id ? new SteamEndpoint(id) : new InMemoryEndpoint(_name);
 
     /// <inheritdoc />
