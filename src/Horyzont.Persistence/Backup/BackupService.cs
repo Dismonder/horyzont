@@ -35,6 +35,9 @@ public sealed partial class BackupService
         _time = time;
     }
 
+    /// <summary>Test hook: called on the copying thread once the source connection is open, immediately before the copy starts.</summary>
+    internal Action? BeforeCopy { get; set; }
+
     /// <summary>Test hook: called with the temporary path after the copy is closed and before it is published.</summary>
     internal Action<string>? BeforePublish { get; set; }
 
@@ -69,6 +72,7 @@ public sealed partial class BackupService
             using (var destination = new SqliteConnection(WorldDatabase.ConnectionString(temporary, SqliteOpenMode.ReadWriteCreate, pooling: false)))
             {
                 destination.Open();
+                BeforeCopy?.Invoke();
                 source.BackupDatabase(destination);
                 WorldDatabase.Execute(destination, "PRAGMA journal_mode = DELETE;");
             }
