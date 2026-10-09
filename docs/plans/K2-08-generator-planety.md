@@ -392,10 +392,10 @@ CI i ręczne:
 
 ## Kroki
 
-- [ ] 0. Warunki startu sprawdzone na `main`; wynik w opisie PR.
-- [ ] 1. **Etap A** (`pakiet/k2-08a-silnik-linux`, osobny mały PR): cel `{ "name": "editor-linux", "runner": "linux", "platform": "linuxbsd", "target": "editor" }` w `engine.json`, upload `engine-linux-editor` w `engine.yml`, opis w PR (zmiana klucza konfiguracji = pełne przebudowanie silnika z cache od zera; uruchom poza godzinami innych PR). Scal po zielonym `engine.yml`; zielony przebieg na `main` jest warunkiem kroku 4.
+- [x] 0. Warunki startu sprawdzone na `main`; wynik w opisie PR. (Sprawdzone 2026-10-09: K1-02B scalony do main (PR #4), ostatni engine.yml na main zielony (run 37836838374), ci.yml na main zielony.)
+- [x] 1. **Etap A** (`pakiet/k2-08a-silnik-linux`, osobny mały PR): cel `{ "name": "editor-linux", "runner": "linux", "platform": "linuxbsd", "target": "editor" }` w `engine.json`, upload `engine-linux-editor` w `engine.yml`, opis w PR (zmiana klucza konfiguracji = pełne przebudowanie silnika z cache od zera; uruchom poza godzinami innych PR). Scal po zielonym `engine.yml`; zielony przebieg na `main` jest warunkiem kroku 4. (PR #10, gałąź pakiet/k2-08a-silnik-linux; scalenie po stronie właściciela.)
 - [ ] 2. Rozpoznanie S1–S7 na gałęzi etapu B (kod próbny usuń przed PR albo zostaw jako test); nazwy API i decyzje do „Odstępstw”.
-- [ ] 3. Core: testy `PlanetGenesisTests` (czerwone), `PlanetGenesis` (zielone); `dotnet build`/`test`/`format` rozwiązania.
+- [x] 3. Core: testy `PlanetGenesisTests` (czerwone), `PlanetGenesis` (zielone); `dotnet build`/`test`/`format` rozwiązania.
 - [ ] 4. Uprząż: paczki gdUnit4Net (albo runner zapasowy według S6), `.runsettings`, `EngineTestScene`, `Harness_EngineRuns_RealTIsDouble`; job `game` jako macierz Windows/Linux z testami silnika; zielony na obu.
 - [ ] 5. `TerrainChannels`, `TerrainMaterials`, `TerrainMaterialMap` z testami map i zamrożonej tabeli.
 - [ ] 6. `GraphBuilder` z listą dozwolonych węzłów, `NoiseSeeds`; test listy dozwolonych na grafie próbnym.
