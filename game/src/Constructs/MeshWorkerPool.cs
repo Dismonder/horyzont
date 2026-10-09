@@ -54,13 +54,20 @@ internal sealed partial class MeshWorkerPool : IDisposable
     private readonly CancellationTokenSource _cancel = new();
     private volatile bool _shutdown;
     private bool _slotsDisposed;
+    private readonly object _lifecycleLock = new();
+    private int _remainingWorkers;
+    private bool _disposeRequested;
+    private readonly Action<MeshJobSlot>? _beforeBuild;
+    internal int CleanupCount { get; private set; }
 
-    public MeshWorkerPool(BlockRenderTable table, int workerCount, int slotCount, ILogger logger)
+    public MeshWorkerPool(BlockRenderTable table, int workerCount, int slotCount, ILogger logger, Action<MeshJobSlot>? beforeBuild = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(workerCount, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(slotCount, 1);
         _table = table;
         _logger = logger;
+        _beforeBuild = beforeBuild;
+        _remainingWorkers = workerCount;
         _jobs = new BlockingCollection<MeshJobSlot>(slotCount);
         for (var i = 0; i < slotCount; i++)
         {
@@ -130,9 +137,17 @@ internal sealed partial class MeshWorkerPool : IDisposable
     /// <summary>Cancels the workers without waiting (scene teardown).</summary>
     public void Cancel()
     {
-        _shutdown = true;
-        _jobs.CompleteAdding();
-        _cancel.Cancel();
+        lock (_lifecycleLock)
+        {
+            if (_shutdown)
+            {
+                return;
+            }
+
+            _shutdown = true;
+            _jobs.CompleteAdding();
+            _cancel.Cancel();
+        }
     }
 
     /// <summary>Stops the workers and waits for them. After the timeout the results are detached: nothing reads them any more.</summary>
@@ -159,16 +174,23 @@ internal sealed partial class MeshWorkerPool : IDisposable
 
     public void Dispose()
     {
-        Cancel();
-        if (_threads.Any(t => t.IsAlive))
+        lock (_lifecycleLock)
         {
-            // A worker is still inside the mesher: its slot buffers stay allocated until it ends (background threads end with the process).
-            return;
+            Cancel();
+            _disposeRequested = true;
+            if (_remainingWorkers == 0)
+            {
+                Cleanup();
+            }
         }
+    }
 
+    private void Cleanup()
+    {
         if (!_slotsDisposed)
         {
             _slotsDisposed = true;
+            CleanupCount++;
             foreach (var slot in _allSlots)
             {
                 slot.Dispose();
@@ -176,6 +198,9 @@ internal sealed partial class MeshWorkerPool : IDisposable
 
             _jobs.Dispose();
             _cancel.Dispose();
+            _results.Clear();
+            _free.Clear();
+            _allSlots.Clear();
         }
     }
 
@@ -188,6 +213,7 @@ internal sealed partial class MeshWorkerPool : IDisposable
             {
                 try
                 {
+                    _beforeBuild?.Invoke(slot);
                     mesher.Build(slot.Input, _table, slot.Output);
                     slot.Prepared = ChunkMeshUploader.Prepare(slot.Output, slot.WantsMesh, slot.WantsCollision);
                 }
@@ -208,6 +234,17 @@ internal sealed partial class MeshWorkerPool : IDisposable
         catch (InvalidOperationException)
         {
             // CompleteAdding() ended the enumeration while a Take was pending: also a normal stop.
+        }
+        finally
+        {
+            lock (_lifecycleLock)
+            {
+                _remainingWorkers--;
+                if (_remainingWorkers == 0 && _disposeRequested)
+                {
+                    Cleanup();
+                }
+            }
         }
     }
 
