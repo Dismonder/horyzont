@@ -97,12 +97,13 @@ jobs:
           gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n ${{ matrix.engine-artifact }} -D engine-ci/editor
           gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-nupkgs -D engine-ci/nupkgs
 
-      - name: Prepare the Linux editor
-        if: runner.os == 'Linux'
-        run: |
-          chmod +x engine-ci/editor/${{ matrix.editor }}
-          sudo apt-get update
-          sudo apt-get install -y libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 libgl1 libasound2t64 libpulse0 libudev1 libfontconfig1
+      # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
+      # - name: Prepare the Linux editor
+      #   if: runner.os == 'Linux'
+      #   run: |
+      #     chmod +x engine-ci/editor/${{ matrix.editor }}
+      #     sudo apt-get update
+      #     sudo apt-get install -y libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 libgl1 libasound2t64 libpulse0 libudev1 libfontconfig1
 
       - name: Activate engine packages
         run: python tools/engine/build.py activate --from engine-ci/nupkgs
