@@ -397,7 +397,7 @@ CI i ręczne:
 - [ ] 2. Rozpoznanie S1–S7 na gałęzi etapu B (kod próbny usuń przed PR albo zostaw jako test); nazwy API i decyzje do „Odstępstw”.
 - [x] 3. Core: testy `PlanetGenesisTests` (czerwone), `PlanetGenesis` (zielone); `dotnet build`/`test`/`format` rozwiązania.
 - [x] 4. Uprząż: paczki gdUnit4Net (albo runner zapasowy według S6), `.runsettings`, `EngineTestScene`, `Harness_EngineRuns_RealTIsDouble`; job `game` jako macierz Windows/Linux z testami silnika; zielony na obu. (Windows lokalnie: 2 testy silnika zielone; macierz Linux i job `game` na Linuksie: pending-CI.)
-- [ ] 5. `TerrainChannels`, `TerrainMaterials`, `TerrainMaterialMap` z testami map i zamrożonej tabeli.
+- [x] 5. `TerrainChannels`, `TerrainMaterials`, `TerrainMaterialMap` z testami map i zamrożonej tabeli. (S2: tryb `TEXTURES_SINGLE_S4`, kanał `CHANNEL_INDICES` 8 bitów, SDF 16 bitów.)
 - [ ] 6. `GraphBuilder` z listą dozwolonych węzłów, `NoiseSeeds`; test listy dozwolonych na grafie próbnym.
 - [ ] 7. `PlanetGeneratorV1` i `GeneratorProfiles`: testy kształtu, rdzenia, kosmosu, materiałów, jaskiń, powtarzalności, nieznanego profilu (bez złotego skrótu).
 - [ ] 8. `PlanetTerrainLayout`, `PlanetTerrainFactory`, `PlanetTerrainMaterial`, shader; testy konfiguracji i `Factory_TerrainBlocksEqualDirectGeneration`.
