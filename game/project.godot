@@ -1,5 +1,10 @@
 ; Engine configuration file.
-; Game project (docs/plans/K1-02-szkielet-rozwiazania.md, stage B).
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
 
@@ -7,17 +12,15 @@ config_version=5
 
 config/name="Horyzont"
 run/main_scene="res://scenes/Boot.tscn"
-config/features=PackedStringArray("4.7", "C#", "Forward Plus")
+config/features=PackedStringArray("4.7", "C#", "Double Precision", "Forward Plus")
 
 [dotnet]
 
 project/assembly_name="Horyzont.Game"
 
-[physics]
+[layer_names]
 
-common/physics_ticks_per_second=60
-
-[rendering]
-
-renderer/rendering_method="forward_plus"
-rendering_device/driver.windows="vulkan"
+3d_physics/layer_1="terrain"
+3d_physics/layer_2="constructs"
+3d_physics/layer_3="server_bodies"
+3d_physics/layer_4="client_bodies"
