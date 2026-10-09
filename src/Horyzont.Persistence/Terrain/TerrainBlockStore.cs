@@ -9,7 +9,7 @@ namespace Horyzont.Persistence.Terrain;
 /// <c>Microsoft.Data.Sqlite</c> pool, and WAL readers do not block the writer. Blocks changed but not yet saved are held by the
 /// game adapter, which checks them before calling <see cref="TryLoad"/>.
 /// </summary>
-public sealed class TerrainBlockStore
+public sealed class TerrainBlockStore : IDisposable
 {
     private readonly string _connectionString;
 
@@ -28,9 +28,7 @@ public sealed class TerrainBlockStore
     /// <returns>False when the block was never saved (the generator produces it).</returns>
     public bool TryLoad(TerrainBlockKey key, out uint version, out byte[] data)
     {
-        using var connection = new SqliteConnection(_connectionString);
-        connection.Open();
-        WorldDatabase.ApplyPragmas(connection, readOnly: true);
+        using var connection = WorldDatabase.OpenConnection(_connectionString, readOnly: true);
         using var command = Sql.Command(
             connection, null,
             "SELECT version, data FROM terrain_blocks WHERE planet_id = $p AND lod = $lod AND block_x = $x AND block_y = $y AND block_z = $z;");
@@ -51,4 +49,18 @@ public sealed class TerrainBlockStore
         data = (byte[])reader.GetValue(1);
         return true;
     }
+
+    /// <summary>
+    /// Closes the pooled read connections of this store's world file, releasing the file handle (needed before deleting or
+    /// restoring the file on Windows). Clears only the pool of this connection string, never other stores' pools; the store stays
+    /// usable and simply opens new connections.
+    /// </summary>
+    public void Close()
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        SqliteConnection.ClearPool(connection);
+    }
+
+    /// <inheritdoc cref="Close"/>
+    public void Dispose() => Close();
 }

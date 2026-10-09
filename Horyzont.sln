@@ -24,7 +24,10 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horyzont.Persistence.Tests", "tests\Horyzont.Persistence.Tests\Horyzont.Persistence.Tests.csproj", "{5F45C81C-C696-438A-B891-C8C007BE1484}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horyzont.Persistence.CrashHost", "tests\Horyzont.Persistence.CrashHost\Horyzont.Persistence.CrashHost.csproj", "{E3007DBF-1D72-44C4-9732-253A2F51A119}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horyzont.Net.SteamCheck", "tests\Horyzont.Net.SteamCheck\Horyzont.Net.SteamCheck.csproj", "{F7E45FF8-1DB5-4202-9DF1-5CC0018A7EEA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horyzont.Integration.Tests", "tests\Horyzont.Integration.Tests\Horyzont.Integration.Tests.csproj", "{9595356F-9CC2-4405-AB5A-BC140E24A265}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -156,6 +159,18 @@ Global
 		{F7E45FF8-1DB5-4202-9DF1-5CC0018A7EEA}.Release|x64.Build.0 = Release|Any CPU
 		{F7E45FF8-1DB5-4202-9DF1-5CC0018A7EEA}.Release|x86.ActiveCfg = Release|Any CPU
 		{F7E45FF8-1DB5-4202-9DF1-5CC0018A7EEA}.Release|x86.Build.0 = Release|Any CPU
+		{9595356F-9CC2-4405-AB5A-BC140E24A265}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9595356F-9CC2-4405-AB5A-BC140E24A265}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9595356F-9CC2-4405-AB5A-BC140E24A265}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{9595356F-9CC2-4405-AB5A-BC140E24A265}.Debug|x64.Build.0 = Debug|Any CPU
+		{9595356F-9CC2-4405-AB5A-BC140E24A265}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{9595356F-9CC2-4405-AB5A-BC140E24A265}.Debug|x86.Build.0 = Debug|Any CPU
+		{9595356F-9CC2-4405-AB5A-BC140E24A265}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9595356F-9CC2-4405-AB5A-BC140E24A265}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9595356F-9CC2-4405-AB5A-BC140E24A265}.Release|x64.ActiveCfg = Release|Any CPU
+		{9595356F-9CC2-4405-AB5A-BC140E24A265}.Release|x64.Build.0 = Release|Any CPU
+		{9595356F-9CC2-4405-AB5A-BC140E24A265}.Release|x86.ActiveCfg = Release|Any CPU
+		{9595356F-9CC2-4405-AB5A-BC140E24A265}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -171,5 +186,6 @@ Global
 		{5F45C81C-C696-438A-B891-C8C007BE1484} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{E3007DBF-1D72-44C4-9732-253A2F51A119} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{F7E45FF8-1DB5-4202-9DF1-5CC0018A7EEA} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{9595356F-9CC2-4405-AB5A-BC140E24A265} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

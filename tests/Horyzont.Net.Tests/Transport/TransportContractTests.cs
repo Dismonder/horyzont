@@ -9,6 +9,7 @@ namespace Horyzont.Net.Tests.Transport;
 public abstract class TransportContractTests<TFactory> : IDisposable
     where TFactory : ITransportWorldFactory
 {
+    // Several waits can run in one test, so the per-test watchdog (30 s) covers the sum of them, not just one.
     private static readonly TimeSpan _longWait = TimeSpan.FromSeconds(8);
 
     protected TransportContractTests()
@@ -26,7 +27,7 @@ public abstract class TransportContractTests<TFactory> : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    [Fact(Timeout = 10_000)]
+    [Fact(Timeout = 30_000)]
     public void Connect_ServerListening_BothSidesReportConnected()
     {
         var (server, client, _, _) = ConnectPair();
@@ -35,7 +36,7 @@ public abstract class TransportContractTests<TFactory> : IDisposable
         Assert.Single(client.Events.Connected);
     }
 
-    [Fact(Timeout = 10_000)]
+    [Fact(Timeout = 30_000)]
     public void SendReliable_1000Messages_ArriveInOrderOnce()
     {
         Server();
@@ -59,7 +60,7 @@ public abstract class TransportContractTests<TFactory> : IDisposable
         }
     }
 
-    [Fact(Timeout = 10_000)]
+    [Fact(Timeout = 30_000)]
     public void SendReliable_256KiB_ArrivesIntact()
     {
         var (server, client, _, clientConn) = ConnectPair();
@@ -72,7 +73,7 @@ public abstract class TransportContractTests<TFactory> : IDisposable
         Assert.Equal(payload, server.Events.Received[0].Payload);
     }
 
-    [Fact(Timeout = 10_000)]
+    [Fact(Timeout = 30_000)]
     public void SendUnreliable_OverLimit_Throws()
     {
         var (server, client, _, clientConn) = ConnectPair();
@@ -84,7 +85,7 @@ public abstract class TransportContractTests<TFactory> : IDisposable
         Assert.Empty(server.Events.Received);
     }
 
-    [Fact(Timeout = 10_000)]
+    [Fact(Timeout = 30_000)]
     public void SendUnreliable_1150Bytes_Arrives()
     {
         var (server, client, _, clientConn) = ConnectPair();
@@ -98,7 +99,7 @@ public abstract class TransportContractTests<TFactory> : IDisposable
         Assert.Equal(TransportChannel.Unreliable, server.Events.Received[0].Channel);
     }
 
-    [Fact(Timeout = 10_000)]
+    [Fact(Timeout = 30_000)]
     public void SendUnreliable_UnderLoss_DeliversIntactSubset()
     {
         var (server, client, _, clientConn) = ConnectPair();
@@ -123,7 +124,7 @@ public abstract class TransportContractTests<TFactory> : IDisposable
         }
     }
 
-    [Fact(Timeout = 10_000)]
+    [Fact(Timeout = 30_000)]
     public void Disconnect_Local_RemoteNotifiedWithin1s()
     {
         var (server, client, serverConn, clientConn) = ConnectPair();
@@ -137,7 +138,7 @@ public abstract class TransportContractTests<TFactory> : IDisposable
         Assert.Equal((clientConn, TransportDisconnectReason.Local), client.Events.Disconnected[0]);
     }
 
-    [Fact(Timeout = 10_000)]
+    [Fact(Timeout = 30_000)]
     public void RemoteVanishes_NoTraffic_TimesOut()
     {
         var (server, client, _, _) = ConnectPair();
@@ -151,7 +152,7 @@ public abstract class TransportContractTests<TFactory> : IDisposable
         Assert.Equal(TransportDisconnectReason.Timeout, client.Events.Disconnected[0].Reason);
     }
 
-    [Fact(Timeout = 10_000)]
+    [Fact(Timeout = 30_000)]
     public void SendReliable_ThenDisconnectOverLossyLink_DeliversEverythingBeforeDisconnected()
     {
         Server();
@@ -175,7 +176,7 @@ public abstract class TransportContractTests<TFactory> : IDisposable
         }
     }
 
-    [Fact(Timeout = 10_000)]
+    [Fact(Timeout = 30_000)]
     public void SendReliable_AcrossShortPartition_ArrivesInOrderAfterHeal()
     {
         var (server, client, _, clientConn) = ConnectPair();
@@ -201,7 +202,7 @@ public abstract class TransportContractTests<TFactory> : IDisposable
         Assert.Empty(server.Events.Disconnected);
     }
 
-    [Fact(Timeout = 10_000)]
+    [Fact(Timeout = 30_000)]
     public void Connect_ImmediatelyAfterDisconnect_NewConnectionEstablishes()
     {
         var (server, client, _, firstConn) = ConnectPair();
@@ -218,7 +219,7 @@ public abstract class TransportContractTests<TFactory> : IDisposable
         Assert.True(World.PumpUntil(() => server.Events.Received.Count == 1, _longWait));
     }
 
-    [Fact(Timeout = 10_000)]
+    [Fact(Timeout = 30_000)]
     public void Send_AfterDisconnect_IsIgnored()
     {
         var (server, client, serverConn, clientConn) = ConnectPair();
@@ -235,7 +236,7 @@ public abstract class TransportContractTests<TFactory> : IDisposable
         Assert.Null(exception);
     }
 
-    [Fact(Timeout = 10_000)]
+    [Fact(Timeout = 30_000)]
     public void Connect_EightClients_DistinctConnectionIds()
     {
         var server = Server();
@@ -253,7 +254,7 @@ public abstract class TransportContractTests<TFactory> : IDisposable
         Assert.Equal(8, server.Events.Connected.Distinct().Count());
     }
 
-    [Fact(Timeout = 10_000)]
+    [Fact(Timeout = 30_000)]
     public void Connect_AfterDisconnect_ConnectionIdNotReused()
     {
         var (server, client, _, firstClientConn) = ConnectPair();
@@ -267,7 +268,7 @@ public abstract class TransportContractTests<TFactory> : IDisposable
         Assert.NotEqual(server.Events.Connected[0], server.Events.Connected[1]);
     }
 
-    [Fact(Timeout = 10_000)]
+    [Fact(Timeout = 30_000)]
     public void Poll_Idle_DoesNotAllocate()
     {
         var (_, client, _, _) = ConnectPair();

@@ -11,7 +11,9 @@ public sealed class UdpWorld : ITransportWorld, ITransportWorldFactory
     private readonly List<TransportNode> _nodes = [];
     private UdpLossyRelay? _relay;
 
-    public TransportOptions Options { get; } = new(TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(100));
+    // The timeout is well above scheduler stalls on loaded CI runners (a 500 ms timeout let a stall kill a healthy connection);
+    // tests of the timeout itself derive their waits from it.
+    public TransportOptions Options { get; } = new(TimeSpan.FromSeconds(2), TimeSpan.FromMilliseconds(100));
 
     public TransportEndpoint ServerEndpoint { get; private set; } = new UdpEndpoint("127.0.0.1", 0);
 

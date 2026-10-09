@@ -3,7 +3,6 @@ using Horyzont.Core.World;
 using Horyzont.Persistence.Tests.Support;
 using Horyzont.Testing;
 
-using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Horyzont.Persistence.Tests;
@@ -97,7 +96,7 @@ public sealed class CorruptionTests
         var world = WorldState.CreateNew(WorldFactory.DefaultWorldId, 42, [], [WorldFactory.StoneBlockKey], ["stone"]);
         WorldCreator.Create(dir.WorldPath, world, WorldHarness.Options, new FakeTimeProvider());
         var pageSize = (int)RawDb.Long(dir.WorldPath, "PRAGMA page_size;");
-        SqliteConnection.ClearAllPools();
+        dir.ReleasePools();
         Assert.False(File.Exists(dir.WorldPath + "-wal") && new FileInfo(dir.WorldPath + "-wal").Length > 0);
         using (var file = new FileStream(dir.WorldPath, FileMode.Open, FileAccess.ReadWrite))
         {

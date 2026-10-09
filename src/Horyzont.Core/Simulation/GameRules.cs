@@ -3,7 +3,7 @@ namespace Horyzont.Core.Simulation;
 /// <summary>
 /// Gameplay limits. From the specification: 60 Hz, 8 m reach, 0.5–3 m tool radius, 5 terrain edits per second.
 /// Assumptions to confirm: block rate, ray origin tolerance, capsule size and eye height (package 11), edit margin
-/// (package 9). <see cref="TerrainEditMarginVoxels"/> is part of the operation semantics: changing it changes replay.
+/// (package 9). Constants of the operation semantics (edit margin, edit radius bound) are in <see cref="TerrainRules"/>, not here.
 /// </summary>
 public sealed record GameRules
 {
@@ -42,7 +42,4 @@ public sealed record GameRules
 
     /// <summary>Eye height above the feet.</summary>
     public float EyeHeight { get; init; } = 1.62f;
-
-    /// <summary>Margin of terrain blocks touched by an edit, in voxels.</summary>
-    public int TerrainEditMarginVoxels { get; init; } = 4;
 }

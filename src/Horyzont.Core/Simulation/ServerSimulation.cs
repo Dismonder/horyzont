@@ -43,7 +43,7 @@ public sealed class ServerSimulation
         _terrain = terrain;
         _journal = journal;
         _logger = logger;
-        _applier = new OperationApplier(state, terrain, rules);
+        _applier = new OperationApplier(state, terrain);
         _validator = new IntentValidator(state, terrain, rules);
     }
 
@@ -153,9 +153,10 @@ public sealed class ServerSimulation
     /// <summary>
     /// Replays a journal entry: requires <c>Id == LastOpId.Next</c>, sets CurrentTick to the entry tick and does not
     /// write to the journal. Loads the terrain area before a terrain edit.
+    /// A tick before the current one is rejected; a failure while loading or applying faults the simulation.
     /// </summary>
     /// <param name="entry">The entry.</param>
-    /// <exception cref="ReplayFailedException">A gap in operation numbers or a broken precondition.</exception>
+    /// <exception cref="ReplayFailedException">A gap in operation numbers, a tick going backwards or a broken precondition.</exception>
     public void Replay(JournalEntry entry)
     {
         EnsureNotFaulted();
@@ -166,19 +167,24 @@ public sealed class ServerSimulation
             throw new ReplayFailedException(entry.Id, kind, $"expected operation {State.LastOpId.Next.Value}");
         }
 
+        if (entry.Tick < State.CurrentTick)
+        {
+            throw new ReplayFailedException(entry.Id, kind, $"tick {entry.Tick.Value} is before the current tick {State.CurrentTick.Value}");
+        }
+
         if (!_applier.CheckPreconditions(entry.Operation, out var failure))
         {
             throw new ReplayFailedException(entry.Id, kind, failure);
         }
 
-        if (entry.Operation is TerrainEditOp edit && State.Planets.TryGet(edit.Planet, out var planet))
-        {
-            _terrain.LoadAreaBlocking(edit.Planet, edit.Center, edit.Radius + (Rules.TerrainEditMarginVoxels * planet.VoxelSizeMeters));
-        }
-
-        State.SetTick(entry.Tick);
         try
         {
+            if (entry.Operation is TerrainEditOp edit && State.Planets.TryGet(edit.Planet, out var planet))
+            {
+                _terrain.LoadAreaBlocking(edit.Planet, edit.Center, edit.Radius + (TerrainRules.EditMarginVoxels * planet.VoxelSizeMeters));
+            }
+
+            State.SetTick(entry.Tick);
             _applier.Apply(entry.Id, entry.Tick, entry.Actor, entry.Operation);
         }
         catch (Exception exception)

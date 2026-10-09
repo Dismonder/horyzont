@@ -15,7 +15,7 @@ namespace Horyzont.Core.Simulation;
 /// identically, so a change here needs a new operation format version (docs/ZASADY.md, point 3).
 /// Reads only the state and the operation, never game content or the terrain.
 /// </summary>
-internal sealed class OperationApplier(WorldState state, ITerrainService terrain, GameRules rules)
+internal sealed class OperationApplier(WorldState state, ITerrainService terrain)
 {
     private static readonly IReadOnlyList<TerrainBlockVersion> _noTerrain = [];
     private static readonly IReadOnlyList<ConstructChange> _noConstructs = [];
@@ -95,7 +95,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
     private TerrainBlockVersion[] ApplyTerrainEdit(TerrainEditOp op)
     {
         state.Planets.TryGet(op.Planet, out var planet);
-        TerrainMath.AffectedBlocks(op.Planet, op.Center, op.Radius, planet!.VoxelSizeMeters, rules.TerrainEditMarginVoxels, _affected);
+        TerrainMath.AffectedBlocks(op.Planet, op.Center, op.Radius, planet!.VoxelSizeMeters, TerrainRules.EditMarginVoxels, _affected);
         var versions = new TerrainBlockVersion[_affected.Count];
         for (var i = 0; i < _affected.Count; i++)
         {
@@ -156,6 +156,19 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         if (!Geometry.IsFinite(op.Center) || !float.IsFinite(op.Radius) || op.Radius <= 0)
         {
             return "invalid centre or radius";
+        }
+
+        // Journal entries are untrusted input: bound the work Apply and Replay do (AffectedBlocks grows with the radius).
+        // Every operation the validator produces is inside these bounds (tool radius <= MaxEditRadiusMeters, centre inside the atmosphere).
+        if (op.Radius > TerrainRules.MaxEditRadiusMeters)
+        {
+            return "radius too large";
+        }
+
+        state.Planets.TryGet(op.Planet, out var planet);
+        if (op.Center.Length() > planet!.RadiusMeters + planet.AtmosphereHeightMeters + TerrainRules.MaxEditRadiusMeters)
+        {
+            return "centre out of range";
         }
 
         if (op.Mode == TerrainEditMode.Remove ? op.MaterialId != 0 : !state.Materials.IsKnown(op.MaterialId))

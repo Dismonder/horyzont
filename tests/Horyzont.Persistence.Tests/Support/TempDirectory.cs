@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+using Horyzont.Persistence.Terrain;
 
 namespace Horyzont.Persistence.Tests.Support;
 
@@ -19,10 +19,15 @@ internal sealed class TempDirectory : IDisposable
 
     public string File(string name) => System.IO.Path.Combine(Path, name);
 
+    /// <summary>
+    /// Closes the pooled read connections of this directory's world file only (they keep the file open on Windows). Never use
+    /// <c>SqliteConnection.ClearAllPools</c> in tests: it would break stores of tests running in parallel.
+    /// </summary>
+    public void ReleasePools() => new TerrainBlockStore(WorldPath).Close();
+
     public void Dispose()
     {
-        // Pooled read connections (TerrainBlockStore) keep files open on Windows until the pools are cleared.
-        SqliteConnection.ClearAllPools();
+        ReleasePools();
         try
         {
             Directory.Delete(Path, recursive: true);
