@@ -98,6 +98,9 @@ public sealed partial class ServerRuntime
             TaskStep("5 flush journal", () => _writer!.FlushAsync(), _options.FlushTimeout, timeoutIsError: true, skip: !hasWriter, checkResult: true),
             TaskStep("6 dispose writer", () => _writer!.DisposeAsync().AsTask(), _options.DisposeTimeout, timeoutIsError: true, skip: !hasWriter),
             TaskStep("7 shut terrain down", async () => await TerrainShutdownAsync(), _options.TerrainShutdownTimeout, timeoutIsError: false),
+            TaskStep(
+                "7a shut game systems down", RunAfterTerrainShutdownAsync, _options.TerrainShutdownTimeout, timeoutIsError: false,
+                skip: _afterTerrainShutdown.Count == 0),
             new()
             {
                 // Off the main thread: LiteNetLib stops its thread with an unbounded join. A transport that hangs is left to the process exit.
@@ -166,6 +169,14 @@ public sealed partial class ServerRuntime
                 }
             },
         };
+    }
+
+    private async Task RunAfterTerrainShutdownAsync()
+    {
+        foreach (var task in _afterTerrainShutdown)
+        {
+            await task().ConfigureAwait(true);
+        }
     }
 
     private async Task TerrainShutdownAsync()

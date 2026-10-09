@@ -33,6 +33,7 @@ public sealed partial class ServerRuntime
     private readonly ILogger<ServerRuntime> _logger;
     private readonly List<IServerTickParticipant> _participants = [];
     private readonly List<IServerPlayerObserver> _playerObservers = [];
+    private readonly List<Func<Task>> _afterTerrainShutdown = [];
 
     private WorldState? _worldState;
     private ServerSimulation? _simulation;
@@ -121,6 +122,18 @@ public sealed partial class ServerRuntime
     {
         ArgumentNullException.ThrowIfNull(observer);
         _playerObservers.Add(observer);
+    }
+
+    /// <summary>
+    /// Registers a task of step 7a of the shutdown, which runs after the terrain is shut down and before the transport is disposed
+    /// (K2-13: the construct world of a host). The tasks run one after another in registration order, each started on the main thread;
+    /// a failure is logged and marks the shutdown as failed. Call before <see cref="StartAsync"/>.
+    /// </summary>
+    /// <param name="task">The shutdown work; it must not touch the scene tree off the main thread.</param>
+    public void AddAfterTerrainShutdown(Func<Task> task)
+    {
+        ArgumentNullException.ThrowIfNull(task);
+        _afterTerrainShutdown.Add(task);
     }
 
     /// <summary>Tells whether a player is the local player of a host (connected through <see cref="ServerRuntimeOptions.LocalClientEndpoint"/>).</summary>

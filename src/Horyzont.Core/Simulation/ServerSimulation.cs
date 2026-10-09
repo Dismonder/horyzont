@@ -53,6 +53,13 @@ public sealed class ServerSimulation
     /// <summary>Game rules.</summary>
     public GameRules Rules { get; }
 
+    /// <summary>
+    /// Raised on the calling thread after an operation of <see cref="Submit"/> or <see cref="ApplyServerOperation"/> was applied and
+    /// journaled (not for <see cref="Replay"/>). The simulation does not guard against a subscriber that throws: the exception reaches
+    /// the caller of the submit, so a subscriber has to catch its own failures.
+    /// </summary>
+    public event Action<AppliedOperation>? Applied;
+
     /// <summary>True after an exception while applying an operation.</summary>
     public bool IsFaulted { get; private set; }
 
@@ -245,17 +252,21 @@ public sealed class ServerSimulation
     private AppliedOperation ApplyAndJournal(PlayerId? actor, Operation operation)
     {
         var id = State.LastOpId.Next;
+        AppliedOperation applied;
         try
         {
-            var applied = _applier.Apply(id, State.CurrentTick, actor, operation);
+            applied = _applier.Apply(id, State.CurrentTick, actor, operation);
             _journal.Append(new JournalEntry(applied.Id, applied.Tick, actor, operation));
-            return applied;
         }
         catch (Exception exception)
         {
             Fault(exception, id, operation.Kind);
             throw;
         }
+
+        // After the journal: a subscriber (K2-13: the construct view of a host) sees only operations that are applied and journaled.
+        Applied?.Invoke(applied);
+        return applied;
     }
 
     private PlayerBuckets? BucketsOf(PlayerId player)

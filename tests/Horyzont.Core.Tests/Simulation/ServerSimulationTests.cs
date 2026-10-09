@@ -31,6 +31,21 @@ public sealed class ServerSimulationTests
     }
 
     [Fact]
+    public void Applied_SubmitAndServerOperations_RaisedAfterJournalAndNeverForRejected()
+    {
+        var f = new SimFixture();
+        var seen = new List<(OpId Id, int Journaled)>();
+        f.Sim.Applied += applied => seen.Add((applied.Id, f.Journal.Entries.Count));
+        var p = f.Join();
+
+        f.Sim.Submit(p, f.Dig(p, f.Ground(2)));
+        f.Sim.Submit(p, f.Dig(p, f.Ground(2)) with { RayDirection = Vector3.UnitY });
+
+        Assert.Equal([new OpId(1), new OpId(2)], seen.Select(s => s.Id));
+        Assert.Equal([1, 2], seen.Select(s => s.Journaled));
+    }
+
+    [Fact]
     public void Submit_SixthTerrainEditInOneTick_RejectedUntilTheWindowOfOneSecondPasses()
     {
         var f = new SimFixture();

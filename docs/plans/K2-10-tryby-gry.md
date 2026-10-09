@@ -232,13 +232,14 @@ U hosta klient łączy się (`ClientSession.Connect(new InMemoryEndpoint("server
 | 5 | `writer.FlushAsync()` | zadanie ukończone | 10 s | log błędu, dalej |
 | 6 | `writer.DisposeAsync()` | zadanie ukończone | 10 s | log błędu, dalej (proces i tak kończy wątek zapisu) |
 | 7 | `terrain.ShutdownAsync()` = `VoxelTerrainService.ShutdownAsync()` → `ServerTerrainBlocks.CloseAsync()` → tylko gdy zwróciło `true`: `TerrainBlockStore.Close()` | zadanie ukończone | `CloseTimeout` z K2-09 | `CloseAsync` zwróciło `false` (odczyty Voxel Tools wciąż trwają): **bez `Close()`**, log ostrzeżenia, magazyn zamyka koniec procesu (krok 9 i tak kończy proces) |
+| 7a | zadania zarejestrowane przez `ServerRuntime.AddAfterTerrainShutdown` (K2-13 krok 0: `ConstructWorld.ShutdownAsync`); pomijany, gdy nic nie zarejestrowano | zadanie ukończone | `TerrainShutdownTimeout` | po terminie ostrzeżenie, sekwencja idzie dalej (wątki siatek kończą się z procesem) |
 | 8 | `transport.Dispose()`; u hosta potem klient: `clientSession.Disconnect()`, `Poll`, `Dispose` transportu klienta | — | — | — |
 | 9 | `Stopped`; `QuitCoordinator` woła `GetTree().Quit(exitCode)` | — | — | — |
 
 - Kod wyjścia: 0 normalnie, 2 błąd konfiguracji, 3 świat uszkodzony lub z nowszej wersji, 4 powtórka dziennika nie przeszła, 70 `Faulted` albo krok po terminie z błędem.
 - Klient lokalny hosta zamyka się po serwerze (krok 8), więc dostaje `HostLeft` przez transport w pamięci jak każdy inny klient.
 - Wejścia do sekwencji: polecenie `stop`, zamknięcie okna (`NotificationWMCloseRequest` przy `GetTree().AutoAcceptQuit = false`), `SIGINT`/`SIGTERM`/`SIGQUIT` (`PosixSignalRegistration`, `context.Cancel = true`, tylko flaga), wyjście z gry u hosta. Drugie żądanie podczas zamykania jest ignorowane z logiem; trzecie `SIGINT` kończy proces natychmiast (`Environment.Exit(130)`; dziennik jest trwały co 100 ms).
-- Do `ZASADY.md` pkt 7 dopisujesz kolejność zamykania (tabela wyżej, jedna linia) jako regułę dla każdego, kto dokłada usługę z zasobami. Jedna linia: `Shutdown` sesji → `Poll` do opróżnienia → `OnShutdown` uczestników (K2-11 `DespawnAll`) → `LeaveAllOnlinePlayers` → checkpoint → `FlushAsync` → `DisposeAsync` writera → `VoxelTerrainService.ShutdownAsync` → `ServerTerrainBlocks.CloseAsync` → (`true`) `TerrainBlockStore.Close()` → `Dispose` transportu → klient lokalny.
+- Do `ZASADY.md` pkt 7 dopisujesz kolejność zamykania (tabela wyżej, jedna linia) jako regułę dla każdego, kto dokłada usługę z zasobami. Jedna linia: `Shutdown` sesji → `Poll` do opróżnienia → `OnShutdown` uczestników (K2-11 `DespawnAll`) → `LeaveAllOnlinePlayers` → checkpoint → `FlushAsync` → `DisposeAsync` writera → `VoxelTerrainService.ShutdownAsync` → `ServerTerrainBlocks.CloseAsync` → (`true`) `TerrainBlockStore.Close()` → (7a, K2-13) zadania systemów gry po terenie → `Dispose` transportu → klient lokalny.
 
 ### Serwer dedykowany: konfiguracja i konsola
 
