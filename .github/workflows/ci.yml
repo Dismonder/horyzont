@@ -111,17 +111,9 @@ jobs:
           "$editor" --headless --path game -- --smoke | tee boot.log
           grep -q "BOOT OK .*real_t=double" boot.log
 
-      # Engine tests (game/tests) run in the real engine without graphics. The required step is the logic tests only.
+      # Engine tests (game/tests) run in the real engine without graphics; --slow adds the 64^3 frame-time tests (required, a single run).
       - name: Engine tests
         run: |
           editor=engine-ci/editor/${{ matrix.editor }}
-          "$editor" --headless --path game -- --engine-tests | tee engine-tests.log
+          "$editor" --headless --path game -- --engine-tests --slow | tee engine-tests.log
           grep -Eq "ENGINE TESTS passed=[1-9][0-9]* failed=0" engine-tests.log
-
-      # The 64^3 frame-time tests (--slow) measure wall-clock time on a shared runner; they report, they do not block (K2-12 Odstepstwa).
-      - name: Engine tests (slow, frame-time report)
-        continue-on-error: true
-        run: |
-          editor=engine-ci/editor/${{ matrix.editor }}
-          "$editor" --headless --path game -- --engine-tests --slow | tee engine-tests-slow.log
-          grep -Eq "ENGINE TESTS passed=[1-9][0-9]* failed=0" engine-tests-slow.log
