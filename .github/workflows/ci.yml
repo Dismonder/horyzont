@@ -99,6 +99,14 @@ jobs:
           # upload-artifact drops the executable bit.
           chmod +x "engine-ci/editor/${{ matrix.editor }}" || true
 
+      # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
+      # - name: Prepare the Linux editor
+      #   if: runner.os == 'Linux'
+      #   run: |
+      #     chmod +x engine-ci/editor/${{ matrix.editor }}
+      #     sudo apt-get update
+      #     sudo apt-get install -y libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 libgl1 libasound2t64 libpulse0 libudev1 libfontconfig1
+
       - name: Activate engine packages
         run: python tools/engine/build.py activate --from engine-ci/nupkgs
 
@@ -111,14 +119,36 @@ jobs:
       - name: Boot smoke
         run: |
           editor="$PWD/engine-ci/editor/${{ matrix.editor }}"
-          "$editor" --headless --path game --import
+          # Godot 4.7.2 shutdown bug (docs/plans/K2-12-budowle.md, Odstepstwa): if the editor help cache thread
+          # finishes after --import has quit, its deferred call runs after EditorNode is freed and segfaults (exit 139).
+          # The self-hosted runner shared %LOCALAPPDATA%\Godot with other engine builds, whose stale doc cache made the
+          # thread slow enough to hit this every run. ._sc_ gives this editor its own data next to the exe, and
+          # --quit-after (overrides the 1 frame set by --import) keeps the editor up until the thread has handed back.
+          touch "$(dirname "$editor")/._sc_"
+          "$editor" --headless --path game --import --quit-after 1000
           "$editor" --headless --path game -- --smoke | tee boot.log
           grep -q "BOOT OK .*real_t=double" boot.log
 
-      - name: Engine tests
+      - name: Engine tests (gdUnit4Net, K2-08)
         env:
           GODOT_BIN: ${{ github.workspace }}/engine-ci/editor/${{ matrix.editor }}
         run: dotnet test game/Horyzont.Game.csproj --settings game/.runsettings --logger "trx;LogFileName=engine-tests.trx" --results-directory game/TestResults
+
+      # Engine tests (game/tests) run in the real engine without graphics. The required step is the logic tests only.
+      - name: Engine tests (in-engine runner, K2-12)
+        run: |
+          editor=engine-ci/editor/${{ matrix.editor }}
+          "$editor" --headless --path game -- --engine-tests | tee engine-tests.log
+          grep -Eq "ENGINE TESTS passed=[1-9][0-9]* failed=0" engine-tests.log
+
+      # The 64^3 frame-time tests (--slow) measure wall-clock time on a shared runner (Random35 max frame 41 of 50 ms locally);
+      # they report, they do not block, until they were green repeatedly on both runners (K2-12 Odstepstwa).
+      - name: Engine tests (in-engine runner, slow, frame-time report)
+        continue-on-error: true
+        run: |
+          editor=engine-ci/editor/${{ matrix.editor }}
+          "$editor" --headless --path game -- --engine-tests --slow | tee engine-tests-slow.log
+          grep -Eq "ENGINE TESTS passed=[1-9][0-9]* failed=0" engine-tests-slow.log
 
       - name: Generator report
         env:

@@ -9,6 +9,7 @@ public sealed class LayeringTests
         typeof(Horyzont.Core.AssemblyMarker),
         typeof(Horyzont.Persistence.AssemblyMarker),
         typeof(Horyzont.Net.AssemblyMarker),
+        typeof(Horyzont.Constructs.AssemblyMarker),
     };
 
     [Theory]
@@ -23,6 +24,7 @@ public sealed class LayeringTests
     [InlineData("src/Horyzont.Core/Horyzont.Core.csproj", "")]
     [InlineData("src/Horyzont.Persistence/Horyzont.Persistence.csproj", "Horyzont.Core")]
     [InlineData("src/Horyzont.Net/Horyzont.Net.csproj", "Horyzont.Core")]
+    [InlineData("src/Horyzont.Constructs/Horyzont.Constructs.csproj", "Horyzont.Core")]
     public void ProjectFile_HasOnlyAllowedReferences(string path, string allowedCsv)
     {
         var allowedProjects = allowedCsv.Split(',', StringSplitOptions.RemoveEmptyEntries);
