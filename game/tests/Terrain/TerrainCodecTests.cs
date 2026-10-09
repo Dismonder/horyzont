@@ -134,6 +134,22 @@ public class TerrainCodecTests
     }
 
     [TestCase]
+    public void Digest_ChannelBytes_LittleEndianOnEveryHost()
+    {
+        byte[] sdf = [0x01, 0x02, 0x03, 0x04];
+        byte[] material = [0x01, 0x02, 0x03, 0x04];
+        byte[] onLittle = [0x01, 0x02, 0x03, 0x04];
+
+        TerrainBlockCodec.ToLittleEndian(onLittle, 2, sourceIsLittleEndian: true);
+        TerrainBlockCodec.ToLittleEndian(sdf, 2, sourceIsLittleEndian: false);
+        TerrainBlockCodec.ToLittleEndian(material, 1, sourceIsLittleEndian: false);
+
+        AssertThat(onLittle).IsEqual(new byte[] { 0x01, 0x02, 0x03, 0x04 });
+        AssertThat(sdf).IsEqual(new byte[] { 0x02, 0x01, 0x04, 0x03 });
+        AssertThat(material).IsEqual(new byte[] { 0x01, 0x02, 0x03, 0x04 });
+    }
+
+    [TestCase]
     [RequireGodotRuntime]
     public void Codec_Digest_IgnoresUniformCompression()
     {

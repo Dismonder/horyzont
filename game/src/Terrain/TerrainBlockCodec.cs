@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Hashing;
+using System.Runtime.InteropServices;
 
 using Godot;
 
@@ -88,8 +89,9 @@ public sealed class TerrainBlockCodec : IDisposable
     }
 
     /// <summary>
-    /// Digest of the voxel values of a block: XxHash64 of the raw SDF channel followed by the raw material channel. Uniform
-    /// channels are expanded, so the digest does not depend on how Voxel Tools happens to store the block.
+    /// Digest of the voxel values of a block: XxHash64 of the SDF channel followed by the material channel, each as little-endian
+    /// values. Uniform channels are expanded, so the digest does not depend on how Voxel Tools happens to store the block, nor on the
+    /// byte order of the host.
     /// </summary>
     /// <param name="block">A 16³ block.</param>
     /// <returns>The digest.</returns>
@@ -98,8 +100,8 @@ public sealed class TerrainBlockCodec : IDisposable
         ArgumentNullException.ThrowIfNull(block);
         CheckSize(block);
         var hash = new XxHash64();
-        hash.Append(block.GetChannelAsByteArray(TerrainChannels.Sdf));
-        hash.Append(block.GetChannelAsByteArray(TerrainChannels.Material));
+        AppendChannel(hash, block, TerrainChannels.Sdf);
+        AppendChannel(hash, block, TerrainChannels.Material);
         return hash.GetCurrentHashAsUInt64();
     }
 
@@ -112,6 +114,41 @@ public sealed class TerrainBlockCodec : IDisposable
         }
 
         _scratch.Dispose();
+    }
+
+    /// <summary>Puts channel values of <paramref name="width"/> bytes, read in the host order, into little-endian order in place.</summary>
+    /// <param name="bytes">Channel values.</param>
+    /// <param name="width">Bytes per value: 1, 2, 4 or 8.</param>
+    /// <param name="sourceIsLittleEndian">Byte order of <paramref name="bytes"/> (<see cref="BitConverter.IsLittleEndian"/>).</param>
+    internal static void ToLittleEndian(Span<byte> bytes, int width, bool sourceIsLittleEndian)
+    {
+        if (sourceIsLittleEndian || width == 1)
+        {
+            return;
+        }
+
+        switch (width)
+        {
+            case 2:
+                BinaryPrimitives.ReverseEndianness(MemoryMarshal.Cast<byte, ushort>(bytes), MemoryMarshal.Cast<byte, ushort>(bytes));
+                break;
+            case 4:
+                BinaryPrimitives.ReverseEndianness(MemoryMarshal.Cast<byte, uint>(bytes), MemoryMarshal.Cast<byte, uint>(bytes));
+                break;
+            case 8:
+                BinaryPrimitives.ReverseEndianness(MemoryMarshal.Cast<byte, ulong>(bytes), MemoryMarshal.Cast<byte, ulong>(bytes));
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(width), width, "Channel values are 1, 2, 4 or 8 bytes.");
+        }
+    }
+
+    private static void AppendChannel(XxHash64 hash, VoxelBuffer block, VoxelBuffer.ChannelId channel)
+    {
+        // Host order, uniform channels expanded by Voxel Tools.
+        var bytes = block.GetChannelAsByteArray(channel);
+        ToLittleEndian(bytes, 1 << (int)block.GetChannelDepth((uint)channel), BitConverter.IsLittleEndian);
+        hash.Append(bytes);
     }
 
     /// <summary>The uncompressed serialization inside a Voxel Tools CompressedData payload (no compression or zstd).</summary>
