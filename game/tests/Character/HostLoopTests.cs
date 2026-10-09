@@ -30,6 +30,8 @@ public class HostLoopTests
         AssertThat(player.ServerMode).IsNotEqual(MovementMode.Frozen);
         var planet = composition.Server!.State.Planets.All[0];
         var standing = player.PredictedFeet;
+        var generated = Horyzont.Game.Server.Characters.SpawnLocator.AboveSurface(planet, System.Numerics.Vector3.UnitX).Length() - Horyzont.Game.Server.Characters.SpawnLocator.SpawnClearance;
+        Record($"solo_spawn standing_radius={standing.Length().ToString("F3", CultureInfo.InvariantCulture)} generated_surface={generated.ToString("F3", CultureInfo.InvariantCulture)} feet={standing}");
         AssertThat(Math.Abs(standing.Length() - planet.RadiusMeters)).IsLess(PlanetGeneratorV1ReliefMeters);
         AssertThat(composition.ServerCharacters!.Count).IsEqual(1);
         AssertThat(composition.Server.State.Players.TryGet(composition.Client!.Hello!.YourPlayer, out var state)).IsTrue();
@@ -72,6 +74,10 @@ public class HostLoopTests
             return held with { MouseYaw = (float)((random.NextDouble() - 0.5) * 0.05) };
         });
         AssertThat(await fixture.WaitUntil(() => player.ClientTick > 40)).IsTrue();
+
+        // Collision that is still being rebuilt around the body can differ between the tick the client predicted and the later tick the
+        // server processed the same input; that is a correction by design, so the measurement starts when the terrain has settled.
+        AssertThat(await fixture.WaitTerrainIdle()).IsTrue();
         player.ResetStatistics();
         var start = player.ClientTick;
         AssertThat(await fixture.WaitUntil(() => player.ClientTick >= start + 600, 120)).IsTrue();

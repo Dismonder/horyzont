@@ -13,6 +13,10 @@ public sealed partial class LocalInputReader : Node, ILocalInputSource
     /// <summary>Radians of turn per pixel of mouse movement.</summary>
     public const float RadiansPerPixel = 0.0025f;
 
+    private const ulong SettleMilliseconds = 400;
+    private const float MaxEventPixels = 400f;
+
+    private ulong _ignoreMotionUntil;
     private float _yaw;
     private float _pitch;
     private int _wheel;
@@ -28,7 +32,7 @@ public sealed partial class LocalInputReader : Node, ILocalInputSource
     {
         if (DisplayServer.GetName() != "headless")
         {
-            Input.MouseMode = Input.MouseModeEnum.Captured;
+            Capture();
         }
     }
 
@@ -37,7 +41,8 @@ public sealed partial class LocalInputReader : Node, ILocalInputSource
     {
         switch (@event)
         {
-            case InputEventMouseMotion motion when MouseCaptured:
+            case InputEventMouseMotion motion when MouseCaptured && Time.GetTicksMsec() >= _ignoreMotionUntil
+                && motion.Relative.LengthSquared() < MaxEventPixels * MaxEventPixels:
                 _yaw -= (float)motion.Relative.X * Sensitivity;
                 _pitch -= (float)motion.Relative.Y * Sensitivity;
                 break;
@@ -62,9 +67,18 @@ public sealed partial class LocalInputReader : Node, ILocalInputSource
         }
         else if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } && !MouseCaptured)
         {
-            Input.MouseMode = Input.MouseModeEnum.Captured;
+            Capture();
             GetViewport().SetInputAsHandled();
         }
+    }
+
+    private void Capture()
+    {
+        // Capturing moves the pointer to the window centre; the first motion events can carry that jump as a huge turn.
+        Input.MouseMode = Input.MouseModeEnum.Captured;
+        _ignoreMotionUntil = Time.GetTicksMsec() + SettleMilliseconds;
+        _yaw = 0f;
+        _pitch = 0f;
     }
 
     /// <inheritdoc />

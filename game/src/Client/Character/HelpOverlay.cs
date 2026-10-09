@@ -71,7 +71,7 @@ public sealed partial class HelpOverlay : CanvasLayer
         var altitude = _player.IsActive || _player.Body is not null ? feet.Length() : 0f;
         var text = string.Create(
             CultureInfo.InvariantCulture,
-            $"{Engine.GetFramesPerSecond():F0} fps   {_player.CameraMode}   server mode {_player.ServerMode}   radius {altitude:F1} m"
+            $"{Engine.GetFramesPerSecond():F0} fps   {_player.CameraMode}   server mode {_player.ServerMode}   pitch {_player.Pitch * 57.29578f:F0}   radius {altitude:F1} m"
             + $"   corrections {_player.Corrections}   camera jumps {_player.CameraJumps}");
         if (_player.PredictionPaused)
         {

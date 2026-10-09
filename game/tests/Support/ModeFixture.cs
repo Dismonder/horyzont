@@ -52,7 +52,7 @@ internal sealed class ModeFixture
 
     /// <summary>Parses the arguments like the command line, composes the mode, adds it to the scene and starts it.</summary>
     public static Task<ModeFixture> StartAsync(EngineTestScene scene, string directory, bool connectClient, params string[] args) =>
-        StartCoreAsync(scene, directory, connectClient, null, false, false, null, args);
+        StartCoreAsync(scene, directory, connectClient, null, false, false, null, false, args);
 
     /// <summary>
     /// Like <see cref="StartAsync"/> but with the K2-11 characters: server bodies, the local player with the camera, the sky. The
@@ -60,21 +60,25 @@ internal sealed class ModeFixture
     /// </summary>
     public static Task<ModeFixture> StartWithCharactersAsync(
         EngineTestScene scene, string directory, bool connectClient, bool devBuild, params string[] args) =>
-        StartCoreAsync(scene, directory, connectClient, null, true, devBuild, null, args);
+        StartCoreAsync(scene, directory, connectClient, null, true, devBuild, null, false, args);
+
+    /// <summary>Like <see cref="StartWithCharactersAsync"/> with the rendering parts of the client (viewers with visuals, sky, overlay), which the dummy renderer of a headless run accepts.</summary>
+    public static Task<ModeFixture> StartRenderedAsync(EngineTestScene scene, string directory, bool devBuild, params string[] args) =>
+        StartCoreAsync(scene, directory, true, null, true, devBuild, null, true, args);
 
     /// <summary>Like <see cref="StartWithCharactersAsync"/> with latency and loss on the in-memory link of the local client.</summary>
     public static Task<ModeFixture> StartOnLinkAsync(
         EngineTestScene scene, string directory, bool connectClient, Horyzont.Net.Transport.InMemory.LinkConditions link, params string[] args) =>
-        StartCoreAsync(scene, directory, connectClient, null, true, false, link, args);
+        StartCoreAsync(scene, directory, connectClient, null, true, false, link, false, args);
 
     /// <summary>Like <see cref="StartAsync"/>, with a hook that sees every printed line and may throw to inject a failure.</summary>
     public static Task<ModeFixture> StartWithPrintHookAsync(
         EngineTestScene scene, string directory, bool connectClient, Action<string> onPrint, params string[] args) =>
-        StartCoreAsync(scene, directory, connectClient, onPrint, false, false, null, args);
+        StartCoreAsync(scene, directory, connectClient, onPrint, false, false, null, false, args);
 
     private static async Task<ModeFixture> StartCoreAsync(
         EngineTestScene scene, string directory, bool connectClient, Action<string>? onPrint, bool characters, bool devBuild,
-        Horyzont.Net.Transport.InMemory.LinkConditions? link, string[] args)
+        Horyzont.Net.Transport.InMemory.LinkConditions? link, bool render, string[] args)
     {
         var launch = LaunchOptions.Parse(args);
         var printed = new List<string>();
@@ -84,7 +88,7 @@ internal sealed class ModeFixture
             Loggers = NullLoggerFactory.Instance,
             UserDataDir = Path.Combine(directory, "user"),
             ExecutableDir = directory,
-            Render = false,
+            Render = render,
             Characters = characters,
             DevBuild = devBuild,
             LocalLink = link,
@@ -116,6 +120,21 @@ internal sealed class ModeFixture
         }
 
         return true;
+    }
+
+    /// <summary>Waits until the voxel engine has no streaming, meshing or generation work left for a number of frames in a row.</summary>
+    public async Task<bool> WaitTerrainIdle(int stableFrames = 30, double seconds = 60)
+    {
+        var stable = 0;
+        return await WaitUntil(
+            () =>
+            {
+                var tasks = (Godot.Collections.Dictionary)VoxelEngine.GetStats()["tasks"];
+                var pending = (int)tasks["streaming"] + (int)tasks["meshing"] + (int)tasks["generation"] + (int)tasks["main_thread"];
+                stable = pending == 0 ? stable + 1 : 0;
+                return stable >= stableFrames;
+            },
+            seconds);
     }
 
     public Task<bool> WaitInGame(double seconds = 60) =>

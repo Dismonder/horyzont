@@ -39,6 +39,9 @@ public sealed class PredictionBuffer
     /// <summary>Gets the number of unacknowledged entries.</summary>
     public int Count { get; private set; }
 
+    /// <summary>Gets the prediction the latest <see cref="Acknowledge"/> compared with the server state (diagnostics); default before the first comparison.</summary>
+    public PredictedState LastCompared { get; private set; }
+
     /// <summary>Gets the position error (metres) found by the latest <see cref="Acknowledge"/> that compared a prediction; 0 before the first.</summary>
     public float LastPositionError { get; private set; }
 
@@ -106,6 +109,7 @@ public sealed class PredictionBuffer
 
         if (found)
         {
+            LastCompared = predicted;
             LastPositionError = CorrectionPolicy.PositionError(predicted, server);
             LastVelocityError = CorrectionPolicy.VelocityError(predicted, server);
         }

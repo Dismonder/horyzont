@@ -24,6 +24,12 @@ public sealed partial class PlayerBody : CharacterBody3D
     /// <summary>Scene of the placeholder capsule body.</summary>
     public const string ScenePath = "res://scenes/Character/PlayerBody.tscn";
 
+    /// <summary>Collision margin of the body (metres): a margin of a few millimetres keeps the floor contact steady at float32 precision 4 km from the origin.</summary>
+    public const float SafeMarginMeters = 0.001f;
+
+    /// <summary>Speed (m/s) with which a walking body is pressed into the floor so the engine keeps the floor contact and its snap.</summary>
+    public const float FloorPressMetersPerSecond = 0.05f;
+
     private PlanetId _planet;
     private PlanetParams? _planetParams;
     private MovementRules _movement = new();
@@ -81,6 +87,7 @@ public sealed partial class PlayerBody : CharacterBody3D
         FloorStopOnSlope = true;
         FloorBlockOnWall = false;
         MaxSlides = 6;
+        SafeMargin = SafeMarginMeters;
 
         var capsule = GetNode<CollisionShape3D>("Shape");
         capsule.Shape = new CapsuleShape3D { Radius = rules.PlayerCapsuleRadius, Height = rules.PlayerCapsuleHeight };
@@ -136,7 +143,15 @@ public sealed partial class PlayerBody : CharacterBody3D
         var output = CharacterMotor.Step(input, context, _movement, _tickSeconds);
         GlobalBasis = PlanetFrames.ToGodotBasis(_planet, output.BodyRotation);
         UpDirection = PlanetFrames.ToGodotDirection(_planet, output.Up);
-        Velocity = PlanetFrames.ToGodotDirection(_planet, output.DesiredVelocity);
+        var desired = output.DesiredVelocity;
+        if (output.Mode is MovementMode.Walking or MovementMode.Sprinting)
+        {
+            // On the floor the motor asks for no radial velocity at all, and float rounding can leave a sliver of "up" in it; the engine
+            // then skips the floor snap (it never snaps a body that moves up). A small press into the floor keeps the contact steady.
+            desired += output.Up * (-FloorPressMetersPerSecond - NumVector3.Dot(desired, output.Up));
+        }
+
+        Velocity = PlanetFrames.ToGodotDirection(_planet, desired);
         _mode = output.Mode;
         if (output.Mode != MovementMode.Frozen)
         {

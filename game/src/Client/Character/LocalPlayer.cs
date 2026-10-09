@@ -386,7 +386,7 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
                 Corrections++;
                 LastCorrection = string.Create(
                     System.Globalization.CultureInfo.InvariantCulture,
-                    $"seq {own.LastProcessedInputSeq}: position error {_buffer.LastPositionError * 1000f:F2} mm, velocity error {_buffer.LastVelocityError:F3} m/s, client mode {_body!.Mode}, server mode {own.Mode}, unacknowledged {_buffer.Count}");
+                    $"seq {own.LastProcessedInputSeq}: position error {_buffer.LastPositionError * 1000f:F2} mm, velocity error {_buffer.LastVelocityError:F3} m/s, client mode {_body!.Mode}, server mode {own.Mode}, unacknowledged {_buffer.Count}, predicted feet {_buffer.LastCompared.Feet} velocity {_buffer.LastCompared.Velocity} floor {_buffer.LastCompared.OnFloor}, server feet {own.Feet} velocity {own.Velocity}");
                 Replay(own);
                 break;
             default:
