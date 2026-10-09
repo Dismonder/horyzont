@@ -109,7 +109,7 @@ jobs:
       - name: Engine tests
         env:
           GODOT_BIN: ${{ github.workspace }}/engine-ci/editor/${{ matrix.editor }}
-        run: dotnet test game/Horyzont.Game.csproj --no-build --settings game/.runsettings --logger "trx;LogFileName=engine-tests.trx" --results-directory game/TestResults
+        run: dotnet test game/Horyzont.Game.csproj --settings game/.runsettings --logger "trx;LogFileName=engine-tests.trx" --results-directory game/TestResults
 
       - name: Generator report
         env:

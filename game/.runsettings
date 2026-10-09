@@ -9,7 +9,7 @@
   <GdUnit4>
     <!-- Godot is started by the adapter from the GODOT_BIN environment variable. -->
     <DisplayName>FullyQualifiedName</DisplayName>
-    <CompileProcessTimeout>20000</CompileProcessTimeout>
+    <CompileProcessTimeout>120000</CompileProcessTimeout>
     <Parameters>--headless</Parameters>
   </GdUnit4>
 </RunSettings>

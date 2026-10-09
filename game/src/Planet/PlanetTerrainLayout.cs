@@ -33,4 +33,21 @@ public static class PlanetTerrainLayout
 
         return lods;
     }
+
+    /// <summary>
+    /// Edge of one octree of the terrain: <c>MeshBlockSize &lt;&lt; (LodCount - 1)</c>. Voxel Tools snaps the voxel bounds to
+    /// multiples of it when they are set, so lod count and mesh block size must be set before the bounds.
+    /// </summary>
+    public static int OctreeSizeVoxels(PlanetParams planet) => MeshBlockSize << (LodCount(planet) - 1);
+
+    /// <summary>
+    /// Half edge of the symmetric voxel bounds given to the terrain: the planet cube rounded up to whole octrees. Because the
+    /// coarsest block covers the diameter, this is exactly one octree (the bounds are 2 x 2 x 2 octrees around the centre).
+    /// </summary>
+    public static int BoundsHalfExtentVoxels(PlanetParams planet)
+    {
+        var octree = OctreeSizeVoxels(planet);
+        var half = HalfExtentMeters(planet);
+        return (half + octree - 1) / octree * octree;
+    }
 }
