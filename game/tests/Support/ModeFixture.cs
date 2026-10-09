@@ -52,15 +52,29 @@ internal sealed class ModeFixture
 
     /// <summary>Parses the arguments like the command line, composes the mode, adds it to the scene and starts it.</summary>
     public static Task<ModeFixture> StartAsync(EngineTestScene scene, string directory, bool connectClient, params string[] args) =>
-        StartCoreAsync(scene, directory, connectClient, null, args);
+        StartCoreAsync(scene, directory, connectClient, null, false, false, null, args);
+
+    /// <summary>
+    /// Like <see cref="StartAsync"/> but with the K2-11 characters: server bodies, the local player with the camera, the sky. The
+    /// K2-10 mode tests compose without them because they set the kinematics of the player themselves.
+    /// </summary>
+    public static Task<ModeFixture> StartWithCharactersAsync(
+        EngineTestScene scene, string directory, bool connectClient, bool devBuild, params string[] args) =>
+        StartCoreAsync(scene, directory, connectClient, null, true, devBuild, null, args);
+
+    /// <summary>Like <see cref="StartWithCharactersAsync"/> with latency and loss on the in-memory link of the local client.</summary>
+    public static Task<ModeFixture> StartOnLinkAsync(
+        EngineTestScene scene, string directory, bool connectClient, Horyzont.Net.Transport.InMemory.LinkConditions link, params string[] args) =>
+        StartCoreAsync(scene, directory, connectClient, null, true, false, link, args);
 
     /// <summary>Like <see cref="StartAsync"/>, with a hook that sees every printed line and may throw to inject a failure.</summary>
     public static Task<ModeFixture> StartWithPrintHookAsync(
         EngineTestScene scene, string directory, bool connectClient, Action<string> onPrint, params string[] args) =>
-        StartCoreAsync(scene, directory, connectClient, onPrint, args);
+        StartCoreAsync(scene, directory, connectClient, onPrint, false, false, null, args);
 
     private static async Task<ModeFixture> StartCoreAsync(
-        EngineTestScene scene, string directory, bool connectClient, Action<string>? onPrint, string[] args)
+        EngineTestScene scene, string directory, bool connectClient, Action<string>? onPrint, bool characters, bool devBuild,
+        Horyzont.Net.Transport.InMemory.LinkConditions? link, string[] args)
     {
         var launch = LaunchOptions.Parse(args);
         var printed = new List<string>();
@@ -71,6 +85,9 @@ internal sealed class ModeFixture
             UserDataDir = Path.Combine(directory, "user"),
             ExecutableDir = directory,
             Render = false,
+            Characters = characters,
+            DevBuild = devBuild,
+            LocalLink = link,
             Print = line =>
             {
                 printed.Add(line);

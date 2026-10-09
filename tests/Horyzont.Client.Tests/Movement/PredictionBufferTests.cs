@@ -44,6 +44,21 @@ public sealed class PredictionBufferTests
     }
 
     [Fact]
+    public void PredictionBuffer_Acknowledge_ReportsTheErrorItCompared_AndClearForgetsIt()
+    {
+        var buffer = Filled(3);
+        var server = StateFor(2) with { Feet = StateFor(2).Feet + new Vector3(0f, 0.004f, 0f), Velocity = StateFor(2).Velocity + new Vector3(0.03f, 0f, 0f) };
+
+        Assert.Equal(AckOutcome.InSync, buffer.Acknowledge(2, server));
+
+        Assert.Equal(0.004f, buffer.LastPositionError, 1e-5f);
+        Assert.Equal(0.03f, buffer.LastVelocityError, 1e-5f);
+        buffer.Clear();
+        Assert.Equal(0f, buffer.LastPositionError);
+        Assert.Equal(0f, buffer.LastVelocityError);
+    }
+
+    [Fact]
     public void PredictionBuffer_ErrorBelowThresholds_StaysInSync()
     {
         var buffer = Filled(3);

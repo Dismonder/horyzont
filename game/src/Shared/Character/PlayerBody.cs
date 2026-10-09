@@ -142,6 +142,11 @@ public sealed partial class PlayerBody : CharacterBody3D
         {
             MotionMode = output.Mode == MovementMode.DevFlying ? MotionModeEnum.Floating : MotionModeEnum.Grounded;
             MoveAndSlide();
+
+            // The state is what the network carries (float32): round the engine's doubles to it, so the server body and a client body
+            // that starts from a snapshot hold bit-identical states and make the same contact decisions at the millimetre level.
+            GlobalPosition = PlanetFrames.ToGodot(_planet, Feet);
+            Velocity = PlanetFrames.ToGodotDirection(_planet, PlanetVelocity);
         }
 
         OnFloor = output.Mode != MovementMode.DevFlying && IsOnFloor();

@@ -39,6 +39,12 @@ public sealed class PredictionBuffer
     /// <summary>Gets the number of unacknowledged entries.</summary>
     public int Count { get; private set; }
 
+    /// <summary>Gets the position error (metres) found by the latest <see cref="Acknowledge"/> that compared a prediction; 0 before the first.</summary>
+    public float LastPositionError { get; private set; }
+
+    /// <summary>Gets the velocity error (m/s) found by the latest <see cref="Acknowledge"/> that compared a prediction; 0 before the first.</summary>
+    public float LastVelocityError { get; private set; }
+
     /// <summary>Gets a value indicating whether prediction is paused: too many inputs are waiting for the server.</summary>
     public bool IsPaused => Count >= _policy.MaxUnacknowledged;
 
@@ -98,6 +104,12 @@ public sealed class PredictionBuffer
             _pauseLogged = false;
         }
 
+        if (found)
+        {
+            LastPositionError = CorrectionPolicy.PositionError(predicted, server);
+            LastVelocityError = CorrectionPolicy.VelocityError(predicted, server);
+        }
+
         if (found && !_policy.NeedsCorrection(predicted, server))
         {
             return AckOutcome.InSync;
@@ -149,5 +161,7 @@ public sealed class PredictionBuffer
         _hasAcked = false;
         _lastAcked = 0;
         _pauseLogged = false;
+        LastPositionError = 0f;
+        LastVelocityError = 0f;
     }
 }

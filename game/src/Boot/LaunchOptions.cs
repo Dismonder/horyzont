@@ -21,6 +21,7 @@ public sealed record LaunchOptions
     private static readonly string[] _valued =
     [
         "--connect", "--world", "--port", "--bind", "--password", "--config", "--data-dir", "--profile", "--seed", "--write-default-config",
+        "--dev-speed", "--screenshot", "--screenshot-after",
     ];
 
     /// <summary>Gets the mode of the process.</summary>
@@ -64,6 +65,15 @@ public sealed record LaunchOptions
 
     /// <summary>Gets a value indicating whether development console commands (<c>dev-op</c>) are available; never set by players.</summary>
     public bool Dev { get; init; }
+
+    /// <summary>Gets the factor applied to walking and sprinting speed in solo and host mode (<c>--dev-speed</c>, owner question P9); 1 normally.</summary>
+    public float DevSpeed { get; init; } = 1f;
+
+    /// <summary>Gets the file a screenshot of the game window is saved to (<c>--screenshot</c>); null for none.</summary>
+    public string? ScreenshotPath { get; init; }
+
+    /// <summary>Gets the seconds after the start when the screenshot is taken and the process quits (<c>--screenshot-after</c>).</summary>
+    public float ScreenshotAfterSeconds { get; init; } = 20f;
 
     /// <summary>Gets the path to write a default server configuration to; the process then exits.</summary>
     public string? WriteDefaultConfig { get; init; }
@@ -152,6 +162,14 @@ public sealed record LaunchOptions
         RequireOnly(reader, "--recover-from-checkpoint", mode, ProcessMode.Solo, ProcessMode.Host, ProcessMode.DedicatedServer);
         RequireOnly(reader, "--dev", mode, ProcessMode.DedicatedServer);
         RequireOnly(reader, "--seed", mode, ProcessMode.Solo, ProcessMode.Host, ProcessMode.DedicatedServer);
+        RequireOnly(reader, "--dev-speed", mode, ProcessMode.Solo, ProcessMode.Host);
+        RequireOnly(reader, "--screenshot", mode, ProcessMode.Solo, ProcessMode.Host, ProcessMode.Client);
+        RequireOnly(reader, "--screenshot-after", mode, ProcessMode.Solo, ProcessMode.Host, ProcessMode.Client);
+        var screenshot = reader.ValueOf("--screenshot");
+        if (screenshot is not null && (screenshot.Length == 0 || screenshot.IndexOfAny(Path.GetInvalidPathChars()) >= 0))
+        {
+            throw new ArgumentException("--screenshot is not a valid path.");
+        }
         if (mode == ProcessMode.DedicatedServer && config is null)
         {
             throw new ArgumentException("--server needs --config <server.json>.");
@@ -173,6 +191,9 @@ public sealed record LaunchOptions
             RestoreLatestBackup = reader.Has("--restore-latest-backup"),
             RecoverFromCheckpoint = reader.Has("--recover-from-checkpoint"),
             Dev = reader.Has("--dev"),
+            DevSpeed = reader.Number("--dev-speed", 1f, 64f) ?? 1f,
+            ScreenshotPath = screenshot is null ? null : Path.GetFullPath(screenshot),
+            ScreenshotAfterSeconds = reader.Number("--screenshot-after", 1f, 3600f) ?? 20f,
         };
     }
 

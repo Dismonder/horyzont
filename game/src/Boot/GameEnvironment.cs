@@ -1,5 +1,7 @@
 using Godot;
 
+using Horyzont.Net.Transport.InMemory;
+
 using Microsoft.Extensions.Logging;
 
 namespace Horyzont.Game.Boot;
@@ -21,6 +23,15 @@ public sealed record GameEnvironment
 
     /// <summary>Gets a value indicating whether terrain meshes are rendered; false without a rendering device (headless).</summary>
     public bool Render { get; init; }
+
+    /// <summary>Gets the conditions (latency, loss) of the in-memory link between the server and the local client of a solo or host process; null for a perfect link. Tests of the prediction use it.</summary>
+    public LinkConditions? LocalLink { get; init; }
+
+    /// <summary>Gets a value indicating whether this is a development build: dev flight and the developer camera are available in solo and host mode.</summary>
+    public bool DevBuild { get; init; }
+
+    /// <summary>Gets a value indicating whether the characters (server bodies, local player, camera, sky) exist; the mode tests of K2-10 turn them off.</summary>
+    public bool Characters { get; init; } = true;
 
     /// <summary>Gets the standard input a dedicated server reads its console from; null disables the console.</summary>
     public TextReader? ConsoleInput { get; init; }

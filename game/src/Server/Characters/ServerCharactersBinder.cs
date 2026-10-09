@@ -1,0 +1,103 @@
+using Godot;
+
+using Horyzont.Core.Ids;
+using Horyzont.Core.Motion;
+using Horyzont.Core.Protocol;
+using Horyzont.Core.Simulation;
+using Horyzont.Server;
+
+using Microsoft.Extensions.Logging;
+
+namespace Horyzont.Game.Server.Characters;
+
+/// <summary>
+/// Connects <see cref="ServerCharacters"/> to a <see cref="ServerRuntime"/> that has not started yet: the simulation, the session and
+/// the terrain only exist after the world loads, so the node is created on the first tick or the first ready player, and every
+/// call is forwarded to it in the canonical places (tick between <c>Poll</c> and <c>AdvanceTick</c>, ready, leaving before
+/// <c>PlayerLeaveOp</c>, shutdown step 3a). Register it with <see cref="Register"/> before <c>StartAsync</c>.
+/// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage(
+    "Design", "CA1001:Types that own disposable fields should be disposable",
+    Justification = "The character node belongs to the scene tree, which frees it with the server node.")]
+public sealed class ServerCharactersBinder : IServerTickParticipant, IServerPlayerObserver
+{
+    private readonly Node _parent;
+    private readonly VoxelServerTerrainFactory _terrainFactory;
+    private readonly GameRules _rules;
+    private readonly MovementRules _movement;
+    private readonly bool _devFlightAllowed;
+    private readonly ILoggerFactory _loggers;
+    private ServerRuntime? _runtime;
+    private ServerCharacters? _characters;
+    private OwnStateSender? _sender;
+
+    /// <summary>Initializes a new instance of the <see cref="ServerCharactersBinder"/> class.</summary>
+    /// <param name="parent">The node the character node is added to (<c>/Root/Server</c>).</param>
+    /// <param name="terrainFactory">The factory whose terrain the characters stand on (read when the world has started).</param>
+    /// <param name="rules">Rules of the game.</param>
+    /// <param name="movement">Movement rules.</param>
+    /// <param name="devFlightAllowed">Whether the dev flight button is honoured.</param>
+    /// <param name="loggers">Loggers.</param>
+    public ServerCharactersBinder(
+        Node parent, VoxelServerTerrainFactory terrainFactory, GameRules rules, MovementRules movement, bool devFlightAllowed, ILoggerFactory loggers)
+    {
+        ArgumentNullException.ThrowIfNull(parent);
+        ArgumentNullException.ThrowIfNull(terrainFactory);
+        ArgumentNullException.ThrowIfNull(rules);
+        ArgumentNullException.ThrowIfNull(movement);
+        ArgumentNullException.ThrowIfNull(loggers);
+        _parent = parent;
+        _terrainFactory = terrainFactory;
+        _rules = rules;
+        _movement = movement;
+        _devFlightAllowed = devFlightAllowed;
+        _loggers = loggers;
+    }
+
+    /// <summary>Gets the characters once the world has started; null before.</summary>
+    public ServerCharacters? Characters => _characters;
+
+    /// <summary>Registers the binder as the tick participant and the player observer of a server runtime.</summary>
+    /// <param name="runtime">The runtime, not started yet.</param>
+    public void Register(ServerRuntime runtime)
+    {
+        ArgumentNullException.ThrowIfNull(runtime);
+        _runtime = runtime;
+        runtime.AddTickParticipant(this);
+        runtime.AddPlayerObserver(this);
+    }
+
+    /// <inheritdoc />
+    public void OnTick(ServerRuntime runtime)
+    {
+        ArgumentNullException.ThrowIfNull(runtime);
+        var characters = Ensure(runtime);
+        characters.Step(runtime.State.CurrentTick);
+        _sender!.Send(runtime.State.CurrentTick);
+    }
+
+    /// <inheritdoc />
+    public void OnShutdown(ServerRuntime runtime) => _characters?.DespawnAll();
+
+    /// <inheritdoc />
+    public void OnPlayerReady(PlayerId player) => Ensure(_runtime ?? throw new InvalidOperationException("The binder is not registered.")).Spawn(player);
+
+    /// <inheritdoc />
+    public void OnPlayerLeaving(PlayerId player, DisconnectCode reason) => _characters?.Despawn(player);
+
+    private ServerCharacters Ensure(ServerRuntime runtime)
+    {
+        if (_characters is not null)
+        {
+            return _characters;
+        }
+
+        var terrain = _terrainFactory.Terrain ?? throw new InvalidOperationException("The server terrain does not exist yet.");
+        _characters = new ServerCharacters(
+            runtime.Simulation, new SessionInputSource(runtime.Session), terrain.Voxel, _rules, _movement, _devFlightAllowed,
+            _loggers.CreateLogger<ServerCharacters>());
+        _parent.AddChild(_characters);
+        _sender = new OwnStateSender(runtime.Session, runtime.Simulation, _characters);
+        return _characters;
+    }
+}
