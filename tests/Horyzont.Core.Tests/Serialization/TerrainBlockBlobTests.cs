@@ -11,6 +11,11 @@ public sealed class TerrainBlockBlobTests
     private const int HeaderBytes = 7;
     private const int MaxVoxelBytes = ProtocolConstants.MaxTerrainBlockDataBytes - HeaderBytes;
 
+    /// <summary>CodecGen.TerrainBlockBlob (Horyzont.Testing) repeats this header length as a literal; this pins it to the codec.</summary>
+    [Fact]
+    public void EncodeTerrainBlockBlob_EmptyPayload_HasTheHeaderLengthUsedByCodecGen() =>
+        Assert.Equal(7, StateCodec.EncodeTerrainBlockBlob(1, []).Length);
+
     [Theory]
     [InlineData(1, 0)]
     [InlineData(1, 1)]

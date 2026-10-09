@@ -15,6 +15,8 @@ namespace Horyzont.Testing;
 /// Every edited block has deterministic "voxel data": XxHash64 of its previous data and the edit, so two services that applied the
 /// same edits to the same starting data agree byte for byte. Blocks absent from memory come from <see cref="BlockSource"/>
 /// (persistence tests point it at the saved blocks) or start empty, like generator output.
+/// The block-data hashing (XxHash64 over the previous data and the edit fields) is pinned by the frozen golden terrain journal
+/// corpus: changing it breaks the corpus for reasons unrelated to Core.
 /// </summary>
 public sealed class FakeTerrainService(float surfaceRadius = 4000f, float voxelSizeMeters = 1f) : ITerrainService
 {
