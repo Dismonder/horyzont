@@ -16,6 +16,15 @@ internal static class ConstructHitchScenarios
     public const double MaxFrameMilliseconds = 50;
     public const double MaxRemeshP99Milliseconds = 100;
 
+    internal static FrameStats RemeshStats(int pendingJobs, int pendingCallbacks, int expectedCallbacks, IReadOnlyCollection<double> latencies)
+    {
+        EngineAssert.Equal(0, pendingJobs, "edit stream: world drained before measuring latency");
+        EngineAssert.Equal(0, pendingCallbacks, "edit stream: every pending edit received a completion callback");
+        EngineAssert.True(latencies.Count > 0, "edit stream: missing remesh latency samples");
+        EngineAssert.Equal(expectedCallbacks, latencies.Count, "edit stream: complete callback coverage (coalesced edits count once)");
+        return FrameStats.From(latencies);
+    }
+
     public static async Task<FrameStats> LoadInAsync(EngineTestBase test, ConstructPattern pattern, bool assertLimit, bool withCamera = false)
     {
         var state = ConstructFixtures.Create(pattern);
@@ -74,6 +83,7 @@ internal static class ConstructHitchScenarios
         await test.Tree.ToSignal(test.Tree, SceneTree.SignalName.ProcessFrame);
 
         var pending = new Dictionary<ConstructChunkKey, long>();
+        var expectedCallbacks = 0;
         var latencies = new List<double>();
         w.World.ChunkMeshApplied += (id, chunk) =>
         {
@@ -112,7 +122,10 @@ internal static class ConstructHitchScenarios
                 ConstructDirtyChunks.Collect(applied.Operation, applied.ConstructChanges, dirty, created, removed);
                 foreach (var key in dirty)
                 {
-                    pending.TryAdd(key, now);
+                    if (pending.TryAdd(key, now))
+                    {
+                        expectedCallbacks++;
+                    }
                 }
 
                 edits++;
@@ -128,7 +141,7 @@ internal static class ConstructHitchScenarios
         }
 
         var frameStats = FrameStats.From(probe.Intervals);
-        var remeshStats = FrameStats.From(latencies);
+        var remeshStats = RemeshStats(w.World.PendingJobs, pending.Count, expectedCallbacks, latencies);
         GD.Print($"    EditStream: edits={edits} frames p50={frameStats.P50:F1} p99={frameStats.P99:F1} max={frameStats.Max:F1} ms; " +
                  $"apply op max={maxApply:F1} ms; remesh latency n={remeshStats.Count} p50={remeshStats.P50:F1} p99={remeshStats.P99:F1} max={remeshStats.Max:F1} ms");
         GD.Print($"      apply: upload n={w.World.Timings.Uploads} sum={w.World.Timings.UploadMilliseconds:F0} max={w.World.Timings.MaxUploadMilliseconds:F1} ms; collision n={w.World.Timings.Collisions} sum={w.World.Timings.CollisionMilliseconds:F0} max={w.World.Timings.MaxCollisionMilliseconds:F1} ms; gc2={GC.CollectionCount(2) - gcEdit0}");
