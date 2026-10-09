@@ -113,6 +113,63 @@ public sealed class InputSequencerTests
     }
 
     [Fact]
+    public void InputSequencer_FrameHitch_EveryInputIsSentInOrderWithinTheBatchLimit()
+    {
+        var sequencer = new InputSequencer();
+        for (var i = 0; i < 20; i++)
+        {
+            sequencer.Record(Tick(sequencer.LastSeq + 1), Input());
+        }
+
+        // One frame after the hitch: the host drains the backlog.
+        var sent = new List<(uint FirstSeq, uint[] Ticks)>();
+        while (sequencer.TryTakeBatch(out var firstSeq, out var inputs))
+        {
+            Assert.InRange(inputs.Count, 1, ProtocolConstants.MaxInputsPerBatch);
+            sent.Add((firstSeq, inputs.Select(x => x.ClientTick).ToArray()));
+            Assert.True(sent.Count <= 20, "the drain loop must terminate");
+        }
+
+        var first = new Dictionary<uint, int>();
+        for (var b = 0; b < sent.Count; b++)
+        {
+            for (var i = 0; i < sent[b].Ticks.Length; i++)
+            {
+                Assert.Equal(Tick(sent[b].FirstSeq + (uint)i), sent[b].Ticks[i]);
+                first.TryAdd(sent[b].FirstSeq + (uint)i, b);
+            }
+        }
+
+        for (uint seq = 1; seq <= 20; seq++)
+        {
+            Assert.True(first.ContainsKey(seq), $"input {seq} was never sent");
+        }
+
+        // New inputs first appear in batch order.
+        Assert.Equal(first.OrderBy(p => p.Key).Select(p => p.Value), first.OrderBy(p => p.Key).Select(p => p.Value).Order());
+        Assert.False(sequencer.TryTakeBatch(out _, out _));
+    }
+
+    [Fact]
+    public void InputSequencer_HugeBacklog_DoesNotFailAndKeepsTheNewestInputs()
+    {
+        var sequencer = new InputSequencer();
+        for (var i = 0; i < 1000; i++)
+        {
+            sequencer.Record(Tick(sequencer.LastSeq + 1), Input());
+        }
+
+        var lastTick = 0u;
+        while (sequencer.TryTakeBatch(out var firstSeq, out var inputs))
+        {
+            Assert.Equal(Tick(firstSeq), inputs[0].ClientTick);
+            lastTick = inputs[^1].ClientTick;
+        }
+
+        Assert.Equal(Tick(1000), lastTick);
+    }
+
+    [Fact]
     public void InputSequencer_Reset_StartsAtOneAgain()
     {
         var sequencer = new InputSequencer();
@@ -139,13 +196,25 @@ public sealed class InputSequencerTests
             sequencer.Record((uint)i, motor);
         }
 
-        Assert.True(sequencer.TryTakeBatch(out var firstSeq, out var inputs));
-        var writer = new ByteWriter();
-        MessageCodec.Write(writer, new InputBatch(firstSeq, inputs));
-        var decoded = Assert.IsType<InputBatch>(MessageCodec.Read(writer.WrittenSpan));
+        // Three batches are due for six waiting inputs; the last one is a full batch of five (inputs 2..6).
+        var batches = 0;
+        while (sequencer.TryTakeBatch(out var firstSeq, out var inputs))
+        {
+            batches++;
+            var writer = new ByteWriter();
+            MessageCodec.Write(writer, new InputBatch(firstSeq, inputs));
+            var decoded = Assert.IsType<InputBatch>(MessageCodec.Read(writer.WrittenSpan));
 
-        Assert.Equal(firstSeq, decoded.FirstSeq);
-        Assert.Equal(5, decoded.Inputs.Count);
-        Assert.Equal(inputs[0], decoded.Inputs[0]);
+            Assert.Equal(firstSeq, decoded.FirstSeq);
+            Assert.Equal(inputs.Count, decoded.Inputs.Count);
+            Assert.Equal(inputs[0], decoded.Inputs[0]);
+            if (batches == 3)
+            {
+                Assert.Equal(5, decoded.Inputs.Count);
+                Assert.Equal(2u, firstSeq);
+            }
+        }
+
+        Assert.Equal(3, batches);
     }
 }
