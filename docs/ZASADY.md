@@ -22,6 +22,7 @@ Każda sesja pracy zaczyna się od przeczytania tego pliku i planu pakietu. Niej
 - `ITerrainService` woła się wyłącznie na wątku głównym Godota (`VoxelTerrainService` rzuca `InvalidOperationException` na innym wątku), więc `ServerSimulation` działa na wątku głównym. Strumień Voxel Tools (wątki robocze) czyta tylko `ITerrainBlockSource` i nie dotyka `WorldState`, `ServerSimulation` ani drzewa sceny (K2-09).
 - Symulacja serwera, sesje i `ITerrainService` działają wyłącznie na wątku głównym Godota; inne wątki (writer, Voxel Tools, konsola, sygnały) komunikują się z nim tylko kolejkami albo flagami.
 - Zero mutowalnego stanu statycznego. Zależności składa jedno miejsce startowe (composition root) w `game/src/Boot/`.
+- Jedynym composition root jest `GameComposition` (`game/src/Boot/`); węzły `/Root/Server` i `/Root/Client` dostają zależności metodą `Initialize` przed wejściem do drzewa. Węzeł serwera tyka z priorytetem fizyki -100, klienta 0, więc w hoście tick serwera poprzedza `Poll` klienta lokalnego; host ma jedną instancję terenu (`SharedTerrainProvider`).
 - Każda zmiana świata to operacja z `Horyzont.Core.Operations`, stosowana przez `ServerSimulation` i zapisywana w dzienniku. Nie ma innej drogi zmiany stanu świata.
 - Kanoniczny stan każdego bytu to rama rodzica (`FrameRef`), licznik przepięć `ParentSeq` i poza lokalna w tej ramie (`System.Numerics.Vector3` i `Quaternion`, metry). Pozycja w świecie jest zawsze wartością pochodną: zapis, dziennik i sieć znają wyłącznie pozycje lokalne.
 - Ramy składa się tylko w podwójnej precyzji (`Vector3D`, `QuaternionD` i `FrameMath` w Core, od K5-20). Pojedyncza precyzja wystarcza wewnątrz ramy planety albo budowli.
@@ -86,6 +87,7 @@ W kodzie wołanym co tick (symulacja, sieć, meshing) obowiązuje:
 - Walidacja danych gry zwraca wynik (`RejectReason`, `ValidationResult`), nie rzuca wyjątków.
 - Wyjątki tylko dla złamanych niezmienników (błąd w naszym kodzie) i dla uszkodzonych danych z sieci albo dysku (`ProtocolViolationException`, łapany na granicy połączenia).
 - Kolejność zamykania serwera: `Shutdown` sesji → `Poll` do opróżnienia → `OnShutdown` uczestników (K2-11 `DespawnAll`) → `LeaveAllOnlinePlayers` → checkpoint → `FlushAsync` → `DisposeAsync` writera → `VoxelTerrainService.ShutdownAsync` → `ServerTerrainBlocks.CloseAsync` → (`true`) `TerrainBlockStore.Close()` → `Dispose` transportu → klient lokalny.
+- Każde wyjście z procesu (zamknięcie okna, SIGINT/SIGTERM/SIGQUIT, polecenie `stop`) przechodzi przez `QuitCoordinator` i tę samą kolejność zamykania; handler sygnału tylko ustawia flagę.
 - Nigdy nie połykaj wyjątków. `catch` bez ponownego rzucenia musi zalogować błąd i mieć komentarz, dlaczego to bezpieczne.
 - Logowanie przez `ILogger<T>` (`Microsoft.Extensions.Logging.Abstractions`), wyłącznie metodami generowanymi atrybutem `[LoggerMessage]`: nie alokują w gorących ścieżkach, a bezpośrednie `logger.LogX(...)` łamie regułę CA1848 przy ostrzeżeniach jako błędach. W `game/` adapter pisze do pliku z rotacją i do konsoli Godota. Każdy wpis o sesji ma identyfikator gracza, a o operacji jej `OpId`.
 
