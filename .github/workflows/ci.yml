@@ -21,8 +21,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+        # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
+        os: [windows-latest]  # was: [windows-latest, ubuntu-latest]
+    runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -53,10 +54,11 @@ jobs:
           - os: windows-latest
             editor-artifact: engine-windows-editor
             editor: godot.windows.editor.double.x86_64.mono.console.exe
-          - os: ubuntu-latest
-            editor-artifact: engine-linux-editor
-            editor: godot.linuxbsd.editor.double.x86_64.mono
-    runs-on: ${{ matrix.os }}
+          # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
+          # - os: ubuntu-latest
+          #   editor-artifact: engine-linux-editor
+          #   editor: godot.linuxbsd.editor.double.x86_64.mono
+    runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 45
     permissions:
       actions: read
@@ -135,6 +137,8 @@ jobs:
           if-no-files-found: ignore
 
   generator-consistency:
+    # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
+    if: false
     # Windows and Linux editors must generate the same LOD 0 blocks (K2-08, collisions depend on it).
     needs: game
     runs-on: ubuntu-latest

@@ -15,8 +15,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+        # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
+        os: [windows-latest]  # was: [windows-latest, ubuntu-latest]
+    runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -39,7 +40,7 @@ jobs:
   # The Windows editor exports both release builds (engine-windows-editor + the release templates from engine.yml on main).
   release-windows:
     name: generator report (Windows editor and release)
-    runs-on: windows-latest
+    runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 60
     permissions:
       actions: read
@@ -117,6 +118,8 @@ jobs:
           if-no-files-found: error
 
   release-linux:
+    # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
+    if: false
     name: generator report (Linux editor and release)
     needs: release-windows
     runs-on: ubuntu-latest
@@ -178,6 +181,8 @@ jobs:
           if-no-files-found: error
 
   release-compare:
+    # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
+    if: false
     name: compare the four runtimes
     needs: release-linux
     runs-on: ubuntu-latest
