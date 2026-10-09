@@ -485,14 +485,35 @@ def step_smoke(ctx: Context) -> None:
     editor = console if console.exists() else ctx.out / binary_name(target)
     if not ctx.dry_run and not editor.exists():
         raise BuildError(f"[smoke] editor {editor} not found; run 'build.py editor' first.")
-    # Import once so that the script class cache exists before the scene loads.
-    ctx.run("smoke", [editor, "--headless", "--path", SMOKE_DIR, "--import"], REPO, timeout=SMOKE_TIMEOUT_S)
+    # Godot 4.7.2 shutdown bug (docs/plans/K2-12-budowle.md, Odstepstwa): if the editor help cache thread finishes after
+    # --import has quit, its deferred call runs after EditorNode is freed and segfaults (0xC0000005). A "._sc_" file next
+    # to the exe gives the editor its own fresh data dir (no stale shared doc cache), and --quit-after (overrides the
+    # 1 frame set by --import) keeps the editor up until the thread has handed back. Self-contained mode lasts only for
+    # the smoke so that uploaded engine artifacts are not self-contained.
+    self_contained = editor.parent / "._sc_"
+    created_marker = not ctx.dry_run and not self_contained.exists()
+    if created_marker:
+        self_contained.touch()
     try:
-        output = ctx.run(
-            "smoke", [editor, "--headless", "--path", SMOKE_DIR, "--quit-after", "600"], REPO, timeout=SMOKE_TIMEOUT_S
+        # Import once so that the script class cache exists before the scene loads.
+        ctx.run(
+            "smoke",
+            [editor, "--headless", "--path", SMOKE_DIR, "--import", "--quit-after", "1000"],
+            REPO,
+            timeout=SMOKE_TIMEOUT_S,
         )
-    except BuildError as error:
-        raise BuildError(f"SMOKE FAIL: {error}") from None
+        try:
+            output = ctx.run(
+                "smoke",
+                [editor, "--headless", "--path", SMOKE_DIR, "--quit-after", "600"],
+                REPO,
+                timeout=SMOKE_TIMEOUT_S,
+            )
+        except BuildError as error:
+            raise BuildError(f"SMOKE FAIL: {error}") from None
+    finally:
+        if created_marker:
+            self_contained.unlink(missing_ok=True)
     if not ctx.dry_run and "SMOKE OK" not in output:
         raise BuildError("SMOKE FAIL: 'SMOKE OK' missing from the output.")
     if not ctx.dry_run:
