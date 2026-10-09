@@ -9,6 +9,9 @@ using Horyzont.Core.Serialization;
 using Horyzont.Core.World.Terrain;
 using Horyzont.Game.Planet;
 using Horyzont.Game.Terrain;
+using Horyzont.Persistence.Terrain;
+
+using Microsoft.Extensions.Logging.Abstractions;
 
 using static GdUnit4.Assertions;
 
@@ -34,7 +37,7 @@ public class TerrainCodecTests
     [RequireGodotRuntime]
     public void Codec_RoundTrip_SameVoxels()
     {
-        var codec = new TerrainBlockCodec();
+        using var codec = new TerrainBlockCodec();
         using var block = Block(-0.25f, 3);
         block.SetVoxelF(0.75f, 3, 4, 5, (int)TerrainChannels.Sdf);
         block.SetVoxel(2, 15, 0, 7, (int)TerrainChannels.Material);
@@ -53,7 +56,7 @@ public class TerrainCodecTests
     [RequireGodotRuntime]
     public void Codec_Decode_UnknownFormatOrBadPayload_ThrowsProtocolViolation()
     {
-        var codec = new TerrainBlockCodec();
+        using var codec = new TerrainBlockCodec();
         using var block = Block(1f, 0);
         var voxels = VoxelBlockSerializer.SerializeToByteArray(block, TerrainEditSemantics.BlobCompression);
         using var into = new VoxelBuffer();
@@ -63,11 +66,78 @@ public class TerrainCodecTests
         AssertThrown(() => codec.Decode([9, 9, 9], into)).IsInstanceOf<ProtocolViolationException>();
     }
 
+    /// <summary>
+    /// A payload (no compression) whose material channel stops after 100 of its 4096 bytes but which still ends with the trailing
+    /// magic: Voxel Tools v1.7 resizes the buffer and sets every channel depth before it finds the short read.
+    /// </summary>
+    private static byte[] TruncatedMaterialPayload()
+    {
+        using var block = Block(-0.25f, 3);
+        block.SetVoxelF(0.75f, 3, 4, 5, (int)TerrainChannels.Sdf);
+        block.SetVoxel(2, 15, 0, 7, (int)TerrainChannels.Material);
+        var raw = VoxelBlockSerializer.SerializeToByteArray(block, VoxelBlockSerializer.Compression.None);
+        var position = 7; // format version and three 16-bit sizes
+        var materialStart = -1;
+        for (var channel = 0; channel < 8; channel++)
+        {
+            var format = raw[position++];
+            var width = 1 << (format >> 4);
+            if ((format & 0xF) == 0)
+            {
+                if (channel == (int)TerrainChannels.Material)
+                {
+                    materialStart = position;
+                }
+
+                position += 16 * 16 * 16 * width;
+            }
+            else
+            {
+                position += width;
+            }
+        }
+
+        AssertThat(materialStart).IsGreater(0);
+        AssertThat(position + 4).IsEqual(raw.Length);
+
+        // CompressedData header 0 (no compression), the cut payload, the trailing magic.
+        return [0, .. raw.AsSpan(0, materialStart + 100), .. raw.AsSpan(raw.Length - 4)];
+    }
+
+    [TestCase]
+    [RequireGodotRuntime]
+    public void Codec_Decode_TruncatedChannelWithTrailingMagic_ThrowsProtocolViolation()
+    {
+        using var codec = new TerrainBlockCodec();
+        var blob = StateCodec.EncodeTerrainBlockBlob(TerrainEditSemantics.VoxelFormat, TruncatedMaterialPayload());
+        using var into = Block(1f, 0);
+
+        AssertThrown(() => codec.Decode(blob, into)).IsInstanceOf<ProtocolViolationException>();
+    }
+
+    [TestCase]
+    [RequireGodotRuntime]
+    public void Stream_TruncatedChannelWithTrailingMagic_ReportsErrorAndFlag()
+    {
+        using var codec = new TerrainBlockCodec();
+        var key = new TerrainBlockKey(_planet, 0, 3, 250, -2);
+        var source = new OneBlockSource(key, StateCodec.EncodeTerrainBlockBlob(TerrainEditSemantics.VoxelFormat, TruncatedMaterialPayload()));
+        using var stream = new TerrainStream(_planet, source, codec, new DerivedLodCache(), NullLogger.Instance);
+        using var buffer = new VoxelBuffer();
+        buffer.Create(16, 16, 16);
+
+        var result = stream._LoadVoxelBlock(buffer, new Vector3I(key.X, key.Y, key.Z), 0);
+
+        AssertThat(result).IsEqual((int)VoxelStream.ResultCode.Error);
+        AssertThat(stream.FirstError).IsEqual(key);
+        AssertThat(stream.ErrorCount).IsEqual(1);
+    }
+
     [TestCase]
     [RequireGodotRuntime]
     public void Codec_Digest_IgnoresUniformCompression()
     {
-        var codec = new TerrainBlockCodec();
+        using var codec = new TerrainBlockCodec();
         using var uniform = Block(0.5f, 1);
         using var expanded = Block(0.5f, 1);
         expanded.DecompressChannel((int)TerrainChannels.Sdf);
@@ -81,7 +151,7 @@ public class TerrainCodecTests
     [RequireGodotRuntime]
     public void TerrainDigest_Sensitivity()
     {
-        var codec = new TerrainBlockCodec();
+        using var codec = new TerrainBlockCodec();
         using var block = Block(-0.5f, 0);
         var voxels = codec.Digest(block);
         block.SetVoxelF(-0.25f, 8, 8, 8, (int)TerrainChannels.Sdf);
@@ -132,5 +202,22 @@ public class TerrainCodecTests
         AssertThat(cache.TryGet(new TerrainBlockKey(_planet, 1, 4, 0, 0), out _)).IsTrue();
         AssertThat(cache.TryGet(new TerrainBlockKey(_planet, 1, 5, 0, 0), out _)).IsTrue();
         AssertThrown(() => cache.Put(new TerrainBlockKey(_planet, 0, 0, 0, 0), [1])).IsInstanceOf<ArgumentException>();
+    }
+
+    private sealed class OneBlockSource(TerrainBlockKey only, byte[] data) : ITerrainBlockSource
+    {
+        public TerrainBlockLookup TryLoad(TerrainBlockKey key, out uint version, out byte[] blob)
+        {
+            if (key == only)
+            {
+                version = 1;
+                blob = data;
+                return TerrainBlockLookup.Found;
+            }
+
+            version = 0;
+            blob = [];
+            return TerrainBlockLookup.NotEdited;
+        }
     }
 }
