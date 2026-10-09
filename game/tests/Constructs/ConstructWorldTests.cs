@@ -203,6 +203,57 @@ public sealed class ConstructWorldTests : EngineTestBase
         EngineAssert.Equal(before, applied, "callbacks after an operation following shutdown");
     }
 
+    [EngineTest]
+    public async Task Viewers_LoadRenderAndCollisionByRange_WithHysteresis()
+    {
+        var options = new ConstructWorldOptions { RenderRadiusMeters = 200, CollisionRadiusMeters = 50, HysteresisMeters = 20 };
+        using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(Horyzont.Game.Constructs.BlockContentLoader.Load()), options);
+        var id = w.Create(new CellPos(0, 0, 0));
+        w.World.RebuildAll(ConstructTestWorld.Planet);
+
+        async Task MoveViewer(float x)
+        {
+            w.World.SetViewers([new System.Numerics.Vector3(x, 4000.5f, 0.5f)]);
+            for (var i = 0; i < 3; i++)
+            {
+                await NextFrame();
+            }
+
+            await Idle(w);
+        }
+
+        ConstructChunkNode? Chunk() =>
+            w.World.TryGetConstruct(id, out var node) && node.TryGetChunk(new ChunkPos(0, 0, 0), out var chunk) ? chunk : null;
+
+        await MoveViewer(300);
+        EngineAssert.True(!w.World.TryGetConstructNode(id, out _), "out of the render range: not loaded");
+
+        await MoveViewer(100);
+        EngineAssert.True(Chunk()?.MeshInstance is not null, "inside the render range: rendered");
+        EngineAssert.True(Chunk()?.Body is null, "outside the collision range: no collision body");
+
+        await MoveViewer(40);
+        EngineAssert.True(Chunk()?.Body is not null, "inside the collision range: collision body");
+
+        await MoveViewer(60);
+        EngineAssert.True(Chunk()?.Body is not null, "inside the collision hysteresis: body stays");
+
+        await MoveViewer(80);
+        EngineAssert.True(Chunk()?.Body is null, "beyond the collision hysteresis: body removed");
+        EngineAssert.True(Chunk()?.MeshInstance is not null, "mesh stays while in render range");
+
+        await MoveViewer(215);
+        EngineAssert.True(w.World.TryGetConstructNode(id, out _), "inside the render hysteresis: still loaded");
+
+        await MoveViewer(240);
+        EngineAssert.True(!w.World.TryGetConstructNode(id, out _), "beyond the render hysteresis: unloaded");
+
+        w.World.SetViewers([]);
+        await NextFrame();
+        await Idle(w);
+        EngineAssert.True(w.World.TryGetConstructNode(id, out _), "no viewers: everything is in range");
+    }
+
     private static int CountMeshInstances(Node root)
     {
         var count = root is MeshInstance3D ? 1 : 0;
