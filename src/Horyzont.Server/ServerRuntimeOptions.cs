@@ -72,6 +72,9 @@ public sealed record ServerRuntimeOptions
     /// <summary>Gets the failure injection of the writer; <see cref="NoFaults.Instance"/> in production.</summary>
     public IPersistenceFaults Faults { get; init; } = NoFaults.Instance;
 
+    /// <summary>Gets the pose of a player who joins for the first time (K2-11: the start point on the equator); null keeps the simulation's own spawn point.</summary>
+    public NewPlayerSpawn? NewPlayerSpawn { get; init; }
+
     /// <summary>Gets a wrapper for the journal sink (tests observe appends); null in production.</summary>
     public Func<IJournalSink, IJournalSink>? JournalSinkDecorator { get; init; }
 }
