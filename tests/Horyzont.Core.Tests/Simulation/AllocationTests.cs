@@ -13,8 +13,9 @@ public sealed class AllocationTests
     // BlockClearOp, AppliedOperation, its one-element ConstructChange list and JournalEntry: about 220 bytes on x64.
     private const long BudgetPerRemoval = 320;
 
-    // ConstructCreateOp, AppliedOperation with its change list, JournalEntry and the new Construct with its 16 KiB chunk.
-    private const long BudgetPerPlacement = 20_000;
+    // Measured: 69_056 B for the four accepted placements of PlacementsFor (stable between runs; ~16 KiB chunk of the new Construct plus
+    // ConstructCreateOp, AppliedOperation with its change list and JournalEntry per placement), rounded up to the next 256 B.
+    private const long BudgetForFourPlacements = 69_120;
 
     private static readonly CellPos[] _cells = [new(0, 0, 0), new(0, 0, 3), new(0, 0, -3), new(0, 0, 6), new(0, 0, -6)];
 
@@ -111,8 +112,9 @@ public sealed class AllocationTests
         var accepted = RunPlacements(f, p, intents);
         var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
+        Assert.Equal(4, intents.Length);
         Assert.Equal(intents.Length, accepted);
-        Assert.InRange(allocated, 0, intents.Length * BudgetPerPlacement);
+        Assert.InRange(allocated, 0, BudgetForFourPlacements);
     }
 
     [Fact]
