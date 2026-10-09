@@ -21,6 +21,7 @@ public sealed class InMemoryTransport : ITransport
     private readonly Queue<(ConnectionId Connection, TransportDisconnectReason Reason)> _localEvents = new();
     private ulong _nextConnectionId = 1;
     private long _sequence;
+    private int _inFlight;
     private bool _listening;
     private bool _disposed;
 
@@ -39,7 +40,8 @@ public sealed class InMemoryTransport : ITransport
     public int MaxUnreliablePayload => UnreliableLimit;
 
     /// <inheritdoc />
-    public bool IsDrained => true;
+    /// <remarks>True when no packet of this transport (other than keep-alives) waits in the inbox of another one.</remarks>
+    public bool IsDrained => _inFlight == 0;
 
     private TransportEndpoint Identity => _fakeSteamId is { } id ? new SteamEndpoint(id) : new InMemoryEndpoint(_name);
 
@@ -120,6 +122,7 @@ public sealed class InMemoryTransport : ITransport
         while (_inbox.TryPeek(out var packet, out var key) && key.Due <= now)
         {
             _inbox.Dequeue();
+            packet.Source.Delivered(packet);
             Handle(packet, now, events);
             if (packet.Payload is not null)
             {
@@ -189,6 +192,7 @@ public sealed class InMemoryTransport : ITransport
         _connectionList.Clear();
         while (_inbox.TryDequeue(out var packet, out _))
         {
+            packet.Source.Delivered(packet);
             if (packet.Payload is not null)
             {
                 ArrayPool<byte>.Shared.Return(packet.Payload);
@@ -421,7 +425,20 @@ public sealed class InMemoryTransport : ITransport
             lastOrderedDue = due;
         }
 
+        if (packet.Kind != InMemoryPacketKind.KeepAlive)
+        {
+            packet.Source._inFlight++;
+        }
+
         _inbox.Enqueue(packet, (due, _sequence++));
+    }
+
+    private void Delivered(InMemoryPacket packet)
+    {
+        if (packet.Kind != InMemoryPacketKind.KeepAlive)
+        {
+            _inFlight--;
+        }
     }
 
     private enum ConnectionState : byte

@@ -21,6 +21,9 @@ public sealed partial class UdpTransport : ITransport
     private const int ReliableLimit = 512 * 1024;
 
     private readonly NetManager _manager;
+    private readonly TimeProvider _time;
+    private readonly TimeSpan _closeTimeout;
+    private readonly int _maxClosing;
     private readonly ILogger<UdpTransport> _logger;
     private readonly Dictionary<ulong, PeerLink> _connections = [];
     private readonly List<PeerLink> _closing = [];
@@ -40,6 +43,9 @@ public sealed partial class UdpTransport : ITransport
     {
         ArgumentNullException.ThrowIfNull(options);
         _logger = logger ?? NullLogger<UdpTransport>.Instance;
+        _time = time ?? TimeProvider.System;
+        _closeTimeout = options.CloseTimeout;
+        _maxClosing = options.MaxClosingConnections;
         _manager = new NetManager(new Handler(this))
         {
             UnsyncedEvents = false,
@@ -60,7 +66,8 @@ public sealed partial class UdpTransport : ITransport
     public int MaxUnreliablePayload => Mtu - UnreliableHeaderSize;
 
     /// <inheritdoc />
-    public bool IsDrained => true;
+    /// <remarks>True when no connection is closing: each one waits for its reliable data to be acknowledged, at most <see cref="TransportOptions.CloseTimeout"/>.</remarks>
+    public bool IsDrained => _closing.Count == 0;
 
     /// <summary>Gets the number of connections that are closing (tests).</summary>
     internal int ClosingCount => _closing.Count;
@@ -176,7 +183,14 @@ public sealed partial class UdpTransport : ITransport
             }
 
             link.Closing = true;
+            link.ClosingSince = _time.GetTimestamp();
             _closing.Add(link);
+            if (_closing.Count > _maxClosing)
+            {
+                // Bounded memory and sockets against peers that never acknowledge (E7): the oldest closing connection goes.
+                ForceClose(_closing[0]);
+                _closing.RemoveAt(0);
+            }
         }
     }
 
@@ -251,6 +265,9 @@ public sealed partial class UdpTransport : ITransport
         _pendingConnects.Clear();
     }
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "UDP connection to {Remote} dropped while closing: {PendingReliable} reliable messages were not acknowledged")]
+    private static partial void LogForcedClose(ILogger logger, string remote, int pendingReliable);
+
     private static TransportDisconnectReason Map(DisconnectReason reason) => reason switch
     {
         DisconnectReason.RemoteConnectionClose => TransportDisconnectReason.Remote,
@@ -303,6 +320,13 @@ public sealed partial class UdpTransport : ITransport
         {
             var link = _closing[i];
             var peer = link.Peer!;
+            if (!link.Released && _time.GetElapsedTime(link.ClosingSince) >= _closeTimeout)
+            {
+                ForceClose(link);
+                _closing.RemoveAt(i);
+                continue;
+            }
+
             if (!link.DisconnectSent
                 && (peer.ConnectionState != ConnectionState.Connected || link.PendingReliable <= 0))
             {
@@ -315,6 +339,16 @@ public sealed partial class UdpTransport : ITransport
             {
                 _closing.RemoveAt(i);
             }
+        }
+    }
+
+    private void ForceClose(PeerLink link)
+    {
+        LogForcedClose(_logger, link.Remote.ToString() ?? string.Empty, link.PendingReliable);
+        link.DisconnectSent = true;
+        if (link.Peer is { ConnectionState: not ConnectionState.Disconnected } peer)
+        {
+            _manager.DisconnectPeerForce(peer);
         }
     }
 
@@ -332,6 +366,9 @@ public sealed partial class UdpTransport : ITransport
         public IPEndPoint? Target { get; set; }
 
         public bool DisconnectSent { get; set; }
+
+        /// <summary>Gets or sets the <see cref="TimeProvider"/> timestamp at which <see cref="Closing"/> started.</summary>
+        public long ClosingSince { get; set; }
 
         public bool Released { get; set; }
 
