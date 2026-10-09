@@ -26,6 +26,11 @@ public sealed class GodotShapeMeshResolver : IShapeMeshResolver
             return false;
         }
 
+        if (resource.GetSurfaceCount() != 1)
+        {
+            throw new InvalidDataException($"Mesh '{meshRef}' has {resource.GetSurfaceCount()} surfaces; block meshes support exactly one surface.");
+        }
+
         var arrays = resource.SurfaceGetArrays(0);
         var vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
         var normalSource = arrays[(int)Mesh.ArrayType.Normal].AsVector3Array();
