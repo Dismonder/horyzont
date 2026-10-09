@@ -26,6 +26,7 @@ namespace Horyzont.Integration.Tests;
 /// The K1 gate: a server (simulation, persistence writer on a SQLite file) and two clients talk through the in-memory
 /// transport; after a simulated process death the world loaded from disk plus the journal tail hashes like the live one.
 /// </summary>
+[Collection(SqlitePools.Name)]
 public sealed class K1GateTests : IDisposable
 {
     private const ulong Build = 0x4B31_6174_6500_0001UL;
