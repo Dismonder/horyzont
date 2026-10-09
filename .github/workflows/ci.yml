@@ -128,7 +128,11 @@ jobs:
           # The self-hosted runner shared %LOCALAPPDATA%\Godot with other engine builds, whose stale doc cache made the
           # thread slow enough to hit this every run. ._sc_ gives this editor its own data next to the exe, and
           # --quit-after (overrides the 1 frame set by --import) keeps the editor up until the thread has handed back.
-          touch "$(dirname "$editor")/._sc_"
+          # The marker is removed when the step ends, so the later steps (gdUnit4 adapter, in-engine runner) start the
+          # editor in the normal mode and its connection to the adapter is not delayed by a cold first start.
+          marker="$(dirname "$editor")/._sc_"
+          touch "$marker"
+          trap 'rm -f "$marker"' EXIT
           "$editor" --headless --path game --import --quit-after 1000
           "$editor" --headless --path game -- --smoke | tee boot.log
           grep -q "BOOT OK .*real_t=double" boot.log
