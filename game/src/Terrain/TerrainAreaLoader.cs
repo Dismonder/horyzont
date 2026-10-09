@@ -52,7 +52,10 @@ public sealed class TerrainAreaLoader
     /// <param name="center">Area centre in the planet frame.</param>
     /// <param name="radius">Half edge of the area in metres (edit radius plus the margin).</param>
     /// <param name="ct">Cancellation.</param>
-    /// <exception cref="InvalidOperationException">Unknown planet.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// Unknown planet, or a block that could not be served (<see cref="VoxelTerrainService.FirstFault"/>), checked before, during and
+    /// after the wait; the message names the block.
+    /// </exception>
     /// <exception cref="TimeoutException">The area did not load within the deadline.</exception>
     public async Task EnsureLoadedAsync(PlanetId planet, Vector3 center, float radius, CancellationToken ct)
     {
@@ -61,6 +64,7 @@ public sealed class TerrainAreaLoader
             throw new InvalidOperationException($"Planet {planet} has no terrain.");
         }
 
+        _terrain.ThrowIfFaulted();
         if (_terrain.IsAreaEditable(planet, center, radius))
         {
             return;
@@ -91,6 +95,7 @@ public sealed class TerrainAreaLoader
         while (!_terrain.IsAreaEditable(planet, center, radius))
         {
             ct.ThrowIfCancellationRequested();
+            _terrain.ThrowIfFaulted();
             if (_time.GetElapsedTime(started) > _deadline)
             {
                 ReleaseViewers();
@@ -100,6 +105,9 @@ public sealed class TerrainAreaLoader
 
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         }
+
+        // A failed block becomes editable only after its load returned the error, so the flag is set by now.
+        _terrain.ThrowIfFaulted();
     }
 
     /// <summary>Removes every viewer of this loader; the areas may unload afterwards.</summary>

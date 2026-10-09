@@ -17,6 +17,7 @@ using Horyzont.Persistence.Terrain;
 using Horyzont.Persistence.Writing;
 using Horyzont.Testing;
 
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 
@@ -128,7 +129,7 @@ internal sealed class TerrainTestWorld : IAsyncDisposable
     /// <summary>Loads the world, builds the terrain and replays the tail through <see cref="TerrainReplay"/>.</summary>
     public static async Task<TerrainTestWorld> OpenAsync(
         EngineTestScene scene, string path, TerrainBufferOptions? options = null, IPersistenceFaults? faults = null, FakeTimeProvider? time = null,
-        string? savedSemantics = null)
+        string? savedSemantics = null, bool replay = true)
     {
         time ??= new FakeTimeProvider();
         var loaded = WorldLoader.Load(
@@ -143,8 +144,35 @@ internal sealed class TerrainTestWorld : IAsyncDisposable
         var sim = new ServerSimulation(loaded.State, service, new JournalSink(writer), new GameRules(), NullLogger<ServerSimulation>.Instance);
         var loader = new TerrainAreaLoader(service, time, TerrainAreaLoader.DefaultDeadline);
         var world = new TerrainTestWorld(scene, path, time, loaded, store, blocks, service, node, writer, sim, loader);
-        world.TailCheck = await TerrainReplay.ReplayAsync(sim, loaded.JournalTail, loader, savedSemantics ?? TerrainEditSemantics.Current, CancellationToken.None);
+        if (replay)
+        {
+            world.TailCheck = await TerrainReplay.ReplayAsync(sim, loaded.JournalTail, loader, savedSemantics ?? TerrainEditSemantics.Current, CancellationToken.None);
+        }
+
         return world;
+    }
+
+    /// <summary>Fault injection: deletes the saved row of a block (<paramref name="data"/> null) or overwrites its data.</summary>
+    /// <returns>Number of rows changed.</returns>
+    public static int CorruptSavedBlock(string path, TerrainBlockKey key, byte[]? data)
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString());
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = data is null
+            ? "DELETE FROM terrain_blocks WHERE planet_id = $p AND lod = $lod AND block_x = $x AND block_y = $y AND block_z = $z;"
+            : "UPDATE terrain_blocks SET data = $d WHERE planet_id = $p AND lod = $lod AND block_x = $x AND block_y = $y AND block_z = $z;";
+        command.Parameters.AddWithValue("$p", (long)key.Planet.Value);
+        command.Parameters.AddWithValue("$lod", (long)key.Lod);
+        command.Parameters.AddWithValue("$x", (long)key.X);
+        command.Parameters.AddWithValue("$y", (long)key.Y);
+        command.Parameters.AddWithValue("$z", (long)key.Z);
+        if (data is not null)
+        {
+            command.Parameters.AddWithValue("$d", data);
+        }
+
+        return command.ExecuteNonQuery();
     }
 
     /// <summary>The K2-08 factory terrain with a flat generator at <see cref="Surface"/>.</summary>

@@ -71,6 +71,14 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
     }
 
     /// <summary>
+    /// The first block whose data could not be served, over all planets: <see cref="FirstStreamError"/>, else
+    /// <see cref="ServerTerrainBlocks.FirstCorruptKey"/>; null while none. Once set, Voxel Tools may hold an empty editable placeholder
+    /// for the block (S1), so <see cref="ApplyEdit"/> and <see cref="LoadAreaBlocking"/> throw and <see cref="IsAreaLoaded"/> is false
+    /// for the rest of the session. Main thread.
+    /// </summary>
+    public TerrainBlockKey? FirstFault => FirstStreamError ?? _blocks.FirstCorruptKey;
+
+    /// <summary>
     /// Wraps a terrain node made by <see cref="PlanetTerrainFactory.Create"/> and attaches the stream; the caller adds the returned
     /// node to the scene tree (Voxel Tools starts streaming when the terrain enters the tree). Main thread.
     /// </summary>
@@ -142,7 +150,7 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
             return false;
         }
 
-        if (entry.Node.Stream.FirstError is { } error)
+        if (FirstFault is { } error)
         {
             if (!entry.FaultLogged)
             {
@@ -161,7 +169,7 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
     /// Voxel Tools does not load synchronously: the area must have been loaded before (<see cref="TerrainAreaLoader"/>, as
     /// <see cref="TerrainReplay"/> does); otherwise this throws.
     /// </remarks>
-    /// <exception cref="InvalidOperationException">Unknown planet or area not preloaded.</exception>
+    /// <exception cref="InvalidOperationException">Unknown planet, a terrain fault (<see cref="FirstFault"/>) or area not preloaded.</exception>
     public void LoadAreaBlocking(PlanetId planet, Vector3 center, float radius)
     {
         EnsureMainThread();
@@ -169,6 +177,8 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
         {
             throw new InvalidOperationException($"Planet {planet} has no terrain.");
         }
+
+        ThrowIfFaulted();
 
         if (!IsBlockAreaEditable(entry, center, radius))
         {
@@ -254,7 +264,8 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
 
     /// <inheritdoc />
     /// <exception cref="InvalidOperationException">
-    /// Unknown planet or shape, versions other than the affected blocks, or an area that is not editable; nothing changed.
+    /// Unknown planet or shape, a terrain fault (<see cref="FirstFault"/>), versions other than the affected blocks, or an area that
+    /// is not editable; nothing changed.
     /// </exception>
     public void ApplyEdit(TerrainEditOp edit, IReadOnlyList<TerrainBlockVersion> versions)
     {
@@ -266,6 +277,7 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
             throw new InvalidOperationException($"Planet {edit.Planet} has no terrain.");
         }
 
+        ThrowIfFaulted();
         if (edit.Shape != TerrainShape.Sphere || (edit.Mode != TerrainEditMode.Add && edit.Mode != TerrainEditMode.Remove))
         {
             throw new InvalidOperationException($"Unsupported terrain edit {edit.Shape} {edit.Mode}.");
@@ -372,6 +384,18 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
         if (OS.GetThreadCallerId() != OS.GetMainThreadId())
         {
             throw new InvalidOperationException("ITerrainService runs on the Godot main thread only.");
+        }
+    }
+
+    /// <summary>Throws when a block could not be served (<see cref="FirstFault"/>). Main thread.</summary>
+    /// <exception cref="InvalidOperationException">A terrain fault.</exception>
+    internal void ThrowIfFaulted()
+    {
+        if (FirstFault is { } key)
+        {
+            throw new InvalidOperationException(
+                $"Terrain block {key} could not be loaded (missing or corrupt data); terrain edits are refused for this session so the "
+                + "empty block Voxel Tools put in its place is never recorded.");
         }
     }
 

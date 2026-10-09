@@ -3,6 +3,8 @@ using GdUnit4;
 using Godot;
 
 using Horyzont.Core.Operations;
+using Horyzont.Core.Simulation;
+using Horyzont.Core.World.Terrain;
 using Horyzont.Game.Terrain;
 using Horyzont.Game.Tests.Support;
 using Horyzont.Persistence.Terrain;
@@ -30,6 +32,26 @@ public class TerrainStreamTests
         world.Edit(_area + new Vector3(-7f, 1, 2f), 2.5f, TerrainEditMode.Add);
         world.Edit(new Vector3(-16f, S - 0.01f, 16f), 1.5f, TerrainEditMode.Remove);
         return viewer;
+    }
+
+    /// <summary>How a saved block is broken.</summary>
+    public enum Breakage
+    {
+        MissingRow,
+        Undecodable,
+    }
+
+    private static InvalidOperationException? Catch(Action action)
+    {
+        try
+        {
+            action();
+            return null;
+        }
+        catch (InvalidOperationException exception)
+        {
+            return exception;
+        }
     }
 
     private static async Task UnloadAndReload(TerrainTestWorld world, VoxelViewer viewer)
@@ -100,6 +122,41 @@ public class TerrainStreamTests
             AssertThat(version).IsEqual(expected[block.Key]);
             AssertThat(data).IsEqual(blobs[block.Key]);
         }
+    }
+
+    [TestCase(Breakage.MissingRow, Timeout = 300000)]
+    [TestCase(Breakage.Undecodable, Timeout = 300000)]
+    [RequireGodotRuntime]
+    public async Task StreamFault_ApplyEditAndLoadAreaBlocking_ThrowWithoutChange(Breakage breakage)
+    {
+        await using var scene = EngineTestScene.Create();
+        await using var world = await TerrainTestWorld.CreateAsync(scene);
+        await Edited(world);
+        AssertThat(await world.CheckpointAndPump()).IsTrue();
+        var edit = world.EditOp(_area + new Vector3(0.5f, 0, -0.5f), 3f, TerrainEditMode.Remove);
+        var keys = new List<TerrainBlockKey>();
+        TerrainMath.AffectedBlocks(edit.Planet, edit.Center, edit.Radius, 1f, TerrainRules.EditMarginVoxels, keys);
+        var versions = keys.Select(k => new TerrainBlockVersion(k, 99)).ToList();
+        var broken = keys[0];
+        AssertThat(TerrainTestWorld.CorruptSavedBlock(world.DbPath, broken, breakage == Breakage.MissingRow ? null : [9, 9, 9])).IsEqual(1);
+        var live = world.LiveDigest();
+        using var buffer = new VoxelBuffer();
+        buffer.Create(16, 16, 16);
+
+        // Voxel Tools would now put an empty, editable block in place of the broken one (S1).
+        var load = world.Node.Stream._LoadVoxelBlock(buffer, new Vector3I(broken.X, broken.Y, broken.Z), 0);
+        var applyError = Catch(() => world.Service.ApplyEdit(edit, versions));
+        var loadError = Catch(() => world.Service.LoadAreaBlocking(edit.Planet, edit.Center, edit.Radius));
+
+        AssertThat(load).IsEqual((int)VoxelStream.ResultCode.Error);
+        AssertThat(world.Service.FirstFault).IsEqual(broken);
+        AssertThat(applyError is not null).IsTrue();
+        AssertThat(applyError!.Message).Contains(broken.ToString());
+        AssertThat(loadError is not null).IsTrue();
+        AssertThat(loadError!.Message).Contains(broken.ToString());
+        AssertThat(world.Service.IsAreaLoaded(edit.Planet, edit.Center, 1f)).IsFalse();
+        AssertThat(world.Blocks.PendingCount).IsEqual(0);
+        AssertThat(world.LiveDigest()).IsEqual(live);
     }
 
     [TestCase(Timeout = 300000)]

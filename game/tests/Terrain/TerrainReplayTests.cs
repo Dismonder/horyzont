@@ -235,6 +235,56 @@ public class TerrainReplayTests
 
     [TestCase(Timeout = 600000)]
     [RequireGodotRuntime]
+    public async Task Replay_EditOverCorruptBlock_FailsFastWithoutRecord()
+    {
+        await using var scene = EngineTestScene.Create();
+        var center = _area + new Vector3(3.5f, 0, -2.5f);
+        string path;
+        TerrainBlockKey broken;
+        ulong checkpointHash;
+        List<TerrainBlockVersion> checkpointVersions;
+        await using (var world = await TerrainTestWorld.CreateAsync(scene))
+        {
+            path = world.DbPath;
+            world.AddViewer(_area, 96);
+            AssertThat(await world.WaitLoaded(_area, 40)).IsTrue();
+            world.Edit(center, 2f, TerrainEditMode.Remove);
+            AssertThat(await world.CheckpointAndPump()).IsTrue();
+            checkpointHash = StateHasher.Hash(world.State);
+            checkpointVersions = world.State.TerrainVersions.All.ToList();
+            broken = checkpointVersions[0].Key;
+            world.Edit(center + new Vector3(0.5f, 0, 0), 2f, TerrainEditMode.Add);
+            AssertThat(await world.Writer.FlushAsync()).IsTrue();
+        }
+
+        // The saved data of the edited, checkpointed block is corrupt: the stream answers with an error and Voxel Tools puts an empty,
+        // editable block there (S1). The tail edit over it must not run on that placeholder. (A deleted row would only drop the
+        // version too: versions are read from the same rows.)
+        AssertThat(TerrainTestWorld.CorruptSavedBlock(path, broken, [9, 9, 9])).IsEqual(1);
+        await using var restarted = await TerrainTestWorld.OpenAsync(scene, path, replay: false);
+        AssertThat(restarted.Loaded.JournalTail.Count).IsEqual(1);
+        InvalidOperationException? error = null;
+        try
+        {
+            await TerrainReplay.ReplayAsync(restarted.Sim, restarted.Loaded.JournalTail, restarted.Loader, TerrainEditSemantics.Current, CancellationToken.None);
+        }
+        catch (InvalidOperationException exception)
+        {
+            error = exception;
+        }
+
+        AssertThat(error is not null).IsTrue();
+        AssertThat(error!.Message).Contains(broken.ToString());
+        AssertThat(restarted.Service.FirstFault).IsEqual(broken);
+        AssertThat(restarted.Blocks.PendingCount).IsEqual(0);
+        AssertThat(restarted.Sim.IsFaulted).IsFalse();
+        AssertThat(restarted.State.TerrainVersions.All.ToList()).IsEqual(checkpointVersions);
+        AssertThat(StateHasher.Hash(restarted.State)).IsEqual(checkpointHash);
+        AssertThat(restarted.Loader.ActiveViewers).IsEqual(0);
+    }
+
+    [TestCase(Timeout = 600000)]
+    [RequireGodotRuntime]
     public async Task Restart_DifferentSemanticsVersion_SafeModeWithoutReplay()
     {
         await using var scene = EngineTestScene.Create();
