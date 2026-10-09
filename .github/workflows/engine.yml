@@ -45,20 +45,25 @@ jobs:
             runner: windows-2022
           - target: template-windows-release
             runner: windows-2022
-          - target: editor-linux
-            runner: ubuntu-24.04
-          - target: template-linux-release
-            runner: ubuntu-24.04
-    runs-on: ${{ matrix.runner }}
+          # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
+          # - target: editor-linux
+          #   runner: ubuntu-24.04
+          # - target: template-linux-release
+          #   runner: ubuntu-24.04
+    runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
+        # Self-hosted Windows uses the system Python 3.12: the action's installer needs admin rights (HKLM) and hangs there.
+        if: runner.environment == 'github-hosted'
         with:
           python-version: "3.12"
 
       - uses: actions/setup-dotnet@v4
+        # Self-hosted Windows uses the installed .NET SDK: the action cannot write to C:\Program Files\dotnet without admin rights.
+        if: runner.environment == 'github-hosted'
         with:
           global-json-file: global.json
 

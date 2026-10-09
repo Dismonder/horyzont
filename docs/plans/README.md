@@ -83,3 +83,11 @@ K2-08A to osobny mały PR z celem `editor-linux` w `engine/engine.json`; bez nie
 ## Szablon planu pakietu
 
 Każdy plan ma te same części: nagłówek (kto, zależności, gałąź), cel w jednym zdaniu, kontekst do przeczytania, zakres i poza zakresem, projekt (pliki, kontrakty, decyzje), testy akceptacyjne, kroki z polami wyboru, odbiór i pułapki. Wykonawca odhacza kroki w tym pliku w ramach swojego PR.
+
+## CI na własnym runnerze (Windows)
+
+- Po co: workflow'y CI chodzą na własnym komputerze z Windows (z .NET, Godotem i resztą narzędzi), więc nie zużywają minut hostowanych runnerów ani nie wymagają odtwarzania środowiska w chmurze. Runner ma etykietę `horyzont`.
+- Instalacja (właściciel, PowerShell 7, zalogowany `gh` z prawami admina repo): `pwsh tools/ci/setup-windows-runner.ps1 -Sha256 <skrót zip z notatek wydania actions/runner> -StartAtLogon`. Skrypt nie wypisuje tokenu rejestracyjnego i jest idempotentny (przy istniejącym `.runner` tylko odświeża `.path`).
+- `.path` stawia Git Bash przed `C:\Windows\System32\bash.exe`, żeby `shell: bash` nie trafiał do WSL. Usługa Windows nie jest instalowana (działałaby bez narzędzi użytkownika); runner startuje przy logowaniu albo ręcznie przez `run.cmd`.
+- Wyłączenie Linuksa: w workflow'ach zmień `runs-on` na `[self-hosted, horyzont]` i usuń zadania na `ubuntu-latest`.
+- Przywrócenie Linuksa później: wróć do `runs-on: ubuntu-latest` (albo dodaj macierz z oboma systemami); runner może zostać zarejestrowany równolegle.
