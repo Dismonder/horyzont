@@ -21,7 +21,7 @@ internal sealed class ConstructTestWorld : IDisposable
 {
     private readonly BlockVisuals? _visuals;
 
-    public ConstructTestWorld(Godot.Node parent, WorldState state, ConstructWorldOptions? options = null)
+    public ConstructTestWorld(Godot.Node parent, WorldState state, ConstructWorldOptions? options = null, Action<MeshJobSlot>? beforeBuild = null)
     {
         Options = options ?? new ConstructWorldOptions();
         State = state;
@@ -30,7 +30,7 @@ internal sealed class ConstructTestWorld : IDisposable
         Source = new WorldStateConstructSource(state);
         Sim = new ServerSimulation(state, new NoTerrain(), new NoJournal(), new GameRules(), NullLogger<ServerSimulation>.Instance);
         _visuals = Options.Mode == ConstructWorldMode.CollisionOnly ? null : BlockVisuals.Create(Catalog);
-        World = new ConstructWorld { Name = "ConstructWorld" };
+        World = new ConstructWorld { Name = "ConstructWorld", BeforeBuild = beforeBuild };
         parent.AddChild(World);
         World.Initialize(Source, Table, _visuals, Options, NullLogger<ConstructWorld>.Instance);
         Visuals = _visuals;

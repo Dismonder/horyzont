@@ -12,6 +12,94 @@ namespace Horyzont.Game.Tests.Constructs;
 public sealed class ConstructWorldTests : EngineTestBase
 {
     [EngineTest]
+    public async Task WorkerFailure_EditDuringRetry_DropsStaleFailure()
+    {
+        using var release = new ManualResetEventSlim();
+        var attempts = 0;
+        using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(BlockContentLoader.Load()), beforeBuild: _ =>
+        {
+            if (Interlocked.Increment(ref attempts) == 2 && !release.Wait(TimeSpan.FromSeconds(10)))
+            {
+                throw new TimeoutException("Test did not release the retry");
+            }
+
+            throw new InvalidOperationException("Injected build failure");
+        });
+        var callbacks = 0;
+        w.World.ChunkMeshApplied += (_, _) => callbacks++;
+        var id = w.Create(new CellPos(2, 2, 2));
+        try
+        {
+            await WaitUntil(() => Volatile.Read(ref attempts) == 2, 600, "retry to start");
+            w.Set(id, new CellPos(3, 2, 2));
+        }
+        finally
+        {
+            release.Set();
+        }
+
+        await Idle(w);
+        EngineAssert.Equal(4, attempts, "new generation has two attempts; stale retry is dropped");
+        EngineAssert.Equal(1, callbacks, "only the current generation completes waiters");
+    }
+
+    [EngineTest]
+    public async Task WorkerFailure_OneRetry_AppliesMesh()
+    {
+        var attempts = 0;
+        using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(BlockContentLoader.Load()), beforeBuild: _ =>
+        {
+            if (Interlocked.Increment(ref attempts) == 1)
+            {
+                throw new InvalidOperationException("Injected first build failure");
+            }
+        });
+        var callbacks = 0;
+        w.World.ChunkMeshApplied += (_, _) => callbacks++;
+        var id = w.Create(new CellPos(2, 2, 2));
+        await Idle(w);
+        EngineAssert.Equal(2, attempts, "exactly one retry");
+        EngineAssert.Equal(1, callbacks, "only the successful retry completes the edit");
+        AssertChunkMatchesMesher(w, id, new ChunkPos(0, 0, 0));
+    }
+
+    [EngineTest]
+    public async Task WorkerFailure_RetryFails_KeepsMeshAndCompletesEdit()
+    {
+        var fail = false;
+        var attempts = 0;
+        using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(BlockContentLoader.Load()), beforeBuild: _ =>
+        {
+            Interlocked.Increment(ref attempts);
+            if (Volatile.Read(ref fail))
+            {
+                throw new InvalidOperationException("Injected persistent build failure");
+            }
+        });
+        var id = w.Create(new CellPos(2, 2, 2));
+        await Idle(w);
+        w.World.TryGetConstruct(id, out var construct);
+        construct!.TryGetChunk(new ChunkPos(0, 0, 0), out var oldChunk);
+        var oldMesh = oldChunk!.MeshInstance!.Mesh;
+        var oldBody = oldChunk.Body;
+        var callbacks = 0;
+        w.World.ChunkMeshApplied += (_, _) => callbacks++;
+        Volatile.Write(ref fail, true);
+        attempts = 0;
+        w.Set(id, new CellPos(3, 2, 2));
+        await Idle(w);
+        EngineAssert.Equal(2, attempts, "persistent failure has only one retry");
+        EngineAssert.Equal(1, callbacks, "waiter completes after retry failure");
+        EngineAssert.True(ReferenceEquals(oldMesh, oldChunk.MeshInstance.Mesh), "old mesh kept");
+        EngineAssert.True(ReferenceEquals(oldBody, oldChunk.Body), "old collision kept");
+        attempts = 0;
+        w.Set(id, new CellPos(4, 2, 2));
+        await Idle(w);
+        EngineAssert.Equal(2, attempts, "a new edit has its own retry budget");
+        EngineAssert.Equal(2, callbacks, "new edit also completes");
+    }
+
+    [EngineTest]
     public async Task ReparentAcrossFrames_UpdatesMembershipImmediately()
     {
         using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewStateWithTwoPlanets(BlockContentLoader.Load()));

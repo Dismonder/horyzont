@@ -25,6 +25,8 @@ public sealed partial class ConstructWorld : Node3D
     private const int RangeUpdateInterval = 30;
 
     private readonly Dictionary<EntityId, Entry> _entries = [];
+    private readonly HashSet<ConstructChunkKey> _retryChunks = [];
+    private readonly List<ConstructChunkKey> _retryScratch = [];
     private readonly Dictionary<EntityId, double> _distanceSquared = [];
     private readonly List<System.Numerics.Vector3> _viewers = [];
     private readonly List<ConstructChunkKey> _dirtyScratch = [];
@@ -43,6 +45,8 @@ public sealed partial class ConstructWorld : Node3D
     private ILogger<ConstructWorld> _logger = null!;
     private ChunkRemeshQueue _queue = null!;
     private MeshWorkerPool? _pool;
+    internal Action<MeshJobSlot>? BeforeBuild { get; set; }
+
     private FrameRef _frame;
     private bool _frameFixed;
     private readonly HashSet<EntityId> _presentScratch = new();
@@ -54,6 +58,7 @@ public sealed partial class ConstructWorld : Node3D
     /// <summary>
     /// Raised on the main thread after a chunk's mesh and collision were swapped (or removed because the chunk became empty). The
     /// collision shape is built in a step after the mesh step, usually in a later frame; this fires when both are in place.
+    /// Also raised after two worker failures for the current edit, with the old mesh and collision kept.
     /// </summary>
     public event Action<EntityId, ChunkPos>? ChunkMeshApplied;
 
@@ -100,7 +105,7 @@ public sealed partial class ConstructWorld : Node3D
         _options = options;
         _logger = logger;
         _queue = new ChunkRemeshQueue(options.MaxInFlightJobs) { Distance = DistanceOf };
-        _pool = new MeshWorkerPool(table, options.WorkerCount, options.MaxInFlightJobs, logger);
+        _pool = new MeshWorkerPool(table, options.WorkerCount, options.MaxInFlightJobs, logger, BeforeBuild);
         _initialized = true;
         if (table.MissingKeyCount > 0)
         {
@@ -145,7 +150,7 @@ public sealed partial class ConstructWorld : Node3D
         {
             if (_entries.ContainsKey(key.Construct))
             {
-                _queue.MarkDirty(key, RemeshPriority.Edit);
+                MarkDirty(key, RemeshPriority.Edit);
             }
         }
 
@@ -178,6 +183,7 @@ public sealed partial class ConstructWorld : Node3D
             Unload(id);
         }
 
+        _retryChunks.Clear();
         _queue.Clear();
         UpdateRanges(RemeshPriority.Rebuild);
     }
@@ -242,6 +248,7 @@ public sealed partial class ConstructWorld : Node3D
             return _shutdownTask;
         }
 
+        _retryChunks.Clear();
         _queue.Clear();
         _collisionPoints.Clear();
         _collisionOrder.Clear();
@@ -300,9 +307,25 @@ public sealed partial class ConstructWorld : Node3D
             else if (pool.TryTakeResult(out var slot))
             {
                 var current = _queue.Complete(slot.Job);
-                if (current && slot.Failure is null)
+                if (current)
                 {
-                    ApplySlot(slot);
+                    if (slot.Failure is null)
+                    {
+                        _retryChunks.Remove(slot.Job.Key);
+                        ApplySlot(slot);
+                    }
+                    else if (_retryChunks.Add(slot.Job.Key))
+                    {
+                        // A normal edit clears this retry budget and invalidates the running generation.
+                        _queue.MarkDirty(slot.Job.Key, slot.Job.Priority);
+                    }
+                    else
+                    {
+                        _retryChunks.Remove(slot.Job.Key);
+                        var key = slot.Job.Key;
+                        LogMeshingRetryFailed(slot.Failure, key.Construct.Value, key.Chunk.X, key.Chunk.Y, key.Chunk.Z);
+                        ChunkMeshApplied?.Invoke(key.Construct, key.Chunk);
+                    }
                 }
 
                 pool.ReturnSlot(slot);
@@ -551,6 +574,19 @@ public sealed partial class ConstructWorld : Node3D
         }
 
         _queue.RemoveConstruct(id);
+        _retryScratch.Clear();
+        foreach (var key in _retryChunks)
+        {
+            if (key.Construct == id)
+            {
+                _retryScratch.Add(key);
+            }
+        }
+
+        foreach (var key in _retryScratch)
+        {
+            _retryChunks.Remove(key);
+        }
         var pendingCollisions = _collisionOrder.Count;
         for (var i = 0; i < pendingCollisions; i++)
         {
@@ -576,7 +612,7 @@ public sealed partial class ConstructWorld : Node3D
         _source.CollectChunks(id, _chunkScratch);
         foreach (var chunk in _chunkScratch)
         {
-            _queue.MarkDirty(new ConstructChunkKey(id, chunk), priority);
+            MarkDirty(new ConstructChunkKey(id, chunk), priority);
         }
     }
 
@@ -608,6 +644,15 @@ public sealed partial class ConstructWorld : Node3D
             UpdateCollision(id, entry, distance);
         }
     }
+
+    private void MarkDirty(ConstructChunkKey key, RemeshPriority priority)
+    {
+        _retryChunks.Remove(key);
+        _queue.MarkDirty(key, priority);
+    }
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Meshing construct {Construct} chunk ({X}, {Y}, {Z}) failed again; keeping the old mesh and completing waiters")]
+    private partial void LogMeshingRetryFailed(Exception exception, ulong construct, int x, int y, int z);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "{Count} block type key(s) in the world are unknown to the game content and are drawn as core:missing: {Keys}")]
     private partial void LogMissingBlockKeys(int count, string keys);
