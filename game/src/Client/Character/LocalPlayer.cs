@@ -102,6 +102,12 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     /// <summary>Gets the body of the predicted character; null before the first server state.</summary>
     public PlayerBody? Body => _body;
 
+    /// <summary>Gets the developer camera; null in release builds.</summary>
+    public DevFlyCamera? DevCamera => _dev;
+
+    /// <summary>Gets the viewer that streams the visible terrain around the camera; null before the body exists or without rendering.</summary>
+    public VoxelViewer? VisualViewer => _visualViewer;
+
     /// <summary>Gets a value indicating whether the dev flight of the character is switched on.</summary>
     public bool DevFlyOn => _devFlyOn;
 
