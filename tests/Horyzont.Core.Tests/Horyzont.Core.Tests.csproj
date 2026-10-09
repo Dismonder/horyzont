@@ -12,6 +12,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Golden/**/*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../../src/Horyzont.Core/Horyzont.Core.csproj" />
     <ProjectReference Include="../Horyzont.Testing/Horyzont.Testing.csproj" />
   </ItemGroup>
