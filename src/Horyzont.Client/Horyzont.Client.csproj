@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Horyzont.Client.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Horyzont.Core/Horyzont.Core.csproj" />
+    <ProjectReference Include="../Horyzont.Net/Horyzont.Net.csproj" />
+  </ItemGroup>
+</Project>

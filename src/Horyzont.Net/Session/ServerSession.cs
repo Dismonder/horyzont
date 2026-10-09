@@ -195,6 +195,12 @@ public sealed class ServerSession
         return false;
     }
 
+    /// <summary>Returns the transport endpoint of a connected player (a host tells its local player from remote ones with it).</summary>
+    /// <param name="player">The player.</param>
+    /// <returns>The remote endpoint, or null for a player that is not connected.</returns>
+    public TransportEndpoint? GetEndpoint(PlayerId player) =>
+        _byPlayer.TryGetValue(player, out var peer) ? _transport.GetRemoteEndpoint(peer.Connection) : null;
+
     /// <summary>Returns the round-trip time of a player's connection reported by the transport.</summary>
     /// <param name="player">The player.</param>
     /// <returns>The round-trip time, or zero for an unknown player.</returns>
