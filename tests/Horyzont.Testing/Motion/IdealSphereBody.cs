@@ -13,6 +13,9 @@ namespace Horyzont.Testing.Motion;
 /// </summary>
 public sealed class IdealSphereBody
 {
+    /// <summary>Radial speed above which the body leaves the floor instead of sticking to it (m/s); float noise stays below.</summary>
+    private const float MovingAwaySpeed = 1e-3f;
+
     private readonly PlanetParams _planet;
     private readonly MovementRules _rules;
 
@@ -62,7 +65,7 @@ public sealed class IdealSphereBody
         var moved = Feet + (velocity * dt);
         var surface = _planet.RadiusMeters;
         var distance = moved.Length();
-        var movingAway = Vector3.Dot(velocity, output.Up) > 0f;
+        var movingAway = Vector3.Dot(velocity, output.Up) > MovingAwaySpeed;
 
         var onFloor = false;
         if (distance <= surface || (OnFloor && !movingAway && distance - surface <= _rules.FloorSnapLength))

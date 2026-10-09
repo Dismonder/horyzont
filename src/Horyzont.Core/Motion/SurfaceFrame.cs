@@ -16,14 +16,14 @@ public static class SurfaceFrame
     /// <returns>The unit reference tangent.</returns>
     public static Vector3 Reference(Vector3 up)
     {
-        var north = Vector3.UnitY - (up * up.Y);
+        var north = ProjectOnPlane(Vector3.UnitY, up);
         var length = north.Length();
         if (length >= PoleFallbackThreshold)
         {
             return north / length;
         }
 
-        var fallback = Vector3.UnitZ - (up * up.Z);
+        var fallback = ProjectOnPlane(Vector3.UnitZ, up);
         length = fallback.Length();
         return length > 0f && float.IsFinite(length) ? fallback / length : Vector3.UnitZ;
     }
@@ -88,5 +88,15 @@ public static class SurfaceFrame
         }
 
         return Quaternion.Normalize(Quaternion.Concatenate(bodyRotation, turn));
+    }
+
+    /// <summary>
+    /// Projection of <paramref name="axis"/> on the plane with normal <paramref name="up"/>, done twice: close to a pole the first
+    /// projection is a tiny difference of large terms and keeps a component along <paramref name="up"/> that would tilt the body.
+    /// </summary>
+    private static Vector3 ProjectOnPlane(Vector3 axis, Vector3 up)
+    {
+        var projected = axis - (up * Vector3.Dot(axis, up));
+        return projected - (up * Vector3.Dot(projected, up));
     }
 }

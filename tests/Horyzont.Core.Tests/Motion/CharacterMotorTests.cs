@@ -187,7 +187,7 @@ public sealed class CharacterMotorTests
                 Assert.True(wasOnFloor);
                 Assert.InRange(Radial(body), _rules.JumpSpeed - (_planet.Gravity * Dt) - 1e-3f, _rules.JumpSpeed + 1e-3f);
             }
-            else if (!wasOnFloor)
+            else if (!wasOnFloor && !body.OnFloor)
             {
                 // In the air a held Jump adds nothing: the radial speed only falls with gravity.
                 Assert.True(Radial(body) <= radialBefore + 1e-4f, $"tick {tick}: radial {radialBefore} -> {Radial(body)}");
