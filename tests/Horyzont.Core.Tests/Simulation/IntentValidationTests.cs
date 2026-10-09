@@ -228,6 +228,7 @@ public sealed class IntentValidationTests
         {
             // ServerReadOnly is answered by the server hooks in safe mode (K2-10), never by the simulation.
             // The Space reasons (30-39) are reached by the ship scenarios of ShipModeTests (K5-23).
+            // Survival reasons (40-43) get their scenarios with the item rules of the simulation (K6-29W stage B, next commit).
             if (reason is not (RejectReason.None or RejectReason.ServerReadOnly) && (byte)reason < 30)
             {
                 data.Add(reason);

@@ -9,10 +9,8 @@ namespace Horyzont.Core.Serialization;
 /// <summary>Internal shared primitive encoders and decoders for Core types.</summary>
 internal static class CoreCodecPrimitives
 {
-    /// <summary>True for every defined <see cref="RejectReason"/>: 0-21 (Planet) and the Space reasons 30, 31, 37, 39.</summary>
-    public static bool IsKnownRejectReason(byte value) =>
-        value <= (byte)RejectReason.ServerReadOnly
-        || value is (byte)RejectReason.NoCockpit or (byte)RejectReason.ShipAnchored or (byte)RejectReason.NoEngine or (byte)RejectReason.ShipNotParked;
+    /// <summary>True for every defined <see cref="RejectReason"/>: the Planet reasons 0-21, the Space reasons 30-39 and the survival reasons 40-43.</summary>
+    public static bool IsKnownRejectReason(byte value) => Enum.IsDefined((RejectReason)value);
 
     public static void WriteFrameRef(ByteWriter w, FrameRef f)
     {

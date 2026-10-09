@@ -20,6 +20,14 @@ public static class IntentCodec
         MarkerSet = 14,
         MarkerRemove = 15,
         Refuel = 13,
+        ItemMove = 20,
+        ItemDrop = 21,
+    }
+
+    private enum ItemMoveTargetCode : byte
+    {
+        Slot = 1,
+        AnySlot = 2,
     }
 
     private enum BlockTargetCode : byte
@@ -142,6 +150,34 @@ public static class IntentCodec
                 w.WriteVector3(rf.RayDirection);
                 break;
 
+            case ItemMoveIntent move:
+                if (move.To.AnySlot && move.To.Slot != 0)
+                {
+                    throw new ArgumentException("An any-slot target has slot 0.", nameof(intent));
+                }
+
+                w.WriteByte((byte)IntentCode.ItemMove);
+                w.WriteByte(CurrentFormatVersion);
+                CoreCodecPrimitives.WriteSlotRef(w, move.From);
+                w.WriteByte((byte)(move.To.AnySlot ? ItemMoveTargetCode.AnySlot : ItemMoveTargetCode.Slot));
+                w.WriteVarUInt(move.To.Container.Value);
+                if (!move.To.AnySlot)
+                {
+                    w.WriteVarUInt(move.To.Slot);
+                }
+
+                w.WriteVarUInt(move.Count);
+                w.WriteVarUInt(move.ExpectedType.Value);
+                w.WriteVarUInt(move.ExpectedCount);
+                break;
+
+            case ItemDropIntent drop:
+                w.WriteByte((byte)IntentCode.ItemDrop);
+                w.WriteByte(CurrentFormatVersion);
+                CoreCodecPrimitives.WriteSlotRef(w, drop.Slot);
+                w.WriteVarUInt(drop.Count);
+                break;
+
             default:
                 throw new ArgumentException($"Unknown intent type {intent.GetType().Name}.", nameof(intent));
         }
@@ -153,7 +189,7 @@ public static class IntentCodec
     public static Intent Read(ref ByteReader r)
     {
         byte codeByte = r.ReadByte();
-        if (codeByte is < (byte)IntentCode.TerrainTool or > (byte)IntentCode.RemoveBlock and not ((byte)IntentCode.ShipMode or (byte)IntentCode.MarkerSet or (byte)IntentCode.MarkerRemove or (byte)IntentCode.Refuel))
+        if (codeByte is < (byte)IntentCode.TerrainTool or > (byte)IntentCode.RemoveBlock and not ((byte)IntentCode.ShipMode or (byte)IntentCode.MarkerSet or (byte)IntentCode.MarkerRemove or (byte)IntentCode.Refuel or (byte)IntentCode.ItemMove or (byte)IntentCode.ItemDrop))
         {
             throw new ProtocolViolationException($"Unknown intent code {codeByte}.");
         }
@@ -262,6 +298,22 @@ public static class IntentCodec
                 var rfOrigin = r.ReadVector3();
                 var rfDirection = r.ReadVector3();
                 return new RefuelIntent(rfShip, rfStation, rfCell, rfOrigin, rfDirection);
+
+            case IntentCode.ItemMove:
+                var from = CoreCodecPrimitives.ReadSlotRef(ref r);
+                var targetCode = (ItemMoveTargetCode)CoreCodecPrimitives.ReadEnumByte(
+                    ref r, (byte)ItemMoveTargetCode.Slot, (byte)ItemMoveTargetCode.AnySlot, "item move target");
+                var to = targetCode == ItemMoveTargetCode.Slot
+                    ? ItemMoveTarget.ToSlot(CoreCodecPrimitives.ReadSlotRef(ref r))
+                    : ItemMoveTarget.AnyIn(new ContainerId(r.ReadVarUInt()));
+                ushort count = r.ReadVarUInt16();
+                var expectedType = new ItemTypeId(r.ReadVarUInt16());
+                ushort expectedCount = r.ReadVarUInt16();
+                return new ItemMoveIntent(from, to, count, expectedType, expectedCount);
+
+            case IntentCode.ItemDrop:
+                var slot = CoreCodecPrimitives.ReadSlotRef(ref r);
+                return new ItemDropIntent(slot, r.ReadVarUInt16());
 
             default:
                 throw new ProtocolViolationException($"Unhandled intent code {code}.");

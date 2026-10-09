@@ -380,7 +380,24 @@ public static class CodecGen
         ShipModeIntent.Select(i => (Intent)i),
         MarkerSetIntent.Select(i => (Intent)i),
         MarkerRemoveIntent.Select(i => (Intent)i),
-        RefuelIntent.Select(i => (Intent)i));
+        RefuelIntent.Select(i => (Intent)i),
+        ItemMoveIntent.Select(i => (Intent)i),
+        ItemDropIntent.Select(i => (Intent)i));
+
+    /// <summary>Item move intents with both target variants.</summary>
+    public static Gen<ItemMoveIntent> ItemMoveIntent { get; } =
+        from source in SlotRef
+        from target in Gen.OneOf(SlotRef.Select(Horyzont.Core.Intents.ItemMoveTarget.ToSlot), ContainerId.Select(Horyzont.Core.Intents.ItemMoveTarget.AnyIn))
+        from count in VarU16
+        from type in ItemType
+        from expected in VarU16
+        select new ItemMoveIntent(source, target, count, type, expected);
+
+    /// <summary>Item drop intents.</summary>
+    public static Gen<ItemDropIntent> ItemDropIntent { get; } =
+        from slot in SlotRef
+        from count in VarU16
+        select new ItemDropIntent(slot, count);
 
     /// <summary>Terrain tool intents.</summary>
     public static Gen<TerrainToolIntent> TerrainToolIntent { get; } =
@@ -617,8 +634,12 @@ public static class CodecGen
         (from first in Marker
          from second in Marker
          from count in Gen.Choose(0, 2)
-         select (Message)new MarkersState(new[] { first, second }.Take(count).ToArray())));
-
+         select (Message)new MarkersState(new[] { first, second }.Take(count).ToArray())),
+        ContainerStateMessage.Select(m => (Message)m),
+        ContainerDelta.Select(m => (Message)m),
+        ContainerId.Select(c => (Message)new ContainerSubscribe(c)),
+        ContainerId.Select(c => (Message)new ContainerUnsubscribe(c)),
+        ListUpTo(RegistryEntry(ProtocolConstants.MaxItemTypes), ProtocolConstants.MaxItemTypes, 12).Select(e => (Message)new ItemRegistry(e)));
 
     /// <summary>Ship status messages (K5-26): any ship and tick, non-negative finite values, any flags, a defined launch block.</summary>
     public static Gen<ShipStatus> ShipStatus { get; } =
@@ -643,6 +664,34 @@ public static class CodecGen
         from reason in Gen.Choose(0, 255)
         from detail in Text(0, ProtocolConstants.MaxRejectDetailBytes)
         select new JoinUnavailable((byte)reason, detail);
+
+    /// <summary>Slot contents (empty or not) at strictly increasing slots below <paramref name="size"/>.</summary>
+    /// <param name="size">Number of slots.</param>
+    /// <returns>The generator.</returns>
+    public static Gen<IReadOnlyList<SlotContent>> SlotContents(int size) =>
+        from present in Gen.Frequency((3, Gen.Constant(false)), (1, Gen.Constant(true))).ArrayOf(size)
+        from stacks in Gen.Frequency((1, Gen.Constant(Horyzont.Core.Items.ItemStack.Empty)), (4, ItemStack)).ArrayOf(size)
+        select (IReadOnlyList<SlotContent>)Enumerable.Range(0, size).Where(i => present[i]).Select(i => new SlotContent((ushort)i, stacks[i])).ToArray();
+
+    /// <summary>Container states: refusals and states of 1..256 slots.</summary>
+    public static Gen<ContainerState> ContainerStateMessage { get; } = Gen.OneOf(
+        from id in ContainerId
+        from reason in Gen.Elements(RejectReason.ContainerLocked, RejectReason.InvalidParameters, RejectReason.ServerReadOnly)
+        select Horyzont.Core.Protocol.Messages.ContainerState.Rejected(id, reason),
+        from id in ContainerId
+        from kind in Gen.Elements(Enum.GetValues<ContainerKind>())
+        from access in Gen.Elements(Enum.GetValues<ContainerAccess>())
+        from size in Gen.Frequency((4, Gen.Choose(1, 40)), (1, Gen.Choose(1, ProtocolConstants.MaxContainerSlots)))
+        from version in VarU32
+        from slots in SlotContents(size)
+        select new ContainerState(id, RejectReason.None, kind, access, (ushort)size, version, slots));
+
+    /// <summary>Container deltas of up to 256 slots.</summary>
+    public static Gen<ContainerDelta> ContainerDelta { get; } =
+        from id in ContainerId
+        from version in VarU32
+        from slots in SlotContents(ProtocolConstants.MaxContainerSlots)
+        select new ContainerDelta(id, version, slots);
 
     /// <summary>Client hello messages.</summary>
     public static Gen<ClientHello> ClientHello { get; } =
@@ -728,9 +777,9 @@ public static class CodecGen
     /// <summary>Intent reply messages.</summary>
     public static Gen<IntentReply> IntentReply { get; } =
         from seq in VarU32
-        from reason in Gen.Elements(Enumerable.Range(0, 22).Append(30).Append(31).Append(37).ToArray())
+        from reason in Gen.Elements(Enum.GetValues<RejectReason>())
         from op in OpId
-        select new IntentReply(seq, (RejectReason)reason, op);
+        select new IntentReply(seq, reason, op);
 
     /// <summary>Player inputs with axes in [-1, 1] (before quantization).</summary>
     public static Gen<PlayerInput> PlayerInput { get; } =
