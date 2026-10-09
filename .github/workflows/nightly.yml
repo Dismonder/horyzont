@@ -78,7 +78,8 @@ jobs:
 
       - name: Point the export presets at the engine templates
         run: |
-          templates="$PWD/engine-ci/templates"
+          # Godot reads this path from the file, so it needs D:/... rather than the Git Bash /d/... form.
+          templates="$(cygpath -m "$PWD/engine-ci/templates")"
           sed -i "0,/^custom_template\/release=\"\"/s||custom_template/release=\"$templates/godot.windows.template_release.double.x86_64.mono.exe\"|" game/export_presets.cfg
           sed -i "0,/^custom_template\/release=\"\"/s||custom_template/release=\"$templates/godot.linuxbsd.template_release.double.x86_64.mono\"|" game/export_presets.cfg
           grep -n "custom_template/release" game/export_presets.cfg
