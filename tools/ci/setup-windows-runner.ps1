@@ -101,7 +101,11 @@ else {
 
 Write-PathFile -Dir $RunnerDir
 
-$runCmd = Join-Path $RunnerDir 'run.cmd'
+# The runner resolves 'shell: bash' against its own process PATH, not .path, and the user PATH
+# lists the WSL alias (WindowsApps\bash.exe) first. This launcher puts Git Bash first for the runner.
+$runCmd = Join-Path $RunnerDir 'run-horyzont.cmd'
+$launcher = "@echo off`r`nset `"PATH=C:\Program Files\Git\bin;%PATH%`"`r`ncall `"%~dp0run.cmd`" %*`r`n"
+[System.IO.File]::WriteAllText($runCmd, $launcher, [System.Text.Encoding]::ASCII)
 if ($StartAtLogon) {
     $taskName = 'horyzont-actions-runner'
     $action = New-ScheduledTaskAction -Execute $runCmd -WorkingDirectory $RunnerDir
