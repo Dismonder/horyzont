@@ -1,0 +1,3 @@
+# Written by the gdUnit4 test adapter during `dotnet test`; not our code (git-ignored).
+[gdunit4_testadapter_v5/**.cs]
+generated_code = true

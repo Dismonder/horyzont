@@ -39,3 +39,4 @@ export_presets.cfg.bak
 # System
 .DS_Store
 Thumbs.db
+/game/gdunit4_testadapter_v5/

@@ -44,9 +44,20 @@ jobs:
         run: dotnet format Horyzont.sln --verify-no-changes --no-restore
 
   game:
-    # Needs the engine from engine.yml on main: the matrix runners above have no engine packages.
-    runs-on: windows-latest
-    timeout-minutes: 30
+    # Needs the engine from engine.yml on main: the build-and-test runners above have no engine packages.
+    name: game (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            editor-artifact: engine-windows-editor
+            editor: godot.windows.editor.double.x86_64.mono.console.exe
+          - os: ubuntu-latest
+            editor-artifact: engine-linux-editor
+            editor: godot.linuxbsd.editor.double.x86_64.mono
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     permissions:
       actions: read
       contents: read
@@ -74,8 +85,10 @@ jobs:
             exit 1
           fi
           echo "engine run $run_id"
-          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-windows-editor -D engine-ci/editor
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n "${{ matrix.editor-artifact }}" -D engine-ci/editor
           gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-nupkgs -D engine-ci/nupkgs
+          # upload-artifact drops the executable bit.
+          chmod +x "engine-ci/editor/${{ matrix.editor }}" || true
 
       - name: Activate engine packages
         run: python tools/engine/build.py activate --from engine-ci/nupkgs
@@ -88,7 +101,62 @@ jobs:
 
       - name: Boot smoke
         run: |
-          editor=engine-ci/editor/godot.windows.editor.double.x86_64.mono.console.exe
+          editor="$PWD/engine-ci/editor/${{ matrix.editor }}"
           "$editor" --headless --path game --import
           "$editor" --headless --path game -- --smoke | tee boot.log
           grep -q "BOOT OK .*real_t=double" boot.log
+
+      - name: Engine tests
+        env:
+          GODOT_BIN: ${{ github.workspace }}/engine-ci/editor/${{ matrix.editor }}
+        run: dotnet test game/Horyzont.Game.csproj --no-build --settings game/.runsettings --logger "trx;LogFileName=engine-tests.trx" --results-directory game/TestResults
+
+      - name: Generator report
+        env:
+          GODOT_BIN: ${{ github.workspace }}/engine-ci/editor/${{ matrix.editor }}
+        run: |
+          mkdir -p generator-report
+          "$GODOT_BIN" --headless --path game -- --generator-report "$PWD/generator-report"
+          ls generator-report
+
+      - name: Upload generator report
+        uses: actions/upload-artifact@v4
+        with:
+          name: generator-report-${{ runner.os }}-editor
+          path: generator-report/*.json
+          if-no-files-found: error
+
+      - name: Upload engine test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-tests-${{ runner.os }}
+          path: game/TestResults/*.trx
+          if-no-files-found: ignore
+
+  generator-consistency:
+    # Windows and Linux editors must generate the same LOD 0 blocks (K2-08, collisions depend on it).
+    needs: game
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: generator-report-*-editor
+          path: reports
+          merge-multiple: true
+
+      - name: Self-test of the comparison tool
+        run: python -I tools/generator/compare_reports.py --self-test
+
+      - name: Compare Windows and Linux editor reports
+        run: |
+          ls reports
+          python -I tools/generator/compare_reports.py reports/generator-windows-editor.json reports/generator-linux-editor.json --out generator-consistency.md
+          cat generator-consistency.md >> "$GITHUB_STEP_SUMMARY"
