@@ -108,8 +108,13 @@ public sealed class ChunkRemeshQueue
     public bool Complete(RemeshJob job)
     {
         _running.Remove(job.Key);
-        return _generation.TryGetValue(job.Key, out var latest) && latest == job.Generation;
+        return IsCurrent(job);
     }
+
+    /// <summary>Checks whether a result is still current, including after mesh upload and before collision upload.</summary>
+    /// <param name="job">The job that produced the result.</param>
+    /// <returns>True when its generation has not been invalidated.</returns>
+    public bool IsCurrent(RemeshJob job) => _generation.TryGetValue(job.Key, out var latest) && latest == job.Generation;
 
     /// <summary>Forgets every chunk of a construct: waiting entries are dropped and running jobs become stale.</summary>
     /// <param name="construct">Removed construct.</param>

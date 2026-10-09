@@ -11,6 +11,25 @@ namespace Horyzont.Game.Tests.Constructs;
 
 public sealed class ConstructWorldTests : EngineTestBase
 {
+    [EngineTest]
+    public async Task ResyncBetweenMeshAndCollision_DropsRemovedChunk()
+    {
+        using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(BlockContentLoader.Load()));
+        w.World.SetProcess(false);
+        var id = w.Create(new CellPos(2, 2, 2));
+        var chunk = new ChunkPos(0, 0, 0);
+        w.Set(id, new CellPos(20, 2, 2));
+        await WaitUntil(() =>
+        {
+            w.World.Pump(0);
+            return w.World.TryGetConstruct(id, out var node) && node.TryGetChunk(chunk, out var mesh) && mesh.Body is null;
+        }, 600, "mesh upload before collision");
+        w.Sim.ApplyServerOperation(new Horyzont.Core.Operations.BlockClearOp(id, new CellPos(2, 2, 2)));
+        w.World.RebuildAll(ConstructTestWorld.Planet);
+        await WaitUntil(() => { w.World.Pump(0); return w.World.PendingJobs == 0; }, 600, "resync to drain");
+        EngineAssert.True(w.World.TryGetConstruct(id, out var rebuilt) && !rebuilt.TryGetChunk(chunk, out _), "resync must not recreate the removed chunk with an invisible collider");
+    }
+
     private Task Idle(ConstructTestWorld w) => WaitUntil(() => w.World.PendingJobs == 0, 600, "the remesh queue to drain");
 
     private static void AssertChunkMatchesMesher(ConstructTestWorld w, EntityId id, ChunkPos chunk)

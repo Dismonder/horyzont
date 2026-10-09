@@ -35,7 +35,7 @@ public sealed partial class ConstructWorld : Node3D
     private readonly List<ChunkPos> _chunkScratch = [];
     private readonly List<EntityId> _unloadScratch = [];
     private readonly Queue<ConstructChunkKey> _collisionOrder = new();
-    private readonly Dictionary<ConstructChunkKey, Vector3[]> _collisionPoints = [];
+    private readonly Dictionary<ConstructChunkKey, (RemeshJob Job, Vector3[] Points)> _collisionPoints = [];
 
     private IConstructSource _source = null!;
     private BlockVisuals? _visuals;
@@ -384,26 +384,26 @@ public sealed partial class ConstructWorld : Node3D
             return;
         }
 
-        if (_collisionPoints.TryAdd(key, points))
+        if (_collisionPoints.TryAdd(key, (slot.Job, points)))
         {
             _collisionOrder.Enqueue(key);
         }
         else
         {
-            _collisionPoints[key] = points; // keeps its place in the queue, newest data wins
+            _collisionPoints[key] = (slot.Job, points); // keeps its place in the queue, newest data wins
         }
     }
 
     private void ApplyNextCollision()
     {
         var key = _collisionOrder.Dequeue();
-        if (!_collisionPoints.Remove(key, out var points) || !_entries.TryGetValue(key.Construct, out var entry) || !entry.Collision)
+        if (!_collisionPoints.Remove(key, out var result) || !_queue.IsCurrent(result.Job) || !_entries.TryGetValue(key.Construct, out var entry) || !entry.Collision)
         {
             return; // the construct was unloaded, or left the collision range, while the shape waited
         }
 
         var collisionStart = Stopwatch.GetTimestamp();
-        entry.Node.GetOrCreateChunk(key.Chunk).ApplyCollision(points);
+        entry.Node.GetOrCreateChunk(key.Chunk).ApplyCollision(result.Points);
         Timings.AddCollision(collisionStart);
         ChunkMeshApplied?.Invoke(key.Construct, key.Chunk);
     }
@@ -553,6 +553,20 @@ public sealed partial class ConstructWorld : Node3D
         }
 
         _queue.RemoveConstruct(id);
+        var pendingCollisions = _collisionOrder.Count;
+        for (var i = 0; i < pendingCollisions; i++)
+        {
+            var key = _collisionOrder.Dequeue();
+            if (key.Construct == id)
+            {
+                _collisionPoints.Remove(key);
+            }
+            else
+            {
+                _collisionOrder.Enqueue(key);
+            }
+        }
+
         _distanceSquared.Remove(id);
         RemoveChild(entry.Node);
         entry.Node.Free();
