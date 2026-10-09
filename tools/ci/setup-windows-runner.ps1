@@ -18,8 +18,9 @@ param(
     [string]$RunnerDir = 'C:\actions-runner\horyzont',
     [string]$RunnerName = "$env:COMPUTERNAME-horyzont",
     [string]$Repo = 'Dismonder/horyzont',
-    [string]$Version = '2.328.0',
-    [string]$Sha256,
+    [string]$Version = '2.338.0',
+    # SHA-256 of actions-runner-win-x64-2.338.0.zip (GitHub release asset digest); pass a new one with -Version.
+    [string]$Sha256 = 'f48e0750a21812bca5f82de5f7f5aeae71abee647fab5a582f1742d07eba455f',
     [switch]$SkipHashCheck,
     [switch]$StartAtLogon
 )
