@@ -45,7 +45,7 @@ Tryb wybiera się argumentem po `--` (K2-10; menu przyjdzie w K3-18). `E` to edy
 - Bez `--world` powstaje nowy świat; zapisy są w `user://saves/<WorldId>/world.db` (solo i host) albo `<data-dir>/saves/<WorldId>/world.db` (serwer; domyślnie katalog pliku wykonywalnego, id nowego świata trafia do `saves/last-world.txt`). `--data-dir` działa też dla solo i hosta. Tożsamość i nazwa gracza: `user://profile.json` (`--profile` pozwala uruchomić dwie instancje na jednej maszynie).
 - Serwer dedykowany czyta polecenia ze standardowego wejścia: `save`, `stop`, `players`, `kick <id>`, `help`. `Ctrl+C`/`SIGTERM` kończy go tą samą kolejnością zamykania; trzeci sygnał kończy proces natychmiast.
 - Eksport serwera: presety `server-windows` i `server-linux` (`godot --headless --path game --export-release server-windows ../build/server-windows/HoryzontServer.exe`; wymaga szablonów eksportu, np. wskazanych w `custom_template/release` presetu). Uruchomienie: `HoryzontServer.exe --headless -- --server --config server.json`.
-- Test dymny serwera: `python tools/server_smoke.py --godot <edytor>` albo `--export <wyeksportowany serwer>`.
+- Test dymny serwera (uruchamia serwer z `--dev`; polecenie konsoli `dev-op` zmienia świat): `python tools/server_smoke.py --godot <edytor>` albo `--export <wyeksportowany serwer>`.
 
 ## Zmierzone czasy i rozmiary (K1-01, 2026-10-08)
 
