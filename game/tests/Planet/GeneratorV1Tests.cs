@@ -54,6 +54,30 @@ public class GeneratorV1Tests
         AssertThat(GeneratorDigest.Combine(a)).IsEqual(GeneratorDigest.Combine(b));
     }
 
+    /// <summary>
+    /// Frozen output of <c>core:planet/1</c> (ZASADY point 3): any change of this value means a new profile
+    /// (<c>core:planet/2</c>) next to this one, never an edit of <see cref="PlanetGeneratorV1"/>.
+    /// </summary>
+    private const ulong GeneratorV1Golden = 0x8CDC2388E671FC17UL;
+
+    [TestCase]
+    [RequireGodotRuntime]
+    public void GeneratorV1_GoldenDigest()
+    {
+        var planet = Planet();
+        using var digest = new GeneratorDigest(GeneratorProfiles.CreateGenerator(planet));
+        var golden = GeneratorSampler.Create(planet)
+            .Where(s => s.Lod == 0)
+            .Select(digest.Compute)
+            .Where(d => !d.SdfUniform)
+            .Take(128)
+            .ToArray();
+
+        AssertThat(golden.Length).IsEqual(128);
+        var combined = GeneratorDigest.Combine(golden);
+        AssertThat(combined).OverrideFailureMessage($"core:planet/1 digest 0x{combined:X16} != golden 0x{GeneratorV1Golden:X16}").IsEqual(GeneratorV1Golden);
+    }
+
     [TestCase]
     [RequireGodotRuntime]
     public void GeneratorV1_DifferentSeed_DifferentBlocks()

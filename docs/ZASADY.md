@@ -35,7 +35,8 @@ Każda zmiana w `src/Horyzont.Core/` wymaga przeglądu Opus 5.5, bo cały Core d
 | `src/Horyzont.Core/Hashing/` | opis w PR: skróty zapisane w testach i raportach przestają się zgadzać |
 | `src/Horyzont.Core/Protocol/`, `src/Horyzont.Core/Serialization/` | `ProtocolConstants.ProtocolVersion` albo wersję formatu komunikatu |
 | `src/Horyzont.Persistence/Migrations/` | nowa migracja z następnym wolnym numerem w chwili scalenia do `main`; istniejących migracji nigdy się nie edytuje, a numery są ciągłe od 1 |
-| `engine/engine.json`, `nuget.config`, `global.json`, `Directory.Build.props`, `Directory.Packages.props` | opis zmiany w PR i zielony test dymny silnika |
+| `engine/engine.json`, `nuget.config`, `global.json`, `Directory.Build.props`, `Directory.Packages.props` | opis zmiany w PR i zielony test dymny silnika; zmiana `voxel.ref` w `engine/engine.json` wymaga niezmienionych złotych skrótów profili generatora (`GeneratorV1_GoldenDigest`), inaczej nowe profile dla nowych światów i decyzja właściciela o starych |
+| `game/src/Planet/Generators/`, `game/src/Planet/TerrainChannels.cs`, `game/src/Planet/TerrainMaterials.cs` | nic do podbicia: istniejący profil daje te same bajty (złoty skrót bez zmian, test `GeneratorV1_GoldenDigest`); zmiana generatora = nowy profil (`core:planet/2`) obok starego; tabela materiałów i kanały tylko dopisywane |
 
 Zamrożone na zawsze, bez względu na wersję protokołu: początek ramki `ClientHello` (typ, wersja formatu, `ProtocolVersion`) i cały format `HandshakeReject`. Dzięki temu klient każdej wersji dostaje czytelną prośbę o aktualizację. Każda zmiana formatu `ClientHello` podbija też `ProtocolVersion`.
 
