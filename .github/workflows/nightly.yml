@@ -15,8 +15,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+        # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
+        # os: [windows-latest, ubuntu-latest]
+        os: [windows-latest]
+    runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
