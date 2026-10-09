@@ -135,7 +135,7 @@ internal sealed class ConstructTestWorld : IDisposable
             return false;
         }
 
-        public void ApplyEdit(TerrainEditOp edit)
+        public void ApplyEdit(TerrainEditOp edit, IReadOnlyList<TerrainBlockVersion> versions)
         {
         }
     }
