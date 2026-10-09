@@ -17,11 +17,13 @@ Standard library only (Python 3.12).
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import re
 import struct
 import sys
 import tempfile
+from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -230,11 +232,24 @@ def compare(reference: Report, other: Report) -> Comparison:
     )
 
 
-def format_markdown(reports: list[Report], comparisons: list[Comparison]) -> str:
+def format_markdown(
+    reports: list[Report],
+    comparisons: list[Comparison],
+    raw_lod0_differs: bool = False,
+    raw_far_differs: bool = False,
+) -> str:
     """Render the result as a Markdown report."""
     first = reports[0]
+    if raw_lod0_differs or any(c.lod0_differs for c in comparisons):
+        overall = "LOD 0 DIFFERS"
+    elif raw_far_differs or any(c.differences for c in comparisons):
+        overall = "LOD > 0 differs (visual only)"
+    else:
+        overall = "IDENTICAL"
     lines = [
         "# Generator consistency report",
+        "",
+        f"**Overall result: {overall}.**",
         "",
         f"Profile `{first.profile}`, galaxy seed `{first.seed}`, radius {first.radius:g} m, {len(first.blocks)} blocks.",
         "",
@@ -251,7 +266,7 @@ def format_markdown(reports: list[Report], comparisons: list[Comparison]) -> str
         "",
         "## Comparison with " + first.label,
         "",
-        "| Runtime | LOD 0 equal | LOD > 0 equal | Result |",
+        "| Runtime | LOD 0 equal | LOD > 0 equal | JSON result |",
         "| --- | --- | --- | --- |",
     ]
     for c in comparisons:
@@ -305,6 +320,8 @@ def read_raw(path: Path) -> dict[tuple[int, int, int, int], tuple[bytes, bytes]]
     blocks: dict[tuple[int, int, int, int], tuple[bytes, bytes]] = {}
     for offset in range(0, len(data), record):
         key = RAW_HEADER.unpack_from(data, offset)
+        if key in blocks:
+            raise ReportError(f"{path}: duplicate raw key {key}")
         start = offset + RAW_HEADER.size
         blocks[key] = (
             data[start : start + BLOCK_BYTES_SDF],
@@ -315,6 +332,10 @@ def read_raw(path: Path) -> dict[tuple[int, int, int, int], tuple[bytes, bytes]]
 
 def compare_raw(a: dict, b: dict) -> list[str]:
     """Per block: voxels with a sign change of the SDF, maximum SDF difference (raw 16 bit units), material differences."""
+    if not a or not b:
+        raise ReportError("raw block sets must not be empty")
+    if set(a) != set(b):
+        raise ReportError("raw block sets differ (incomplete key sets)")
     lines = [
         "",
         "## Raw block comparison",
@@ -322,7 +343,7 @@ def compare_raw(a: dict, b: dict) -> list[str]:
         "| lod | x | y | z | sign changes | max SDF diff | material diffs |",
         "| --- | --- | --- | --- | --- | --- | --- |",
     ]
-    for key in sorted(set(a) & set(b)):
+    for key in sorted(a):
         sdf_a = struct.unpack(f"<{BLOCK_BYTES_SDF // 2}h", a[key][0])
         sdf_b = struct.unpack(f"<{BLOCK_BYTES_SDF // 2}h", b[key][0])
         sign_changes = sum(
@@ -334,10 +355,6 @@ def compare_raw(a: dict, b: dict) -> list[str]:
         material = sum(1 for p, q in zip(a[key][1], b[key][1], strict=True) if p != q)
         lines.append(
             f"| {key[0]} | {key[1]} | {key[2]} | {key[3]} | {sign_changes} | {max_diff} | {material} |"
-        )
-    for key in sorted(set(a) ^ set(b)):
-        lines.append(
-            f"| {key[0]} | {key[1]} | {key[2]} | {key[3]} | only in one file | | |"
         )
     lines.append("")
     return lines
@@ -515,6 +532,66 @@ def self_test() -> int:
             "raw comparison counts sign change, max diff and material diff",
             "| 0 | 1 | 2 | 3 | 1 | 5 | 1 |" in table,
         )
+        report_a, report_b = Path(directory) / "a.json", Path(directory) / "b.json"
+        report_a.write_text(_sample("windows"), encoding="utf-8")
+        report_b.write_text(_sample("linux"), encoding="utf-8")
+        output_path = Path(directory) / "comparison.md"
+        # Targeted dumps may include blocks outside the JSON sample manifest.
+        extra_key = RAW_HEADER.pack(0, 4, 5, 6)
+        extra = extra_key + bytes(BLOCK_BYTES_SDF + BLOCK_BYTES_MATERIAL)
+        sdf_only = extra_key + struct.pack("<h", 5) + extra[RAW_HEADER.size + 2 :]
+        material_only = (
+            extra[: RAW_HEADER.size + BLOCK_BYTES_SDF]
+            + b"\x01"
+            + bytes(BLOCK_BYTES_MATERIAL - 1)
+        )
+        far = RAW_HEADER.pack(2, 4, 5, 6) + extra[RAW_HEADER.size :]
+        far_changed = (
+            far[: RAW_HEADER.size + BLOCK_BYTES_SDF]
+            + material_only[RAW_HEADER.size + BLOCK_BYTES_SDF :]
+        )
+        cases = [
+            ("identical raw blocks", extra, extra, 0, "IDENTICAL"),
+            ("raw LOD 0 SDF magnitude mismatch", extra, sdf_only, 1, "LOD 0 DIFFERS"),
+            ("raw LOD 0 material mismatch", extra, material_only, 1, "LOD 0 DIFFERS"),
+            ("raw LOD 0 sign mismatch", record_a, record_b, 1, "LOD 0 DIFFERS"),
+            (
+                "raw far difference is visual only",
+                far,
+                far_changed,
+                0,
+                "LOD > 0 differs",
+            ),
+            ("raw key missing on right", extra + record_a, extra, 2, ""),
+            ("raw key missing on left", extra, extra + record_a, 2, ""),
+            ("empty raw dumps", b"", b"", 2, ""),
+            ("duplicate raw keys", extra + extra, extra, 2, ""),
+            ("truncated raw record", extra, extra[:-1], 2, ""),
+        ]
+        for name, left, right, expected_exit, expected_result in cases:
+            raw_a.write_bytes(left)
+            raw_b.write_bytes(right)
+            output = io.StringIO()
+            with redirect_stdout(output), redirect_stderr(io.StringIO()):
+                exit_code = main(
+                    [
+                        str(report_a),
+                        str(report_b),
+                        "--raw",
+                        str(raw_a),
+                        str(raw_b),
+                        "--out",
+                        str(output_path),
+                    ]
+                )
+            check(f"{name}: exit {expected_exit}", exit_code == expected_exit)
+            if expected_exit != 2:
+                expected = f"**Overall result: {expected_result}"
+                check(f"{name}: overall result", expected in output.getvalue())
+                check(
+                    f"{name}: saved overall result",
+                    expected in output_path.read_text(encoding="utf-8"),
+                )
 
     if failures:
         for failure in failures:
@@ -555,16 +632,26 @@ def main(argv: list[str]) -> int:
     try:
         reports = [load_report(path) for path in args.reports]
         comparisons = [compare(reports[0], other) for other in reports[1:]]
-        text = format_markdown(reports, comparisons)
+        raw_lines: list[str] = []
+        raw_lod0_differs = raw_far_differs = False
         if args.raw:
-            text += "\n".join(compare_raw(read_raw(args.raw[0]), read_raw(args.raw[1])))
+            raw_a, raw_b = read_raw(args.raw[0]), read_raw(args.raw[1])
+            raw_lines = compare_raw(raw_a, raw_b)
+            raw_lod0_differs = any(
+                key[0] == 0 and raw_a[key] != raw_b[key] for key in raw_a
+            )
+            raw_far_differs = any(
+                key[0] > 0 and raw_a[key] != raw_b[key] for key in raw_a
+            )
+        text = format_markdown(reports, comparisons, raw_lod0_differs, raw_far_differs)
+        text += "\n".join(raw_lines)
     except ReportError as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 2
     if args.out:
         args.out.write_text(text, encoding="utf-8")
     print(text)
-    return 1 if any(c.lod0_differs for c in comparisons) else 0
+    return 1 if raw_lod0_differs or any(c.lod0_differs for c in comparisons) else 0
 
 
 if __name__ == "__main__":
