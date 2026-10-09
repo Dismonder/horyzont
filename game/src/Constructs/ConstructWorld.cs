@@ -44,6 +44,8 @@ public sealed partial class ConstructWorld : Node3D
     private ChunkRemeshQueue _queue = null!;
     private MeshWorkerPool? _pool;
     private FrameRef _frame;
+    private bool _frameFixed;
+    private readonly HashSet<EntityId> _presentScratch = new();
     private bool _initialized;
     private bool _rangeDirty;
     private int _framesSinceRangeUpdate;
@@ -123,9 +125,9 @@ public sealed partial class ConstructWorld : Node3D
             Unload(id);
         }
 
-        if (operation is ConstructCreateOp create)
+        if (!_frameFixed && operation is ConstructCreateOp create)
         {
-            _frame = create.Parent;
+            _frame = create.Parent; // only until RebuildAll names the shown frame; later creates must not switch it
         }
 
         foreach (var id in _createdScratch)
@@ -165,6 +167,7 @@ public sealed partial class ConstructWorld : Node3D
         }
 
         _frame = frame;
+        _frameFixed = true;
         _unloadScratch.Clear();
         _unloadScratch.AddRange(_entries.Keys);
         foreach (var id in _unloadScratch)
@@ -431,10 +434,16 @@ public sealed partial class ConstructWorld : Node3D
         }
 
         // Constructs that vanished from the source without an operation (resync) lose their nodes.
+        _presentScratch.Clear();
+        foreach (var id in _constructScratch)
+        {
+            _presentScratch.Add(id);
+        }
+
         _unloadScratch.Clear();
         foreach (var id in _entries.Keys)
         {
-            if (!_constructScratch.Contains(id))
+            if (!_presentScratch.Contains(id))
             {
                 _unloadScratch.Add(id);
             }
