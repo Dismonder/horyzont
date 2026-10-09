@@ -12,6 +12,7 @@ namespace Horyzont.Persistence.Terrain;
 public sealed class TerrainBlockStore : IDisposable
 {
     private readonly string _connectionString;
+    private long _queryCount;
 
     /// <summary>Creates the store.</summary>
     /// <param name="databasePath">World file.</param>
@@ -21,6 +22,12 @@ public sealed class TerrainBlockStore : IDisposable
         _connectionString = WorldDatabase.ConnectionString(Path.GetFullPath(databasePath), SqliteOpenMode.ReadOnly, pooling: true);
     }
 
+    /// <summary>Number of <see cref="TryLoad"/> calls that reached SQLite (tests).</summary>
+    internal long QueryCount => Interlocked.Read(ref _queryCount);
+
+    /// <summary>Test hook: called on the reading thread before the query.</summary>
+    internal Action<TerrainBlockKey>? BeforeQuery { get; set; }
+
     /// <summary>Reads the version and data of a saved block in one statement, so the pair is always consistent.</summary>
     /// <param name="key">Block key.</param>
     /// <param name="version">Saved version.</param>
@@ -28,6 +35,8 @@ public sealed class TerrainBlockStore : IDisposable
     /// <returns>False when the block was never saved (the generator produces it).</returns>
     public bool TryLoad(TerrainBlockKey key, out uint version, out byte[] data)
     {
+        Interlocked.Increment(ref _queryCount);
+        BeforeQuery?.Invoke(key);
         using var connection = WorldDatabase.OpenConnection(_connectionString, readOnly: true);
         using var command = Sql.Command(
             connection, null,

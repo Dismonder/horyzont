@@ -44,6 +44,9 @@ public sealed class FakeTerrainService(float surfaceRadius = 4000f, float voxelS
     /// <summary>Called at the start of <see cref="ApplyEdit"/> (tests inspect the state at call time).</summary>
     public Action<TerrainEditOp, IReadOnlyList<TerrainBlockVersion>>? OnApplyEdit { get; set; }
 
+    /// <summary>Called at the end of <see cref="ApplyEdit"/>, when every block of the versions has its new data.</summary>
+    public Action<TerrainEditOp, IReadOnlyList<TerrainBlockVersion>>? AfterApplyEdit { get; set; }
+
     /// <summary>When set, <see cref="LoadAreaBlocking"/> throws it (a failing disk read).</summary>
     public Exception? ThrowOnLoad { get; set; }
 
@@ -168,5 +171,7 @@ public sealed class FakeTerrainService(float surfaceRadius = 4000f, float voxelS
             hash.Append(fields);
             _blocks[key] = hash.GetCurrentHash();
         }
+
+        AfterApplyEdit?.Invoke(edit, versions);
     }
 }
