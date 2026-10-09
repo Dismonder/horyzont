@@ -118,6 +118,8 @@ def parse_report(text: str, name: str) -> Report:
         raw_blocks = data.get("blocks")
         if not isinstance(raw_blocks, list):
             raise ReportError("field 'blocks' must be an array")
+        if not raw_blocks:
+            raise ReportError("field 'blocks' must not be empty")
         if len(raw_blocks) > MAX_BLOCKS:
             raise ReportError(f"too many blocks ({len(raw_blocks)} > {MAX_BLOCKS})")
         blocks: dict[tuple[int, int, int, int], Block] = {}
@@ -138,6 +140,8 @@ def parse_report(text: str, name: str) -> Report:
             if block.key in blocks:
                 raise ReportError(f"block {index}: duplicate key {block.key}")
             blocks[block.key] = block
+        if not any(key[0] == 0 for key in blocks):
+            raise ReportError("report must contain LOD 0 samples")
         return Report(
             name=name,
             profile=_text(data, "profile"),
@@ -421,6 +425,8 @@ def self_test() -> int:
     )
 
     corrupt_cases = {
+        "empty blocks": json.dumps(dict(json.loads(_sample("windows")), blocks=[])),
+        "no LOD 0 samples": _sample("windows").replace('"lod": 0', '"lod": 1', 1),
         "not json": "{",
         "wrong schema": _sample("windows", schema=2),
         "not an object": "[]",
