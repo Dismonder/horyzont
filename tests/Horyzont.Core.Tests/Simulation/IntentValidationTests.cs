@@ -156,7 +156,8 @@ public sealed class IntentValidationTests
         var data = new TheoryData<RejectReason>();
         foreach (var reason in Enum.GetValues<RejectReason>())
         {
-            if (reason != RejectReason.None)
+            // ServerReadOnly is answered by the server hooks in safe mode (K2-10), never by the simulation.
+            if (reason is not (RejectReason.None or RejectReason.ServerReadOnly))
             {
                 data.Add(reason);
             }

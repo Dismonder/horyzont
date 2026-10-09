@@ -165,13 +165,14 @@ public sealed class MessageEdgeCaseTests
         Assert.IsType<Disconnect>(MessageCodec.Read(Kit.Hex("14 01 " + code)));
 
     [Theory]
-    [InlineData("15")]
+    [InlineData("16")]
     [InlineData("FF")]
     public void Read_IntentReplyWithUnknownReason_ThrowsProtocolViolation(string reason) => Kit.AssertMessageViolation("0C 01 01 " + reason + " 00");
 
     [Theory]
     [InlineData("00")]
     [InlineData("14")]
+    [InlineData("15")]
     public void Read_IntentReplyWithKnownReason_IsAccepted(string reason) =>
         Assert.IsType<IntentReply>(MessageCodec.Read(Kit.Hex("0C 01 01 " + reason + " 00")));
 

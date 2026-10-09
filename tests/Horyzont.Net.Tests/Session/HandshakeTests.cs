@@ -97,8 +97,8 @@ public sealed class HandshakeTests
     }
 
     [Theory]
-    [InlineData((ushort)2, (byte)9)]
-    [InlineData((ushort)2, (byte)1)]
+    [InlineData((ushort)(ProtocolConstants.ProtocolVersion + 1), (byte)9)]
+    [InlineData((ushort)(ProtocolConstants.ProtocolVersion + 1), (byte)1)]
     [InlineData((ushort)ProtocolConstants.ProtocolVersion, (byte)9)]
     public void Handshake_NewerProtocolHello_RejectsWrongProtocol(ushort protocolVersion, byte formatVersion)
     {
