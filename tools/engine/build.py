@@ -89,11 +89,17 @@ def binary_name(target: dict, console: bool = False) -> str:
     return name
 
 
-def editor_target(config: dict) -> dict:
+def editor_target(config: dict, runner: str | None = None) -> dict:
+    """The editor target that builds on `runner` (default: this host)."""
+    runner = runner or host_runner()
     for target in config["targets"]:
-        if target["target"] == "editor":
+        if target["target"] == "editor" and target["runner"] == runner:
             return target
-    raise BuildError("engine.json has no editor target.")
+    raise BuildError(f"engine.json has no editor target for {runner}.")
+
+
+def has_editor(config: dict, runner: str) -> bool:
+    return any(t["target"] == "editor" and t["runner"] == runner for t in config["targets"])
 
 
 def scons_flags(config: dict, target: dict, args: argparse.Namespace) -> list[str]:
@@ -295,8 +301,6 @@ def copy_binary(ctx: Context, target: dict) -> None:
 
 def step_editor(ctx: Context) -> None:
     target = editor_target(ctx.config)
-    if host_runner() != target["runner"]:
-        raise BuildError("The editor is built only on Windows.")
     if (ctx.out / binary_name(target)).exists() and not ctx.args.force:
         print("[editor] already built for this key")
         return
@@ -512,7 +516,7 @@ def step_all(ctx: Context) -> None:
             step_templates(ctx)
         return
     step_fetch(ctx)
-    if runner == "windows":
+    if has_editor(ctx.config, runner):
         step_editor(ctx)
         step_glue(ctx)
         step_assemblies(ctx)

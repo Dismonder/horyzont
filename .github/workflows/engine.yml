@@ -29,8 +29,8 @@ concurrency:
 env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
-  # Four targets share the 10 GB GitHub cache: about 2 GiB of SCons cache each.
-  HORYZONT_SCONS_CACHE_LIMIT: "2"
+  # Five targets share the 10 GB GitHub cache with the engine output caches: 1.5 GiB of SCons cache each.
+  HORYZONT_SCONS_CACHE_LIMIT: "1.5"
 
 jobs:
   build:
@@ -45,6 +45,8 @@ jobs:
             runner: windows-2022
           - target: template-windows-release
             runner: windows-2022
+          - target: editor-linux
+            runner: ubuntu-24.04
           - target: template-linux-release
             runner: ubuntu-24.04
     runs-on: ${{ matrix.runner }}
@@ -133,4 +135,15 @@ jobs:
         with:
           name: engine-linux-template
           path: engine/out/${{ steps.key.outputs.key }}/godot.linuxbsd.template_release.double.x86_64.mono
+          if-no-files-found: error
+
+      - name: Upload Linux editor
+        if: matrix.target == 'editor-linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-linux-editor
+          path: |
+            engine/out/${{ steps.key.outputs.key }}/godot.linuxbsd.editor.double.x86_64.mono
+            engine/out/${{ steps.key.outputs.key }}/GodotSharp/
+            engine/out/${{ steps.key.outputs.key }}/manifest.json
           if-no-files-found: error
