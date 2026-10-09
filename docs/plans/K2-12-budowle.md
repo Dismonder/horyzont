@@ -397,8 +397,8 @@ Fikstury `ConstructFixtures` (w `tests/Horyzont.Testing`, przez publiczny `World
 
 ## Kroki
 
-- [ ] 0. Gałąź `pakiet/k2-12-budowle` od `main`; sprawdź, czy K1-02B jest scalony (`game/Horyzont.Game.csproj`); jeśli nie, zatrzymaj się. Sprawdź, czy K2-08A jest scalony (`editor-linux` w `engine/engine.json`, zielony `engine.yml` z artefaktem `engine-linux-editor`); jeśli nie, zatrzymaj się (D6). Sprawdź, czy na `main` jest uprząż testów silnika (K2-08/K2-09) i jakie warstwy fizyki ustalono; wpisz wynik do Odstępstw.
-- [ ] 1. `src/Horyzont.Constructs` i `tests/Horyzont.Constructs.Tests` w `Horyzont.sln`; `LayeringTests`: nowy projekt na liście bez Godota z dozwoloną referencją `Horyzont.Core`; `game/Horyzont.Game.csproj` dostaje referencję. `dotnet build` zielony.
+- [x] 0. Gałąź `pakiet/k2-12-budowle` od `main`; sprawdź, czy K1-02B jest scalony (`game/Horyzont.Game.csproj`); jeśli nie, zatrzymaj się. Sprawdź, czy K2-08A jest scalony (`editor-linux` w `engine/engine.json`, zielony `engine.yml` z artefaktem `engine-linux-editor`); jeśli nie, zatrzymaj się (D6). Sprawdź, czy na `main` jest uprząż testów silnika (K2-08/K2-09) i jakie warstwy fizyki ustalono; wpisz wynik do Odstępstw.
+- [x] 1. `src/Horyzont.Constructs` i `tests/Horyzont.Constructs.Tests` w `Horyzont.sln`; `LayeringTests`: nowy projekt na liście bez Godota z dozwoloną referencją `Horyzont.Core`; `game/Horyzont.Game.csproj` dostaje referencję. `dotnet build` zielony.
 - [ ] 2. Uprząż silnika: jeśli jest na `main`, użyj jej. Jeśli nie — dodaj ją tak, jak opisuje K2-09 krok 3 (edytor Linux z K2-08A; gdUnit4Net w `Directory.Packages.props`, opis w PR i zielony test dymny silnika, ZASADY pkt 3; job `game` na Windows i Linux); pakiet scalany jako drugi przechodzi na uprząż pierwszego przy rebase (Pytanie P8).
 - [ ] 3. Testy Core (czerwone): `BlockOrientationTests`, rozszerzenie `ProtocolContractTests`. Potem `BlockOrientation` i `BlockShape.Mesh = 2`. Powtórz `rg BlockShape src/Horyzont.Core/Serialization src/Horyzont.Core/Hashing` (oczekiwane: pusto; inaczej stop i pytanie). Zielone.
 - [ ] 4. `BlockTypeCatalogTests` → `BlockTypeCatalog`, `BlockTypeContent`, `BlockMaterialDef`, `ShapeMesh`, `IShapeMeshResolver`, `BuiltInShapeMeshes`; `game/content/blocks/blocks.json` z treścią K2 i `game/locale/blocks.csv`. Zielone.
@@ -455,4 +455,6 @@ Fikstury `ConstructFixtures` (w `tests/Horyzont.Testing`, przez publiczny `World
 
 ## Odstępstwa
 
-(wypełnia wykonawca)
+- **Wykonawca.** Pakiet realizuje Claude Sonnet 5.5 zamiast GPT-6.1 Sol (decyzja właściciela o oszczędzaniu limitu Codexa); przegląd Opus 5.5 pozostaje (ZASADY pkt 9 i 3). Commity niosą trailer `Co-Authored-By: Claude Opus 5.5` zgodnie z poleceniem zlecającego.
+- **Krok 0.** Gałąź `pakiet/k2-12-budowle` jest od `pakiet/k2-08a-silnik-linux` (= `main` + K2-08A, PR #10 jeszcze niescalony), nie od `main`. K1-02B jest scalony (`game/Horyzont.Game.csproj` istnieje). Uprzęży testów silnika (K2-08/K2-09) nie ma na `main` ani w bazie. `game/project.godot` nie ustawia nazw warstw fizyki ani silnika fizyki; warstwy dodaje ten pakiet (P5).
+
