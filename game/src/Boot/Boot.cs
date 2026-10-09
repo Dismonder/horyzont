@@ -14,6 +14,12 @@ public partial class Boot : Node
             return;
         }
 
+        if (args.Contains("--engine-tests"))
+        {
+            AddChild(Horyzont.Game.Testing.EngineTestRunner.FromArgs(args));
+            return;
+        }
+
         GD.Print("Horyzont modes (to do in K2): --server, --host, --connect <address>");
         GetTree().Quit(0);
     }
