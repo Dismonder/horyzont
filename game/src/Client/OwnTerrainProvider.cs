@@ -25,6 +25,7 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
     private readonly GeneratorOnlyBlockSource _source = new();
     private readonly TerrainBlockCodec _codec = new();
     private readonly SortedDictionary<ulong, PlanetTerrain> _planets = [];
+    private readonly ClientTerrainViews _views = new();
 
     /// <summary>Creates the provider.</summary>
     /// <param name="parent">Node the planet terrains are added to.</param>
@@ -61,7 +62,11 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
     }
 
     /// <inheritdoc />
-    public bool TryGetPlanet(PlanetId planet, [NotNullWhen(true)] out PlanetTerrain? terrain) => _planets.TryGetValue(planet.Value, out terrain);
+    public bool TryGetPlanet(PlanetId planet, [NotNullWhen(true)] out IClientTerrainView? view)
+    {
+        _planets.TryGetValue(planet.Value, out var terrain);
+        return _views.TryViewOf(planet, terrain, out view);
+    }
 
     /// <inheritdoc />
     public void Dispose() => Clear();
@@ -79,5 +84,6 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
         }
 
         _planets.Clear();
+        _views.Clear();
     }
 }

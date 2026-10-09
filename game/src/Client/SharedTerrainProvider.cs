@@ -10,10 +10,11 @@ namespace Horyzont.Game.Client;
 public sealed class SharedTerrainProvider : IClientTerrainProvider
 {
     private readonly VoxelTerrainService _service;
+    private readonly ClientTerrainViews _views = new();
 
     /// <summary>Creates the provider over the terrain service of the server.</summary>
     /// <param name="service">The terrain service of the server.</param>
-    public SharedTerrainProvider(VoxelTerrainService service)
+    internal SharedTerrainProvider(VoxelTerrainService service)
     {
         ArgumentNullException.ThrowIfNull(service);
         _service = service;
@@ -26,5 +27,9 @@ public sealed class SharedTerrainProvider : IClientTerrainProvider
     }
 
     /// <inheritdoc />
-    public bool TryGetPlanet(PlanetId planet, [NotNullWhen(true)] out PlanetTerrain? terrain) => _service.TryGetPlanet(planet, out terrain);
+    public bool TryGetPlanet(PlanetId planet, [NotNullWhen(true)] out IClientTerrainView? view)
+    {
+        _service.TryGetPlanet(planet, out var terrain);
+        return _views.TryViewOf(planet, terrain, out view);
+    }
 }

@@ -2,7 +2,6 @@ using System.Diagnostics.CodeAnalysis;
 
 using Horyzont.Core.Ids;
 using Horyzont.Core.Protocol.Messages;
-using Horyzont.Game.Terrain;
 
 namespace Horyzont.Game.Client;
 
@@ -17,9 +16,9 @@ public interface IClientTerrainProvider
     /// <param name="hello">The hello of the server.</param>
     void Prepare(ServerHello hello);
 
-    /// <summary>Gets the terrain node of a planet; the same object as the server's in host and solo mode.</summary>
+    /// <summary>Gets the read-only view of the terrain of a planet; in host and solo mode it looks at the terrain of the server.</summary>
     /// <param name="planet">The planet.</param>
-    /// <param name="terrain">The node when known.</param>
+    /// <param name="view">The view when known.</param>
     /// <returns>Whether the planet has a terrain.</returns>
-    bool TryGetPlanet(PlanetId planet, [NotNullWhen(true)] out PlanetTerrain? terrain);
+    bool TryGetPlanet(PlanetId planet, [NotNullWhen(true)] out IClientTerrainView? view);
 }

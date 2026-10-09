@@ -40,7 +40,7 @@ public class HostModeTests
         {
             AssertThat(composition.ClientTerrain!.TryGetPlanet(planet.Id, out var seenByClient)).IsTrue();
             AssertThat(voxel.TryGetPlanet(planet.Id, out var ofServer)).IsTrue();
-            AssertThat(ReferenceEquals(seenByClient, ofServer)).IsTrue();
+            AssertThat(ReferenceEquals(seenByClient!.Anchor.GetParent(), ofServer)).IsTrue();
         }
 
         AssertThat(composition.Server.IsLocalPlayer(composition.Client!.Hello!.YourPlayer)).IsTrue();
@@ -166,8 +166,8 @@ public class ClientModeTests
         foreach (var planet in planets)
         {
             AssertThat(composition.ClientTerrain!.TryGetPlanet(planet.Id, out var own)).IsTrue();
-            AssertThat(own!.IsInsideTree()).IsTrue();
-            AssertThat(own.GetParent()!.GetPath().ToString().EndsWith("Client/Terrain", StringComparison.Ordinal)).IsTrue();
+            AssertThat(own!.Anchor.IsInsideTree()).IsTrue();
+            AssertThat(own.Anchor.GetParent()!.GetParent()!.GetPath().ToString().EndsWith("Client/Terrain", StringComparison.Ordinal)).IsTrue();
         }
 
         AssertThat(server.Composition.Server.IsLocalPlayer(composition.Client.Hello!.YourPlayer)).IsFalse();
