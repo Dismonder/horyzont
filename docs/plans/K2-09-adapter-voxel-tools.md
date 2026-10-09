@@ -392,7 +392,7 @@ Testy silnika (Godot bez grafiki, Windows i Linux, job `game`):
 ## Kroki
 
 - [ ] 0. Warunki startu sprawdzone na `main` (bramka K1 (PR #9: B1–B3), K1-02B, K2-08 z K2-08A); faktyczne nazwy kontraktów K2-08 i stałej marginesu zapisane w „Odstępstwach”.
-- [ ] 1. **Korpus złoty (D1), osobny commit przed jakąkolwiek zmianą w `src/`:** na niezmienionym `main` nagraj `tests/Horyzont.Core.Tests/Golden/TerrainJournals/` (dzienniki zakodowane kodekiem K1-04 + oczekiwane skróty `StateHasher` i listy wersji bloków) i `TerrainJournalGoldenCorpusTests`; test zielony na `main`. Od tej chwili pliki korpusu i testu są zamrożone.
+- [x] 1. **Korpus złoty (D1), osobny commit przed jakąkolwiek zmianą w `src/`:** na niezmienionym `main` nagraj `tests/Horyzont.Core.Tests/Golden/TerrainJournals/` (dzienniki zakodowane kodekiem K1-04 + oczekiwane skróty `StateHasher` i listy wersji bloków) i `TerrainJournalGoldenCorpusTests`; test zielony na `main`. Od tej chwili pliki korpusu i testu są zamrożone.
 - [ ] 2. Rozpoznanie Voxel Tools `v1.7` na gałęzi (kod rozpoznania nie trafia do PR poza testami). Wyniki w „Odstępstwach”:
   - S1: `VoxelStreamScript` w C# dostaje wywołania wczytania i zapisu z wątków roboczych; zwrócony blok jest widoczny w terenie;
   - S2: nazwy API serializera bloków w C#; bajty w obie strony identyczne; typowy i największy rozmiar blobu z kanałami K2-08 (musi być ≤ 64 KiB z kopertą);
@@ -405,12 +405,12 @@ Testy silnika (Godot bez grafiki, Windows i Linux, job `game`):
 - [ ] 3. Uprząż testów silnika z K2-08 (albo gdUnit4Net według „Kontraktów pobieranych”); job `game` uruchamia ją na Windows i Linux.
 - [ ] 4. Testy z obu tabel (czerwone).
 - [ ] 5. Core: `TerrainRules.CheckEdit` i delegacja z `OperationApplier.CheckTerrainEdit`; `BlobKind.TerrainBlock`, koperta w `StateCodec`, `TerrainBlockBlob`; sygnatura `ApplyEdit` z wersjami, `OperationApplier`, `FakeTerrainService`; złote skróty i korpus złoty z kroku 1 bez zmian (inaczej podbicie formatu operacji, D1). Przegląd diffu Core przez Opus 5.5 w świeżej sesji przed dalszymi krokami.
-- [ ] 6. Persistence: `ITerrainBlockSource`, `TerrainBlockLookup`, `TerrainBufferOptions`, `ServerTerrainBlocks`, `TerrainSemanticsMeta`, `TerrainLog`.
+- [x] 6. Persistence: `ITerrainBlockSource`, `TerrainBlockLookup`, `TerrainBufferOptions`, `ServerTerrainBlocks`, `TerrainSemanticsMeta`, `TerrainLog`.
 - [ ] 7. Gra: `TerrainBlockCodec`, `TerrainEditSemantics`, `TerrainStream`, `PlanetTerrain`, `VoxelTerrainService` (mapa materiałów w konstruktorze, edycja z kopią, `IsAreaLoaded`, `Raycast` bez alokacji, `LoadAreaBlocking`, sprawdzenie wątku).
 - [ ] 8. `TerrainAreaLoader`, `TerrainReplay` z odrzucaniem wrogich wpisów przez `TerrainRules.CheckEdit` i sprawdzeniem wersji semantyki ogona.
 - [ ] 9. `DerivedLodCache`; raport S5 z zachowaniem odległych LOD-ów po restarcie (zrzuty ekranu w PR).
 - [ ] 10. Zamknięcie: `ShutdownAsync`, `CloseAsync` (wynik `false` → bez `TerrainBlockStore.Close()`), zgodnie z kanoniczną kolejnością K2-10.
-- [ ] 11. E1 i E2 (pomiar, ewentualne przeniesienie kopii z wątku zapisu).
+- [x] 11. E1 i E2 (pomiar, ewentualne przeniesienie kopii z wątku zapisu).
 - [ ] 12. Test złoty semantyki edycji z `SemanticsVersion`, test wydajności; dopisanie wierszy do ZASADY pkt 3 (semantyka terenu, korpus złoty) i reguły „ITerrainService tylko na wątku głównym Godota” do ZASADY pkt 2.
 - [ ] 13. Komentarze XML w Core i Persistence; lokalnie `dotnet build`, `dotnet test --filter "Category!=Soak&Category!=Manual"`, `dotnet format --verify-no-changes`, `python tools/engine/build.py smoke`; CI zielone na gałęzi (Windows i Linux, z jobem `game`).
 - [ ] 14. Po scaleniu: CI zielone na `main` (nie tylko na gałęzi; lekcja 4) i jeden zielony przebieg nocny (`Soak`) przed bramką K2. Krok niezrobiony przed scaleniem dostaje wpis „odroczone do X” (lekcja 5).
@@ -445,3 +445,35 @@ Testy z obu tabel przechodzą w CI na Windows i Linux, a CI na `main` po scaleni
 ## Odstępstwa i decyzje wykonawcy
 
 (wypełnia wykonawca: nazwy kontraktów K2-08, wyniki S1–S7, pomiar E2, liczby z testu wydajności, każde odejście od planu z powodem)
+
+### Etap 1: część niezależna od silnika (2026-10-09, Opus 5.5, gałąź `pakiet/k2-09-adapter-voxel`)
+
+**Zakres etapu.** Na polecenie prowadzącego zrobione zostały kroki 1, 5, 6 i 11, czysto .NET-owa część kroku 4 (pierwsza tabela testów) oraz z kroku 12 wiersze ZASADY. Wszystko pod `game/src/Terrain/` i testy silnika (kroki 2, 3, 7–10, reszta 12, test `EditSemantics_GoldenDigest`, `ApplyEdit_Radius3_TimeBudget`) czekają na scalenie K2-08. Krok 0 nie jest odhaczony: K2-08 nie jest jeszcze na `main`, więc nazwy kontraktów K2-08 nie są zapisane. Na `main` są już `TerrainRules.EditMarginVoxels = 4` i `TerrainRules.MaxEditRadiusMeters = 16` (B2) w `src/Horyzont.Core/Simulation/TerrainRules.cs`. Krok 5 ma kod i zielone testy, ale nie jest odhaczony: czeka na przegląd diffu Core przez Opus 5.5 w świeżej sesji.
+
+**Korpus złoty (krok 1, D1).** Commit `cad1f70` powstał przed jakąkolwiek zmianą w `src/`. Zawiera pięć dzienników w `tests/Horyzont.Core.Tests/Golden/TerrainJournals/`: `add_remove`, `block_boundaries`, `negative_coordinates`, `rejected_entries` i `mixed_long` (200 edycji). Każdy plik `*.journal` to kontener testowy (bajt wersji kontenera 1, liczba wpisów, a dla każdego wpisu id, tick, opcjonalny aktor i ramka `OperationCodec` z K1-04). Każdy plik `*.expected.txt` to raport powtórki przez `ServerSimulation.Replay` na `FakeTerrainService`: skrót `StateHasher` po każdym wpisie, odrzucenia z pełnym komunikatem `ReplayFailedException` (nieznana planeta, promień 0, ujemny i tuż ponad 16 m, środek tuż ponad granicą, zły materiał, tick wstecz, luka w numeracji), końcowe `LastOpId`/tick/skrót, liczba edycji i bloków, skrót XxHash64 danych bloków `FakeTerrainService` oraz pełna lista `TerrainVersions.All`. NaN i nieskończoności nie trafiły do korpusu, bo kodek K1-04 odmawia ich zapisu (`ByteWriter.WriteSingle`). Rejestrator `TerrainJournalGoldenCorpusRecorder` (`Manual`) zapisuje pliki tylko wtedy, gdy ustawiona jest zmienna `HORYZONT_GOLDEN_TERRAIN_OUT`, i służy wyłącznie do nagrania nowego korpusu przy przyszłym podbiciu formatu. `.gitattributes` oznacza `tests/**/Golden/**` jako binarne (bez konwersji końców linii). Po zmianach Core polecenie `git diff cad1f70..HEAD -- tests/Horyzont.Core.Tests/Golden/TerrainJournals tests/Horyzont.Core.Tests/TerrainJournalGoldenCorpusTests.cs` daje pusty wynik, a złote skróty `DeterminismTests` się nie zmieniły. Wersja formatu operacji nie została więc podbita.
+
+**Core (krok 5).**
+- `TerrainRules.CheckEdit(op, planet, out string? failure)` zwraca `failure == null`, gdy edycja jest poprawna. `OperationApplier.CheckTerrainEdit` sprawdza kolejno: planetę w stanie, `CheckEdit`, materiał. Komunikaty i ich kolejność się nie zmieniły (pilnują tego korpus i `TerrainRulesCheckEditTests`).
+- Koperta bloku ma 7 bajtów nagłówka, więc ładunek voxeli może mieć najwyżej 65 529 B. Dekoder kopiuje voxele do nowej tablicy, a nadmiarowe i brakujące bajty odrzuca przez porównanie z polem długości.
+- K1-04 nie miało testu złotego wartości `BlobKind`. Dopisałem go do `ProtocolContractTests.Enums_GoldenValues` (wartości 1–5).
+- `FakeTerrainService` dostał `AppliedVersions`, `OnApplyEdit` (wołane przed edycją, pozwala sprawdzić stan w chwili wywołania) i `AfterApplyEdit` (wołane po edycji, służy do zapisu danych do `ServerTerrainBlocks` w testach). Nikt poza nim samym nie używał parametru `marginVoxels`.
+- W `game/` nie ma żadnej implementacji `ITerrainService` (sprawdzone grepem), więc zmiana sygnatury nie wymagała tam poprawek.
+
+**Persistence (krok 6).**
+- `ServerTerrainBlocks.Record` porównuje nową wersję z najnowszą znaną wersją klucza (zapisaną albo nagraną), a nie tylko z wpisem bufora. To silniejszy warunek niż w planie: łapie też zapis wersji ≤ zapisanej w bazie.
+- Wyjątek SQLite przy odczycie daje `Unavailable` i log błędu (`TerrainLog.ReadFailed`), ale nie ustawia `FirstCorruptKey`, bo to błąd odczytu, a nie dowód uszkodzenia. `FirstCorruptKey` dostaje tylko klucz z wersją bez wiersza.
+- `TerrainSemanticsMeta` ma API oparte na ścieżce pliku: `Format`, `Read(path, currentVoxelRef)` (brak klucza → `"1|voxel={currentVoxelRef}"`), `Write(path, semantics)` we własnej transakcji na własnym połączeniu bez puli (writer może być wtedy otwarty; WAL i `busy_timeout` szeregują zapisy; obejmuje to test `Write_WhileTheWriterIsOpen_...`) oraz `CheckTail`. Wynik `TerrainTailCheck` podaje obie wersje semantyki, liczbę i pierwszy `OpId` niepowtórzonego ogona, a także liczbę i pierwszy `OpId` edycji terenu, z komunikatem z `Describe()`.
+- Kolekcji xUnit bez równoległości z B1 nie ma na `main` (jest tylko zakaz `ClearAllPools` w `TempDirectory`). Dodałem kolekcję `SqlitePools` (`DisableParallelization = true`) w `tests/Horyzont.Persistence.Tests/Support/SqlitePools.cs`. Są w niej nowe testy z `TerrainBlockStore` i `BackupDurationReport`. Istniejących `TerrainBlockStoreTests` nie przenosiłem.
+- `TerrainBlockStore` ma wewnętrzny licznik zapytań `QueryCount` i hak `BeforeQuery` (bramka w testach `CloseAsync`). Publiczne API się nie zmieniło.
+- Testy z tabeli: `ServerTerrainBlocksTests`, `ServerTerrainBlocksLimitTests`, `ServerTerrainBlocksConcurrencyTests` (8 wątków, wyrocznia par wersja–blob, monotoniczność na wątek) i `TerrainFaultInjectionTests` (właściwość, 25 przypadków, każdy `FaultPoint`, nowe `ServerTerrainBlocks` po awarii). Wszystkie używają pomocnika `Support/TerrainServer.cs` z przepływem checkpointu z planu.
+- `CheckpointTests` odwoływał się do `Terrain.TerrainBlockStore` przestrzenią względną, która po dodaniu `Horyzont.Persistence.Tests.Terrain` przestała się rozwiązywać. Zmieniłem na `Persistence.Terrain.TerrainBlockStore` i nie ruszałem nic więcej w tym teście.
+
+**Kopie zapasowe (krok 11).**
+- E1: `BackupAsync` sprawdza `reason` synchronicznie przez `BackupService.ValidateReason`, tę samą regułę co `CreateBackup`. Dotąd zły znak w `reason` rzucał wyjątek na wątku zapisu i przełączał writer w stan awarii. Każdy wyjątek kopii poza `SimulatedCrashException` jest logowany i daje `false`; `finally` gwarantuje, że wywołujący zawsze dostanie wynik.
+- E2, pomiar (`BackupDurationReport`, `Manual`, Windows 11, dysk lokalny): świat z 50 000 bloków po 2,8–3,3 KB losowych danych zajmuje 222,7 MiB. Trzy przebiegi dały:
+  - `BackupService` na połączeniu zapisu: 1364, 1222 i 1218 ms;
+  - `BackupDatabase` z osobnego połączenia tylko do odczytu: 1339, 1253 i 1175 ms;
+  - `VACUUM INTO` z osobnego połączenia tylko do odczytu: 1794, 1696 i 1823 ms.
+- E2, decyzja: kopia blokowała partie dziennika ponad 1 s, czyli znacznie dłużej niż próg 100 ms. Przeniosłem ją z wątku zapisu do puli wątków. Używa osobnego połączenia tylko do odczytu bez puli i `BackupDatabase` w jednym kroku (migawka WAL). Wybrałem `BackupDatabase`, bo jest szybszy od `VACUUM INTO` i zostawia bez zmian kod `BackupService` (nazwy, numeracja, rotacja, `journal_mode = DELETE`). Wątek zapisu przed startem kopii zatwierdza bieżącą partię, więc kopia zawiera dziennik co najmniej do chwili żądania. Kopie są łańcuchowane, więc w danej chwili trwa najwyżej jedna. `DisposeAsync` czeka na trwającą kopię, a wewnętrzne `ProbeAsync` (tylko testy) czeka też na wcześniej zlecone kopie. Test `BackupAsync_CopyInProgress_JournalKeepsCommitting` pokazuje, że `JournalCommitted` przychodzi, gdy kopia stoi na bramce. Ta zmiana odwraca decyzję K1-05 o kopiach na wątku zapisu i idzie do przeglądu (Pytanie 3).
+
+**Poza tym etapem.** `python tools/engine/build.py smoke` nie był uruchamiany, bo etap nie dotyka silnika ani `engine/`. Krok 13 (CI na gałęzi) i krok 14 czekają na resztę pakietu.

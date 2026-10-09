@@ -18,6 +18,7 @@ Każda sesja pracy zaczyna się od przeczytania tego pliku i planu pakietu. Niej
 - Projekty `Horyzont.Core`, `Horyzont.Persistence` i `Horyzont.Net` nie mogą odwoływać się do Godota (pilnuje tego test w `tests/Horyzont.Architecture.Tests`).
 - Kierunek zależności: `Core` ← `Persistence`, `Core` ← `Net`, wszystkie ← `game/`. Core nie zależy od niczego poza BCL, `Microsoft.Extensions.Logging.Abstractions` i `System.IO.Hashing`.
 - Serwer jest autorytatywny. Klient wysyła wyłącznie intencje i wejście; jedyne lokalne zmiany po stronie klienta to przewidywany ruch własnej postaci i podgląd własnych edycji, które serwer potwierdza albo nadpisuje.
+- `ITerrainService` woła się wyłącznie na wątku głównym Godota (`VoxelTerrainService` rzuca `InvalidOperationException` na innym wątku), więc `ServerSimulation` działa na wątku głównym. Strumień Voxel Tools (wątki robocze) czyta tylko `ITerrainBlockSource` i nie dotyka `WorldState`, `ServerSimulation` ani drzewa sceny (K2-09).
 - Zero mutowalnego stanu statycznego. Zależności składa jedno miejsce startowe (composition root) w `game/src/Boot/`.
 - Każda zmiana świata to operacja z `Horyzont.Core.Operations`, stosowana przez `ServerSimulation` i zapisywana w dzienniku. Nie ma innej drogi zmiany stanu świata.
 - Kanoniczny stan każdego bytu to rama rodzica (`FrameRef`), licznik przepięć `ParentSeq` i poza lokalna w tej ramie (`System.Numerics.Vector3` i `Quaternion`, metry). Pozycja w świecie jest zawsze wartością pochodną: zapis, dziennik i sieć znają wyłącznie pozycje lokalne.
@@ -36,6 +37,10 @@ Każda zmiana w `src/Horyzont.Core/` wymaga przeglądu Opus 5.5, bo cały Core d
 | `src/Horyzont.Core/Protocol/`, `src/Horyzont.Core/Serialization/` | `ProtocolConstants.ProtocolVersion` albo wersję formatu komunikatu |
 | `src/Horyzont.Persistence/Migrations/` | nowa migracja z następnym wolnym numerem w chwili scalenia do `main`; istniejących migracji nigdy się nie edytuje, a numery są ciągłe od 1 |
 | `engine/engine.json`, `nuget.config`, `global.json`, `Directory.Build.props`, `Directory.Packages.props` | opis zmiany w PR i zielony test dymny silnika |
+| `game/src/Terrain/TerrainEditSemantics.cs`, `voxel.ref` w `engine/engine.json` (semantyka edycji terenu, K2-09) | podbicie `TerrainEditSemantics.SemanticsVersion` i aktualizacja skrótu złotego `EditSemantics_GoldenDigest` z opisem w PR; ogon dziennika zapisany inną wersją semantyki (`meta.terrain_semantics`) nie jest powtarzany, świat otwiera się w trybie bezpiecznym |
+| `tests/Horyzont.Core.Tests/Golden/TerrainJournals/`, `tests/Horyzont.Core.Tests/TerrainJournalGoldenCorpusTests.cs` (zamrożony korpus złoty dzienników terenu, K2-09) | nigdy się nie zmieniają; test, który wymagałby zmiany korpusu albo pliku testu, oznacza zmianę semantyki stosowania, czyli podbicie wersji formatu operacji z powtórką starej wersji |
+
+Zmiana `OperationApplier.cs` albo sygnatury `ITerrainService.ApplyEdit` bez podbicia wersji formatu operacji jest dozwolona tylko wtedy, gdy zamrożony korpus złoty dzienników terenu (`TerrainJournalGoldenCorpusTests`) i złote skróty `DeterminismTests` przechodzą bez żadnej zmiany w swoich plikach (`git diff <commit korpusu>..HEAD` na tych ścieżkach pusty).
 
 Zamrożone na zawsze, bez względu na wersję protokołu: początek ramki `ClientHello` (typ, wersja formatu, `ProtocolVersion`) i cały format `HandshakeReject`. Dzięki temu klient każdej wersji dostaje czytelną prośbę o aktualizację. Każda zmiana formatu `ClientHello` podbija też `ProtocolVersion`.
 
