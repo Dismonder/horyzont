@@ -291,6 +291,29 @@ public sealed class IntentValidationTests
         Assert.Equal(RejectReason.IntersectsPlayer, result.Reason);
     }
 
+    [Theory]
+    [InlineData(10, true)]
+    [InlineData(70, false)]
+    public void Submit_PlaceOnFaceOfDeeplyNestedConstruct_RejectedWhenOverlapTestCannotFollowChain(int depth, bool accepted)
+    {
+        var f = new SimFixture();
+        var p = f.Join();
+        f.Terrain.AllAreasLoaded = true;
+        var tip = AddConstruct(f, f.Ground(2));
+        for (var i = 0; i < depth; i++)
+        {
+            // Straight into the store: the operations only create constructs directly in a planet frame.
+            var nested = f.State.Constructs.Create(new EntityId(5000 + (uint)i), FrameRef.Of(tip), Vector3.Zero, Quaternion.Identity);
+            nested.SetBlock(new CellPos(0, 0, 0), BlockState.Create(f.Stone, 0));
+            tip = nested.Id;
+        }
+
+        var result = f.Sim.Submit(p, OnTopOf(f, tip));
+
+        Assert.Equal(accepted, result.IsAccepted);
+        Assert.Equal(accepted ? RejectReason.None : RejectReason.WrongPlanet, result.Reason);
+    }
+
     private static EntityId AddConstruct(SimFixture f, Vector3 origin)
     {
         var id = f.State.EntityIds.PeekNext();

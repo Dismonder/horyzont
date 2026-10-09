@@ -209,8 +209,14 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.AreaNotLoaded;
         }
 
-        if (BlockOverlap.TryGetConstructPose(state.Constructs, construct, FrameRef.Of(planet), out _, out var planetRotation)
-            && BlockOverlap.OverlapsConstruct(state.Constructs, FrameRef.Of(planet), cellCenter, planetRotation, construct.Id))
+        // The parent chain resolved to the planet above, so this fails only when it is nested deeper than the overlap test follows:
+        // such a construct cannot be checked against its neighbours, hence no block may be added to it.
+        if (!BlockOverlap.TryGetConstructPose(state.Constructs, construct, FrameRef.Of(planet), out _, out var planetRotation))
+        {
+            return RejectReason.WrongPlanet;
+        }
+
+        if (BlockOverlap.OverlapsConstruct(state.Constructs, FrameRef.Of(planet), cellCenter, planetRotation, construct.Id))
         {
             return RejectReason.CellOccupied;
         }
