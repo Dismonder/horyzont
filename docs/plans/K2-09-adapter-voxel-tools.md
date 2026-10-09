@@ -391,9 +391,9 @@ Testy silnika (Godot bez grafiki, Windows i Linux, job `game`):
 
 ## Kroki
 
-- [ ] 0. Warunki startu sprawdzone na `main` (bramka K1 (PR #9: B1–B3), K1-02B, K2-08 z K2-08A); faktyczne nazwy kontraktów K2-08 i stałej marginesu zapisane w „Odstępstwach”.
+- [x] 0. Warunki startu sprawdzone na `main` (bramka K1 (PR #9: B1–B3), K1-02B, K2-08 z K2-08A); faktyczne nazwy kontraktów K2-08 i stałej marginesu zapisane w „Odstępstwach”.
 - [x] 1. **Korpus złoty (D1), osobny commit przed jakąkolwiek zmianą w `src/`:** na niezmienionym `main` nagraj `tests/Horyzont.Core.Tests/Golden/TerrainJournals/` (dzienniki zakodowane kodekiem K1-04 + oczekiwane skróty `StateHasher` i listy wersji bloków) i `TerrainJournalGoldenCorpusTests`; test zielony na `main`. Od tej chwili pliki korpusu i testu są zamrożone.
-- [ ] 2. Rozpoznanie Voxel Tools `v1.7` na gałęzi (kod rozpoznania nie trafia do PR poza testami). Wyniki w „Odstępstwach”:
+- [x] 2. Rozpoznanie Voxel Tools `v1.7` na gałęzi (kod rozpoznania nie trafia do PR poza testami). Wyniki w „Odstępstwach”:
   - S1: `VoxelStreamScript` w C# dostaje wywołania wczytania i zapisu z wątków roboczych; zwrócony blok jest widoczny w terenie;
   - S2: nazwy API serializera bloków w C#; bajty w obie strony identyczne; typowy i największy rozmiar blobu z kanałami K2-08 (musi być ≤ 64 KiB z kopertą);
   - S3: edycja na `VoxelLodTerrain` jest synchroniczna, deterministyczna i nie wychodzi poza `AffectedBlocks` ze stałą marginesu; jak narzędzie zapisuje materiał przy `Add`;
@@ -402,16 +402,16 @@ Testy silnika (Godot bez grafiki, Windows i Linux, job `game`):
   - S6: czy istnieje podmiana bloku w `VoxelLodTerrain` (`paste` albo odpowiednik) — tylko raport dla K3-16;
   - S7: raycast po terenie gładkim: precyzja punktu i skąd normalna.
   - **Stop:** S1, S2 albo S3 nie przechodzi → zatrzymaj pakiet i eskaluj do Opus 5.5 z raportem. Ślad edycji większy niż margines oznacza zmianę stałej w Core (format operacji), a niedeterminizm — plan awaryjny z własną edycją SDF; żadnej z tych zmian nie robisz w tym pakiecie bez decyzji.
-- [ ] 3. Uprząż testów silnika z K2-08 (albo gdUnit4Net według „Kontraktów pobieranych”); job `game` uruchamia ją na Windows i Linux.
-- [ ] 4. Testy z obu tabel (czerwone).
+- [x] 3. Uprząż testów silnika z K2-08 (albo gdUnit4Net według „Kontraktów pobieranych”); job `game` uruchamia ją na Windows i Linux.
+- [x] 4. Testy z obu tabel (czerwone).
 - [ ] 5. Core: `TerrainRules.CheckEdit` i delegacja z `OperationApplier.CheckTerrainEdit`; `BlobKind.TerrainBlock`, koperta w `StateCodec`, `TerrainBlockBlob`; sygnatura `ApplyEdit` z wersjami, `OperationApplier`, `FakeTerrainService`; złote skróty i korpus złoty z kroku 1 bez zmian (inaczej podbicie formatu operacji, D1). Przegląd diffu Core przez Opus 5.5 w świeżej sesji przed dalszymi krokami.
 - [x] 6. Persistence: `ITerrainBlockSource`, `TerrainBlockLookup`, `TerrainBufferOptions`, `ServerTerrainBlocks`, `TerrainSemanticsMeta`, `TerrainLog`.
-- [ ] 7. Gra: `TerrainBlockCodec`, `TerrainEditSemantics`, `TerrainStream`, `PlanetTerrain`, `VoxelTerrainService` (mapa materiałów w konstruktorze, edycja z kopią, `IsAreaLoaded`, `Raycast` bez alokacji, `LoadAreaBlocking`, sprawdzenie wątku).
-- [ ] 8. `TerrainAreaLoader`, `TerrainReplay` z odrzucaniem wrogich wpisów przez `TerrainRules.CheckEdit` i sprawdzeniem wersji semantyki ogona.
-- [ ] 9. `DerivedLodCache`; raport S5 z zachowaniem odległych LOD-ów po restarcie (zrzuty ekranu w PR).
-- [ ] 10. Zamknięcie: `ShutdownAsync`, `CloseAsync` (wynik `false` → bez `TerrainBlockStore.Close()`), zgodnie z kanoniczną kolejnością K2-10.
+- [x] 7. Gra: `TerrainBlockCodec`, `TerrainEditSemantics`, `TerrainStream`, `PlanetTerrain`, `VoxelTerrainService` (mapa materiałów w konstruktorze, edycja z kopią, `IsAreaLoaded`, `Raycast` bez alokacji, `LoadAreaBlocking`, sprawdzenie wątku).
+- [x] 8. `TerrainAreaLoader`, `TerrainReplay` z odrzucaniem wrogich wpisów przez `TerrainRules.CheckEdit` i sprawdzeniem wersji semantyki ogona.
+- [x] 9. `DerivedLodCache`; raport S5 z zachowaniem odległych LOD-ów po restarcie (zrzuty ekranu w PR).
+- [x] 10. Zamknięcie: `ShutdownAsync`, `CloseAsync` (wynik `false` → bez `TerrainBlockStore.Close()`), zgodnie z kanoniczną kolejnością K2-10.
 - [x] 11. E1 i E2 (pomiar, ewentualne przeniesienie kopii z wątku zapisu).
-- [ ] 12. Test złoty semantyki edycji z `SemanticsVersion`, test wydajności; dopisanie wierszy do ZASADY pkt 3 (semantyka terenu, korpus złoty) i reguły „ITerrainService tylko na wątku głównym Godota” do ZASADY pkt 2.
+- [x] 12. Test złoty semantyki edycji z `SemanticsVersion`, test wydajności; dopisanie wierszy do ZASADY pkt 3 (semantyka terenu, korpus złoty) i reguły „ITerrainService tylko na wątku głównym Godota” do ZASADY pkt 2.
 - [ ] 13. Komentarze XML w Core i Persistence; lokalnie `dotnet build`, `dotnet test --filter "Category!=Soak&Category!=Manual"`, `dotnet format --verify-no-changes`, `python tools/engine/build.py smoke`; CI zielone na gałęzi (Windows i Linux, z jobem `game`).
 - [ ] 14. Po scaleniu: CI zielone na `main` (nie tylko na gałęzi; lekcja 4) i jeden zielony przebieg nocny (`Soak`) przed bramką K2. Krok niezrobiony przed scaleniem dostaje wpis „odroczone do X” (lekcja 5).
 
@@ -482,3 +482,131 @@ Testy z obu tabel przechodzą w CI na Windows i Linux, a CI na `main` po scaleni
 - Korpus złoty nie może zawierać wpisu „nieznany kształt lub tryb”, bo `OperationCodec` nie potrafi go zakodować. Ta gałąź jest pokryta tylko przez `TerrainRulesCheckEditTests`.
 - Uwaga przeglądu „Core podbija wersje, zanim bufor je zna”: przyjęta, to nie jest wada. `Bump`, `ApplyEdit` i `Record` wykonują się w jednym wywołaniu wątku serwera, gdy edytowane bloki są wczytane i edytowalne (`ApplyEdit` to sprawdza), więc równoległe wczytanie tych kluczy przez strumień nie może być w toku dla wczytanego bloku. Wczytanie w tym oknie zwraca poprzednią parę, spójną z danymi voxeli w tej chwili.
 - Reguła `TryLoad` (ponowne sprawdzenie): `ServerTerrainBlocks` trzyma najnowszą znaną wersję każdego klucza (z `savedVersions`, podnoszoną przez `Record`). Po chybieniu bufora i zapytaniu do SQLite odczyt pod blokadą sprawdza ponownie: wpis w buforze wygrywa; zmiana znanej wersji od początku próby powtarza całe wyszukiwanie (najwyżej 3 próby, potem `Unavailable` i log błędu); wiersz o wersji innej niż znana (albo brak wiersza) daje `Unavailable`, `FirstCorruptKey` i log błędu. `TryLoad` nigdy nie zwraca pary o wersji niższej od znanej w chwili powrotu.
+
+### Etap 2: adapter Voxel Tools (2026-10-09, Opus 5.5, gałąź `pakiet/k2-09-adapter-voxel` po scaleniu K2-08 i K2-12)
+
+**Krok 0, kontrakty K2-08 (faktyczne nazwy).** K2-08 nie jest jeszcze na `main`; ten etap korzysta z gałęzi K2-08 scalonej do gałęzi pakietu (`7a0866d`). Stała marginesu: `TerrainRules.EditMarginVoxels = 4`, limit promienia `TerrainRules.MaxEditRadiusMeters = 16`.
+
+| Nazwa robocza w planie | Nazwa w kodzie K2-08 |
+| --- | --- |
+| fabryka skonfigurowanego `VoxelLodTerrain` | `PlanetTerrainFactory.Create(PlanetParams, PlanetTerrainOptions, Material? = null)` (`game/src/Planet/PlanetTerrainFactory.cs`); serwer: `PlanetTerrainOptions.Server`; układ: `PlanetTerrainLayout` (`DataBlockSize = 16`, granice `BoundsHalfExtentVoxels`) |
+| układ kanałów | `TerrainChannels.Sdf` (`ChannelSdf`, 16 bitów), `TerrainChannels.Material` (`ChannelIndices`, 8 bitów), `TerrainChannels.UsedChannelsMask`, `TerrainChannels.CreateFormat()` |
+| mapa materiałów | `TerrainMaterialMap.Build(MaterialRegistry)`, `ToTextureIndex(byte)`, `TryGetMaterialId(byte, out byte)`; klucze `TerrainMaterials.Keys` (`core:stone`, `core:dirt`, `core:sand`, `core:ore`, `core:bedrock`) |
+| uprząż testów silnika | gdUnit4Net (`dotnet test game/Horyzont.Game.csproj --settings game/.runsettings` z `GODOT_BIN`), `game/tests/Support/EngineTestScene` (`Create`, `Add`, `WaitFrames`, `WaitFramesUntil`) |
+
+K2-12 wnosi też własny runner `-- --engine-tests` (`game/src/Testing/EngineTestRunner.cs`). Testy K2-09 są w uprzęży gdUnit4Net, a runner K2-12 dalej przechodzi (18 przeszło, 0 nie, 4 pominięte).
+
+**Krok 2, rozpoznanie S1–S7.** Kod rozpoznania nie trafił do PR. Wyniki pochodzą z przebiegu na edytorze `double` Windows: planeta `core:planet/1`, ziarno galaktyki `0x484F52595A4F4E54`, powierzchnia nad +X przy x = 3628.
+
+- **S1 (przechodzi).**
+  - API `VoxelStreamScript` w C#: `_LoadVoxelBlock(VoxelBuffer outBuffer, Vector3I positionInBlocks, int lod) → int`, `_SaveVoxelBlock(VoxelBuffer, Vector3I, int)`, `_GetUsedChannelsMask() → int`. Wynik wczytania to `VoxelStream.ResultCode`: `Error = 0`, `BlockNotFound = 1`, `BlockFound = 2`. Pozycja jest w blokach danego LOD-u, nie w voxelach.
+  - Wątki: przy wejściu do drzewa przyszło 2639 wywołań wczytania z 8 wątków roboczych, żadne z wątku głównego (LOD 0: 2318, LOD 1–10: 321).
+  - Blok zwrócony jako „znaleziony” jest widoczny w terenie (`GetVoxelF`, materiał). `outBuffer` to tymczasowe opakowanie; Voxel Tools przenosi jego dane do terenu po powrocie.
+  - Po `ResultCode.Error` Voxel Tools 1.7 drukuje błąd i zostawia w terenie pusty bufor, który staje się edytowalny (patrz niżej, krok 7, błąd strumienia).
+- **S2 (przechodzi).**
+  - API: `VoxelBlockSerializer.SerializeToByteArray(VoxelBuffer, Compression)` i `DeserializeFromByteArray(byte[] | ReadOnlySpan<byte>, VoxelBuffer, bool decompress)`.
+  - Kodowanie, dekodowanie i ponowne kodowanie dają identyczne bajty, z zstd i bez kompresji (64 bloki przy powierzchni po edycjach).
+  - Rozmiar z zstd: mediana 6418 B, maksimum 7011 B. Bez kompresji 12 315 B. Najgorszy przypadek (losowe bajty obu kanałów): 12 330 B z zstd. Z kopertą (7 B) to daleko poniżej 64 KiB.
+  - Odmowa deserializera nie rzuca wyjątku ani nie zwraca wyniku: tylko drukuje błąd i zostawia bufor bez zmian. Dlatego `TerrainBlockCodec.Decode` zmniejsza bufor do 1³ przed dekodowaniem, a potem sprawdza rozmiar 16³ i głębie kanałów (`ProtocolViolationException`).
+- **S3 (przechodzi).**
+  - Synchroniczność: `VoxelTool.DoSphere` na `VoxelLodTerrain` zmienia dane od razu, kopia zaraz po wywołaniu widzi zmianę. Jedna z 300 edycji niczego nie zmieniła (usuwanie w powietrzu).
+  - Determinizm: te same 300 edycji na dwóch świeżych terenach i w dwóch procesach daje ten sam skrót obszaru 96³.
+  - Ślad: 300 edycji (promień 0,5–3 m, środki na ścianach, krawędziach i narożnikach bloków) zmieniło 43 261 voxeli, z czego 0 poza blokami z `AffectedBlocks` ze stałą marginesu. Z kodu Voxel Tools: pudełko edycji to `[floor(c − r) − 2, ceil(c + r) + 2)`, czyli najwyżej r + 3 voxeli od środka na każdej osi. To mniej niż margines 4.
+  - Materiał: tryb SDF `Add` zapisuje wyłącznie kanał SDF; `TextureIndex` nic nie zmienia. Tryb `TexturePaint` pisze wagi 4 indeksów, czyli inny układ niż K2-08. Dlatego edycja `Add` to dwa wywołania: kula SDF, potem ta sama kula na kanale `ChannelIndices` z `Value` = indeks tekstury. Voxel Tools ustawia tę wartość dla voxeli ściśle wewnątrz kuli.
+- **S4.** `VoxelTool.IsAreaEditable(Aabb)` jest prawdziwe, gdy wczytane są wszystkie bloki LOD 0 pudełka (`VoxelData.is_area_loaded`). Obszar 14 m wokół świeżego widza (bez grafiki, odległość 128) był edytowalny po 29 klatkach, 234 ms. Uwaga: pudełko poza granicami terenu jest przycinane i wtedy jest „edytowalne” z definicji. Nie dotyczy to planet K2-08 z granicami ±16384.
+- **S5.**
+  - Przy wyładowaniu Voxel Tools zapisuje przez strumień bloki LOD 0 zmienione edycją oraz te bloki LOD > 0, których mipmapy przeliczył po edycjach.
+  - Liczba zapisów LOD > 0 zależy od tego, czy przeliczenie mipmap zdążyło przed wyładowaniem. Pierwszy przebieg po odejściu widza: LOD 0: 116, LOD 1: 23, LOD 2: 8, LOD 3: 4, LOD 4: 4. Drugi przebieg (inny moment wyładowania): LOD 0: 116, LOD 1: 1.
+  - Po powrocie widza bloki LOD 0 z zapisu dają identyczny skrót obszaru jak przed wyładowaniem.
+  - Wniosek dla `DerivedLodCache`: w sesji odległe LOD-y wracają z pamięci, o ile Voxel Tools je zapisał. Po restarcie pochodzą z generatora, dopóki Voxel Tools nie przeliczy ich z wczytanych bloków LOD 0.
+  - Zrzutów ekranu brak: rozpoznanie i testy działają bez grafiki (`--headless`). Wizualna ocena odległych LOD-ów zostaje przy Pytaniu do właściciela 1 (K3-16).
+- **S6.** Podmiana bloku istnieje: `VoxelTool.Paste(Vector3I dst, VoxelBuffer src, int channelsMask)` na `VoxelToolLodTerrain`. Sprawdza edytowalność, wkleja i zgłasza edycję (przeliczenie siatki i mipmap); sprawdzone wklejeniem bloku 16³. Jest też `PasteMasked`. To raport dla K3-16.
+- **S7.**
+  - `VoxelTool.Raycast` po terenie gładkim robi przejście DDA po voxelach, potem wyszukiwanie binarne po interpolowanym SDF (`SetRaycastBinarySearchIterations`). Normalna pochodzi z gradientu SDF (`SetRaycastNormalEnabled`).
+  - Metoda zwraca obiekt `VoxelRaycastResult` (RefCounted), czyli 408 B alokacji zarządzanej na wywołanie. Dlatego `VoxelTerrainService.Raycast` robi własny marsz (D16).
+  - Własny marsz: krok `RaycastStepMeters = 0,5 m`. Próbka to trilinearna interpolacja 8 wartości `VoxelTool.GetVoxelF(Vector3I)` (0 B alokacji na wywołanie). Po zmianie znaku 10 iteracji wyszukiwania binarnego (`RaycastBinarySearchIterations`, ok. 0,5 mm). Normalna z różnic centralnych tej samej próbki (±1 m); przy zerowym gradiencie normalna jest przeciwna do kierunku promienia. Punkt startowy w materiale daje trafienie w odległości 0.
+  - Na płaskim gruncie błąd punktu i odległości jest poniżej 1 cm, a normalna ma `y > 0,999` (test `Raycast_FlatGround_PreciseHitAndNormal`).
+
+**Kroki 3–4 (testy).**
+- Uprząż to gdUnit4Net z K2-08, bez zmian w paczkach.
+- Testy silnika są w `game/tests/Terrain/`: `TerrainCodecTests`, `TerrainEditTests`, `TerrainStreamTests`, `TerrainReplayTests`, `TerrainSemanticsTests` (30 przypadków).
+- Pomocnik `TerrainTestWorld` składa plik świata, `ServerTerrainBlocks`, prawdziwy `VoxelTerrainService`, teren z fabryki K2-08 z płaskim generatorem `VoxelGeneratorFlat` na wysokości 4000 m (promień planety), writer, symulację i przepływ checkpointu z planu. Do tego `CrashFaults`.
+- Testy i kod powstały w jednym kroku; najpierw testy nie kompilowały się, bo brakowało typów. Że testy łapią błędy, sprawdziłem mutacją: pominięcie `Record` dla jednego bloku na edycję dało 10 czerwonych testów. Zielone zostały tylko te, które nie czytają bufora, np. pełna powtórka bez checkpointu.
+- `Edit_Footprint_WithinVersionedBlocks` liczy zmienione voxele w pudełku o blok większym niż bloki z wersjami: 1000 edycji, 0 zmian poza wersjami.
+- `IsAreaLoaded_Saturated_ReturnsFalse` przechodzi przez prawdziwy walidator intencji (`AreaNotLoaded`) i sprawdza powrót po zatwierdzonym checkpoincie.
+- `Restart_CheckpointPlusTail_EqualsLive` ma cztery warianty z planu: zamknięcie z checkpointem; awaria po `FlushAsync` bez checkpointu; checkpoint i ogon; `SimulatedCrashException` w `CheckpointMidTransaction` drugiego checkpointu. Porównuje wersje, `StateHasher` i `TerrainDigest`.
+
+**Odstępstwo: `LoadAreaBlocking_NotPreloaded_ThrowsWithoutFault`.**
+- Plan zakłada, że `ServerSimulation.Replay` woła `LoadAreaBlocking` poza `try`. W Core (od K1-03, bez zmian w tym pakiecie) wywołanie jest wewnątrz `try`. Test Core `TerrainEditLimitsTests.Replay_TerrainLoadFails_FaultsSimulation` wprost wymaga stanu awarii po błędzie ładowania.
+- Plan i kod są sprzeczne, więc Core nie zmieniłem (ZASADY pkt 1 i 3). Test silnika nazywa się `LoadAreaBlocking_NotPreloaded_Throws` i sprawdza tylko wyjątek `InvalidOperationException` („not preloaded”) bez zmiany stanu.
+- W praktyce `TerrainReplay` zawsze ładuje obszar przed `Replay`, więc ta ścieżka oznacza błąd w kodzie.
+- **Decyzja prowadzącego (Opus 5.5, 2026-10-09):** zostaje jak w Core — awaria symulacji po błędzie ładowania jest zamierzona (decyzja z K1, test `Replay_TerrainLoadFails_FaultsSimulation`). `TerrainReplay` ładuje obszar przed `Replay`, więc ta ścieżka oznacza błąd w kodzie startu, a start serwera i tak kończy się błędem z numerem operacji. Bez zmiany Core.
+
+**Krok 7 (gra), decyzje.**
+- `TerrainEditSemantics`: `SemanticsVersion = 1`, `VoxelRef = "v1.7"`, `VoxelFormat = 1`, `SdfScale = 1`, `SdfStrength = 1`, `MaterialSphereRadiusOffset = 0`, `RaycastStepMeters = 0,5`, `RaycastBinarySearchIterations = 10`, `BlobCompression = Zstd`, `Current` = `"1|voxel=v1.7"`.
+- `VoxelRef` jest stałą, bo `engine/engine.json` nie trafia do buildów gry. Test `Semantics_VoxelRef_MatchesEngineJsonAndRuntime` porównuje ją z `engine.json` i z wersją modułu w działającym silniku (`VoxelEngine.GetVersionMajor/Minor`), więc podbicie `voxel.ref` bez zmiany stałej pada.
+- Odstępstwo: `TerrainBlockCodec.Digest` liczy XxHash64 z rozpakowanych kanałów (`GetChannelAsByteArray`: SDF, potem materiał), a nie z serializacji bez kompresji jak w planie. Powód: serializator zapisuje kanał jednorodny jako jedną wartość, a ten sam blok po edycji (rozpakowany) inaczej, więc jego bajty nie są kanoniczne. Pilnuje tego test `Codec_Digest_IgnoresUniformCompression`.
+- `TerrainBlockCodec` ma metody instancyjne, bo plan przekazuje obiekt w konstruktorze `VoxelTerrainService`; CA1822 jest wyłączone z uzasadnieniem. `TerrainStream` ma wyłączone CA1711 (sufiks `Stream` pochodzi z nazwy w planie).
+- `TerrainVectors.ToGodot/ToCore` to jedyny pomocnik konwersji `System.Numerics.Vector3` ↔ `Godot.Vector3`.
+- Odstępstwo: wszystkie sprawdzenia obszaru (`IsAreaLoaded`, `LoadAreaBlocking`, ładowanie przy powtórce) używają pudełka całych bloków LOD 0, a nie samego AABB `[c − r, c + r]`. Pudełko biegnie od bloku `floor((c − e)/16)` do `floor((c + e)/16)` i jest liczone przez `TerrainMath.AffectedBlocks` z promieniem 0 w narożnikach (te same operacje float co `AffectedBlocks` z marginesem). To ostrzejsze niż plan i równe zbiorowi bloków, który `ApplyEdit` sprawdza przed edycją. Dzięki temu intencja przyjęta przez walidator nie może paść w `ApplyEdit` na edytowalności.
+- `ApplyEdit` przed pierwszą zmianą sprawdza kolejno: planetę, kształt i tryb, materiał w mapie (`ToTextureIndex`), równość `versions` z `AffectedBlocks` (liczba i klucze po kolei) oraz edytowalność pudełka bloków. Potem wykonuje edycję, kopiuje każdy blok z `versions` (`VoxelTool.Copy` do jednego bufora 16³ trzymanego w polu), koduje go (`Encode`) i woła `ServerTerrainBlocks.Record`.
+- Odstępstwo: `IsAreaLoaded` zwraca `false` także wtedy, gdy strumień planety zgłosił błąd (`TerrainStream.FirstError`; log raz na planetę). Powód (S1): po `ResultCode.Error` Voxel Tools wstawia pusty, edytowalny blok, a edycja na nim zapisałaby śmieci z nową wersją. Pełna reakcja zostaje przy Pytaniu do właściciela 2. `VoxelTerrainService.FirstStreamError` udostępnia klucz dla K2-10.
+- Wątek: każda metoda `ITerrainService` rzuca `InvalidOperationException`, gdy `OS.GetThreadCallerId() != OS.GetMainThreadId()` (test `TerrainService_OtherThread_Throws`).
+- `TerrainStream` nie ma pól statycznych. Każdy wyjątek w wywołaniu strumienia jest logowany i zamieniany na `Error`, bo wyjątek nie może przejść do wątku Voxel Tools. Konstruktor bez parametrów (wymóg Godota) tworzy strumień zamknięty.
+- W kompilacji `DEBUG` zapis LOD 0 porównuje skrót danych z parą z bufora: `ThreadLocal<VoxelBuffer>` w polu instancji, licznik `SaveMismatches`, log błędu. W testach wyładowania licznik jest 0.
+- `VoxelTerrainService` implementuje `IDisposable` (zwalnia bufor kopii). Ma też `TryCopyBlock` (kopia wczytanego bloku LOD 0 dla testów i diagnostyki) i wewnętrzne `IsAreaEditable` do ładowania, które pomija nasycenie i błąd strumienia.
+- `AddPlanet` odrzuca też węzeł, który ma już strumień albo jest w drzewie, oraz powtórzoną planetę (`InvalidOperationException`).
+
+**Krok 8.**
+- Odstępstwo: `TerrainAreaLoader` trzyma jednego widza na planetę i przesuwa go do kolejnego obszaru. Wszystkich widzów usuwa dopiero `ReleaseViewers()`, a plan mówi „usuwa widza” po każdym obszarze. Powód: po usunięciu widza Voxel Tools może wyładować bloki w następnej klatce, a kontynuacja `await` z powtórką może przyjść po tej klatce. Trzymany widz gwarantuje, że obszar jest wczytany w chwili `Replay`.
+- `TerrainReplay.ReplayAsync` woła `ReleaseViewers()` w `finally`; przekroczenie terminu też usuwa widza. Odległość widza to `ceil(r) + 32`, a termin liczy `TimeProvider`.
+- Odstępstwo w sygnaturze: `TerrainReplay.ReplayAsync(simulation, tail, loader, savedSemantics, ct)` zwraca `Task<TerrainTailCheck>` i ma dodatkowy parametr `savedSemantics` (ciąg z `TerrainSemanticsMeta.Read`). Najpierw woła `TerrainSemanticsMeta.CheckTail` z `TerrainEditSemantics.Current`. Przy niezgodności nic nie jest powtarzane (żadnego `ApplyEdit`), a wynik trafia do K2-10 (tryb bezpieczny).
+- Wpis z dysku z nieznaną planetą (komunikat `unknown planet`, jak w `OperationApplier`) albo odrzucony przez `TerrainRules.CheckEdit` daje `ReplayFailedException` z numerem operacji, zanim powstanie widz.
+
+**Krok 9.** `DerivedLodCache` ma `MaxBlocks = 8192`; najstarsze wpisy wypadają, a zastąpienie wpisu odświeża jego miejsce w kolejce. Klasa jest bezpieczna wątkowo i odrzuca klucze LOD 0. Raport S5 jest wyżej; zrzutów ekranu brak.
+
+**Krok 10.**
+- Odstępstwo w sygnaturze: `VoxelTerrainService.ShutdownAsync()` zwraca `Task<bool>`, a plan podaje `Task`. Metoda zamyka strumienie wszystkich planet (od tej chwili każde wywołanie zwraca `Error` bez odczytu), potem czeka na `ServerTerrainBlocks.CloseAsync()` i zwraca jego wynik.
+- Wywołujący (K2-10) woła `TerrainBlockStore.Close()` tylko przy `true`. Przy `false` magazyn zostaje otwarty do końca procesu. Tak robi pomocnik testów (`TerrainTestWorld.DisposeAsync`).
+- Test `Shutdown_StreamCallsAfterClose_ReturnErrorWithoutStore` sprawdza też zwolnienie węzła terenu po zamknięciu magazynu.
+
+**Krok 12.**
+- `EditSemantics_GoldenDigest`: płaski generator i 50 stałych edycji (dodaj i usuń, wszystkie materiały, promienie 0,5–3 m, ściany, krawędzie i narożniki bloków, ujemne współrzędne). `RecordedSemanticsVersion = 1`, skrót `0x915455B1D651C6C8` (Windows; dwa przebiegi dały ten sam wynik). Linux nie jest sprawdzony lokalnie; wynik da dopiero job `game` w CI.
+- `ApplyEdit_Radius3_TimeBudget` ma `[TestCategory("Slow")]`, bo gdUnit4 nie zna `Trait`. Mierzy 500 edycji promienia 3 m tuż przy narożniku bloku (8 bloków kopiowanych i kodowanych na edycję) po 20 rozgrzewkowych. AMD Radeon RX 9070 XT, Windows 11, edytor `double` w Debug: mediana 0,359 ms, p99 0,645 ms, maksimum 19,5 ms (pojedynczy skok, prawdopodobnie GC albo wątek Voxel Tools). Limit planu: mediana ≤ 1 ms, p99 ≤ 3 ms.
+- Wiersze ZASADY pkt 2 i 3 dopisał etap 1.
+
+**Krok 13 (część lokalna).** Lokalnie zielone:
+- `dotnet build Horyzont.sln`;
+- `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"` (1307 testów);
+- `dotnet format Horyzont.sln --verify-no-changes`;
+- `dotnet build` i `dotnet format --verify-no-changes` projektu gry;
+- test dymny `--smoke` (BOOT OK);
+- testy silnika gdUnit4Net (72, w tym 30 z K2-09);
+- runner K2-12 `--engine-tests` (18 przeszło, 0 nie);
+- pusty `git diff cad1f70..HEAD` na korpusie złotym.
+
+CI na gałęzi (Windows i Linux) nie jest sprawdzone, bo gałąź nie była wypychana. Dlatego krok 13 zostaje otwarty.
+
+**Poprawka po scaleniu K2-12.** Zaślepka `NoTerrain` w `game/tests/Constructs/ConstructTestWorld.cs` miała starą sygnaturę `ApplyEdit`, więc po scaleniu gra się nie budowała. Poprawiłem ją osobnym commitem.
+
+### Poprawki po przeglądzie GPT-6.1 Sol (gra) (2026-10-09, Opus 5.5)
+
+- **[P1] Błąd strumienia blokował tylko `IsAreaLoaded`.**
+  - Scenariusz: zapisany blok z wersją jest uszkodzony albo niedostępny. Voxel Tools wstawia wtedy pusty, edytowalny blok (S1). Edycja z ogona dziennika na tym bloku przechodziła sprawdzenie edytowalności, wersje rosły, a dane z pustego bloku trafiały do `Record`, potem do checkpointu. Teren ginął trwale.
+  - Poprawka: nowa właściwość `VoxelTerrainService.FirstFault` (`FirstStreamError`, a gdy jego brak, `ServerTerrainBlocks.FirstCorruptKey`). Gdy jest ustawiona, `ApplyEdit` i `LoadAreaBlocking` rzucają `InvalidOperationException` z kluczem bloku, zanim cokolwiek zmienią. `IsAreaLoaded` zwraca `false`. `TerrainAreaLoader.EnsureLoadedAsync` sprawdza flagę przed czekaniem, w każdej klatce i po załadowaniu obszaru (blok z błędem staje się edytowalny dopiero po zgłoszeniu błędu, więc flaga już stoi). Blokada działa do końca sesji; reakcja K2-10 zostaje przy Pytaniu do właściciela 2.
+  - Testy: `StreamFault_ApplyEditAndLoadAreaBlocking_ThrowWithoutChange` (dwa warianty: usunięty wiersz w trakcie sesji, czyli `Unavailable` i `FirstCorruptKey`, oraz dane nie do zdekodowania). Sprawdza wyjątki z kluczem, brak wpisu w buforze i niezmieniony skrót terenu. `Replay_EditOverCorruptBlock_FailsFastWithoutRecord`: uszkodzony blok z checkpointu i edycja ogona nad nim; powtórka kończy się wyjątkiem z kluczem, bez `Record`, bez awarii symulacji, ze stanem z checkpointu.
+  - Uwaga do testu: usunięcie wiersza między sesjami nie daje uszkodzenia, bo `WorldLoader` czyta wersje z tych samych wierszy `terrain_blocks` (blok wraca wtedy do generatora razem z wersją). Dlatego test powtórki nadpisuje dane bajtami nie do zdekodowania.
+- **[P1] Deserializer Voxel Tools zmienia bufor przed walidacją.**
+  - Voxel Tools v1.7 ustawia rozmiar i głębie kanałów, zanim sprawdzi resztę danych. Ładunek z uciętym kanałem materiału i poprawnym znacznikiem końca przechodził więc sprawdzenie rozmiaru i głębi, a strumień zwracał „znaleziono”. API w C# nie zwraca wyniku deserializacji (`void`).
+  - Poprawka: `TerrainBlockCodec.Decode` dekoduje do bufora roboczego (`ThreadLocal<VoxelBuffer>` w instancji, z `trackAllValues`; kodek jest teraz `IDisposable`). Potem serializuje ten bufor ponownie i wymaga równości bajtów, a dopiero wtedy kopiuje kanały do bufora wywołującego (`SetChannelDepth` i `CopyChannelFrom`). Każdy błąd daje `ProtocolViolationException`, czyli wynik „błąd” strumienia i flagę.
+  - Odstępstwo od zalecenia „ta sama kompresja”: porównuję serializację bez kompresji z rozpakowanym ładunkiem (nagłówek `CompressedData`: 0 = brak kompresji, 3 = zstd przez `GD.Decompress`; inne nagłówki i rozmiar ponad 262 167 B są odrzucane). Siła sprawdzenia jest ta sama, bo S2 pokazał bajtową identyczność także bez kompresji. Porównanie bajtów zstd zamieniłoby wszystkie zapisane bloki w „uszkodzone”, gdyby nowsza wersja zstd w silniku kompresowała inaczej.
+  - Testy: `Codec_Decode_TruncatedChannelWithTrailingMagic_ThrowsProtocolViolation`, `Stream_TruncatedChannelWithTrailingMagic_ReportsErrorAndFlag` (wynik `Error`, `FirstError` = klucz, `ErrorCount` = 1). Przed poprawką oba były czerwone.
+- **[P2] Marsz promienia o stałym kroku przeskakiwał cienkie bryły.**
+  - Kontrprzykład z przeglądu: voxel (0, 0, 0) z SDF −1, sąsiedzi +1, promień wzdłuż +X przy y = z = 0,25 od x = −0,25. Bryła to −1/9 < x < 1/9, a obie próbki co 0,5 m dawały +0,156.
+  - Poprawka: sphere tracing. Krok = SDF × `RaycastSdfStepFactor` (0,5) / `SdfScale`, najmniej `RaycastMinStepMeters` (0,1 m, czyli 0,1 voxela), najwyżej `RaycastMaxSteps` (1024) kroków. Dalej wyszukiwanie binarne jak dotąd (`RaycastBinarySearchIterations = 10`). Kierunek jest normalizowany. `RaycastStepMeters` usunięty. Stałe są w `TerrainEditSemantics` z dopiskiem, że `Raycast` nie należy do powtórki, więc `SemanticsVersion` zostaje 1.
+  - Testy: `Raycast_ThinSolidBetweenSamples_Hits` (trafienie przy x ≈ −1/9 z tolerancją 1 cm; przed poprawką czerwony). `Raycast_NoManagedAllocation` i `Raycast_FlatGround_PreciseHitAndNormal` zostają zielone, `EditSemantics_GoldenDigest` też (bez zmian w teście).
+- **[P2] Skrót z bajtów w kolejności hosta.**
+  - Poprawka: `Digest` zamienia wartości kanałów szerszych niż 1 B na little-endian (`ToLittleEndian`, zamiana tylko przy `!BitConverter.IsLittleEndian`). Dotyczy to także kanału jednorodnego rozwiniętego przez `GetChannelAsByteArray`.
+  - Testy: `Digest_ChannelBytes_LittleEndianOnEveryHost` (logika zamiany dla obu kolejności). Złoty skrót na x86_64 dalej wynosi `0x915455B1D651C6C8`. Ścieżki big-endian nie da się uruchomić lokalnie.
+- Starsze wpisy wyżej (S2: „zmniejsza bufor do 1³”, S7 i krok 7: `RaycastStepMeters = 0,5`) opisują stan przed tymi poprawkami.
+- Walidacja lokalna: `dotnet build` i `dotnet test` rozwiązania (1307), `dotnet format` rozwiązania i gry, `--smoke` (BOOT OK), testy silnika gdUnit4Net (79, w tym 37 z K2-09), runner K2-12 `--engine-tests` (18 przeszło, 0 nie), pusty `git diff cad1f70..HEAD` na korpusie złotym. `ApplyEdit_Radius3_TimeBudget` raz przekroczył p99 (3,3 ms przy limicie 3 ms) w pełnym przebiegu pod obciążeniem maszyny. Trzy kolejne osobne przebiegi: mediana 0,31–0,37 ms, p99 0,70–1,00 ms.

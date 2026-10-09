@@ -10,6 +10,20 @@
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <GodotFloat64>true</GodotFloat64>
   </PropertyGroup>
+  <PropertyGroup>
+    <RunSettingsFilePath>$(MSBuildProjectDirectory)/.runsettings</RunSettingsFilePath>
+  </PropertyGroup>
+  <!-- Engine tests (K2-08) and their packages must not reach the game and server exports. -->
+  <ItemGroup Condition="'$(Configuration)' != 'ExportDebug' And '$(Configuration)' != 'ExportRelease'">
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="gdUnit4.api" />
+    <PackageReference Include="gdUnit4.test.adapter" />
+    <PackageReference Include="gdUnit4.analyzers" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(Configuration)' == 'ExportDebug' Or '$(Configuration)' == 'ExportRelease'">
+    <Compile Remove="tests/**" />
+    <Compile Remove="gdunit4_testadapter_v5/**" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../src/Horyzont.Core/Horyzont.Core.csproj" />
     <ProjectReference Include="../src/Horyzont.Persistence/Horyzont.Persistence.csproj" />
