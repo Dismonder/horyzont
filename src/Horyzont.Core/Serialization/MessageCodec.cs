@@ -303,9 +303,9 @@ public static class MessageCodec
                     w.WriteSingle(input.Yaw);
                     w.WriteSingle(input.Pitch);
 
-                    if (((ushort)input.Buttons & ~0x1F) != 0)
+                    if (((ushort)input.Buttons & ~ProtocolConstants.InputButtonsMask) != 0)
                     {
-                        throw new ArgumentException($"InputButtons contains bits outside 0x1F mask ({(ushort)input.Buttons}).", nameof(message));
+                        throw new ArgumentException($"InputButtons contains bits outside the 0x{ProtocolConstants.InputButtonsMask:X} mask ({(ushort)input.Buttons}).", nameof(message));
                     }
 
                     w.WriteUInt16((ushort)input.Buttons);
@@ -629,9 +629,9 @@ public static class MessageCodec
                     float yaw = r.ReadSingle();
                     float pitch = r.ReadSingle();
                     ushort buttons = r.ReadUInt16();
-                    if ((buttons & ~0x1F) != 0)
+                    if ((buttons & ~ProtocolConstants.InputButtonsMask) != 0)
                     {
-                        throw new ProtocolViolationException($"InputButtons contains bits outside 0x1F mask ({buttons}).");
+                        throw new ProtocolViolationException($"InputButtons contains bits outside the 0x{ProtocolConstants.InputButtonsMask:X} mask ({buttons}).");
                     }
 
                     inputs[i] = new PlayerInput(cTick, moveX, moveY, yaw, pitch, (InputButtons)buttons);

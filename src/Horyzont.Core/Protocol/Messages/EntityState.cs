@@ -16,7 +16,10 @@ namespace Horyzont.Core.Protocol.Messages;
 /// <param name="Position">Position.</param>
 /// <param name="Rotation">Rotation.</param>
 /// <param name="Velocity">Velocity.</param>
-/// <param name="MotionFlags">Motion flags.</param>
+/// <param name="MotionFlags">
+/// Motion flags. For a player this is <c>(byte)Horyzont.Core.Motion.MovementMode</c> (0 frozen, 1 walking, 2 sprinting, 3 jumping,
+/// 4 falling, 5 developer flight); a client treats a larger value as falling and logs it. The byte format is unchanged.
+/// </param>
 public readonly record struct EntityState(
     EntityId Entity, EntityStateFields Fields, byte FrameIndex, uint ParentSeq, Vector3 Position, Quaternion Rotation, Vector3 Velocity,
     byte MotionFlags);
