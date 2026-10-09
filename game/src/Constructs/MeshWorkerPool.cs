@@ -17,6 +17,15 @@ internal sealed class MeshJobSlot : IDisposable
 
     public RemeshJob Job { get; set; }
 
+    /// <summary>Set on the main thread before submitting: the worker also builds the render arrays.</summary>
+    public bool WantsMesh { get; set; }
+
+    /// <summary>Set on the main thread before submitting: the worker also builds the collision shape.</summary>
+    public bool WantsCollision { get; set; }
+
+    /// <summary>Godot arrays and points built by the worker from <see cref="Output"/> (null until then, and after the main thread took them).</summary>
+    public ChunkMeshUploader.PreparedChunk? Prepared { get; set; }
+
     /// <summary>The exception thrown by the mesher on a worker thread, or null.</summary>
     public Exception? Failure { get; set; }
 
@@ -106,7 +115,12 @@ internal sealed partial class MeshWorkerPool : IDisposable
     }
 
     /// <summary>Main thread: gives a slot back after its result was applied or dropped.</summary>
-    public void ReturnSlot(MeshJobSlot slot) => _free.Push(slot);
+    public void ReturnSlot(MeshJobSlot slot)
+    {
+        slot.Prepared?.Dispose();
+        slot.Prepared = null;
+        _free.Push(slot);
+    }
 
     /// <summary>Cancels the workers without waiting (scene teardown).</summary>
     public void Cancel()
@@ -170,6 +184,7 @@ internal sealed partial class MeshWorkerPool : IDisposable
                 try
                 {
                     mesher.Build(slot.Input, _table, slot.Output);
+                    slot.Prepared = ChunkMeshUploader.Prepare(slot.Output, slot.WantsMesh, slot.WantsCollision);
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {

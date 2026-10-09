@@ -319,7 +319,7 @@ public sealed partial class ConstructWorld : Node3D
         var pool = _pool!;
         while (pool.HasFreeSlot && _queue.TryStartNext(out var job))
         {
-            if (!_entries.ContainsKey(job.Key.Construct))
+            if (!_entries.TryGetValue(job.Key.Construct, out var entry))
             {
                 _queue.Complete(job);
                 continue;
@@ -339,6 +339,8 @@ public sealed partial class ConstructWorld : Node3D
             }
 
             slot.Job = job;
+            slot.WantsMesh = _visuals is not null;
+            slot.WantsCollision = entry.Collision;
             pool.Submit(slot);
         }
     }
@@ -351,9 +353,17 @@ public sealed partial class ConstructWorld : Node3D
             return;
         }
 
-        var data = slot.Output;
-        var points = entry.Collision ? ChunkMeshUploader.CopyCollisionPoints(data) : null;
-        var hasMesh = _visuals is not null && (!data.Cubes.IsEmpty || !data.Shapes.IsEmpty);
+        var uploadStart = Stopwatch.GetTimestamp();
+        var prepared = slot.Prepared;
+        if (prepared is null)
+        {
+            return;
+        }
+
+        // The worker copied the arrays; points are only missing when collision was switched on after the job started.
+        var points = entry.Collision ? prepared.Points ?? (prepared.HasCollisionFaces ? ChunkMeshUploader.CopyCollisionPoints(slot.Output) : null) : null;
+
+        var hasMesh = _visuals is not null && prepared.HasMesh;
         if (!hasMesh && points is null)
         {
             ApplyEmpty(key);
@@ -361,7 +371,8 @@ public sealed partial class ConstructWorld : Node3D
         }
 
         var chunk = entry.Node.GetOrCreateChunk(key.Chunk);
-        chunk.ApplyMesh(data, _visuals);
+        chunk.ApplyMesh(prepared.Cubes, prepared.Shapes, _visuals);
+        ApplyTimings.AddUpload(uploadStart);
         if (points is null)
         {
             _collisionPoints.Remove(key); // a queued older shape would be stale (the chunk lost its collision faces)
@@ -388,7 +399,9 @@ public sealed partial class ConstructWorld : Node3D
             return; // the construct was unloaded, or left the collision range, while the shape waited
         }
 
+        var collisionStart = Stopwatch.GetTimestamp();
         entry.Node.GetOrCreateChunk(key.Chunk).ApplyCollision(points);
+        ApplyTimings.AddCollision(collisionStart);
         ChunkMeshApplied?.Invoke(key.Construct, key.Chunk);
     }
 
@@ -479,9 +492,9 @@ public sealed partial class ConstructWorld : Node3D
     {
         distance = 0;
         collision = true;
-        if (!_source.TryGetPose(id, out var pose))
+        if (!_source.TryGetPose(id, out var pose) || pose.Parent != _frame)
         {
-            return false;
+            return false; // gone, or in a frame that is not the shown one
         }
 
         if (_viewers.Count > 0)

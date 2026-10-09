@@ -24,3 +24,7 @@ project/assembly_name="Horyzont.Game"
 3d_physics/layer_2="constructs"
 3d_physics/layer_3="server_bodies"
 3d_physics/layer_4="client_bodies"
+
+[physics]
+
+3d/physics_engine="Jolt Physics"

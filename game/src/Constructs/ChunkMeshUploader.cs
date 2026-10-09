@@ -6,24 +6,86 @@ namespace Horyzont.Game.Constructs;
 
 /// <summary>
 /// Copies mesher output into Godot resources. Godot needs managed arrays of exact length, so every upload allocates: that is a
-/// cost per change, not per frame (ZASADY pkt 6 applies to the mesher, which is allocation-free).
+/// cost per change, not per frame (ZASADY pkt 6 applies to the mesher, which is allocation-free). The array copies are made by
+/// <see cref="Prepare"/> on a worker thread (plain managed memory and Godot value arrays, no server calls); everything that talks
+/// to a Godot server (mesh surfaces, collision shapes) stays on the main thread.
 /// </summary>
 public static class ChunkMeshUploader
 {
+    /// <summary>Everything a worker thread can build from one mesher result without touching the scene.</summary>
+    public sealed class PreparedChunk : IDisposable
+    {
+        /// <summary>Surface arrays of the cubes, or null when there are none (or no mesh was requested).</summary>
+        public Godot.Collections.Array? Cubes { get; init; }
+
+        /// <summary>Surface arrays of the prefab shapes, or null.</summary>
+        public Godot.Collections.Array? Shapes { get; init; }
+
+        /// <summary>The collision triangle points (three per triangle), or null when there are none (or none were requested).</summary>
+        public Vector3[]? Points { get; set; }
+
+        /// <summary>True when the mesher output had collision faces (whether or not a shape was requested).</summary>
+        public bool HasCollisionFaces { get; init; }
+
+        /// <summary>True when there is a render surface to upload.</summary>
+        public bool HasMesh => Cubes is not null || Shapes is not null;
+
+        /// <inheritdoc />
+        public void Dispose()
+        {
+            Cubes?.Dispose();
+            Shapes?.Dispose();
+        }
+    }
+
+    /// <summary>Builds the surface arrays and the collision points from mesher output (safe on a worker thread).</summary>
+    /// <param name="data">Mesher output.</param>
+    /// <param name="withMesh">Build the surface arrays.</param>
+    /// <param name="withCollision">Copy the collision points.</param>
+    /// <returns>The prepared objects.</returns>
+    public static PreparedChunk Prepare(ChunkMeshData data, bool withMesh, bool withCollision)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        return new PreparedChunk
+        {
+            Cubes = withMesh ? BuildArrays(data.Cubes) : null,
+            Shapes = withMesh ? BuildArrays(data.Shapes) : null,
+            Points = withCollision ? CopyCollisionPoints(data) : null,
+            HasCollisionFaces = !data.CollisionFaces.IsEmpty,
+        };
+    }
+
     /// <summary>Creates a mesh with one surface per non-empty render surface (cubes, then prefab shapes), or null when none.</summary>
     /// <param name="data">Mesher output.</param>
     /// <returns>The mesh.</returns>
     public static ArrayMesh? CreateMesh(ChunkMeshData data)
     {
         ArgumentNullException.ThrowIfNull(data);
-        if (data.Cubes.IsEmpty && data.Shapes.IsEmpty)
+        return CreateMesh(BuildArrays(data.Cubes), BuildArrays(data.Shapes));
+    }
+
+    /// <summary>Creates a mesh from prepared surface arrays (main thread), or null when both are null.</summary>
+    /// <param name="cubes">Cube surface arrays.</param>
+    /// <param name="shapes">Prefab shape surface arrays.</param>
+    /// <returns>The mesh.</returns>
+    public static ArrayMesh? CreateMesh(Godot.Collections.Array? cubes, Godot.Collections.Array? shapes)
+    {
+        if (cubes is null && shapes is null)
         {
             return null;
         }
 
         var mesh = new ArrayMesh();
-        AddSurface(mesh, data.Cubes);
-        AddSurface(mesh, data.Shapes);
+        if (cubes is not null)
+        {
+            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, cubes);
+        }
+
+        if (shapes is not null)
+        {
+            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, shapes);
+        }
+
         return mesh;
     }
 
@@ -57,11 +119,11 @@ public static class ChunkMeshUploader
         return new ConcavePolygonShape3D { Data = points, BackfaceCollision = false };
     }
 
-    private static void AddSurface(ArrayMesh mesh, MeshSurface surface)
+    private static Godot.Collections.Array? BuildArrays(MeshSurface surface)
     {
         if (surface.IsEmpty)
         {
-            return;
+            return null;
         }
 
         var count = surface.VertexCount;
@@ -88,6 +150,6 @@ public static class ChunkMeshUploader
         arrays[(int)Mesh.ArrayType.TexUV] = uvs;
         arrays[(int)Mesh.ArrayType.TexUV2] = uv2;
         arrays[(int)Mesh.ArrayType.Index] = surface.Indices.ToArray();
-        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        return arrays;
     }
 }

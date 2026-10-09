@@ -1,6 +1,5 @@
 using Godot;
 
-using Horyzont.Constructs.Meshing;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Game.Physics;
 
@@ -41,12 +40,12 @@ public sealed partial class ConstructChunkNode : Node3D
     public bool IsEmpty => _meshInstance is null && _body is null;
 
     /// <summary>Replaces the render mesh with the mesher output (main thread). Without visuals (collision-only mode) no mesh is kept.</summary>
-    /// <param name="data">Mesher output.</param>
+    /// <param name="cubes">Prepared cube surface arrays, or null.</param>
+    /// <param name="shapes">Prepared prefab shape surface arrays, or null.</param>
     /// <param name="visuals">Materials; null in collision-only mode.</param>
-    public void ApplyMesh(ChunkMeshData data, BlockVisuals? visuals)
+    public void ApplyMesh(Godot.Collections.Array? cubes, Godot.Collections.Array? shapes, BlockVisuals? visuals)
     {
-        ArgumentNullException.ThrowIfNull(data);
-        var mesh = visuals is null ? null : ChunkMeshUploader.CreateMesh(data);
+        var mesh = visuals is null ? null : ChunkMeshUploader.CreateMesh(cubes, shapes);
         if (mesh is null)
         {
             ClearMesh();
@@ -63,7 +62,7 @@ public sealed partial class ConstructChunkNode : Node3D
     }
 
     /// <summary>Replaces the collision shape (main thread); building the shape is the costliest step of a chunk update.</summary>
-    /// <param name="points">Triangle points from <see cref="ChunkMeshUploader.CopyCollisionPoints"/>.</param>
+    /// <param name="points">Triangle points from <see cref="ChunkMeshUploader.Prepare"/>.</param>
     public void ApplyCollision(Vector3[] points)
     {
         ArgumentNullException.ThrowIfNull(points);
