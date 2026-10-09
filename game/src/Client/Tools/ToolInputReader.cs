@@ -11,6 +11,16 @@ namespace Horyzont.Game.Client.Tools;
 /// </summary>
 public sealed partial class ToolInputReader : Node, IToolInputSource
 {
+    private static readonly StringName _primary = new("tool_primary");
+    private static readonly StringName _secondary = new("tool_secondary");
+    private static readonly StringName _selectTerrain = new("tool_select_terrain");
+    private static readonly StringName _selectBuild = new("tool_select_build");
+    private static readonly StringName _next = new("tool_next");
+    private static readonly StringName _prev = new("tool_prev");
+    private static readonly StringName _materialNext = new("tool_material_next");
+    private static readonly StringName _rotateYaw = new("tool_rotate_yaw");
+    private static readonly StringName _rotateUp = new("tool_rotate_up");
+
     private bool _primaryPressed;
     private bool _secondaryPressed;
     private ToolKind? _select;
@@ -30,39 +40,39 @@ public sealed partial class ToolInputReader : Node, IToolInputSource
             return;
         }
 
-        if (@event.IsActionPressed("tool_primary"))
+        if (@event.IsActionPressed(_primary))
         {
             _primaryPressed = true;
         }
-        else if (@event.IsActionPressed("tool_secondary"))
+        else if (@event.IsActionPressed(_secondary))
         {
             _secondaryPressed = true;
         }
-        else if (@event.IsActionPressed("tool_select_terrain"))
+        else if (@event.IsActionPressed(_selectTerrain))
         {
             _select = ToolKind.TerrainManipulator;
         }
-        else if (@event.IsActionPressed("tool_select_build"))
+        else if (@event.IsActionPressed(_selectBuild))
         {
             _select = ToolKind.Builder;
         }
-        else if (@event.IsActionPressed("tool_next"))
+        else if (@event.IsActionPressed(_next))
         {
             _wheel++;
         }
-        else if (@event.IsActionPressed("tool_prev"))
+        else if (@event.IsActionPressed(_prev))
         {
             _wheel--;
         }
-        else if (@event.IsActionPressed("tool_material_next"))
+        else if (@event.IsActionPressed(_materialNext))
         {
             _material++;
         }
-        else if (@event.IsActionPressed("tool_rotate_yaw"))
+        else if (@event.IsActionPressed(_rotateYaw))
         {
             _yaw++;
         }
-        else if (@event.IsActionPressed("tool_rotate_up"))
+        else if (@event.IsActionPressed(_rotateUp))
         {
             _up++;
         }
@@ -73,7 +83,7 @@ public sealed partial class ToolInputReader : Node, IToolInputSource
     {
         var active = Active;
         var frame = new ToolInputFrame(
-            _primaryPressed, active && Input.IsActionPressed("tool_primary"), _secondaryPressed, active && Input.IsActionPressed("tool_secondary"),
+            _primaryPressed, active && Input.IsActionPressed(_primary), _secondaryPressed, active && Input.IsActionPressed(_secondary),
             _select, _wheel, 0, _material, _yaw, _up);
         _primaryPressed = false;
         _secondaryPressed = false;

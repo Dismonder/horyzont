@@ -177,6 +177,31 @@ public class ToolScenarioTests
 
     [TestCase(Timeout = 400000)]
     [RequireGodotRuntime]
+    public async Task DevToolsDemo_OnlyInADevelopmentBuild()
+    {
+        await using var scene = EngineTestScene.Create();
+        var dir = ModeFixture.NewDirectory();
+        string[] args = ["--solo", "--dev-tools-demo", "--data-dir", dir, "--profile", Path.Combine(dir, "profile.json"), "--world", Guid.NewGuid().ToString()];
+
+        string? rejected = null;
+        try
+        {
+            await ModeFixture.StartWithCharactersAsync(scene, dir, true, false, args);
+        }
+        catch (ArgumentException ex)
+        {
+            rejected = ex.Message;
+        }
+
+        AssertThat(rejected is not null && rejected.Contains("--dev-tools-demo", StringComparison.Ordinal)).IsTrue();
+
+        var fixture = await ModeFixture.StartWithCharactersAsync(scene, dir, true, true, args);
+        AssertThat(fixture.Composition.Tools is not null).IsTrue();
+        AssertThat(await fixture.StopAsync()).IsTrue();
+    }
+
+    [TestCase(Timeout = 400000)]
+    [RequireGodotRuntime]
     public async Task Solo_NothingInReach_SendsNothing()
     {
         await using var scene = EngineTestScene.Create();

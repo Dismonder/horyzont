@@ -17,6 +17,10 @@ public sealed partial class ToolHud : CanvasLayer
 {
     private readonly ToolNode _tools;
     private readonly StringBuilder _text = new();
+    private readonly Dictionary<string, string> _translations = [];
+    private readonly string?[] _rejectTexts = new string?[256];
+    private Shown _shown;
+    private bool _hasShown;
     private Label? _label;
     private Label? _crosshair;
 
@@ -72,6 +76,18 @@ public sealed partial class ToolHud : CanvasLayer
     }
 
     /// <inheritdoc />
+    public override void _Notification(int what)
+    {
+        if (what == NotificationTranslationChanged)
+        {
+            // New locale: the cached translations and the text built from them are stale.
+            _translations.Clear();
+            Array.Clear(_rejectTexts);
+            _hasShown = false;
+        }
+    }
+
+    /// <inheritdoc />
     public override void _Process(double delta)
     {
         if (_label is null || _tools.Controller is not { } controller)
@@ -81,47 +97,98 @@ public sealed partial class ToolHud : CanvasLayer
 
         var settings = controller.Settings;
         var preview = controller.Preview;
+        var hint = preview.Kind != ToolPreviewKind.None ? preview.Hint : RejectReason.None;
+        var waiting = controller.WaitingForServer;
+        var refusal = _tools.Pending?.LastRejection ?? RejectReason.None;
+        var shown = new Shown(settings.Tool, settings.Radius, settings.FillMaterial, settings.BlockType, settings.Orientation, hint, waiting, refusal);
+        if (_hasShown && shown.Equals(_shown))
+        {
+            return;
+        }
+
+        _shown = shown;
+        _hasShown = true;
         _text.Clear();
         if (settings.Tool == ToolKind.TerrainManipulator)
         {
-            _text.Append(Tr("TOOL_TERRAIN")).Append("   ").Append(Tr("TOOL_RADIUS")).Append(' ')
-                .Append(settings.Radius.ToString("F2", CultureInfo.InvariantCulture)).Append(" m   ").Append(Tr("TOOL_MATERIAL")).Append(' ')
-                .Append(MaterialName(settings.FillMaterial)).Append('\n').Append(Tr("TOOL_HINT_TERRAIN"));
+            _text.Append(T("TOOL_TERRAIN")).Append("   ").Append(T("TOOL_RADIUS")).Append(' ')
+                .Append(settings.Radius.ToString("F2", CultureInfo.InvariantCulture)).Append(" m   ").Append(T("TOOL_MATERIAL")).Append(' ')
+                .Append(MaterialName(settings.FillMaterial)).Append('\n').Append(T("TOOL_HINT_TERRAIN"));
         }
         else
         {
-            _text.Append(Tr("TOOL_BUILD")).Append("   ").Append(Tr("TOOL_BLOCK")).Append(' ').Append(BlockName(settings.BlockType)).Append("   ")
-                .Append(Tr("TOOL_ORIENTATION")).Append(' ').Append(settings.Orientation).Append('\n').Append(Tr("TOOL_HINT_BUILD"));
+            _text.Append(T("TOOL_BUILD")).Append("   ").Append(T("TOOL_BLOCK")).Append(' ').Append(BlockName(settings.BlockType)).Append("   ")
+                .Append(T("TOOL_ORIENTATION")).Append(' ').Append(settings.Orientation).Append('\n').Append(T("TOOL_HINT_BUILD"));
         }
 
-        _text.Append("\n1 ").Append(Tr("TOOL_TERRAIN")).Append("   2 ").Append(Tr("TOOL_BUILD"));
-        if (preview.Kind != ToolPreviewKind.None && preview.Hint != RejectReason.None)
+        _text.Append("\n1 ").Append(T("TOOL_TERRAIN")).Append("   2 ").Append(T("TOOL_BUILD"));
+        if (hint != RejectReason.None)
         {
-            _text.Append('\n').Append(Tr(RejectKey(preview.Hint)));
+            _text.Append('\n').Append(RejectText(hint));
         }
 
-        if (controller.WaitingForServer)
+        if (waiting)
         {
-            _text.Append('\n').Append(Tr("TOOL_WAITING"));
+            _text.Append('\n').Append(T("TOOL_WAITING"));
         }
 
-        if (_tools.Pending is { LastRejection: not RejectReason.None } pending)
+        if (refusal != RejectReason.None)
         {
-            _text.Append('\n').Append(Tr("TOOL_LAST_REFUSAL")).Append(": ").Append(Tr(RejectKey(pending.LastRejection)));
+            _text.Append('\n').Append(T("TOOL_LAST_REFUSAL")).Append(": ").Append(RejectText(refusal));
         }
 
-        _label.Text = _text.ToString();
+        var text = _text.ToString();
+        if (!string.Equals(_label.Text, text, StringComparison.Ordinal))
+        {
+            _label.Text = text;
+        }
+    }
+
+    private string T(string key)
+    {
+        if (!_translations.TryGetValue(key, out var text))
+        {
+            text = Tr(key);
+            _translations[key] = text;
+        }
+
+        return text;
+    }
+
+    private string RejectText(RejectReason reason)
+    {
+        var index = (byte)reason;
+        return _rejectTexts[index] ??= Tr(RejectKey(reason));
     }
 
     private string MaterialName(byte id)
     {
-        var entry = _tools.Materials?.Entries.FirstOrDefault(e => e.Id == id);
-        return entry is { } e ? e.Key : id.ToString(CultureInfo.InvariantCulture);
+        var entries = _tools.Materials?.Entries;
+        for (var i = 0; entries is not null && i < entries.Count; i++)
+        {
+            if (entries[i].Id == id)
+            {
+                return entries[i].Key;
+            }
+        }
+
+        return id.ToString(CultureInfo.InvariantCulture);
     }
 
     private string BlockName(ushort id)
     {
-        var entry = _tools.Blocks?.Entries.FirstOrDefault(e => e.Id == id);
-        return entry is { } e ? e.Key : id.ToString(CultureInfo.InvariantCulture);
+        var entries = _tools.Blocks?.Entries;
+        for (var i = 0; entries is not null && i < entries.Count; i++)
+        {
+            if (entries[i].Id == id)
+            {
+                return entries[i].Key;
+            }
+        }
+
+        return id.ToString(CultureInfo.InvariantCulture);
     }
+
+    private readonly record struct Shown(
+        ToolKind Tool, float Radius, byte Material, ushort Block, byte Orientation, RejectReason Hint, bool Waiting, RejectReason Refusal);
 }

@@ -158,11 +158,16 @@ public sealed class GameComposition
     /// <param name="launch">The parsed command line.</param>
     /// <param name="env">The process around the game.</param>
     /// <returns>The composition.</returns>
-    /// <exception cref="ArgumentException">The server configuration file is missing or invalid.</exception>
+    /// <exception cref="ArgumentException">The server configuration file is missing or invalid, or <c>--dev-tools-demo</c> is used in a build that is not a development build.</exception>
     public static GameComposition Create(LaunchOptions launch, GameEnvironment env)
     {
         ArgumentNullException.ThrowIfNull(launch);
         ArgumentNullException.ThrowIfNull(env);
+        if (launch.DevToolsDemo && !env.DevBuild)
+        {
+            throw new ArgumentException("--dev-tools-demo works only in a development build (debug build of the game).");
+        }
+
         var scene = GD.Load<PackedScene>(RootScene) ?? throw new InvalidOperationException($"Scene {RootScene} not found.");
         var root = scene.Instantiate<Node>();
         var serverNode = root.GetNode<ServerNode>("Server");
