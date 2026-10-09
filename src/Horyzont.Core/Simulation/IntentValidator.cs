@@ -204,6 +204,12 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.AreaNotLoaded;
         }
 
+        if (BlockOverlap.TryGetConstructPose(state.Constructs, construct, FrameRef.Of(planet), out _, out var planetRotation)
+            && BlockOverlap.OverlapsConstruct(state.Constructs, FrameRef.Of(planet), cellCenter, planetRotation, construct.Id))
+        {
+            return RejectReason.CellOccupied;
+        }
+
         if (CellHitsPlayer(planet, construct.Origin, construct.Rotation, construct, cell))
         {
             return RejectReason.IntersectsPlayer;
@@ -249,6 +255,11 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
         if (!terrain.IsAreaLoaded(target.Planet, cellCenter, 1f))
         {
             return RejectReason.AreaNotLoaded;
+        }
+
+        if (BlockOverlap.OverlapsConstruct(state.Constructs, FrameRef.Of(target.Planet), cellCenter, rotation, null))
+        {
+            return RejectReason.CellOccupied;
         }
 
         if (CellHitsPlayer(target.Planet, origin, rotation, null, default))

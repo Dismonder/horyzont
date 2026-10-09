@@ -290,4 +290,71 @@ public sealed class IntentValidationTests
 
         Assert.Equal(RejectReason.IntersectsPlayer, result.Reason);
     }
+
+    private static EntityId AddConstruct(SimFixture f, Vector3 origin)
+    {
+        var id = f.State.EntityIds.PeekNext();
+        f.Sim.ApplyServerOperation(new ConstructCreateOp(
+            id, FrameRef.Of(SimFixture.Planet), origin, Quaternion.Identity, new CellPos(0, 0, 0), BlockState.Create(f.Stone, 0)));
+        return id;
+    }
+
+    private static PlaceBlockIntent OnTopOf(SimFixture f, EntityId construct) =>
+        new(new ConstructFaceTarget(construct, new CellPos(0, 0, 0), Face.PosY), f.Stone, 0);
+
+    [Fact]
+    public void Submit_PlaceOnFaceTouchingOtherConstructByFace_Accepted()
+    {
+        var f = new SimFixture();
+        var p = f.Join();
+        var a = AddConstruct(f, new Vector3(2f, 4002f, 0f));
+        AddConstruct(f, new Vector3(3f, 4003f, 0f));
+
+        Assert.Equal(RejectReason.None, f.Sim.Submit(p, OnTopOf(f, a)).Reason);
+    }
+
+    [Fact]
+    public void Submit_PlaceOnFaceOverlappingOtherConstruct_CellOccupied()
+    {
+        var f = new SimFixture();
+        var p = f.Join();
+        var a = AddConstruct(f, new Vector3(2f, 4002f, 0f));
+        AddConstruct(f, new Vector3(2.75f, 4003f, 0f));
+
+        Assert.Equal(RejectReason.CellOccupied, f.Sim.Submit(p, OnTopOf(f, a)).Reason);
+        Assert.DoesNotContain(f.Journal.Entries, e => e.Actor == p);
+    }
+
+    [Theory]
+    [InlineData(3.15f, RejectReason.CellOccupied)]
+    [InlineData(3.25f, RejectReason.None)]
+    public void Submit_PlaceOnTerrainTurned45DegreesNextToConstruct_DecidedByExactOverlap(float x, RejectReason expected)
+    {
+        var f = new SimFixture();
+        var p = f.Join();
+        f.BuildOnTerrain(p, 2);
+        f.MovePlayer(p, f.Ground(5) + new Vector3(0, 0.1f, 0));
+        var place = f.PlaceOnTerrain(p, f.Ground(x));
+        var diagonal = new Vector3(-MathF.Sqrt(0.5f), 0f, -MathF.Sqrt(0.5f));
+        place = place with { Target = ((TerrainTarget)place.Target) with { LookForward = diagonal } };
+
+        Assert.Equal(expected, f.Sim.Submit(p, place).Reason);
+    }
+
+    [Fact]
+    public void Submit_PlaceChecks_AreaNotLoadedThenCellOccupiedThenIntersectsPlayer()
+    {
+        var f = new SimFixture();
+        var p = f.Join();
+        var a = AddConstruct(f, new Vector3(2f, 4002f, 0f));
+        var b = AddConstruct(f, new Vector3(2.75f, 4003f, 0f));
+        f.MovePlayer(p, new Vector3(2.5f, 4002.5f, 0.5f));
+        f.Terrain.AllAreasLoaded = false;
+
+        Assert.Equal(RejectReason.AreaNotLoaded, f.Sim.Submit(p, OnTopOf(f, a)).Reason);
+        f.Terrain.AllAreasLoaded = true;
+        Assert.Equal(RejectReason.CellOccupied, f.Sim.Submit(p, OnTopOf(f, a)).Reason);
+        f.Sim.Submit(p, new RemoveBlockIntent(b, new CellPos(0, 0, 0)));
+        Assert.Equal(RejectReason.IntersectsPlayer, f.Sim.Submit(p, OnTopOf(f, a)).Reason);
+    }
 }
