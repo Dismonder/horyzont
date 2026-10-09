@@ -138,7 +138,7 @@ public static class MaxMessages
             new InputBatch(
                 uint.MaxValue,
                 Enumerable.Range(0, ProtocolConstants.MaxInputsPerBatch)
-                    .Select(_ => new PlayerInput(uint.MaxValue, -1f, 1f, float.MaxValue, float.MinValue, (InputButtons)0x1F))
+                    .Select(_ => new PlayerInput(uint.MaxValue, -1f, 1f, float.MaxValue, float.MinValue, (InputButtons)ProtocolConstants.InputButtonsMask))
                     .ToArray()),
             Snapshot(),
             new SnapshotAck(uint.MaxValue),

@@ -118,7 +118,9 @@ public sealed class MessageEdgeCaseTests
         Kit.AssertMessageViolation("0D 01 00 01 " + tickAndAxes + "  00 00 00 00  00 00 00 00  00 00");
 
     [Theory]
+    [InlineData("3F 00", InputButtons.Jump | InputButtons.Sprint | InputButtons.Crouch | InputButtons.Primary | InputButtons.Secondary | InputButtons.DevFly)]
     [InlineData("1F 00", InputButtons.Jump | InputButtons.Sprint | InputButtons.Crouch | InputButtons.Primary | InputButtons.Secondary)]
+    [InlineData("20 00", InputButtons.DevFly)]
     [InlineData("01 00", InputButtons.Jump)]
     public void Read_InputButtonsInsideMask_AreAccepted(string buttons, InputButtons expected)
     {
@@ -127,12 +129,24 @@ public sealed class MessageEdgeCaseTests
         Assert.Equal(expected, batch.Inputs[0].Buttons);
     }
 
+    [Fact]
+    public void InputBatch_DevFlyBit_RoundTrips()
+    {
+        var input = new PlayerInput(5, 0.5f, -1f, 1.25f, -0.5f, InputButtons.DevFly | InputButtons.Jump | InputButtons.Sprint);
+        var bytes = Kit.Encode(new InputBatch(9, [input]));
+
+        var batch = Assert.IsType<InputBatch>(MessageCodec.Read(bytes));
+
+        Assert.Equal(InputButtons.DevFly | InputButtons.Jump | InputButtons.Sprint, batch.Inputs[0].Buttons);
+        Assert.Equal(new byte[] { 0x23, 0x00 }, bytes[^2..]);
+    }
+
     [Theory]
-    [InlineData("20 00")]
+    [InlineData("40 00")]
     [InlineData("00 01")]
     [InlineData("FF FF")]
     [InlineData("80 00")]
-    public void Read_InputButtonsOutsideMask_ThrowsProtocolViolation(string buttons) =>
+    public void InputBatch_BitsAbove0x3F_ProtocolViolation(string buttons) =>
         Kit.AssertMessageViolation("0D 01 00 01 00 00 00 00 00 00 00 00 00 00 00 " + buttons);
 
     [Theory]

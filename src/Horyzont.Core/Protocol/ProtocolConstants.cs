@@ -6,6 +6,9 @@ public static class ProtocolConstants
     /// <summary>Protocol version; bumped by every change of a message format. 2: RejectReason.ServerReadOnly (K2-10).</summary>
     public const ushort ProtocolVersion = 2;
 
+    /// <summary>Bits of <see cref="Messages.InputButtons"/> that a valid input may set.</summary>
+    public const int InputButtonsMask = 0x1F;
+
     /// <summary>Largest reliable frame: type, format version and payload.</summary>
     public const int MaxReliableMessageBytes = 256 * 1024;
 

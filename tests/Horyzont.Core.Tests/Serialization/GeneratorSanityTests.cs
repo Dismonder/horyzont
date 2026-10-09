@@ -165,7 +165,7 @@ public sealed class GeneratorSanityTests
         foreach (var batch in Draw(CodecGen.InputBatch, 1000))
         {
             Assert.InRange(batch.Inputs.Count, 1, ProtocolConstants.MaxInputsPerBatch);
-            Assert.All(batch.Inputs, i => Assert.True(Math.Abs(i.MoveX) <= 1f && Math.Abs(i.MoveY) <= 1f && ((int)i.Buttons & ~0x1F) == 0));
+            Assert.All(batch.Inputs, i => Assert.True(Math.Abs(i.MoveX) <= 1f && Math.Abs(i.MoveY) <= 1f && ((int)i.Buttons & ~ProtocolConstants.InputButtonsMask) == 0));
         }
     }
 
