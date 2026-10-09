@@ -407,16 +407,16 @@ Ręczny (`Manual`, wynik i zrzuty w PR): 5 minut gry solo i 5 minut u hosta z dr
 ## Kroki
 
 - [ ] 0. Warunki wejścia sprawdzone na `main` (lista wyżej, z numerami runów CI w PR). Kolumna „Rzeczywisty typ” w tabeli kontraktów konsumowanych wypełniona; brakująca zdolność → stop i zgłoszenie do pakietu, który ją miał dać. Odpowiedzi na otwarte pytania (P2–P5) wpisane albo przyjęte domyślne (zapis w Odstępstwach). **Wpięcie budowli K2-12 w `GameComposition` K2-10 i widok klienta hosta (D5)**: treść bloków, rejestr bloków dla nowego świata, `ConstructWorld` z `OnApplied`, widzami i zamknięciem (krok 7a w tabeli K2-10 i ZASADY pkt 7); test `HostConstructs_WiredInComposition` zielony.
-- [ ] 1. Katalog `Tools/` w `src/Horyzont.Client` z K2-10 i testy w `tests/Horyzont.Client.Tests`; `LayeringTests` bez zmian (projekt już na liście); referencja `Horyzont.Game.csproj` już jest.
+- [x] 1. Katalog `Tools/` w `src/Horyzont.Client` z K2-10 i testy w `tests/Horyzont.Client.Tests`; `LayeringTests` bez zmian (projekt już na liście); referencja `Horyzont.Game.csproj` już jest.
 - [ ] 2. Testy z tabel (czerwone), w tym testy „złote” W1 (`OnTerrain_GoldenCases_BitIdenticalToK1`, `PlayerCapsule_GoldenDecisionsFromK1`) nagrane na kodzie sprzed zmiany. Przegląd testów Core przez Opus 5.5.
-- [ ] 3. W1: `ConstructPlacement`, `PlayerCapsule`, walidator na nowych typach; testy Core zielone, skróty i test „złoty” protokołu bez zmian.
-- [ ] 4. W2 według odpowiedzi na P2 (domyślnie wariant A, `BlockOverlap` SAT); `IntentValidationTests`, `BlockOverlapTests` i `AllocationTests` zielone.
-- [ ] 4a. W3: `SlidingWindowLimiter`, `PlayerBuckets`, zasięg od oka serwera w `IntentValidator`; testy W3 i integracyjne tempa i zasięgu zielone (D13).
-- [ ] 5. `ToolSettings`, palety, `OrientationPicker`.
-- [ ] 6. `AimRayBuilder`, `ToolTargeting`, `ToolPreview` z podpowiedziami.
-- [ ] 7. `IntentPacer`, `PendingIntentTracker`, `IEditPrediction`/`NoEditPrediction`, `SessionIntentSender`.
-- [ ] 8. `ToolController` z testem alokacji.
-- [ ] 9. Testy integracyjne zielone, w tym live = replay = checkpoint + ogon w kolekcji bez równoległości.
+- [x] 3. W1: `ConstructPlacement`, `PlayerCapsule`, walidator na nowych typach; testy Core zielone, skróty i test „złoty” protokołu bez zmian.
+- [x] 4. W2 według odpowiedzi na P2 (domyślnie wariant A, `BlockOverlap` SAT); `IntentValidationTests`, `BlockOverlapTests` i `AllocationTests` zielone.
+- [x] 4a. W3: `SlidingWindowLimiter`, `PlayerBuckets`, zasięg od oka serwera w `IntentValidator`; testy W3 i integracyjne tempa i zasięgu zielone (D13).
+- [x] 5. `ToolSettings`, palety, `OrientationPicker`.
+- [x] 6. `AimRayBuilder`, `ToolTargeting`, `ToolPreview` z podpowiedziami.
+- [x] 7. `IntentPacer`, `PendingIntentTracker`, `IEditPrediction`/`NoEditPrediction`, `SessionIntentSender`.
+- [x] 8. `ToolController` z testem alokacji.
+- [x] 9. Testy integracyjne zielone, w tym live = replay = checkpoint + ogon w kolekcji bez równoległości.
 - [ ] 10. Godot: `Tools.tscn`, węzły z listy plików, akcje InputMap, `tools.csv`, rejestracja w composition root (`game/src/Boot/`), przekazanie `IntentReply` i `OnDisconnected` do trackera, wybór `NoEditPrediction` dla wszystkich trybów K2.
 - [ ] 11. Scenariusze Godota bez grafiki zielone w jobie `game`; test ręczny opisany w PR.
 - [ ] 12. Komentarze XML, `dotnet build`, `dotnet test --filter "Category!=Soak&Category!=Manual"`, `dotnet format --verify-no-changes`, `python tools/engine/build.py smoke` z wynikami w PR; nowe zasady dopisane do `docs/ZASADY.md` (kierunki z Godota normalizowane po konwersji do float; promień narzędzi zawsze od oka); każdy nieodhaczony krok ma wpis „odroczone do X”.
@@ -425,6 +425,27 @@ Ręczny (`Manual`, wynik i zrzuty w PR): 5 minut gry solo i 5 minut u hosta z dr
 ## Odstępstwa i decyzje wykonawcy
 
 (wypełnia wykonawca: odpowiedzi P2–P5, rzeczywiste nazwy kontraktów z kroku 0, każda zmiana sygnatur z tego planu)
+
+### Etap 1: część niezależna od silnika (2026-10-09, Opus 5.5, gałąź `pakiet/k2-13-narzedzia`)
+
+**Zakres etapu.** Kroki 1–9 (Core W1–W3, `Tools/` w `Horyzont.Client`, testy klienta i integracyjne). Poza etapem, odroczone do etapu Godota: krok 0 (wpięcie budowli K2-12 w `GameComposition`; tabela „Rzeczywisty typ” zostaje pusta), kroki 10–12 (węzły `game/`, scenariusze silnika, `python tools/engine/build.py smoke`, wiersze ZASADY dotyczące `game/`) i 13. Krok 2 nie jest odhaczony: testy są napisane i zielone, ale ich przegląd przez Opus 5.5 (testy Core: W1, W2, W3) jeszcze się nie odbył. Gałąź oparta na niescalonej gałęzi K2-11 (07ff1af: K2-08–K2-10, K2-12, K2-11 kroki 1–5, `ProtocolVersion` 3); `ProtocolVersion` nie został zmieniony.
+
+**Odpowiedzi na pytania (domyślne, brak odpowiedzi właściciela).** P2: wariant A (`BlockOverlap`, SAT, `CellOccupied`). P3: nie, tylko teren i ściany budowli. P4: wszystkie materiały z rejestru poza `core:bedrock` (`MaterialPalette.CoreMaterialKey`, kopia `TerrainMaterials.CoreMaterialKey` z `game/`, bo `Horyzont.Client` nie widzi `game/`; wiring w `GameComposition` ma przekazać stałą z gry). P5: dopiero K3-15/K3-16; w K2 wszystkie tryby używają `NoEditPrediction`. P6: `src/Horyzont.Client` jak w K2-10.
+
+**Dowód braku zmiany semantyki W1.** Złote pliki `tests/Horyzont.Core.Tests/Golden/ConstructPlacement/{on_terrain,player_capsule}.txt` (64 przypadki pozy i 256 decyzji kapsuły) nagrano kodem K1 w commicie `a37dce8`, który zawiera też rejestrator i odniesienie K1 (refleksja po `SphereHitsPlayer`/`CellHitsPlayer`), przed jakąkolwiek zmianą w `src/`. Po refaktoryzacji te same bity i decyzje; `DeterminismTests`, złoty test protokołu i zamrożony korpus dzienników terenu (`git diff cad1f70..HEAD` na tych ścieżkach) bez zmian.
+
+**Zmiany sygnatur i dodatki względem planu.**
+- Core: `Obb` (publiczny rekord) oraz `BlockOverlap.ForCell`, `BlockOverlap.OverlapsConstruct(store, frame, center, rotation, skip)` i `BlockOverlap.TryGetConstructPose` obok `Intersects`: ta sama reguła „nowa komórka nie nakłada się na inną budowlę” dla walidatora i podpowiedzi klienta (poza budowlą docelową, z budowlami zagnieżdżonymi). `PlayerCapsule.IntersectsLocalCell` (wewnętrzny) obsługuje budowle zagnieżdżone bez składania rotacji. `SlidingWindowLimiter` jest publiczny (lustro w kliencie). `OrientOnSurface`, `SphereHitsPlayer` i `CellHitsPlayer` w walidatorze wołają nowe typy; `Geometry.CapsuleAxis` przeniesiono do `PlayerCapsule.Axis`.
+- W3: okno przesuwne dotyczy tylko `TerrainToolIntent` (bloki mają kubełek `Blocks`); przy `TerrainEditsPerSecond = 0` okno ma pojemność 1 (kubełek i tak nie przepuści). Zasięg od oka serwera sprawdzany zaraz po `NoHit`, przed `NoLineOfSight`.
+- Test K1 `ServerSimulationTests.Submit_SixthTerrainEditInOneTick_...` zmieniony wprost zgodnie z D13: po 12 tickach szósta edycja nadal dostaje `RateLimited`, po 60 jest przyjęta (K1-03 mówiło „po 12 tickach”; zastąpione decyzją bramki).
+- `AimRay` ma piąte pole `Feet` (kapsuła własnej postaci do podpowiedzi). `IToolWorldView` dostał `TryGetConstructPose` i `OverlapsConstruct` (adapter nie musi udostępniać `ConstructStore`; migawka K2-12 wystarczy). `ToolTargeting` ma `TryTarget` (budowanie) i `TryTargetTerrain` (manipulator, z informacją o budowli przed terenem). `ToolController`: `Pending`, `WaitingForServer`, `ClearAim`; intencja powstaje dopiero po przejściu `IntentPacer` i sprawdzeń (brak alokacji bez wysyłki). `IntentPacer.TryAcquire(PaceClass, repeat, tick)`. `PendingIntentTracker`: `LastOutcome`/`LastOutcomeSeq` (HUD i testy dla `TimedOut`/`Disconnected`); `Add` rzuca `InvalidOperationException` przy pełnym trackerze albo nierosnącym `ClientSeq` (błąd wywołującego; kontroler sprawdza `IsFull` przed wysyłką). Podpowiedzi liczy wewnętrzny `ToolPreviewBuilder`.
+- Testy: `SimulationServerHooks.CreateHello` wysyła rejestry bloków i materiałów (potrzebne paletom); `K1GateTests` dostał `[Collection(SqlitePools.Name)]` (kolekcja bez równoległości także w `Horyzont.Integration.Tests`, B1). Testy alokacji używają „rundy bez alokacji” (stan ustalony po tier-upie JIT), bo pojedynczy pomiar bywa zaszumiony w pełnym przebiegu.
+- Test `Build_OnTerrain_CreatesConstructMatchingGhost` (FsCheck, 200 przypadków) działa na `ServerSimulation` bez sieci; pozostałe testy integracyjne idą przez `ClientRuntime`, `InMemoryTransport` i `ServerSession`.
+
+**Ryzyka i uwagi do przeglądu.**
+- Styk dwóch budowli ścianą jest rozstrzygany z tolerancją 1e-4 m, a współrzędne planety o promieniu 4000 m mają ziarno float ≈ 5e-4 m: dwie budowle postawione z osobnych trafień promienia, stykające się „idealnie”, mogą dać `CellOccupied` albo przejść zależnie od zaokrągleń. Testy styku używają współrzędnych dokładnie reprezentowalnych. Rozważyć większą tolerancję (np. 1e-3) po przeglądzie.
+- Klient celuje na 8 m od swojego (przewidzianego) oka, a serwer liczy zasięg od oka z ostatniej pozycji, więc trafienie tuż przy granicy może dostać `OutOfReach`. Klient nie zmniejsza zasięgu (plan: „klient celuje na 8 m”).
+- Gdyby `GameRules` serwera były konfigurowane inaczej niż domyślne, klient (te same domyślne wartości builda) rozjedzie się z limitem; skutkiem są tylko odmowy (zgłosić do K3-18).
 
 ## Odbiór
 

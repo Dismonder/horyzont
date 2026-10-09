@@ -27,6 +27,7 @@ Każda sesja pracy zaczyna się od przeczytania tego pliku i planu pakietu. Niej
 - Kanoniczny stan każdego bytu to rama rodzica (`FrameRef`), licznik przepięć `ParentSeq` i poza lokalna w tej ramie (`System.Numerics.Vector3` i `Quaternion`, metry). Pozycja w świecie jest zawsze wartością pochodną: zapis, dziennik i sieć znają wyłącznie pozycje lokalne.
 - Ramy składa się tylko w podwójnej precyzji (`Vector3D`, `QuaternionD` i `FrameMath` w Core, od K5-20). Pojedyncza precyzja wystarcza wewnątrz ramy planety albo budowli.
 - Konwersja między Godotem (`double`) a ramą planety (`System.Numerics`, `float`) odbywa się wyłącznie przez `PlanetFrames` (`game/src/Shared/Frames/`, K2-11), z kontrolą skończoności. Nigdzie indziej nie rzutuje się wektorów ani kwaternionów Godota na `System.Numerics`.
+- Promień intencji narzędzi zawsze zaczyna się w oku liczonym wzorem serwera ze stóp (`AimRayBuilder.EyeFromFeet`), także w widoku z trzeciej osoby; wektory z Godota normalizuje się dopiero po konwersji do `float` (długość poza 1 ± 0,01 albo wartość nieskończona oznacza „nie wysyłaj”). Klient nie stosuje lokalnie edycji terenu, który dzieli z serwerem (solo i host): predykcja tylko przez `IEditPrediction` na osobnej kopii terenu zdalnego klienta (K3-16).
 - Gracz w dzienniku, zapisie i sieci to wewnętrzny `PlayerId`. Tożsamość platformy (`PlatformIdentity`, np. SteamID) służy tylko do łączenia z kontem, banów i administratorów.
 
 ## 3. Kontrakty chronione
@@ -47,6 +48,8 @@ Każda zmiana w `src/Horyzont.Core/` wymaga przeglądu Opus 5.5, bo cały Core d
 | `tests/Horyzont.Core.Tests/Golden/TerrainJournals/`, `tests/Horyzont.Core.Tests/TerrainJournalGoldenCorpusTests.cs` (zamrożony korpus złoty dzienników terenu, K2-09) | nigdy się nie zmieniają; test, który wymagałby zmiany korpusu albo pliku testu, oznacza zmianę semantyki stosowania, czyli podbicie wersji formatu operacji z powtórką starej wersji |
 
 Zmiana `OperationApplier.cs` albo sygnatury `ITerrainService.ApplyEdit` bez podbicia wersji formatu operacji jest dozwolona tylko wtedy, gdy zamrożony korpus złoty dzienników terenu (`TerrainJournalGoldenCorpusTests`) i złote skróty `DeterminismTests` przechodzą bez żadnej zmiany w swoich plikach (`git diff <commit korpusu>..HEAD` na tych ścieżkach pusty).
+
+Walidator intencji (`src/Horyzont.Core/Simulation/IntentValidator.cs`, `BlockOverlap.cs`, `SlidingWindowLimiter.cs`, `PlayerCapsule.cs`) i `GameRules` nie są ścieżkami formatu: zmiana warunków przyjęcia intencji nie zmienia ani dziennika, ani powtórki (operacje zapisują skutek, nie intencję), więc nie podbija wersji. Wymaga przeglądu Opus jak każda zmiana w Core, a zamrożony korpus i złote skróty muszą zostać bez zmian. Limity edycji terenu są twarde: najwyżej `TerrainEditsPerSecond` przyjętych edycji w każdym oknie jednej sekundy (kubełek plus okno przesuwne), a zasięg liczy się od oka serwera (`PlayerState.EyePosition`), nie od zgłoszonego początku promienia (K2-13).
 
 Zamrożone na zawsze, bez względu na wersję protokołu: początek ramki `ClientHello` (typ, wersja formatu, `ProtocolVersion`) i cały format `HandshakeReject`. Dzięki temu klient każdej wersji dostaje czytelną prośbę o aktualizację. Każda zmiana formatu `ClientHello` podbija też `ProtocolVersion`.
 
