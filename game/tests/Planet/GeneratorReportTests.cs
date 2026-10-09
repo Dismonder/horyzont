@@ -36,6 +36,27 @@ public class GeneratorReportTests
     }
 
     [TestCase]
+    public void ReadKeys_RejectsOriginsThatWouldOverflow()
+    {
+        var file = Path.Combine(Path.GetTempPath(), $"horyzont-keys-{Guid.NewGuid():N}.txt");
+        try
+        {
+            File.WriteAllText(file, "# lod x y z\n0 249 -3 0\n15 1 0 0\n");
+            AssertThat(GeneratorReport.ReadKeys(file).Count).IsEqual(2);
+
+            File.WriteAllText(file, "15 70000 0 0\n");
+            AssertThrown(() => GeneratorReport.ReadKeys(file)).IsInstanceOf<ArgumentException>();
+
+            File.WriteAllText(file, "0 0 0 1048577\n");
+            AssertThrown(() => GeneratorReport.ReadKeys(file)).IsInstanceOf<ArgumentException>();
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [TestCase]
     [RequireGodotRuntime]
     public void GeneratorReport_WritesValidFile()
     {

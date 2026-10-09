@@ -60,6 +60,9 @@ public class GeneratorV1Tests
     /// </summary>
     private const ulong GeneratorV1Golden = 0x8CDC2388E671FC17UL;
 
+    /// <summary>Frozen digest of the whole sample set (all LODs, uniform blocks included: core, caves, far LODs).</summary>
+    private const ulong GeneratorV1GoldenAllSamples = 0x7AE95C60EDF5476EUL;
+
     [TestCase]
     [RequireGodotRuntime]
     public void GeneratorV1_GoldenDigest()
@@ -76,6 +79,19 @@ public class GeneratorV1Tests
         AssertThat(golden.Length).IsEqual(128);
         var combined = GeneratorDigest.Combine(golden);
         AssertThat(combined).OverrideFailureMessage($"core:planet/1 digest 0x{combined:X16} != golden 0x{GeneratorV1Golden:X16}").IsEqual(GeneratorV1Golden);
+    }
+
+    [TestCase]
+    [RequireGodotRuntime]
+    public void GeneratorV1_GoldenDigest_AllSamples()
+    {
+        var planet = Planet();
+        using var digest = new GeneratorDigest(GeneratorProfiles.CreateGenerator(planet));
+        var all = GeneratorSampler.Create(planet).Select(digest.Compute).ToArray();
+
+        AssertThat(all.Length).IsGreater(2000);
+        var combined = GeneratorDigest.Combine(all);
+        AssertThat(combined).OverrideFailureMessage($"core:planet/1 all-samples digest 0x{combined:X16} != golden 0x{GeneratorV1GoldenAllSamples:X16}").IsEqual(GeneratorV1GoldenAllSamples);
     }
 
     [TestCase]
