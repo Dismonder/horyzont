@@ -15,6 +15,23 @@ public static class PlanetFlora
     /// <summary>Imported meshes, one top-level mesh object per item.</summary>
     public const string ModelPath = "res://assets/planet/flora.glb";
 
+    /// <summary>Shader that sways plants in the wind.</summary>
+    public const string FoliageShaderPath = "res://shaders/foliage.gdshader";
+
+    // Wind sway (metres at the given height above the ground) of the items that move; rocks and crystals stay still.
+    private static readonly Dictionary<string, (float Sway, float Height)> _wind = new(StringComparer.Ordinal)
+    {
+        ["Pine"] = (0.25f, 9f),
+        ["PineTall"] = (0.35f, 13f),
+        ["Broadleaf"] = (0.25f, 8f),
+        ["BroadleafAutumn"] = (0.25f, 7f),
+        ["Bush"] = (0.05f, 1.3f),
+        ["Grass"] = (0.08f, 0.45f),
+        ["GrassFlowersYellow"] = (0.08f, 0.45f),
+        ["GrassFlowersPink"] = (0.08f, 0.45f),
+        ["GrassFlowersBlue"] = (0.08f, 0.45f),
+    };
+
     private enum Ground
     {
         // Any terrain material: also coarse LOD meshes, whose material is the stone below the thin dirt layer.
@@ -131,7 +148,13 @@ public static class PlanetFlora
             {
                 if (child is MeshInstance3D { Mesh: { } mesh } instance)
                 {
-                    meshes[instance.Name] = mesh;
+                    string name = instance.Name;
+                    if (_wind.TryGetValue(name, out var wind))
+                    {
+                        ApplyWind(mesh, wind.Sway, wind.Height);
+                    }
+
+                    meshes[name] = mesh;
                 }
             }
 
@@ -140,6 +163,27 @@ public static class PlanetFlora
         finally
         {
             root.Free();
+        }
+    }
+
+    private static void ApplyWind(Mesh mesh, float sway, float height)
+    {
+        var shader = GD.Load<Shader>(FoliageShaderPath) ?? throw new InvalidOperationException($"Shader {FoliageShaderPath} not found.");
+        for (var surface = 0; surface < mesh.GetSurfaceCount(); surface++)
+        {
+            if (mesh.SurfaceGetMaterial(surface) is not BaseMaterial3D imported)
+            {
+                continue;
+            }
+
+            var material = new ShaderMaterial { Shader = shader };
+            material.SetShaderParameter("u_albedo", imported.AlbedoColor);
+            material.SetShaderParameter("u_roughness", imported.Roughness);
+            material.SetShaderParameter("u_emission", imported.Emission);
+            material.SetShaderParameter("u_emission_energy", imported.EmissionEnabled ? imported.EmissionEnergyMultiplier : 0f);
+            material.SetShaderParameter("u_sway", sway);
+            material.SetShaderParameter("u_height", height);
+            mesh.SurfaceSetMaterial(surface, material);
         }
     }
 }

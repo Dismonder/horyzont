@@ -13,6 +13,7 @@ public sealed class PlanetSky
     public const string ShaderPath = "res://shaders/planet_sky.gdshader";
 
     private const float FogDensity = 0.00045f;
+    private const float UnderwaterFogDensity = 0.08f;
 
     /// <summary>Creates the environment. Main thread.</summary>
     public PlanetSky()
@@ -79,5 +80,18 @@ public sealed class PlanetSky
         var twilight = 1f - Mathf.SmoothStep(0f, 0.3f, Mathf.Abs(elevation));
         Environment.FogLightColor = night.Lerp(dayHaze, Daylight).Lerp(dusk, twilight * 0.6f);
         Environment.FogLightEnergy = Mathf.Lerp(0.3f, 1f, Daylight);
+
+        // Under the sea surface: dense blue-green water haze.
+        var underwater = Mathf.Clamp((PlanetLook.SeaLevelMeters - altitude) * 2f, 0f, 1f);
+        if (underwater > 0f)
+        {
+            Environment.FogDensity = Mathf.Lerp(Environment.FogDensity, UnderwaterFogDensity, underwater);
+            Environment.FogLightColor = Environment.FogLightColor.Lerp(new Color(0.05f, 0.28f, 0.34f) * Mathf.Lerp(0.15f, 1f, Daylight), underwater);
+            Environment.FogSkyAffect = underwater;
+        }
+        else
+        {
+            Environment.FogSkyAffect = 0f;
+        }
     }
 }
