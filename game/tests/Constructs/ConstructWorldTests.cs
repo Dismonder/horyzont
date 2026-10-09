@@ -12,6 +12,24 @@ namespace Horyzont.Game.Tests.Constructs;
 public sealed class ConstructWorldTests : EngineTestBase
 {
     [EngineTest]
+    public async Task SceneExitWithActiveJobs_ReattachStaysShutdown()
+    {
+        using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(BlockContentLoader.Load()));
+        var callbacks = 0;
+        w.World.ChunkMeshApplied += (_, _) => callbacks++;
+        var id = w.Create(new CellPos(2, 2, 2));
+        w.Set(id, new CellPos(20, 2, 2));
+        w.World.Pump(0);
+        Host.RemoveChild(w.World);
+        Host.AddChild(w.World);
+        EngineAssert.True(w.World.IsShutdown, "scene exit transitions to shutdown before reattachment");
+        await w.World.ShutdownAsync();
+        w.World.Pump(4);
+        EngineAssert.Equal(0, callbacks, "no callbacks after scene exit");
+        EngineAssert.Equal(0, w.World.AliveWorkerThreads, "workers stopped after scene exit");
+    }
+
+    [EngineTest]
     public async Task ResyncBetweenMeshAndCollision_DropsRemovedChunk()
     {
         using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(BlockContentLoader.Load()));

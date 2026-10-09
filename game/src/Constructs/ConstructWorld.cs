@@ -243,6 +243,8 @@ public sealed partial class ConstructWorld : Node3D
         }
 
         _queue.Clear();
+        _collisionPoints.Clear();
+        _collisionOrder.Clear();
         var pool = _pool!;
         pool.Cancel(); // from now on the main thread neither starts nor applies anything
         var timeout = _options.ShutdownTimeout;
@@ -278,11 +280,7 @@ public sealed partial class ConstructWorld : Node3D
     /// <inheritdoc />
     public override void _ExitTree()
     {
-        // Scene teardown without ShutdownAsync: stop the workers without waiting so no thread outlives the tree.
-        if (_initialized && !IsShutdown)
-        {
-            _pool!.Cancel();
-        }
+        _ = ShutdownAsync();
     }
 
     private double DistanceOf(EntityId id) => _distanceSquared.GetValueOrDefault(id);
