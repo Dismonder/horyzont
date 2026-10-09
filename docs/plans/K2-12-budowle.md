@@ -404,7 +404,7 @@ Fikstury `ConstructFixtures` (w `tests/Horyzont.Testing`, przez publiczny `World
 - [x] 4. `BlockTypeCatalogTests` → `BlockTypeCatalog`, `BlockTypeContent`, `BlockMaterialDef`, `ShapeMesh`, `IShapeMeshResolver`, `BuiltInShapeMeshes`; `game/content/blocks/blocks.json` z treścią K2 i `game/locale/blocks.csv`. Zielone.
 - [x] 5. `BlockRenderTableTests` → `BlockRenderInfo`, `BlockRenderTable`. Zielone.
 - [x] 6. `NaiveFaceOracle`, testy meshera (przykłady, właściwości, alokacje) → `ChunkMeshInput`, `ChunkMeshData`, `ChunkMesher` (render i kolizja). Zielone, w tym test alokacji.
-- [ ] 7. `ConstructDirtyChunksTests`, `WorldStateConstructSourceTests`, `ChunkRemeshQueueTests` → `Sources/*`, `Scheduling/*`. Zielone.
+- [x] 7. `ConstructDirtyChunksTests`, `WorldStateConstructSourceTests`, `ChunkRemeshQueueTests` → `Sources/*`, `Scheduling/*`. Zielone.
 - [ ] 8. `ConstructFixtures` i `MesherTimingTests` `[Slow]`; wpisz czasy do opisu PR.
 - [ ] 9. Gra: `CollisionLayers` i nazwy warstw w `project.godot`; `BlockContentLoader`, `GodotShapeMeshResolver`, `BlockVisuals` + `blocks.gdshader`, `ChunkMeshUploader`, `MeshWorkerPool`, `ConstructChunkNode`, `ConstructNode`, `ConstructWorld`, `BlockMeshFactory`. Logowanie wyłącznie `[LoggerMessage]`.
 - [ ] 10. Testy silnika `ConstructWorldTests` (najpierw czerwone na pustych metodach), potem implementacja do zielonego.
