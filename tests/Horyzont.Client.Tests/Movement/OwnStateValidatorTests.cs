@@ -141,6 +141,23 @@ public sealed class OwnStateValidatorTests
     }
 
     [Fact]
+    public void OwnStateValidator_UnknownMotionFlagsLog_IsRateLimited()
+    {
+        var logger = new ListLogger<OwnStateValidator>();
+        var validator = Validator(logger);
+
+        for (var i = 0; i < 100; i++)
+        {
+            var verdict = validator.Validate(Snap(id: (uint)(10 + i), tick: (ulong)(100 + i), entities: State(motion: 9)), out var state);
+            Assert.Equal(OwnStateVerdict.Accepted, verdict);
+            Assert.Equal(MovementMode.Falling, state.Mode);
+        }
+
+        // The first one and every 32nd: 1, 33, 65, 97.
+        Assert.Equal(4, logger.Entries.Count(e => e.EventId == 9104));
+    }
+
+    [Fact]
     public void OwnStateValidator_RejectionLog_IsRateLimited()
     {
         var logger = new ListLogger<OwnStateValidator>();

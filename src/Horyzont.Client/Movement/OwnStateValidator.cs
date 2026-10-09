@@ -32,6 +32,7 @@ public sealed class OwnStateValidator
     private uint _lastAck;
     private uint _lastSent;
     private int _rejected;
+    private int _unknownFlags;
 
     /// <summary>Initializes a new instance of the <see cref="OwnStateValidator"/> class.</summary>
     /// <param name="ownEntity">Body entity of the local player (<c>ServerHello.YourEntity</c>).</param>
@@ -71,6 +72,7 @@ public sealed class OwnStateValidator
         _lastTick = default;
         _lastAck = 0;
         _lastSent = 0;
+        _unknownFlags = 0;
     }
 
     /// <summary>Validates the own-character state in a snapshot.</summary>
@@ -95,7 +97,10 @@ public sealed class OwnStateValidator
         var mode = entity.MotionFlags <= (byte)MovementMode.DevFlying ? (MovementMode)entity.MotionFlags : MovementMode.Falling;
         if (entity.MotionFlags > (byte)MovementMode.DevFlying)
         {
-            _logger.UnknownMotionFlags(entity.MotionFlags, snapshot.SnapshotId);
+            if (_unknownFlags++ % LogEvery == 0)
+            {
+                _logger.UnknownMotionFlags(entity.MotionFlags, snapshot.SnapshotId);
+            }
         }
 
         _hasAccepted = true;
