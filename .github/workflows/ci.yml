@@ -117,7 +117,13 @@ jobs:
       - name: Boot smoke
         run: |
           editor=engine-ci/editor/${{ matrix.editor }}
-          "$editor" --headless --path game --import
+          # Godot 4.7.2 shutdown bug (docs/plans/K2-12-budowle.md, Odstepstwa): if the editor help cache thread
+          # finishes after --import has quit, its deferred call runs after EditorNode is freed and segfaults (exit 139).
+          # The self-hosted runner shared %LOCALAPPDATA%\Godot with other engine builds, whose stale doc cache made the
+          # thread slow enough to hit this every run. ._sc_ gives this editor its own data next to the exe, and
+          # --quit-after (overrides the 1 frame set by --import) keeps the editor up until the thread has handed back.
+          touch "$(dirname "$editor")/._sc_"
+          "$editor" --headless --path game --import --quit-after 1000
           "$editor" --headless --path game -- --smoke | tee boot.log
           grep -q "BOOT OK .*real_t=double" boot.log
 
