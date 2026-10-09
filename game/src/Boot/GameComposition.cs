@@ -191,7 +191,7 @@ public sealed class GameComposition
                     if (launch.Mode == ProcessMode.Host)
                     {
                         udp = new UdpTransport(TransportOptions.Default, loggers.CreateLogger<UdpTransport>(), env.Time);
-                        listen.Add(new UdpEndpoint("0.0.0.0", launch.Port));
+                        listen.Add(new UdpEndpoint(launch.BindAddress, launch.Port));
                         serverTransport = new CompositeTransport([local, udp]);
                     }
                     else
@@ -291,8 +291,9 @@ public sealed class GameComposition
     /// the scene tree.
     /// </summary>
     /// <param name="ct">Cancellation of the start.</param>
+    /// <param name="connectClient">Whether the local client of a solo or host process connects (tests start a server alone).</param>
     /// <returns>Null while the process runs on; otherwise the exit code the process must end with (the world did not start).</returns>
-    public async Task<int?> StartAsync(CancellationToken ct)
+    public async Task<int?> StartAsync(CancellationToken ct, bool connectClient = true)
     {
         if (Server is not null)
         {
@@ -309,7 +310,10 @@ public sealed class GameComposition
             if (Server is not null)
             {
                 ClientNode!.TerrainProvider = new SharedTerrainProvider(TerrainFactory!.Terrain!.Voxel);
-                Client.Connect(new InMemoryEndpoint("server"), _profile!.Identity, _profile.DisplayName, _launch.Password);
+                if (connectClient)
+                {
+                    Client.Connect(new InMemoryEndpoint("server"), _profile!.Identity, _profile.DisplayName, _launch.Password);
+                }
             }
             else
             {

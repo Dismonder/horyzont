@@ -20,7 +20,7 @@ public sealed record LaunchOptions
 
     private static readonly string[] _valued =
     [
-        "--connect", "--world", "--port", "--password", "--config", "--data-dir", "--profile", "--seed", "--write-default-config",
+        "--connect", "--world", "--port", "--bind", "--password", "--config", "--data-dir", "--profile", "--seed", "--write-default-config",
     ];
 
     /// <summary>Gets the mode of the process.</summary>
@@ -31,6 +31,9 @@ public sealed record LaunchOptions
 
     /// <summary>Gets the UDP port a host listens on.</summary>
     public int Port { get; init; } = DefaultPort;
+
+    /// <summary>Gets the address a host listens on.</summary>
+    public string BindAddress { get; init; } = "0.0.0.0";
 
     /// <summary>Gets the password a host requires or a client sends.</summary>
     public string Password { get; init; } = "";
@@ -122,6 +125,12 @@ public sealed record LaunchOptions
         var mode = modes[0];
         var world = ParseWorld(reader.ValueOf("--world"));
         var port = ParsePort(reader.ValueOf("--port"), "--port") ?? DefaultPort;
+        var bind = reader.ValueOf("--bind") ?? "0.0.0.0";
+        if (!System.Net.IPAddress.TryParse(bind, out var bindAddress) || bindAddress.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+        {
+            throw new ArgumentException("--bind must be an IPv4 address.");
+        }
+
         var password = reader.ValueOf("--password") ?? "";
         if (System.Text.Encoding.UTF8.GetByteCount(password) > 64)
         {
@@ -132,6 +141,7 @@ public sealed record LaunchOptions
         var config = reader.ValueOf("--config");
         RequireOnly(reader, "--world", mode, ProcessMode.Solo, ProcessMode.Host);
         RequireOnly(reader, "--port", mode, ProcessMode.Host);
+        RequireOnly(reader, "--bind", mode, ProcessMode.Host);
         RequireOnly(reader, "--password", mode, ProcessMode.Host, ProcessMode.Client);
         RequireOnly(reader, "--config", mode, ProcessMode.DedicatedServer);
         RequireOnly(reader, "--data-dir", mode, ProcessMode.Solo, ProcessMode.Host, ProcessMode.DedicatedServer);
@@ -148,6 +158,7 @@ public sealed record LaunchOptions
             Mode = mode,
             WorldId = world,
             Port = port,
+            BindAddress = bind,
             Password = password,
             ConnectHost = host,
             ConnectPort = connectPort,
