@@ -540,7 +540,7 @@ K2-12 wnosi też własny runner `-- --engine-tests` (`game/src/Testing/EngineTes
 - Plan zakłada, że `ServerSimulation.Replay` woła `LoadAreaBlocking` poza `try`. W Core (od K1-03, bez zmian w tym pakiecie) wywołanie jest wewnątrz `try`. Test Core `TerrainEditLimitsTests.Replay_TerrainLoadFails_FaultsSimulation` wprost wymaga stanu awarii po błędzie ładowania.
 - Plan i kod są sprzeczne, więc Core nie zmieniłem (ZASADY pkt 1 i 3). Test silnika nazywa się `LoadAreaBlocking_NotPreloaded_Throws` i sprawdza tylko wyjątek `InvalidOperationException` („not preloaded”) bez zmiany stanu.
 - W praktyce `TerrainReplay` zawsze ładuje obszar przed `Replay`, więc ta ścieżka oznacza błąd w kodzie.
-- **Pytanie do przeglądu:** czy przenieść `LoadAreaBlocking` przed `try` (zmiana Core z przeglądem Opus 5.5 i zmianą testu Core), czy zostawić awarię symulacji jako zamierzoną?
+- **Decyzja prowadzącego (Opus 5.5, 2026-10-09):** zostaje jak w Core — awaria symulacji po błędzie ładowania jest zamierzona (decyzja z K1, test `Replay_TerrainLoadFails_FaultsSimulation`). `TerrainReplay` ładuje obszar przed `Replay`, więc ta ścieżka oznacza błąd w kodzie startu, a start serwera i tak kończy się błędem z numerem operacji. Bez zmiany Core.
 
 **Krok 7 (gra), decyzje.**
 - `TerrainEditSemantics`: `SemanticsVersion = 1`, `VoxelRef = "v1.7"`, `VoxelFormat = 1`, `SdfScale = 1`, `SdfStrength = 1`, `MaterialSphereRadiusOffset = 0`, `RaycastStepMeters = 0,5`, `RaycastBinarySearchIterations = 10`, `BlobCompression = Zstd`, `Current` = `"1|voxel=v1.7"`.
