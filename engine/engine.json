@@ -20,6 +20,7 @@
     { "name": "editor-windows", "runner": "windows", "platform": "windows", "target": "editor" },
     { "name": "template-windows-debug", "runner": "windows", "platform": "windows", "target": "template_debug" },
     { "name": "template-windows-release", "runner": "windows", "platform": "windows", "target": "template_release" },
+    { "name": "editor-linux", "runner": "linux", "platform": "linuxbsd", "target": "editor" },
     { "name": "template-linux-release", "runner": "linux", "platform": "linuxbsd", "target": "template_release" }
   ],
   "nugetFeed": "engine/nuget-local"

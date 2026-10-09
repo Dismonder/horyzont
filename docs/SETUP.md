@@ -18,9 +18,9 @@ Zależności sterownika Direct3D 12, ANGLE i AccessKit nie są potrzebne: `engin
 
 Sklonuj repozytorium do krótkiej ścieżki, np. `C:\dev\horyzont`, i dodaj ten katalog do wykluczeń antywirusa: przyspiesza to kompilację silnika kilkukrotnie.
 
-## Linux (szablon eksportu, CI)
+## Linux (edytor do testów silnika, szablon eksportu, CI)
 
-Wymagania budowania Godota dla `linuxbsd` według dokumentacji „Compiling for Linux, *BSD” dla wersji 4.7, plus Python 3.12, SCons i .NET SDK 10.
+Wymagania budowania Godota dla `linuxbsd` według dokumentacji „Compiling for Linux, *BSD” dla wersji 4.7, plus Python 3.12, SCons i .NET SDK 10. Na Linuksie `python tools/engine/build.py all` buduje edytor `editor-linux` (z glue, paczkami i testem dymnym) oraz szablon `template-linux-release`; edytor służy testom silnika i raportowi zgodności generatora w CI (artefakt `engine-linux-editor`).
 
 ## Kroki
 
