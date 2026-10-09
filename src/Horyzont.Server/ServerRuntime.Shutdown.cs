@@ -11,6 +11,7 @@ public sealed partial class ServerRuntime
         Task<bool>? checkpoint = null;
         var checkpointStarted = false;
 
+        Task? disposeTransport = null;
         var steps = new List<ShutdownStep>
         {
             new()
@@ -36,7 +37,9 @@ public sealed partial class ServerRuntime
             {
                 Name = "3a participants shutdown",
                 ExceptionFaults = true,
+                FailureIsError = true,
                 SkipWhenFaulted = true,
+                Skip = !hasWriter,
                 Begin = () =>
                 {
                     foreach (var participant in _participants)
@@ -51,6 +54,7 @@ public sealed partial class ServerRuntime
             {
                 Name = "3b leave all online players",
                 ExceptionFaults = true,
+                FailureIsError = true,
                 SkipWhenFaulted = true,
                 Skip = !hasWriter,
                 Begin = () =>
@@ -62,6 +66,7 @@ public sealed partial class ServerRuntime
             new()
             {
                 Name = "4 checkpoint",
+                FailureIsError = true,
                 SkipWhenFaulted = true,
                 Skip = !hasWriter,
                 Timeout = _options.ShutdownCheckpointTimeout,
@@ -95,11 +100,24 @@ public sealed partial class ServerRuntime
             TaskStep("7 shut terrain down", async () => await TerrainShutdownAsync(), _options.TerrainShutdownTimeout, timeoutIsError: false),
             new()
             {
+                // Off the main thread: LiteNetLib stops its thread with an unbounded join. A transport that hangs is left to the process exit.
                 Name = "8 dispose transport",
+                Timeout = _options.TransportDisposeTimeout,
                 Begin = () =>
                 {
-                    _transport.Dispose();
-                    return null;
+                    disposeTransport = Task.Run(_transport.Dispose);
+                    return () => disposeTransport.IsCompleted;
+                },
+                Finished = timedOut =>
+                {
+                    if (timedOut)
+                    {
+                        _logger.TransportLeftOpen();
+                    }
+                    else if (disposeTransport!.IsFaulted)
+                    {
+                        ExceptionDispatchInfo.Capture(disposeTransport.Exception!.GetBaseException()).Throw();
+                    }
                 },
             },
         };
@@ -121,6 +139,7 @@ public sealed partial class ServerRuntime
         {
             Name = name,
             Skip = skip,
+            FailureIsError = timeoutIsError,
             Timeout = timeout,
             TimeoutIsError = timeoutIsError,
             Begin = () =>

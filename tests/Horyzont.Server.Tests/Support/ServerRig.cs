@@ -33,7 +33,8 @@ internal sealed class ServerRig : IAsyncDisposable
     public ServerRig(
         TempDirectory? dir = null, FakeTimeProvider? time = null, Func<ServerRuntimeOptions, ServerRuntimeOptions>? configure = null,
         ProcessMode mode = ProcessMode.Solo, TestFaults? faults = null, FakeServerTerrainFactory? terrain = null,
-        Func<WorldState>? createWorld = null, LinkConditions? conditions = null)
+        Func<WorldState>? createWorld = null, LinkConditions? conditions = null,
+        Func<ITransport, ITransport>? wrapTransport = null)
     {
         _ownsDirectory = dir is null;
         Dir = dir ?? new TempDirectory();
@@ -52,7 +53,7 @@ internal sealed class ServerRig : IAsyncDisposable
             Faults = Faults,
         };
         Options = configure?.Invoke(options) ?? options;
-        Runtime = new ServerRuntime(mode, Options, ServerTransport, Terrain, createWorld ?? WorldFactory.CreateDefault, Time, Log);
+        Runtime = new ServerRuntime(mode, Options, wrapTransport?.Invoke(ServerTransport) ?? ServerTransport, Terrain, createWorld ?? WorldFactory.CreateDefault, Time, Log);
     }
 
     public TempDirectory Dir { get; }

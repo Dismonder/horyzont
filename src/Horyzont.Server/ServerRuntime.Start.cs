@@ -29,9 +29,20 @@ public sealed partial class ServerRuntime
 
         RuntimeState = ServerRuntimeState.Starting;
         WorldStartResult result;
+        using var startCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _startCts = startCts;
         try
         {
-            result = await StartCoreAsync(ct).ConfigureAwait(true);
+            result = await StartCoreAsync(startCts.Token).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) when (_shutdownRequestedWhileStarting && !ct.IsCancellationRequested)
+        {
+            // A stop request during the start gives the start up; the cleanup is bounded like every wait of the shutdown.
+            _logger.StartAborted();
+            await CleanUpAfterFailedStartAsync().ConfigureAwait(true);
+            ExitCode = 0;
+            RuntimeState = ServerRuntimeState.Stopped;
+            return new WorldStartResult.Aborted();
         }
         catch (Exception ex)
         {
@@ -40,6 +51,10 @@ public sealed partial class ServerRuntime
             ExitCode = 70;
             RuntimeState = ServerRuntimeState.Faulted;
             throw;
+        }
+        finally
+        {
+            _startCts = null;
         }
 
         if (!result.IsRunning)
@@ -130,6 +145,7 @@ public sealed partial class ServerRuntime
         }
 
         // 4. Writer and simulation.
+        ct.ThrowIfCancellationRequested();
         _writer = new PersistenceWriter(
             WorldDatabase.Open(path), persistence, _time, _options.Faults, _loggers.CreateLogger<PersistenceWriter>());
         IJournalSink sink = new JournalSink(_writer);
@@ -163,6 +179,7 @@ public sealed partial class ServerRuntime
         _logger.Replayed(loaded.JournalTail.Count, left.Count);
 
         // 7. The startup checkpoint, then the semantics string, before the first operation of the new run.
+        ct.ThrowIfCancellationRequested();
         try
         {
             var committed = await StartCheckpoint().WaitAsync(_options.StartupCheckpointTimeout, _time, ct).ConfigureAwait(true);
@@ -181,12 +198,23 @@ public sealed partial class ServerRuntime
         _lastCheckpointAt = _time.GetTimestamp();
 
         // 8. The startup backup; a failure is only logged (E1).
-        if (!await _writer.BackupAsync(ServerBackupReasons.Startup).ConfigureAwait(true))
+        var backedUp = false;
+        try
+        {
+            backedUp = await _writer.BackupAsync(ServerBackupReasons.Startup).WaitAsync(_options.StartupCheckpointTimeout, _time, ct).ConfigureAwait(true);
+        }
+        catch (TimeoutException)
+        {
+            // Not a reason to refuse the start; the copy runs off the writer thread and is only logged as missing.
+        }
+
+        if (!backedUp)
         {
             _logger.StartupBackupFailed();
         }
 
         // 9. Sessions.
+        ct.ThrowIfCancellationRequested();
         StartSession();
         RuntimeState = ServerRuntimeState.Running;
         _logger.Running(loaded.State.Id.Value, RuntimeState);
@@ -226,34 +254,34 @@ public sealed partial class ServerRuntime
 
     private async Task CleanUpAfterFailedStartAsync()
     {
-        if (_writer is not null)
+        if (_writer is { } writer)
         {
-            try
-            {
-                await _writer.DisposeAsync().ConfigureAwait(true);
-            }
-#pragma warning disable CA1031 // Cleaning up after a failed start: report the original failure, not this one.
-            catch (Exception ex)
-#pragma warning restore CA1031
-            {
-                _logger.ShutdownStepFailed("start cleanup: dispose writer", ex);
-            }
-
             _writer = null;
+            await BoundedCleanupAsync("start cleanup: dispose writer", () => writer.DisposeAsync().AsTask()).ConfigureAwait(true);
         }
 
-        if (_terrain is not null)
+        if (_terrain is { } terrain)
         {
-            try
-            {
-                await _terrain.ShutdownAsync().ConfigureAwait(true);
-            }
+            await BoundedCleanupAsync("start cleanup: shut terrain down", () => terrain.ShutdownAsync()).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>One wait of the cleanup of a start that did not complete: it never outlasts <see cref="ServerRuntimeOptions.StartCleanupTimeout"/>.</summary>
+    private async Task BoundedCleanupAsync(string name, Func<Task> action)
+    {
+        try
+        {
+            await action().WaitAsync(_options.StartCleanupTimeout, _time).ConfigureAwait(true);
+        }
+        catch (TimeoutException)
+        {
+            _logger.ShutdownStepTimedOut(name, _options.StartCleanupTimeout.TotalSeconds);
+        }
 #pragma warning disable CA1031 // Cleaning up after a failed start: report the original failure, not this one.
-            catch (Exception ex)
+        catch (Exception ex)
 #pragma warning restore CA1031
-            {
-                _logger.ShutdownStepFailed("start cleanup: shut terrain down", ex);
-            }
+        {
+            _logger.ShutdownStepFailed(name, ex);
         }
     }
 

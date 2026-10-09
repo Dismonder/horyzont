@@ -67,6 +67,12 @@ internal static partial class ServerLog
     [LoggerMessage(EventId = 8020, Level = LogLevel.Warning, Message = "The terrain store was left open: reads were still running; the end of the process closes it")]
     public static partial void TerrainStoreLeftOpen(this ILogger logger);
 
+    [LoggerMessage(EventId = 8023, Level = LogLevel.Warning, Message = "The transport did not dispose in time and is left to the end of the process")]
+    public static partial void TransportLeftOpen(this ILogger logger);
+
+    [LoggerMessage(EventId = 8024, Level = LogLevel.Warning, Message = "A shutdown was requested while the server was starting; the start is given up")]
+    public static partial void StartAborted(this ILogger logger);
+
     [LoggerMessage(EventId = 8021, Level = LogLevel.Information, Message = "Stopped; state hash={Hash}")]
     public static partial void Stopped(this ILogger logger, string hash);
 

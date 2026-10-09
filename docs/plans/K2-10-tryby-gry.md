@@ -541,6 +541,11 @@ Odstępstwa:
 - Błąd IO checkpointu psuje writer, więc test `CheckpointFailed` idzie przez tryb bezpieczny i `save`.
 - `HostTests` używają jednego serwerowego `InMemoryTransport` i różnie nazwanych klientów zamiast `CompositeTransport`.
 - Krok 4 (kontrakt chroniony) czeka na przegląd Opus.
+- Poprawki po przeglądzie (1) Krok 8 zamykania (`Dispose` transportu) działa w `Task.Run` i ma termin `TransportDisposeTimeout` (5 s) liczony `TimeProvider`em co klatkę; po terminie ostrzeżenie i zostawienie procesowi (LiteNetLib `Stop(true)` łączy wątek bez limitu). Test: `Shutdown_TransportDisposeBlocks_MainThreadNeverBlocksAndStopCompletesAfterDeadline`.
+- (2) Sprzątanie po nieudanym starcie ma termin `StartCleanupTimeout` (10 s) na każde oczekiwanie (writer, teren); kopia startowa ma termin jak checkpoint startowy. `RequestShutdown` w stanie `Starting` anuluje start (`CancellationTokenSource` powiązany z `ct`), a `StartAsync` zwraca nowy wariant `WorldStartResult.Aborted` (kod 0) po ograniczonym sprzątaniu; wybrano sprzątanie startu zamiast kanonicznej sekwencji, bo nie ma jeszcze sesji ani wpisów do opróżnienia. Testy: `StartAbortTests.*`.
+- (3) Krok 3a (`OnShutdown` uczestników) jest pomijany w trybie bezpiecznym bez writera, zgodnie z planem; poprzedni wyjątek wykonawcy usunięty, oczekiwanie w `Shutdown_ReadOnlyStart_SkipsLeaveCheckpointAndWriter` poprawione.
+- (4) Kod 70 tylko dla kroków zapisu: nowa flaga `ShutdownStep.FailureIsError` (ustawiona dla 3a, 3b, 4, 5, 6; 3a, bo jego wyjątek pomija leave i checkpoint). Wyjątek w kroku 7 (teren) i 8 jest logowany (Error), a kod wyjścia zostaje 0 (plan nie definiuje innego). Test: `Shutdown_TerrainShutdownThrows_IsLoggedButExitCodeStaysZero`.
+- (5) `Shutdown_NoJournalEnqueueAfterFlush` wysyła intencje po kroku 1 i w trakcie opróżniania (łącze 200 ms) i sprawdza, że po zatrzymaniu do dziennika trafiły wyłącznie `PlayerLeaveOp`, a odpowiedzi to `ServerReadOnly`.
 
 
 ## Pułapki

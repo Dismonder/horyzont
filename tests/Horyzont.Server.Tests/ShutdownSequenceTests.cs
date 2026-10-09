@@ -1,4 +1,5 @@
 using Horyzont.Core.Ids;
+using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Simulation;
@@ -73,21 +74,39 @@ public sealed class ShutdownSequenceTests
     [Fact]
     public async Task Shutdown_NoJournalEnqueueAfterFlush()
     {
-        var appended = new List<(ulong Op, int StepsDone)>();
+        var appended = new List<(ulong Op, Operation Operation, int StepsDone)>();
         ServerRuntime? runtime = null;
-        await using var rig = new ServerRig(configure: o => o with
-        {
-            JournalSinkDecorator = inner => new SpySink(inner, entry => appended.Add((entry.Id.Value, runtime!.CompletedShutdownSteps.Count))),
-        });
+        var slow = new Net.Transport.InMemory.LinkConditions(TimeSpan.FromMilliseconds(200), TimeSpan.Zero, 0, 0, 1);
+        await using var rig = new ServerRig(
+            conditions: slow,
+            configure: o => o with
+            {
+                JournalSinkDecorator = inner => new SpySink(inner, entry => appended.Add((entry.Id.Value, entry.Operation, runtime!.CompletedShutdownSteps.Count))),
+            });
         runtime = rig.Runtime;
         await rig.StartAsync();
         var client = await rig.JoinAsync("local", 1);
         await rig.DigAsync(client, 3f, 1f);
+        rig.StepMany(30);
+        var before = appended.Count;
+        var repliesBefore = client.Replies.Count;
 
-        await rig.StopAsync();
+        // Intents in flight while the server shuts down: right after step 1 and again during the drain.
+        rig.Runtime.RequestShutdown();
+        rig.Step();
+        Assert.Contains("1 session shutdown", rig.Runtime.CompletedShutdownSteps);
+        client.Session.SubmitIntent(rig.DigIntent(client.Player, -3f, 1f));
+        rig.StepMany(3);
+        client.Session.SubmitIntent(rig.DigIntent(client.Player, -3f, -2f));
+        Assert.True(await rig.RunUntilAsync(() => rig.Runtime.IsStopped), "the server did not stop");
+
+        // Nothing the late intents asked for was applied or journaled; only the leave operations of the shutdown reached the journal.
+        var late = appended.Skip(before).ToList();
+        Assert.NotEmpty(late);
+        Assert.All(late, a => Assert.IsType<PlayerLeaveOp>(a.Operation));
+        Assert.All(client.Replies.Skip(repliesBefore), r => Assert.Equal(RejectReason.ServerReadOnly, r.Reason));
 
         var flushDone = Array.IndexOf(_fullOrder, "5 flush journal") + 1;
-        Assert.NotEmpty(appended);
         Assert.All(appended, a => Assert.True(a.StepsDone < flushDone, $"operation {a.Op} was appended after the flush"));
 
         // Everything appended is durable: a restart sees the same state.
@@ -97,6 +116,62 @@ public sealed class ShutdownSequenceTests
         Assert.Equal(live, again.Hash);
         Assert.Equal(0, again.Terrain.Last.ReplayedEntries);
         await again.StopAsync();
+    }
+
+    [Fact]
+    public async Task Shutdown_TransportDisposeBlocks_MainThreadNeverBlocksAndStopCompletesAfterDeadline()
+    {
+        GatedTransport? gated = null;
+        await using var rig = new ServerRig(
+            configure: o => o with { TransportDisposeTimeout = TimeSpan.FromSeconds(1) },
+            wrapTransport: t => gated = new GatedTransport(t));
+        await rig.StartAsync();
+        try
+        {
+            var mainThread = Environment.CurrentManagedThreadId;
+            rig.Runtime.RequestShutdown();
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            for (var i = 0; i < 2000 && !gated!.DisposeEntered; i++)
+            {
+                rig.Step();
+                Thread.Sleep(1);
+            }
+
+            Assert.True(gated!.DisposeEntered, "step 8 never started");
+            Assert.NotEqual(mainThread, gated.DisposeThreadId);
+            Assert.False(rig.Runtime.IsStopped);
+
+            // The gate stays shut: only the deadline can end the step, and every frame returns at once.
+            for (var i = 0; i < 200 && !rig.Runtime.IsStopped; i++)
+            {
+                var frame = System.Diagnostics.Stopwatch.StartNew();
+                rig.Step();
+                Assert.True(frame.Elapsed < TimeSpan.FromSeconds(2), "a frame blocked on the transport");
+            }
+
+            Assert.True(rig.Runtime.IsStopped);
+            Assert.Equal(_fullOrder, rig.Runtime.CompletedShutdownSteps);
+            Assert.True(rig.Log.Contains(LogLevel.Warning, "8 dispose transport did not finish"));
+            Assert.Equal(0, rig.Runtime.ExitCode);
+        }
+        finally
+        {
+            gated!.Gate.Set();
+        }
+    }
+
+    [Fact]
+    public async Task Shutdown_TerrainShutdownThrows_IsLoggedButExitCodeStaysZero()
+    {
+        await using var rig = new ServerRig();
+        await rig.StartAsync();
+        rig.Terrain.Last.OnShutdown = () => throw new InvalidOperationException("terrain boom (test)");
+
+        await rig.StopAsync();
+
+        Assert.Equal(_fullOrder, rig.Runtime.CompletedShutdownSteps);
+        Assert.True(rig.Log.Contains(LogLevel.Error, "7 shut terrain down"));
+        Assert.Equal(0, rig.Runtime.ExitCode);
     }
 
     [Fact]
@@ -216,7 +291,7 @@ public sealed class ShutdownSequenceTests
         await readOnly.StopAsync();
 
         Assert.Equal(
-            ["1 session shutdown", "2 drain session and transport", "3a participants shutdown", "7 shut terrain down", "8 dispose transport"],
+            ["1 session shutdown", "2 drain session and transport", "7 shut terrain down", "8 dispose transport"],
             readOnly.Runtime.CompletedShutdownSteps);
         Assert.Equal(0, readOnly.Runtime.ExitCode);
     }

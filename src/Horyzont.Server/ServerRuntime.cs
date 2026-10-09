@@ -43,6 +43,7 @@ public sealed partial class ServerRuntime
     private bool _saveRequested;
     private bool _clearRequested;
     private bool _shutdownRequestedWhileStarting;
+    private CancellationTokenSource? _startCts;
     private long _lastCheckpointAt;
 
     /// <summary>Initializes a new instance of the <see cref="ServerRuntime"/> class.</summary>
@@ -142,6 +143,7 @@ public sealed partial class ServerRuntime
         {
             case ServerRuntimeState.Starting:
                 _shutdownRequestedWhileStarting = true;
+                _startCts?.Cancel();
                 break;
             case ServerRuntimeState.Running or ServerRuntimeState.SafeMode:
                 BeginShutdown(faulted: false);

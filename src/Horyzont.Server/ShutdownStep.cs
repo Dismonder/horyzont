@@ -21,6 +21,12 @@ public sealed class ShutdownStep
     /// <summary>Gets a value indicating whether an exception in this step marks the sequence faulted, which skips the steps that <see cref="SkipWhenFaulted"/>.</summary>
     public bool ExceptionFaults { get; init; }
 
+    /// <summary>
+    /// Gets a value indicating whether an exception in this step is a write error (exit code 70). Steps that do not write the world
+    /// (terrain, transport) only log the exception.
+    /// </summary>
+    public bool FailureIsError { get; init; }
+
     /// <summary>Gets a value indicating whether the step is skipped once the sequence is faulted.</summary>
     public bool SkipWhenFaulted { get; init; }
 

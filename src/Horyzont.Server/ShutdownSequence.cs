@@ -135,7 +135,7 @@ public sealed class ShutdownSequence
     private void Fail(ShutdownStep step, Exception exception)
     {
         _logger.ShutdownStepFailed(step.Name, exception);
-        HadError = true;
+        HadError |= step.FailureIsError;
         IsFaulted |= step.ExceptionFaults;
     }
 

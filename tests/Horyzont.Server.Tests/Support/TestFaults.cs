@@ -11,6 +11,9 @@ internal sealed class TestFaults : IPersistenceFaults
     private FaultPoint _pausePoint;
     private ManualResetEventSlim? _release;
 
+    /// <summary>Gets a signal that is set when the writer thread has reached a point set with <see cref="PauseAt"/>.</summary>
+    public ManualResetEventSlim Paused { get; } = new();
+
     /// <summary>Process death at the next hit of <paramref name="point"/>.</summary>
     public void CrashAt(FaultPoint point) => ThrowAt(point, new SimulatedCrashException(point));
 
@@ -39,7 +42,12 @@ internal sealed class TestFaults : IPersistenceFaults
             }
         }
 
-        pause?.Wait();
+        if (pause is not null)
+        {
+            Paused.Set();
+            pause.Wait();
+        }
+
         Exception? toThrow = null;
         lock (_gate)
         {

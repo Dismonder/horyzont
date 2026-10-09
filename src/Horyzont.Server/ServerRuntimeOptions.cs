@@ -48,6 +48,12 @@ public sealed record ServerRuntimeOptions
     /// <summary>Gets how long <see cref="IServerTerrain.ShutdownAsync"/> may take during the shutdown.</summary>
     public TimeSpan TerrainShutdownTimeout { get; init; } = TimeSpan.FromSeconds(10);
 
+    /// <summary>Gets how long step 8 of the shutdown waits for the transport to dispose (it runs off the main thread; LiteNetLib joins its thread without a limit).</summary>
+    public TimeSpan TransportDisposeTimeout { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>Gets how long each wait of the cleanup after a failed or aborted start may take (disposing the writer, shutting the terrain down).</summary>
+    public TimeSpan StartCleanupTimeout { get; init; } = TimeSpan.FromSeconds(10);
+
     /// <summary>Gets the block type keys of the game content; missing keys are appended to the world registries.</summary>
     public IReadOnlyList<string> BlockTypeKeys { get; init; } = [];
 

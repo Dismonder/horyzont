@@ -18,6 +18,7 @@ public abstract record WorldStartResult
         Started or StartedReadOnly => 0,
         Corrupted or FromNewerVersion => 3,
         ReplayFailed => 4,
+        Aborted => 0,
         _ => 70,
     };
 
@@ -43,6 +44,9 @@ public abstract record WorldStartResult
     /// <param name="OpId">The operation that failed; <see cref="Horyzont.Core.Ids.OpId.None"/> when no operation is to blame (a terrain area that did not load).</param>
     /// <param name="Message">What failed.</param>
     public sealed record ReplayFailed(OpId OpId, string Message) : WorldStartResult;
+
+    /// <summary>A shutdown was requested while the world was starting; the start was given up and cleaned up, nothing listens.</summary>
+    public sealed record Aborted : WorldStartResult;
 
     /// <summary>The startup checkpoint, or another step of the start, failed; nothing listens.</summary>
     /// <param name="Message">What failed.</param>
