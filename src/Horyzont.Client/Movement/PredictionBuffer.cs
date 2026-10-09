@@ -24,12 +24,14 @@ public sealed class PredictionBuffer
     private bool _pauseLogged;
 
     /// <summary>Initializes a new instance of the <see cref="PredictionBuffer"/> class.</summary>
-    /// <param name="policy">Correction thresholds.</param>
+    /// <param name="policy">Correction thresholds; <c>MaxUnacknowledged</c> must be in 1..<see cref="Capacity"/>.</param>
     /// <param name="logger">Logger.</param>
     public PredictionBuffer(CorrectionPolicy policy, ILogger<PredictionBuffer> logger)
     {
         ArgumentNullException.ThrowIfNull(policy);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentOutOfRangeException.ThrowIfLessThan(policy.MaxUnacknowledged, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(policy.MaxUnacknowledged, Capacity);
         _policy = policy;
         _logger = logger;
     }

@@ -97,6 +97,18 @@ public sealed class PredictionBufferTests
         Assert.Equal(3, buffer.Count);
     }
 
+    [Theory]
+    [InlineData(PredictionBuffer.Capacity + 1)]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void PredictionBuffer_MaxUnacknowledgedOutsideCapacity_Throws(int max) =>
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => new PredictionBuffer(new CorrectionPolicy { MaxUnacknowledged = max }, NullLogger<PredictionBuffer>.Instance));
+
+    [Fact]
+    public void PredictionBuffer_MaxUnacknowledgedEqualToCapacity_IsAccepted() =>
+        Assert.NotNull(new PredictionBuffer(new CorrectionPolicy { MaxUnacknowledged = PredictionBuffer.Capacity }, NullLogger<PredictionBuffer>.Instance));
+
     [Fact]
     public void PredictionBuffer_AckBeyondNewestEntry_CorrectsAndEmptiesTheBuffer()
     {
