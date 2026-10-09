@@ -1,0 +1,42 @@
+using Godot;
+
+using Horyzont.Game.Planet.Dev;
+
+namespace Horyzont.Game.Boot;
+
+/// <summary>Developer modes started from the command line (<c>godot --path game -- --planet-preview</c> and others).</summary>
+public static class DevModes
+{
+    /// <summary>Exit code for invalid arguments.</summary>
+    public const int ExitBadArguments = 2;
+
+    /// <summary>
+    /// Starts the developer mode named in the arguments, if any. Returns true when a mode took over (it quits the tree itself),
+    /// false when Boot should continue with the normal start.
+    /// </summary>
+    public static bool TryRun(Node host, string[] userArgs)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+        var args = new DevModeArguments(userArgs);
+        if (!args.Has("--planet-preview"))
+        {
+            return false;
+        }
+
+        try
+        {
+            var seed = args.GalaxySeed();
+            var screenshots = args.Directory("--screenshots", mustExist: false);
+            var lodDistance = args.Number("--lod-distance", 16f, 4096f);
+            host.AddChild(new PlanetPreview(seed, screenshots, lodDistance) { Name = "PlanetPreview" });
+        }
+        catch (ArgumentException ex)
+        {
+            GD.PushError(ex.Message);
+            GD.Print($"ARGUMENT ERROR: {ex.Message}");
+            host.GetTree().Quit(ExitBadArguments);
+        }
+
+        return true;
+    }
+}

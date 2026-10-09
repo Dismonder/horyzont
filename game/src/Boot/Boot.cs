@@ -8,6 +8,11 @@ public partial class Boot : Node
     public override void _Ready()
     {
         var args = OS.GetCmdlineUserArgs();
+        if (DevModes.TryRun(this, args))
+        {
+            return;
+        }
+
         if (args.Contains("--smoke"))
         {
             RunSmoke();
