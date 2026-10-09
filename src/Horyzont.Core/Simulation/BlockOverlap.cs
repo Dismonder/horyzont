@@ -12,8 +12,8 @@ namespace Horyzont.Core.Simulation;
 /// </summary>
 public static class BlockOverlap
 {
-    /// <summary>Penetration depth up to which two boxes only touch (face, edge or vertex contact is allowed).</summary>
-    public const float TouchToleranceMeters = 1e-4f;
+    /// <summary>Penetration depth up to which two boxes only touch (face, edge or vertex contact is allowed). Planet-frame coordinates near 4000 m have a half-ulp of ~1.2e-4 m, so exact contact can read as a few 1e-4 m of depth.</summary>
+    public const float TouchToleranceMeters = 2e-3f;
 
     /// <summary>Half extent of a unit cell.</summary>
     public const float CellHalfExtent = 0.5f;

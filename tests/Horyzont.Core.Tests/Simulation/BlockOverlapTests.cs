@@ -113,4 +113,42 @@ public sealed class BlockOverlapTests
         Assert.False(BlockOverlap.OverlapsConstruct(state.Constructs, frame, beside, Quaternion.Identity, skip: null));
         Assert.False(BlockOverlap.OverlapsConstruct(state.Constructs, frame, inside, Quaternion.Identity, skip: new EntityId(2)));
     }
+
+    [Fact]
+    public void OverlapsConstruct_FaceContactAtPlanetRadius_ToleratesFloatGrain()
+    {
+        // Planet-frame coordinates near 4000 m have a half-ulp of ~1.2e-4 m; the origin of B, the rotation and the cell centre of the
+        // new block (computed in B's grid, so exactly in contact) add up past the old 1e-4 m tolerance. Face contact must stay a touch.
+        var frame = FrameRef.Of(WorldFactory.HomePlanet);
+        var stone = BlockState.Create(1, 0);
+        var worstDepth = 0f;
+        for (var step = 0; step < 400; step++)
+        {
+            var state = WorldFactory.CreateDefault();
+            var originB = new Vector3(2400.567f + (step * 0.0137f), 3011.3f + (step * 0.0211f), -1387.65f - (step * 0.0173f));
+            var rotation = Quaternion.CreateFromYawPitchRoll(0.3f + (step * 0.0157f), 0.2f + (step * 0.0093f), 0.1f + (step * 0.0071f));
+            var b = state.Constructs.Create(new EntityId(1), frame, originB, rotation);
+            b.SetBlock(new CellPos(0, 0, 0), stone);
+            var inverse = Quaternion.Inverse(rotation);
+
+            // The new block sits in each of the six cells next to B's block, on the grid of B.
+            var cells = new[] { new Vector3(1.5f, 0.5f, 0.5f), new Vector3(-0.5f, 0.5f, 0.5f), new Vector3(0.5f, 1.5f, 0.5f), new Vector3(0.5f, -0.5f, 0.5f), new Vector3(0.5f, 0.5f, 1.5f), new Vector3(0.5f, 0.5f, -0.5f) };
+            foreach (var local in cells)
+            {
+                var center = originB + Vector3.Transform(local, rotation);
+                var seen = Vector3.Transform(center - originB, inverse);
+                var error = Vector3.Abs(seen - local);
+                var depth = MathF.Max(error.X, MathF.Max(error.Y, error.Z));
+                worstDepth = MathF.Max(worstDepth, depth);
+
+                Assert.False(
+                    BlockOverlap.OverlapsConstruct(state.Constructs, frame, center, rotation, skip: null),
+                    $"step {step}, cell {local}");
+            }
+        }
+
+        // The premise: some of these placements are off the exact contact by more than the previous tolerance.
+        Assert.True(worstDepth > 1e-4f, $"worst {worstDepth}");
+        Assert.True(worstDepth < BlockOverlap.TouchToleranceMeters, $"worst {worstDepth}");
+    }
 }
