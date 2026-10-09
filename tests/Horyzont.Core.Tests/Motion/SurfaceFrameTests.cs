@@ -147,6 +147,34 @@ public sealed class SurfaceFrameTests
         AssertClose(Vector3.UnitZ, SurfaceFrame.Reference(-Vector3.UnitY), 1e-6f);
     }
 
+    [Theory]
+    [InlineData(1.01e-4f)]
+    [InlineData(0.99e-4f)]
+    [InlineData(1e-4f)]
+    public void SurfaceFrame_AtPoleFallbackEdge_FrameStaysOrthonormalAndTangent(float offAxis)
+    {
+        // |ProjectOnPlane(+Y, up)| equals offAxis; the threshold decides between +Y (above) and +Z (below).
+        var up = Vector3.Normalize(new Vector3(offAxis, MathF.Sqrt(1f - (offAxis * offAxis)), 0f));
+        var reference = SurfaceFrame.Reference(up);
+
+        Assert.InRange(reference.Length(), 1f - 1e-5f, 1f + 1e-5f);
+        Assert.InRange(MathF.Abs(Vector3.Dot(reference, up)), 0f, 1e-5f);
+
+        foreach (var yaw in new[] { 0f, 0.7f, -2.1f, Pi })
+        {
+            var q = SurfaceFrame.FromYaw(up, yaw);
+            AssertUnit(q, 1e-5f);
+            var bodyUp = Up(q);
+            var forward = Forward(q);
+            var right = Vector3.Transform(Vector3.UnitX, q);
+            AssertClose(up, bodyUp, 1e-5f);
+            Assert.InRange(MathF.Abs(Vector3.Dot(forward, bodyUp)), 0f, 1e-5f);
+            Assert.InRange(MathF.Abs(Vector3.Dot(right, bodyUp)), 0f, 1e-5f);
+            Assert.InRange(MathF.Abs(Vector3.Dot(right, forward)), 0f, 1e-5f);
+            AssertClose(Vector3.Cross(forward, bodyUp), right, 1e-5f);
+        }
+    }
+
     [Fact]
     public void SurfaceFrame_YawOf_DegenerateForwardOnUp_IsZero()
     {
