@@ -390,6 +390,27 @@ public sealed class ServerRuntimeTests
     }
 
     [Fact]
+    public async Task Join_ThrowInApply_NothingApplied()
+    {
+        // No planet to spawn on: PreparePlayerJoin throws before anything is applied (E5: prepare and apply are one call).
+        await using var rig = new ServerRig(
+            createWorld: () => Core.World.WorldState.CreateNew(new WorldId(Guid.NewGuid()), 1, [], ["core:stone_block"], []));
+        await rig.StartAsync();
+        var hash = rig.Hash;
+        var lastOp = rig.Runtime.State.LastOpId;
+
+        var client = rig.AddClient("local", 1);
+        Assert.True(await rig.RunUntilAsync(() => client.Session.State == Net.Session.ClientState.Disconnected));
+
+        Assert.Null(client.Hello);
+        Assert.Equal(hash, rig.Hash);
+        Assert.Equal(lastOp, rig.Runtime.State.LastOpId);
+        Assert.Empty(rig.Runtime.State.Players.All);
+        Assert.Empty(rig.Runtime.Session.PlayersInGame);
+        await rig.StopAsync();
+    }
+
+    [Fact]
     public async Task Constructor_ClientMode_Throws()
     {
         using var dir = new TempDirectory();
