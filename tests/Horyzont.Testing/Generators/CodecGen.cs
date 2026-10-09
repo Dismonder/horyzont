@@ -467,10 +467,10 @@ public static class CodecGen
         from data in Bytes(ProtocolConstants.MaxTerrainBlockDataBytes)
         select new TerrainBlockData(key, version, data);
 
-    /// <summary>Terrain block blobs (envelope fields; the voxel payload is opaque to Core).</summary>
+    /// <summary>Terrain block blobs (envelope fields; the voxel payload is opaque to Core). The 7 below is
+    /// <c>StateCodec.TerrainBlockHeaderBytes</c> (private); <c>TerrainBlockBlobTests</c> pins it.</summary>
     public static Gen<TerrainBlockBlob> TerrainBlockBlob { get; } =
         from voxelFormat in Gen.Choose(1, 255)
-        // 7 = StateCodec.TerrainBlockHeaderBytes (private, not visible here); pinned by TerrainBlockBlobTests.
         from voxels in Bytes(ProtocolConstants.MaxTerrainBlockDataBytes - 7)
         select new TerrainBlockBlob((byte)voxelFormat, voxels);
 
