@@ -15,6 +15,8 @@ namespace Horyzont.Persistence.Terrain;
 /// </summary>
 public sealed class ServerTerrainBlocks : ITerrainBlockSource
 {
+    private const int MaxLoadAttempts = 3;
+
     private readonly TerrainBlockStore _store;
     private readonly TerrainBufferOptions _options;
     private readonly TimeProvider _time;
@@ -132,66 +134,92 @@ public sealed class ServerTerrainBlocks : ITerrainBlockSource
     {
         version = 0;
         blob = [];
-        uint known;
-        lock (_lock)
+        for (var attempt = 0; attempt < MaxLoadAttempts; attempt++)
         {
-            if (_closed)
-            {
-                return TerrainBlockLookup.Unavailable;
-            }
-
-            if (_pending.TryGetValue(key, out var pending))
-            {
-                version = pending.Version;
-                blob = pending.Blob;
-                return TerrainBlockLookup.Found;
-            }
-
-            if (!_known.TryGetValue(key, out known))
-            {
-                return TerrainBlockLookup.NotEdited;
-            }
-
-            _activeReads++;
-        }
-
-        try
-        {
-            // A pending entry is removed only after its checkpoint committed, so a miss above always finds that row here.
-            if (_store.TryLoad(key, out var savedVersion, out var data))
-            {
-                version = savedVersion;
-                blob = data;
-                return TerrainBlockLookup.Found;
-            }
-
+            uint known;
             lock (_lock)
             {
-                _firstCorruptKey ??= key;
-            }
-
-            TerrainLog.BlockWithoutData(_logger, key, known);
-            return TerrainBlockLookup.Unavailable;
-        }
-        catch (Exception exception)
-        {
-            // Not swallowed: logged, and the stream reports a load error for the block instead of falling back to the generator.
-            TerrainLog.ReadFailed(_logger, exception, key);
-            version = 0;
-            blob = [];
-            return TerrainBlockLookup.Unavailable;
-        }
-        finally
-        {
-            lock (_lock)
-            {
-                _activeReads--;
-                if (_activeReads == 0 && _closed)
+                if (_closed)
                 {
-                    _drained?.TrySetResult();
+                    return TerrainBlockLookup.Unavailable;
+                }
+
+                if (_pending.TryGetValue(key, out var pending))
+                {
+                    version = pending.Version;
+                    blob = pending.Blob;
+                    return TerrainBlockLookup.Found;
+                }
+
+                if (!_known.TryGetValue(key, out known))
+                {
+                    return TerrainBlockLookup.NotEdited;
+                }
+
+                _activeReads++;
+            }
+
+            var retry = false;
+            try
+            {
+                var found = _store.TryLoad(key, out var savedVersion, out var data);
+                lock (_lock)
+                {
+                    // A Record during the query may have put a newer pair in the buffer, or even committed it and dropped the entry.
+                    if (_pending.TryGetValue(key, out var pending))
+                    {
+                        version = pending.Version;
+                        blob = pending.Blob;
+                        return TerrainBlockLookup.Found;
+                    }
+
+                    var latest = _known[key];
+                    if (latest != known)
+                    {
+                        retry = true;
+                    }
+                    else if (found && savedVersion == latest)
+                    {
+                        version = savedVersion;
+                        blob = data;
+                        return TerrainBlockLookup.Found;
+                    }
+                    else
+                    {
+                        _firstCorruptKey ??= key;
+                        TerrainLog.BlockWithoutData(_logger, key, known);
+                        return TerrainBlockLookup.Unavailable;
+                    }
                 }
             }
+            catch (Exception exception)
+            {
+                // Not swallowed: logged, and the stream reports a load error for the block instead of falling back to the generator.
+                TerrainLog.ReadFailed(_logger, exception, key);
+                version = 0;
+                blob = [];
+                return TerrainBlockLookup.Unavailable;
+            }
+            finally
+            {
+                lock (_lock)
+                {
+                    _activeReads--;
+                    if (_activeReads == 0 && _closed)
+                    {
+                        _drained?.TrySetResult();
+                    }
+                }
+            }
+
+            if (!retry)
+            {
+                break;
+            }
         }
+
+        TerrainLog.LoadRetriesExhausted(_logger, key, MaxLoadAttempts);
+        return TerrainBlockLookup.Unavailable;
     }
 
     /// <summary>

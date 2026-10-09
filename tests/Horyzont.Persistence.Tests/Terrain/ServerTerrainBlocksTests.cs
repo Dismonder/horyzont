@@ -97,6 +97,90 @@ public sealed class ServerTerrainBlocksTests
     }
 
     [Fact]
+    public async Task TryLoad_RecordDuringQuery_ReturnsTheBufferedNewerPair()
+    {
+        using var dir = new TempDirectory();
+        await CreateWorld(dir, new TerrainBlockVersion(_a, 1));
+        using var store = new TerrainBlockStore(dir.WorldPath);
+        var blocks = NewBlocks(store, [new TerrainBlockVersion(_a, 1)]);
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        store.BeforeQuery = _ =>
+        {
+            entered.Set();
+            Assert.True(release.Wait(TimeSpan.FromSeconds(30)));
+        };
+        var read = Task.Factory.StartNew(
+            () => (Result: blocks.TryLoad(_a, out var v, out var b), Version: v, Blob: b), TaskCreationOptions.LongRunning);
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
+
+        blocks.Record(_a, 2, Blob(_a, 2));
+        release.Set();
+        var (result, version, blob) = await read.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+
+        Assert.Equal(TerrainBlockLookup.Found, result);
+        Assert.Equal(2u, version);
+        Assert.Equal(Blob(_a, 2), blob);
+    }
+
+    [Fact]
+    public async Task TryLoad_RecordAndCommitDuringQuery_RetriesAndReturnsTheNewerRow()
+    {
+        using var dir = new TempDirectory();
+        await CreateWorld(dir, new TerrainBlockVersion(_a, 1));
+        using var store = new TerrainBlockStore(dir.WorldPath);
+        var blocks = NewBlocks(store, [new TerrainBlockVersion(_a, 1)]);
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var gated = 0;
+        store.BeforeQuery = _ =>
+        {
+            if (Interlocked.Increment(ref gated) == 1)
+            {
+                entered.Set();
+                Assert.True(release.Wait(TimeSpan.FromSeconds(30)));
+            }
+        };
+        var read = Task.Factory.StartNew(
+            () => (Result: blocks.TryLoad(_a, out var v, out var b), Version: v, Blob: b), TaskCreationOptions.LongRunning);
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
+
+        blocks.Record(_a, 2, Blob(_a, 2));
+        var request = blocks.CreateCheckpointRequest(Checkpoint(new TerrainBlockVersion(_a, 2)));
+        await using (var writer = new PersistenceWriter(
+            WorldDatabase.Open(dir.WorldPath), WorldHarness.Options, new FakeTimeProvider(), Faults.NoFaults.Instance,
+            NullLogger<PersistenceWriter>.Instance))
+        {
+            Assert.True(await writer.CheckpointAsync(request));
+        }
+
+        blocks.OnCheckpointCommitted(request);
+        Assert.Equal(0, blocks.PendingCount);
+        release.Set();
+        var (result, version, blob) = await read.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+
+        Assert.Equal(TerrainBlockLookup.Found, result);
+        Assert.Equal(2u, version);
+        Assert.Equal(Blob(_a, 2), blob);
+        Assert.Equal(2, gated);
+    }
+
+    [Fact]
+    public async Task TryLoad_RowVersionDiffersFromSavedVersion_UnavailableAndFirstCorruptKey()
+    {
+        using var dir = new TempDirectory();
+        await CreateWorld(dir, new TerrainBlockVersion(_a, 2));
+        using var store = new TerrainBlockStore(dir.WorldPath);
+        var blocks = NewBlocks(store, [new TerrainBlockVersion(_a, 3)]);
+
+        Assert.Equal(TerrainBlockLookup.Unavailable, blocks.TryLoad(_a, out var version, out var blob));
+
+        Assert.Equal(0u, version);
+        Assert.Empty(blob);
+        Assert.Equal(_a, blocks.FirstCorruptKey);
+    }
+
+    [Fact]
     public async Task Record_VersionNotIncreasing_Throws()
     {
         using var dir = new TempDirectory();

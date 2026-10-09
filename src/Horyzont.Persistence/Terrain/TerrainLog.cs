@@ -24,4 +24,7 @@ internal static partial class TerrainLog
 
     [LoggerMessage(EventId = 135, Level = LogLevel.Warning, Message = "Terrain buffer closed while {Reads} block reads were still running after {TimeoutMs} ms")]
     internal static partial void CloseTimedOut(ILogger logger, int reads, int timeoutMs);
+
+    [LoggerMessage(EventId = 136, Level = LogLevel.Error, Message = "Terrain block {Key} changed version during each of {Attempts} read attempts; the block cannot be loaded now")]
+    internal static partial void LoadRetriesExhausted(ILogger logger, TerrainBlockKey key, int attempts);
 }
