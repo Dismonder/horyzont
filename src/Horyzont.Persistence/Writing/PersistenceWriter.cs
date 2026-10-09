@@ -101,13 +101,21 @@ public sealed class PersistenceWriter : IAsyncDisposable
     /// <summary>Enqueues a journal entry; never blocks. Entries must come with consecutive ids.</summary>
     /// <param name="entry">The entry.</param>
     /// <exception cref="ObjectDisposedException">The writer was disposed.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// The entry could not be queued although the writer is neither disposed nor crashed (a disposal racing with this call, or a
+    /// caller that enqueues after the shutdown order was broken): the entry would be lost without a trace.
+    /// </exception>
     public void EnqueueJournal(JournalEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
-        // Only after a simulated crash the channel is closed while not disposed; the entry is lost like in a dead process.
-        Post(new JournalCommand(entry, _time.GetTimestamp()));
+        // After a simulated crash the channel is closed while not disposed; the entry is lost like in a dead process.
+        // Any other closed channel means the entry would vanish silently (E3).
+        if (!Post(new JournalCommand(entry, _time.GetTimestamp())) && !_crashed)
+        {
+            throw new InvalidOperationException("journal entry lost: writer is closing");
+        }
     }
 
     /// <summary>

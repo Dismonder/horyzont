@@ -31,6 +31,9 @@ internal static partial class SessionLog
     [LoggerMessage(EventId = 7008, Level = LogLevel.Error, Message = "OnPlayerLeft of player {Player} (connection {Connection}) failed")]
     public static partial void LeftHookFailed(this ILogger logger, ulong player, ulong connection, Exception exception);
 
+    [LoggerMessage(EventId = 7009, Level = LogLevel.Information, Message = "Player {Player} (connection {Connection}) sent Disconnect({Code}); treated as Normal")]
+    public static partial void ForeignDisconnectCode(this ILogger logger, ulong player, ulong connection, DisconnectCode code);
+
     [LoggerMessage(EventId = 7101, Level = LogLevel.Warning, Message = "Protocol violation by the server: {Reason}")]
     public static partial void ServerViolation(this ILogger logger, string reason);
 

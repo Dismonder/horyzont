@@ -9,12 +9,18 @@ namespace Horyzont.Net.Session;
 public interface IServerGameHooks
 {
     /// <summary>A client passed the handshake; the game applies PlayerJoinOp and returns the player.</summary>
+    /// <remarks>
+    /// Throwing, or returning <see cref="PlayerId.None"/>, means the game applied nothing: the returned player must not be online
+    /// in the session, and the session closes the connection without calling <see cref="OnPlayerLeft"/>. A returned player is
+    /// owned by the connection from then on, so the game must not return a player that is already online.
+    /// </remarks>
     /// <param name="identity">Platform identity from ClientHello.</param>
     /// <param name="displayName">Display name from ClientHello.</param>
     /// <returns>The player, unique among connected players.</returns>
     PlayerId OnPlayerJoining(PlatformIdentity identity, string displayName);
 
     /// <summary>Builds the ServerHello for a joined player (YourPlayer and YourEntity from the world state).</summary>
+    /// <remarks>The hello must carry <paramref name="player"/> as YourPlayer; otherwise the session closes the connection.</remarks>
     /// <param name="player">The player.</param>
     /// <returns>The message sent to the client.</returns>
     ServerHello CreateHello(PlayerId player);

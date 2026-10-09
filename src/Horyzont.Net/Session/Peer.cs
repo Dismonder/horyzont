@@ -35,9 +35,6 @@ internal sealed class Peer
     /// <summary>Gets or sets the code this side closed with.</summary>
     public DisconnectCode LocalCode { get; set; }
 
-    /// <summary>Gets or sets the code from a Disconnect message of the client.</summary>
-    public DisconnectCode? RemoteCode { get; set; }
-
     public MessageBucket Reliable { get; }
 
     public MessageBucket Unreliable { get; }
