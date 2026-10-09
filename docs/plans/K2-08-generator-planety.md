@@ -401,7 +401,7 @@ CI i ręczne:
 - [x] 6. `GraphBuilder` z listą dozwolonych węzłów, `NoiseSeeds`; test listy dozwolonych na grafie próbnym. (S1: nazwy węzłów i porty z `get_node_type_info`, patrz Odstępstwa.)
 - [x] 7. `PlanetGeneratorV1` i `GeneratorProfiles`: testy kształtu, rdzenia, kosmosu, materiałów, jaskiń, powtarzalności, nieznanego profilu (bez złotego skrótu). (GeneratorSampler, GeneratorDigest i GeneratorProbe powstały już tu, bo testy generatora ich używają; krok 11 dodaje raport. Test `GeneratorV1_GoldenDigest` świadomie pominięty do kroku 10.)
 - [x] 8. `PlanetTerrainLayout`, `PlanetTerrainFactory`, `PlanetTerrainMaterial`, shader; testy konfiguracji i `Factory_TerrainBlocksEqualDirectGeneration`. (Odstępstwa: granice voxeli zaokrąglane do oktantu, patrz niżej.)
-- [ ] 8a. `DayNightCycle`, `SunLight` z testami `DayNight_*` (D12).
+- [x] 8a. `DayNightCycle`, `SunLight` z testami `DayNight_*` (D12).
 - [ ] 9. `DevModes` i `--planet-preview`; strojenie stałych generatora i `lod_distance` na zrzutach; zrzuty do PR. Właściciel akceptuje wygląd przed krokiem 10 (Pytanie 6).
 - [ ] 10. Zamrożenie: `GeneratorV1_GoldenDigest` ze stałą wpisaną po strojeniu; wiersz w ZASADY pkt 3 i dopisek do wiersza `engine.json`.
 - [ ] 11. `GeneratorSampler`, `GeneratorDigest`, `--generator-report` (z `--dump-keys`), `compare_reports.py` z `--self-test`, job `generator-consistency`, `game/export_presets.cfg`, nocny/ręczny raport release w `nightly.yml`.
