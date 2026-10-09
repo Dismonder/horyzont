@@ -24,6 +24,10 @@ public sealed partial class PlanetPreview : Node
     private readonly ulong _galaxySeed;
     private readonly string? _screenshotDirectory;
     private readonly float? _lodDistance;
+    private (string Name, Vector3 Position, Vector3 Target, Vector3 Up, uint ViewDistance)[] _points = [];
+    private Camera3D? _camera;
+    private VoxelViewer? _viewer;
+    private bool _interactive;
 
     /// <summary>Creates the mode node.</summary>
     /// <param name="galaxySeed">Galaxy seed of the previewed world.</param>
@@ -57,7 +61,15 @@ public sealed partial class PlanetPreview : Node
         try
         {
             await ShowAsync();
-            GetTree().Quit(0);
+            if (_screenshotDirectory is not null)
+            {
+                GetTree().Quit(0);
+                return;
+            }
+
+            // Without --screenshots the window stays for the owner's review: keys 1-4 jump between the points, Esc quits.
+            _interactive = true;
+            GD.Print("PREVIEW interactive: keys 1-4 = orbit / high / mid / ground, Esc = quit");
         }
         catch (Exception ex)
         {
@@ -94,8 +106,10 @@ public sealed partial class PlanetPreview : Node
         var viewer = new VoxelViewer { RequiresCollisions = false, RequiresVisuals = true };
         camera.AddChild(viewer);
 
+        _camera = camera;
+        _viewer = viewer;
         var up = Direction();
-        (string Name, Vector3 Position, Vector3 Target, Vector3 Up, uint ViewDistance)[] points =
+        _points =
         [
             ("orbit", up * 12000f, Vector3.Zero, Vector3.Up, 16384),
             ("high", up * (surface + 2000f), up * surface + new Vector3(0f, 0f, 2500f), up, 8192),
@@ -104,11 +118,10 @@ public sealed partial class PlanetPreview : Node
         ];
 
         var index = 1;
-        foreach (var (name, position, target, pointUp, viewDistance) in points)
+        for (var i = 0; i < _points.Length; i++)
         {
-            viewer.ViewDistance = viewDistance;
-            camera.Position = position;
-            camera.LookAt(target, pointUp);
+            var name = _points[i].Name;
+            MoveTo(i);
             var elapsed = await WaitForTerrainAsync();
             GD.Print($"PREVIEW point={name} load_ms={elapsed.TotalMilliseconds.ToString("F0", CultureInfo.InvariantCulture)} data_blocks={terrain.DebugGetDataBlockCount()} mesh_blocks={terrain.DebugGetMeshBlockCount()}");
             if (_screenshotDirectory is not null)
@@ -127,6 +140,32 @@ public sealed partial class PlanetPreview : Node
 
             index++;
         }
+    }
+
+    /// <inheritdoc />
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (!_interactive || @event is not InputEventKey { Pressed: true, Echo: false } key)
+        {
+            return;
+        }
+
+        if (key.Keycode == Key.Escape)
+        {
+            GetTree().Quit(0);
+        }
+        else if (key.Keycode is >= Key.Key1 and <= Key.Key4)
+        {
+            MoveTo((int)(key.Keycode - Key.Key1));
+        }
+    }
+
+    private void MoveTo(int index)
+    {
+        var (_, position, target, pointUp, viewDistance) = _points[index];
+        _viewer!.ViewDistance = viewDistance;
+        _camera!.Position = position;
+        _camera.LookAt(target, pointUp);
     }
 
     /// <summary>Radius of the surface above +X (outermost solid voxel), found with the generator itself.</summary>
