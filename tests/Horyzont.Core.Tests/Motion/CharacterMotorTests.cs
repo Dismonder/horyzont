@@ -162,45 +162,49 @@ public sealed class CharacterMotorTests
     }
 
     [Fact]
-    public void CharacterMotor_Jump_OnlyOnFloor_OncePerLanding()
+    public void CharacterMotor_JumpHeld_IsLevelTriggered_NoGainInAirAndReJumpOneTickAfterLanding()
     {
         var body = Standing();
-        var modes = new List<MovementMode>();
-        var radialBefore = 0f;
+        var airborne = false;
+        var landed = false;
 
         for (var tick = 0; tick < 400; tick++)
         {
-            // Jump is held for the first 30 ticks, long after the body has left the floor.
-            var buttons = tick < 30 ? InputButtons.Jump : InputButtons.None;
-            radialBefore = Radial(body);
+            var radialBefore = Radial(body);
             var wasOnFloor = body.OnFloor;
 
-            var output = body.Step(Input(buttons: buttons), devFlightAllowed: false, Dt);
+            // Jump stays held for the whole run, including the landing.
+            var output = body.Step(Input(buttons: InputButtons.Jump), devFlightAllowed: false, Dt);
 
-            if (modes.Count == 0 || modes[^1] != output.Mode)
+            if (landed)
             {
-                modes.Add(output.Mode);
+                // Exactly one tick after landing the held Jump launches again: Falling -> Jumping.
+                Assert.Equal(MovementMode.Jumping, output.Mode);
+                Assert.InRange(Radial(body), _rules.JumpSpeed - (_planet.Gravity * Dt) - 1e-3f, _rules.JumpSpeed + 1e-3f);
+                return;
             }
 
             if (tick == 0)
             {
                 Assert.True(wasOnFloor);
+                Assert.Equal(MovementMode.Jumping, output.Mode);
                 Assert.InRange(Radial(body), _rules.JumpSpeed - (_planet.Gravity * Dt) - 1e-3f, _rules.JumpSpeed + 1e-3f);
             }
             else if (!wasOnFloor && !body.OnFloor)
             {
                 // In the air a held Jump adds nothing: the radial speed only falls with gravity.
+                airborne = true;
                 Assert.True(Radial(body) <= radialBefore + 1e-4f, $"tick {tick}: radial {radialBefore} -> {Radial(body)}");
             }
-
-            if (tick > 100 && body.OnFloor)
+            else if (airborne && body.OnFloor)
             {
-                break;
+                // The landing tick itself is still decided from the airborne start of the tick.
+                Assert.Equal(MovementMode.Falling, output.Mode);
+                landed = true;
             }
         }
 
-        Assert.Equal(new[] { MovementMode.Jumping, MovementMode.Falling, MovementMode.Walking }, modes);
-        Assert.True(body.OnFloor);
+        Assert.Fail("The body never landed and jumped again within 400 ticks.");
     }
 
     [Fact]
