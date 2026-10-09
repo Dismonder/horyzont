@@ -1,0 +1,563 @@
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+
+using Godot;
+
+using Horyzont.Constructs.Meshing;
+using Horyzont.Constructs.Scheduling;
+using Horyzont.Constructs.Sources;
+using Horyzont.Core.Checkpoints;
+using Horyzont.Core.Ids;
+using Horyzont.Core.Operations;
+using Horyzont.Core.World.Constructs;
+
+using Microsoft.Extensions.Logging;
+
+namespace Horyzont.Game.Constructs;
+
+/// <summary>
+/// Makes constructs visible and physical: one <see cref="ConstructNode"/> per construct in range, one
+/// <see cref="ConstructChunkNode"/> per non-empty chunk. Chunks are meshed on worker threads from snapshots copied on the main
+/// thread; results are applied in a per-frame time budget. Everything except the workers runs on the main thread.
+/// </summary>
+public sealed partial class ConstructWorld : Node3D
+{
+    private const int RangeUpdateInterval = 30;
+
+    private readonly Dictionary<EntityId, Entry> _entries = [];
+    private readonly Dictionary<EntityId, double> _distanceSquared = [];
+    private readonly List<System.Numerics.Vector3> _viewers = [];
+    private readonly List<ConstructChunkKey> _dirtyScratch = [];
+    private readonly List<EntityId> _createdScratch = [];
+    private readonly List<EntityId> _removedScratch = [];
+    private readonly List<EntityId> _reposedScratch = [];
+    private readonly List<EntityId> _constructScratch = [];
+    private readonly List<ChunkPos> _chunkScratch = [];
+    private readonly List<EntityId> _unloadScratch = [];
+    private readonly Queue<ConstructChunkKey> _collisionOrder = new();
+    private readonly Dictionary<ConstructChunkKey, Vector3[]> _collisionPoints = [];
+
+    private IConstructSource _source = null!;
+    private BlockVisuals? _visuals;
+    private ConstructWorldOptions _options = new();
+    private ILogger<ConstructWorld> _logger = null!;
+    private ChunkRemeshQueue _queue = null!;
+    private MeshWorkerPool? _pool;
+    private FrameRef _frame;
+    private bool _initialized;
+    private bool _rangeDirty;
+    private int _framesSinceRangeUpdate;
+    private Task? _shutdownTask;
+
+    /// <summary>
+    /// Raised on the main thread after a chunk's mesh and collision were swapped (or removed because the chunk became empty). The
+    /// collision shape is built in a step after the mesh step, usually in a later frame; this fires when both are in place.
+    /// </summary>
+    public event Action<EntityId, ChunkPos>? ChunkMeshApplied;
+
+    /// <summary>Rebuilds waiting, running or finished but not yet applied.</summary>
+    public int PendingJobs => (_queue?.Pending ?? 0) + _collisionOrder.Count;
+
+    /// <summary>True after <see cref="ShutdownAsync"/> was called.</summary>
+    public bool IsShutdown => _shutdownTask is not null;
+
+    /// <summary>Mesher threads that are still running (0 after <see cref="ShutdownAsync"/> completed).</summary>
+    public int AliveWorkerThreads => _pool?.AliveThreads ?? 0;
+
+    /// <summary>Number of constructs that currently have a node.</summary>
+    public int LoadedConstructCount => _entries.Count;
+
+    /// <summary>Connects the world to its inputs and starts the workers.</summary>
+    /// <param name="source">Where constructs are read from (main thread only).</param>
+    /// <param name="table">Render table of the world session.</param>
+    /// <param name="visuals">Block materials; null in <see cref="ConstructWorldMode.CollisionOnly"/>.</param>
+    /// <param name="options">Settings.</param>
+    /// <param name="logger">Logger.</param>
+    public void Initialize(
+        IConstructSource source, BlockRenderTable table, BlockVisuals? visuals, ConstructWorldOptions options, ILogger<ConstructWorld> logger)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(table);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
+        if (_initialized)
+        {
+            throw new InvalidOperationException("ConstructWorld is already initialized.");
+        }
+
+        if (options.Mode == ConstructWorldMode.RenderAndCollision && visuals is null)
+        {
+            throw new ArgumentException("Visuals are required unless the mode is CollisionOnly.", nameof(visuals));
+        }
+
+        _source = source;
+        _visuals = options.Mode == ConstructWorldMode.CollisionOnly ? null : visuals;
+        _options = options;
+        _logger = logger;
+        _queue = new ChunkRemeshQueue(options.MaxInFlightJobs) { Distance = DistanceOf };
+        _pool = new MeshWorkerPool(table, options.WorkerCount, options.MaxInFlightJobs, logger);
+        _initialized = true;
+        if (table.MissingKeyCount > 0)
+        {
+            LogMissingBlockKeys(table.MissingKeyCount, string.Join(", ", table.UnknownKeys));
+        }
+    }
+
+    /// <summary>Main thread, after each applied operation (server: AppliedOperation; client: OperationApplied in K3-15).</summary>
+    /// <param name="operation">The operation.</param>
+    /// <param name="changes">Its construct changes.</param>
+    public void OnApplied(Operation operation, IReadOnlyList<ConstructChange> changes)
+    {
+        if (!_initialized || IsShutdown)
+        {
+            return;
+        }
+
+        _dirtyScratch.Clear();
+        _createdScratch.Clear();
+        _removedScratch.Clear();
+        _reposedScratch.Clear();
+        ConstructDirtyChunks.Collect(operation, changes, _dirtyScratch, _createdScratch, _removedScratch, _reposedScratch);
+        foreach (var id in _removedScratch)
+        {
+            Unload(id);
+        }
+
+        if (operation is ConstructCreateOp create)
+        {
+            _frame = create.Parent;
+        }
+
+        foreach (var id in _createdScratch)
+        {
+            if (!_entries.ContainsKey(id) && TryEvaluate(id, out var distance, out var collision) && IsInLoadRange(distance, null))
+            {
+                Load(id, distance, collision, RemeshPriority.Edit);
+            }
+        }
+
+        foreach (var key in _dirtyScratch)
+        {
+            if (_entries.ContainsKey(key.Construct))
+            {
+                _queue.MarkDirty(key, RemeshPriority.Edit);
+            }
+        }
+
+        foreach (var change in changes)
+        {
+            RefreshPose(change.Construct);
+        }
+
+        foreach (var id in _reposedScratch)
+        {
+            RefreshPose(id);
+        }
+    }
+
+    /// <summary>After world load/replay or resync: rebuild every construct of the frame.</summary>
+    /// <param name="frame">The frame whose constructs are shown.</param>
+    public void RebuildAll(FrameRef frame)
+    {
+        if (!_initialized || IsShutdown)
+        {
+            return;
+        }
+
+        _frame = frame;
+        _unloadScratch.Clear();
+        _unloadScratch.AddRange(_entries.Keys);
+        foreach (var id in _unloadScratch)
+        {
+            Unload(id);
+        }
+
+        _queue.Clear();
+        UpdateRanges(RemeshPriority.Rebuild);
+    }
+
+    /// <summary>Viewer positions in the planet frame (players, cameras). Empty = everything in range (tests, tools).</summary>
+    /// <param name="planetFramePositions">Positions.</param>
+    public void SetViewers(ReadOnlySpan<System.Numerics.Vector3> planetFramePositions)
+    {
+        _viewers.Clear();
+        foreach (var position in planetFramePositions)
+        {
+            _viewers.Add(position);
+        }
+
+        _rangeDirty = true;
+    }
+
+    /// <summary>Finds the node of a construct.</summary>
+    /// <param name="id">Construct entity.</param>
+    /// <param name="node">The node when the construct is loaded.</param>
+    /// <returns>True when loaded.</returns>
+    public bool TryGetConstructNode(EntityId id, [NotNullWhen(true)] out Node3D? node)
+    {
+        if (_entries.TryGetValue(id, out var entry))
+        {
+            node = entry.Node;
+            return true;
+        }
+
+        node = null;
+        return false;
+    }
+
+    /// <summary>Finds the typed node of a construct.</summary>
+    /// <param name="id">Construct entity.</param>
+    /// <param name="node">The node when the construct is loaded.</param>
+    /// <returns>True when loaded.</returns>
+    public bool TryGetConstruct(EntityId id, [NotNullWhen(true)] out ConstructNode? node)
+    {
+        if (_entries.TryGetValue(id, out var entry))
+        {
+            node = entry.Node;
+            return true;
+        }
+
+        node = null;
+        return false;
+    }
+
+    /// <summary>Idempotent: stops accepting work, joins the workers within the timeout and drops their results.</summary>
+    /// <returns>A task that completes when the workers have stopped (or the timeout elapsed).</returns>
+    public Task ShutdownAsync()
+    {
+        if (_shutdownTask is not null)
+        {
+            return _shutdownTask;
+        }
+
+        if (!_initialized)
+        {
+            _shutdownTask = Task.CompletedTask;
+            return _shutdownTask;
+        }
+
+        _queue.Clear();
+        var pool = _pool!;
+        pool.Cancel(); // from now on the main thread neither starts nor applies anything
+        var timeout = _options.ShutdownTimeout;
+        _shutdownTask = Task.Run(() =>
+        {
+            pool.Shutdown(timeout);
+            pool.Dispose();
+        });
+        return _shutdownTask;
+    }
+
+    /// <summary>Runs one step of the per-frame work: ranges, applying finished meshes in the time budget, starting new jobs.</summary>
+    /// <param name="budgetMilliseconds">Apply budget; at least one result is applied.</param>
+    public void Pump(double budgetMilliseconds)
+    {
+        if (!_initialized || IsShutdown)
+        {
+            return;
+        }
+
+        if (_rangeDirty || ++_framesSinceRangeUpdate >= RangeUpdateInterval)
+        {
+            UpdateRanges(RemeshPriority.Rebuild);
+        }
+
+        ApplyResults(budgetMilliseconds);
+        StartJobs();
+    }
+
+    /// <inheritdoc />
+    public override void _Process(double delta) => Pump(_options.MaxApplyMillisecondsPerFrame);
+
+    /// <inheritdoc />
+    public override void _ExitTree()
+    {
+        // Scene teardown without ShutdownAsync: stop the workers without waiting so no thread outlives the tree.
+        if (_initialized && !IsShutdown)
+        {
+            _pool!.Cancel();
+        }
+    }
+
+    private double DistanceOf(EntityId id) => _distanceSquared.GetValueOrDefault(id);
+
+    private void ApplyResults(double budgetMilliseconds)
+    {
+        // One unit is a mesh upload (a finished job) or the build of one collision shape. Units run until the budget is spent, but at
+        // least one runs per frame; collision shapes go first so a chunk is complete as soon as possible.
+        var pool = _pool!;
+        var started = Stopwatch.GetTimestamp();
+        do
+        {
+            if (_collisionOrder.Count > 0)
+            {
+                ApplyNextCollision();
+            }
+            else if (pool.TryTakeResult(out var slot))
+            {
+                var current = _queue.Complete(slot.Job);
+                if (current && slot.Failure is null)
+                {
+                    ApplySlot(slot);
+                }
+
+                pool.ReturnSlot(slot);
+            }
+            else
+            {
+                break;
+            }
+        }
+        while (Stopwatch.GetElapsedTime(started).TotalMilliseconds < budgetMilliseconds);
+    }
+
+    private void StartJobs()
+    {
+        var pool = _pool!;
+        while (pool.HasFreeSlot && _queue.TryStartNext(out var job))
+        {
+            if (!_entries.ContainsKey(job.Key.Construct))
+            {
+                _queue.Complete(job);
+                continue;
+            }
+
+            pool.TryRentSlot(out var slot);
+            if (!slot!.Input.Fill(_source, job.Key, job.Generation))
+            {
+                // The chunk is empty or gone: no mesh work, apply the empty result right away.
+                if (_queue.Complete(job))
+                {
+                    ApplyEmpty(job.Key);
+                }
+
+                pool.ReturnSlot(slot);
+                continue;
+            }
+
+            slot.Job = job;
+            pool.Submit(slot);
+        }
+    }
+
+    private void ApplySlot(MeshJobSlot slot)
+    {
+        var key = slot.Job.Key;
+        if (!_entries.TryGetValue(key.Construct, out var entry))
+        {
+            return;
+        }
+
+        var data = slot.Output;
+        var points = entry.Collision ? ChunkMeshUploader.CopyCollisionPoints(data) : null;
+        var hasMesh = _visuals is not null && (!data.Cubes.IsEmpty || !data.Shapes.IsEmpty);
+        if (!hasMesh && points is null)
+        {
+            ApplyEmpty(key);
+            return;
+        }
+
+        var chunk = entry.Node.GetOrCreateChunk(key.Chunk);
+        chunk.ApplyMesh(data, _visuals);
+        if (points is null)
+        {
+            _collisionPoints.Remove(key); // a queued older shape would be stale (the chunk lost its collision faces)
+            chunk.ClearCollision();
+            ChunkMeshApplied?.Invoke(key.Construct, key.Chunk);
+            return;
+        }
+
+        if (_collisionPoints.TryAdd(key, points))
+        {
+            _collisionOrder.Enqueue(key);
+        }
+        else
+        {
+            _collisionPoints[key] = points; // keeps its place in the queue, newest data wins
+        }
+    }
+
+    private void ApplyNextCollision()
+    {
+        var key = _collisionOrder.Dequeue();
+        if (!_collisionPoints.Remove(key, out var points) || !_entries.TryGetValue(key.Construct, out var entry) || !entry.Collision)
+        {
+            return; // the construct was unloaded, or left the collision range, while the shape waited
+        }
+
+        entry.Node.GetOrCreateChunk(key.Chunk).ApplyCollision(points);
+        ChunkMeshApplied?.Invoke(key.Construct, key.Chunk);
+    }
+
+    private void ApplyEmpty(ConstructChunkKey key)
+    {
+        _collisionPoints.Remove(key);
+        if (_entries.TryGetValue(key.Construct, out var entry))
+        {
+            entry.Node.RemoveChunk(key.Chunk);
+            ChunkMeshApplied?.Invoke(key.Construct, key.Chunk);
+        }
+    }
+
+    private void UpdateRanges(RemeshPriority priority)
+    {
+        _rangeDirty = false;
+        _framesSinceRangeUpdate = 0;
+        _constructScratch.Clear();
+        _source.CollectConstructs(_frame, _constructScratch);
+        _distanceSquared.Clear();
+        foreach (var id in _constructScratch)
+        {
+            if (!TryEvaluate(id, out var distance, out var wantsCollision))
+            {
+                continue;
+            }
+
+            _distanceSquared[id] = distance * distance;
+            if (_entries.TryGetValue(id, out var entry))
+            {
+                if (!IsInLoadRange(distance, entry))
+                {
+                    Unload(id);
+                    continue;
+                }
+
+                UpdateCollision(id, entry, distance);
+            }
+            else if (IsInLoadRange(distance, null))
+            {
+                Load(id, distance, wantsCollision, priority);
+            }
+        }
+
+        // Constructs that vanished from the source without an operation (resync) lose their nodes.
+        _unloadScratch.Clear();
+        foreach (var id in _entries.Keys)
+        {
+            if (!_constructScratch.Contains(id))
+            {
+                _unloadScratch.Add(id);
+            }
+        }
+
+        foreach (var id in _unloadScratch)
+        {
+            Unload(id);
+        }
+    }
+
+    private void UpdateCollision(EntityId id, Entry entry, double distance)
+    {
+        var radius = _options.CollisionRadiusMeters + (entry.Collision ? _options.HysteresisMeters : 0f);
+        var wants = _viewers.Count == 0 || distance <= radius;
+        if (wants == entry.Collision)
+        {
+            return;
+        }
+
+        entry.Collision = wants;
+        if (wants)
+        {
+            MarkAllChunks(id, RemeshPriority.Rebuild); // the collision data was not kept
+        }
+        else
+        {
+            entry.Node.ClearCollision();
+        }
+    }
+
+    private bool TryEvaluate(EntityId id, out double distance, out bool collision)
+    {
+        distance = 0;
+        collision = true;
+        if (!_source.TryGetPose(id, out var pose))
+        {
+            return false;
+        }
+
+        if (_viewers.Count > 0)
+        {
+            var low = new System.Numerics.Vector3(pose.BoundsMin.X, pose.BoundsMin.Y, pose.BoundsMin.Z);
+            var high = new System.Numerics.Vector3(pose.BoundsMax.X + 1, pose.BoundsMax.Y + 1, pose.BoundsMax.Z + 1);
+            var centreLocal = (low + high) / 2;
+            var radius = (high - low).Length() / 2;
+            var centre = pose.Origin + System.Numerics.Vector3.Transform(centreLocal, pose.Rotation);
+            distance = double.MaxValue;
+            foreach (var viewer in _viewers)
+            {
+                distance = Math.Min(distance, Math.Max(0, (viewer - centre).Length() - radius));
+            }
+
+            collision = distance <= _options.CollisionRadiusMeters;
+        }
+
+        return true;
+    }
+
+    private bool IsInLoadRange(double distance, Entry? loaded)
+    {
+        if (_viewers.Count == 0)
+        {
+            return true;
+        }
+
+        var radius = _options.Mode == ConstructWorldMode.CollisionOnly ? _options.CollisionRadiusMeters : _options.RenderRadiusMeters;
+        return distance <= radius + (loaded is null ? 0f : _options.HysteresisMeters);
+    }
+
+    private void Load(EntityId id, double distance, bool collision, RemeshPriority priority)
+    {
+        if (!_source.TryGetPose(id, out var pose))
+        {
+            return;
+        }
+
+        var node = new ConstructNode(id);
+        node.SetPose(pose);
+        AddChild(node);
+        _entries[id] = new Entry(node) { Collision = collision };
+        _distanceSquared[id] = distance * distance;
+        MarkAllChunks(id, priority);
+    }
+
+    private void Unload(EntityId id)
+    {
+        if (!_entries.Remove(id, out var entry))
+        {
+            return;
+        }
+
+        _queue.RemoveConstruct(id);
+        _distanceSquared.Remove(id);
+        RemoveChild(entry.Node);
+        entry.Node.Free();
+    }
+
+    private void MarkAllChunks(EntityId id, RemeshPriority priority)
+    {
+        _chunkScratch.Clear();
+        _source.CollectChunks(id, _chunkScratch);
+        foreach (var chunk in _chunkScratch)
+        {
+            _queue.MarkDirty(new ConstructChunkKey(id, chunk), priority);
+        }
+    }
+
+    private void RefreshPose(EntityId id)
+    {
+        if (_entries.TryGetValue(id, out var entry) && _source.TryGetPose(id, out var pose))
+        {
+            entry.Node.SetPose(pose);
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{Count} block type key(s) in the world are unknown to the game content and are drawn as core:missing: {Keys}")]
+    private partial void LogMissingBlockKeys(int count, string keys);
+
+    private sealed class Entry(ConstructNode node)
+    {
+        public ConstructNode Node { get; } = node;
+
+        public bool Collision { get; set; }
+    }
+}
