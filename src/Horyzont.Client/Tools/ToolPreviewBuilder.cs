@@ -120,7 +120,7 @@ internal sealed class ToolPreviewBuilder(GameRules rules, IToolWorldView world)
         {
             hint = RejectReason.CellOccupied;
         }
-        else if (Vector3.Distance(aim.Eye, center) > rules.ReachMeters + CellReachSlack)
+        else if (Vector3.Distance(aim.Eye, center) > ToolTargeting.ClientReach(rules) + CellReachSlack)
         {
             hint = RejectReason.OutOfReach;
         }

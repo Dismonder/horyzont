@@ -3,6 +3,7 @@ using System.Numerics;
 
 using Horyzont.Client.Tools;
 using Horyzont.Core.Ids;
+using Horyzont.Core.Simulation;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Terrain;
 
@@ -44,15 +45,16 @@ public sealed class ToolTargetingTests
     [Fact]
     public void ToolTargeting_ConstructOnlyWithinReach_TargetsConstruct()
     {
-        var world = new FakeToolWorldView { ConstructOverride = Construct(7.9f) };
+        var world = new FakeToolWorldView { ConstructOverride = Construct(7.5f) };
 
         Assert.True(ToolTargeting.TryTarget(Aim(world, -Vector3.UnitZ), world, world.Rules, out var target));
         Assert.Equal(ToolTargetKind.ConstructCell, target.Kind);
     }
 
     [Theory]
-    [InlineData(8f, true)]
-    [InlineData(8.01f, false)]
+    [InlineData(7.6f, true)]
+    [InlineData(7.61f, false)]
+    [InlineData(8f, false)]
     public void ToolTargeting_HitBeyondReach_NoTarget(float distance, bool expected)
     {
         var world = new FakeToolWorldView { TerrainOverride = Terrain(distance) };
@@ -65,6 +67,23 @@ public sealed class ToolTargetingTests
         Assert.Equal(expected ? ToolTargetKind.Terrain : ToolTargetKind.None, target.Kind);
         Assert.Equal(expected, ToolTargeting.TryTargetTerrain(aim, lenient, world.Rules, out _, out _));
     }
+
+    [Fact]
+    public void ToolTargeting_TargetWithinMarginOfReach_NotOffered()
+    {
+        var world = new FakeToolWorldView { TerrainOverride = Terrain(ReachMinus(0.3f)) };
+        var aim = Aim(world, -Vector3.UnitZ);
+        var lenient = new LenientView(world);
+
+        Assert.False(ToolTargeting.TryTarget(aim, lenient, world.Rules, out _));
+        Assert.False(ToolTargeting.TryTargetTerrain(aim, lenient, world.Rules, out _, out _));
+
+        world.TerrainOverride = null;
+        world.ConstructOverride = Construct(ReachMinus(0.3f));
+        Assert.False(ToolTargeting.TryTarget(aim, new LenientView(world), world.Rules, out _));
+    }
+
+    private static float ReachMinus(float margin) => new GameRules().ReachMeters - margin;
 
     [Fact]
     public void ToolTargeting_RealConstructInFrontOfTerrain_TargetsItsFace()

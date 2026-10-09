@@ -12,6 +12,21 @@ namespace Horyzont.Client.Tools;
 /// </summary>
 public static class ToolTargeting
 {
+    /// <summary>
+    /// Metres the client keeps inside <see cref="GameRules.ReachMeters"/> (about maximum speed × (RTT / 2 + send interval)): the server
+    /// measures reach from its own, older eye, so a target at the very edge on the client could be refused there.
+    /// </summary>
+    public const float ClientReachMarginMeters = 0.4f;
+
+    /// <summary>The reach the client offers targets within: the server limit minus <see cref="ClientReachMarginMeters"/>.</summary>
+    /// <param name="rules">Game rules.</param>
+    /// <returns>Client reach in metres.</returns>
+    public static float ClientReach(GameRules rules)
+    {
+        ArgumentNullException.ThrowIfNull(rules);
+        return rules.ReachMeters - ClientReachMarginMeters;
+    }
+
     /// <summary>The target of the builder: a construct cell (with the face the ray entered) or the terrain.</summary>
     /// <param name="aim">The aim.</param>
     /// <param name="world">World view.</param>
@@ -23,11 +38,12 @@ public static class ToolTargeting
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(rules);
         target = default;
-        var terrainHit = world.RaycastTerrain(aim.Planet, aim.Eye, aim.Direction, rules.ReachMeters, out var terrain)
-            && terrain.Distance <= rules.ReachMeters;
-        var limit = terrainHit ? terrain.Distance : rules.ReachMeters;
+        var reach = ClientReach(rules);
+        var terrainHit = world.RaycastTerrain(aim.Planet, aim.Eye, aim.Direction, reach, out var terrain)
+            && terrain.Distance <= reach;
+        var limit = terrainHit ? terrain.Distance : reach;
         if (world.RaycastConstructs(aim.Planet, aim.Eye, aim.Direction, limit, out var construct)
-            && construct.Distance <= rules.ReachMeters && (!terrainHit || construct.Distance < terrain.Distance))
+            && construct.Distance <= reach && (!terrainHit || construct.Distance < terrain.Distance))
         {
             var normal = FaceNormal(construct.Face);
             if (world.TryGetConstructPose(construct.Construct, out _, out var rotation))
@@ -61,7 +77,8 @@ public static class ToolTargeting
         ArgumentNullException.ThrowIfNull(rules);
         target = default;
         blockedByConstruct = false;
-        if (!world.RaycastTerrain(aim.Planet, aim.Eye, aim.Direction, rules.ReachMeters, out var terrain) || terrain.Distance > rules.ReachMeters)
+        var reach = ClientReach(rules);
+        if (!world.RaycastTerrain(aim.Planet, aim.Eye, aim.Direction, reach, out var terrain) || terrain.Distance > reach)
         {
             return false;
         }
