@@ -91,6 +91,40 @@ public class HostLoopTests
         AssertThat(await fixture.StopAsync()).IsTrue();
     }
 
+    /// <summary>
+    /// Shutdown step 3a despawns the characters before the player leaves: the pose of the leave operation is the pose of the body at that
+    /// moment, even when the body was moved after the last tick wrote it into the simulation.
+    /// </summary>
+    [TestCase(Timeout = 300000)]
+    [RequireGodotRuntime]
+    public async Task Solo_Shutdown_DespawnsBeforeLeave_LeavePoseIsTheBodyPose()
+    {
+        await using var scene = EngineTestScene.Create();
+        var dir = ModeFixture.NewDirectory();
+        var fixture = await StartSoloAsync(scene, dir);
+        var composition = fixture.Composition;
+        AssertThat(await fixture.WaitInGame()).IsTrue();
+        var player = composition.LocalPlayer!;
+        AssertThat(await fixture.WaitUntil(() => player.IsActive, 120)).IsTrue();
+        var playerId = composition.Client!.Hello!.YourPlayer;
+        var characters = composition.ServerCharacters!;
+        AssertThat(characters.Count).IsEqual(1);
+
+        // Move the server body after the last step; only the despawn can carry this pose into the leave operation.
+        var body = characters.GetNode<Horyzont.Game.Character.PlayerBody>($"Body_{playerId.Value}");
+        var up = System.Numerics.Vector3.Normalize(body.Feet);
+        var moved = body.Feet + (up * 0.75f);
+        body.Place(moved, System.Numerics.Vector3.Zero, body.BodyRotation, MovementMode.Frozen, false);
+
+        AssertThat(await fixture.StopAsync()).IsTrue();
+
+        AssertThat(characters.Count).IsEqual(0);
+        AssertThat(composition.Server!.State.Players.TryGet(playerId, out var state)).IsTrue();
+        AssertThat(state!.IsOnline).IsFalse();
+        AssertThat(System.Numerics.Vector3.Distance(state.Position, moved)).IsLess(1e-3f);
+        AssertThat(composition.ExitCode).IsEqual(0);
+    }
+
     private const float PlanetGeneratorV1ReliefMeters = 320f;
 
     private static Task<ModeFixture> StartSoloAsync(EngineTestScene scene, string dir, bool devBuild = false) =>
