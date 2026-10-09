@@ -399,7 +399,7 @@ CI i ręczne:
 - [x] 4. Uprząż: paczki gdUnit4Net (albo runner zapasowy według S6), `.runsettings`, `EngineTestScene`, `Harness_EngineRuns_RealTIsDouble`; job `game` jako macierz Windows/Linux z testami silnika; zielony na obu. (Windows lokalnie: 2 testy silnika zielone; macierz Linux i job `game` na Linuksie: pending-CI.)
 - [x] 5. `TerrainChannels`, `TerrainMaterials`, `TerrainMaterialMap` z testami map i zamrożonej tabeli. (S2: tryb `TEXTURES_SINGLE_S4`, kanał `CHANNEL_INDICES` 8 bitów, SDF 16 bitów.)
 - [x] 6. `GraphBuilder` z listą dozwolonych węzłów, `NoiseSeeds`; test listy dozwolonych na grafie próbnym. (S1: nazwy węzłów i porty z `get_node_type_info`, patrz Odstępstwa.)
-- [ ] 7. `PlanetGeneratorV1` i `GeneratorProfiles`: testy kształtu, rdzenia, kosmosu, materiałów, jaskiń, powtarzalności, nieznanego profilu (bez złotego skrótu).
+- [x] 7. `PlanetGeneratorV1` i `GeneratorProfiles`: testy kształtu, rdzenia, kosmosu, materiałów, jaskiń, powtarzalności, nieznanego profilu (bez złotego skrótu). (GeneratorSampler, GeneratorDigest i GeneratorProbe powstały już tu, bo testy generatora ich używają; krok 11 dodaje raport. Test `GeneratorV1_GoldenDigest` świadomie pominięty do kroku 10.)
 - [ ] 8. `PlanetTerrainLayout`, `PlanetTerrainFactory`, `PlanetTerrainMaterial`, shader; testy konfiguracji i `Factory_TerrainBlocksEqualDirectGeneration`.
 - [ ] 8a. `DayNightCycle`, `SunLight` z testami `DayNight_*` (D12).
 - [ ] 9. `DevModes` i `--planet-preview`; strojenie stałych generatora i `lod_distance` na zrzutach; zrzuty do PR. Właściciel akceptuje wygląd przed krokiem 10 (Pytanie 6).
