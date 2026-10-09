@@ -150,6 +150,25 @@ jobs:
           "$editor" --headless --path game -- --engine-tests --slow | tee engine-tests-slow.log
           grep -Eq "ENGINE TESTS passed=[1-9][0-9]* failed=0" engine-tests-slow.log
 
+      # Dedicated server smoke (K2-10): console commands, restart with the same state hash, signal, damaged world and backup restore.
+      # The Windows runner runs the project with the editor; the exported server is checked on Linux (preset server-linux) below.
+      - name: Dedicated server smoke (editor)
+        run: python tools/server_smoke.py --godot engine-ci/editor/${{ matrix.editor }}
+
+      # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
+      # - name: Dedicated server smoke (Linux, export of the server-linux preset)
+      #   if: runner.os == 'Linux'
+      #   run: |
+      #     run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow engine.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+      #     gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-linux-template -D engine-ci/template
+      #     template="$PWD/engine-ci/template/godot.linuxbsd.template_release.double.x86_64.mono"
+      #     chmod +x "$template"
+      #     # The CI checkout is disposable: point the preset at the downloaded template.
+      #     sed -i "/^\[preset.3.options\]/,\$ s#^custom_template/release=\"\"#custom_template/release=\"$template\"#" game/export_presets.cfg
+      #     mkdir -p build/server-linux
+      #     engine-ci/editor/${{ matrix.editor }} --headless --path game --export-release server-linux ../build/server-linux/HoryzontServer.x86_64
+      #     python tools/server_smoke.py --export build/server-linux/HoryzontServer.x86_64
+
       - name: Generator report
         env:
           GODOT_BIN: ${{ github.workspace }}/engine-ci/editor/${{ matrix.editor }}

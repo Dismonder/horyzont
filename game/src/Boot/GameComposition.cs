@@ -4,6 +4,7 @@ using Godot;
 
 using Horyzont.Client.Session;
 using Horyzont.Core;
+using Horyzont.Core.Hashing;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.World;
 using Horyzont.Game.Client;
@@ -401,7 +402,7 @@ public sealed class GameComposition
             case WorldStartResult.Started:
                 _serverRan = true;
                 RememberLastWorld();
-                _env.Print($"SERVER READY world={world}");
+                _env.Print($"SERVER READY world={world} state hash={StateHasher.Hash(Server.State).ToString("X16", CultureInfo.InvariantCulture)}");
                 return null;
             case WorldStartResult.StartedReadOnly readOnly:
                 _serverRan = true;

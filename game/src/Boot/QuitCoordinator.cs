@@ -67,6 +67,8 @@ public sealed partial class QuitCoordinator : Node
             {
                 _registrations.Add(PosixSignalRegistration.Create(signal, OnSignal));
             }
+
+            QuitLog.SignalsRegistered(_logger!, _registrations.Count);
         }
     }
 
@@ -138,6 +140,9 @@ internal static partial class QuitLog
 {
     [LoggerMessage(EventId = 9001, Level = LogLevel.Information, Message = "stop requested; starting the shutdown")]
     internal static partial void StopRequested(ILogger logger);
+
+    [LoggerMessage(EventId = 9004, Level = LogLevel.Information, Message = "listening for {Count} process signals")]
+    internal static partial void SignalsRegistered(ILogger logger, int count);
 
     [LoggerMessage(EventId = 9002, Level = LogLevel.Information, Message = "received {Signal}; stopping")]
     internal static partial void SignalReceived(ILogger logger, PosixSignal signal);
