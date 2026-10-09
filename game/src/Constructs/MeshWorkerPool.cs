@@ -29,7 +29,12 @@ internal sealed class MeshJobSlot : IDisposable
     /// <summary>The exception thrown by the mesher on a worker thread, or null.</summary>
     public Exception? Failure { get; set; }
 
-    public void Dispose() => Output.Dispose();
+    public void Dispose()
+    {
+        Prepared?.Dispose();
+        Prepared = null;
+        Output.Dispose();
+    }
 }
 
 /// <summary>

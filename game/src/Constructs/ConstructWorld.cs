@@ -57,6 +57,9 @@ public sealed partial class ConstructWorld : Node3D
     /// </summary>
     public event Action<EntityId, ChunkPos>? ChunkMeshApplied;
 
+    /// <summary>Main-thread time spent applying mesher results (diagnostics for the frame-time tests).</summary>
+    public ApplyTimings Timings { get; } = new();
+
     /// <summary>Rebuilds waiting, running or finished but not yet applied.</summary>
     public int PendingJobs => (_queue?.Pending ?? 0) + _collisionOrder.Count;
 
@@ -372,7 +375,7 @@ public sealed partial class ConstructWorld : Node3D
 
         var chunk = entry.Node.GetOrCreateChunk(key.Chunk);
         chunk.ApplyMesh(prepared.Cubes, prepared.Shapes, _visuals);
-        ApplyTimings.AddUpload(uploadStart);
+        Timings.AddUpload(uploadStart);
         if (points is null)
         {
             _collisionPoints.Remove(key); // a queued older shape would be stale (the chunk lost its collision faces)
@@ -401,7 +404,7 @@ public sealed partial class ConstructWorld : Node3D
 
         var collisionStart = Stopwatch.GetTimestamp();
         entry.Node.GetOrCreateChunk(key.Chunk).ApplyCollision(points);
-        ApplyTimings.AddCollision(collisionStart);
+        Timings.AddCollision(collisionStart);
         ChunkMeshApplied?.Invoke(key.Construct, key.Chunk);
     }
 

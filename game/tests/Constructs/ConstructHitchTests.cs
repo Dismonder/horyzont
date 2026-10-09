@@ -20,7 +20,13 @@ public sealed class ConstructHitchTests : EngineTestBase
             await ConstructHitchScenarios.LoadInAsync(this, pattern, assertLimit: true);
         }
 
-        // Worst case for the face count: reported, not gated (P3).
+        Report("Checkerboard (worst case for the face count) is measured separately: Construct64_LoadIn_Checkerboard_ReportOnly");
+    }
+
+    /// <summary>Report-only (P3): the longest frames of the worst case (about 100 ms headless) are printed, not gated; a bound is tracked as an open plan item.</summary>
+    [EngineTest(Slow = true)]
+    public async Task Construct64_LoadIn_Checkerboard_ReportOnly()
+    {
         await ConstructHitchScenarios.LoadInAsync(this, ConstructPattern.Checkerboard, assertLimit: false);
     }
 

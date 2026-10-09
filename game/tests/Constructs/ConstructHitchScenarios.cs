@@ -5,7 +5,6 @@ using Godot;
 using Horyzont.Constructs.Sources;
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.World.Constructs;
-using Horyzont.Game.Constructs;
 using Horyzont.Game.Testing;
 using Horyzont.Testing;
 
@@ -27,7 +26,7 @@ internal static class ConstructHitchScenarios
         await test.Tree.ToSignal(test.Tree, SceneTree.SignalName.ProcessFrame);
 
         probe.Reset();
-        ApplyTimings.Reset();
+        w.World.Timings.Reset();
         var gc0 = GC.CollectionCount(0);
         var gc2 = GC.CollectionCount(2);
         var pause0 = GC.GetTotalPauseDuration();
@@ -47,7 +46,7 @@ internal static class ConstructHitchScenarios
         var stats = FrameStats.From(probe.Intervals);
         GD.Print($"    LoadIn {pattern}: frames={stats.Count} p50={stats.P50:F1} ms p99={stats.P99:F1} ms max={stats.Max:F1} ms " +
                  $"(load took {frames} frames) gc0={GC.CollectionCount(0) - gc0} gc2={GC.CollectionCount(2) - gc2} gcPause={(GC.GetTotalPauseDuration() - pause0).TotalMilliseconds:F1} ms");
-        GD.Print($"      apply: upload n={ApplyTimings.Uploads} sum={ApplyTimings.UploadMilliseconds:F0} max={ApplyTimings.MaxUploadMilliseconds:F1} ms; collision n={ApplyTimings.Collisions} sum={ApplyTimings.CollisionMilliseconds:F0} max={ApplyTimings.MaxCollisionMilliseconds:F1} ms");
+        GD.Print($"      apply: upload n={w.World.Timings.Uploads} sum={w.World.Timings.UploadMilliseconds:F0} max={w.World.Timings.MaxUploadMilliseconds:F1} ms; collision n={w.World.Timings.Collisions} sum={w.World.Timings.CollisionMilliseconds:F0} max={w.World.Timings.MaxCollisionMilliseconds:F1} ms");
         probe.QueueFree();
         view?.QueueFree();
         if (assertLimit)
@@ -92,7 +91,7 @@ internal static class ConstructHitchScenarios
         var edits = 0;
         var maxApply = 0.0;
         probe.Reset();
-        ApplyTimings.Reset();
+        w.World.Timings.Reset();
         var gcEdit0 = GC.CollectionCount(2);
         var start = Stopwatch.GetTimestamp();
         while (Stopwatch.GetElapsedTime(start).TotalSeconds < 10)
@@ -132,7 +131,7 @@ internal static class ConstructHitchScenarios
         var remeshStats = FrameStats.From(latencies);
         GD.Print($"    EditStream: edits={edits} frames p50={frameStats.P50:F1} p99={frameStats.P99:F1} max={frameStats.Max:F1} ms; " +
                  $"apply op max={maxApply:F1} ms; remesh latency n={remeshStats.Count} p50={remeshStats.P50:F1} p99={remeshStats.P99:F1} max={remeshStats.Max:F1} ms");
-        GD.Print($"      apply: upload n={ApplyTimings.Uploads} sum={ApplyTimings.UploadMilliseconds:F0} max={ApplyTimings.MaxUploadMilliseconds:F1} ms; collision n={ApplyTimings.Collisions} sum={ApplyTimings.CollisionMilliseconds:F0} max={ApplyTimings.MaxCollisionMilliseconds:F1} ms; gc2={GC.CollectionCount(2) - gcEdit0}");
+        GD.Print($"      apply: upload n={w.World.Timings.Uploads} sum={w.World.Timings.UploadMilliseconds:F0} max={w.World.Timings.MaxUploadMilliseconds:F1} ms; collision n={w.World.Timings.Collisions} sum={w.World.Timings.CollisionMilliseconds:F0} max={w.World.Timings.MaxCollisionMilliseconds:F1} ms; gc2={GC.CollectionCount(2) - gcEdit0}");
         probe.QueueFree();
         view?.QueueFree();
         if (assertLimits)
