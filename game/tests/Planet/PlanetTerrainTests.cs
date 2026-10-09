@@ -106,7 +106,14 @@ public class PlanetTerrainTests
         var layers = (Texture2DArray)material.GetShaderParameter("u_textures");
 
         AssertThat(material.Shader != null).IsTrue();
-        AssertThat(layers.GetLayers()).IsEqual(TerrainMaterials.All.Count);
+        // One layer per voxel texture index first (they index the array directly), then the layers the shader paints.
+        AssertThat(layers.GetLayers()).IsEqual(PlanetTerrainMaterial.LayerCount);
+        AssertThat(PlanetTerrainMaterial.GrassLayer).IsEqual(TerrainMaterials.All.Count);
+        foreach (var (_, index) in TerrainMaterials.All)
+        {
+            AssertThat((int)index).IsLess(PlanetTerrainMaterial.GrassLayer);
+        }
+
         AssertThat(layers.GetWidth()).IsEqual(PlanetTerrainMaterial.TextureSize);
     }
 
