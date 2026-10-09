@@ -45,11 +45,12 @@ jobs:
             runner: windows-2022
           - target: template-windows-release
             runner: windows-2022
-          - target: editor-linux
-            runner: ubuntu-24.04
-          - target: template-linux-release
-            runner: ubuntu-24.04
-    runs-on: ${{ matrix.runner }}
+          # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
+          # - target: editor-linux
+          #   runner: ubuntu-24.04
+          # - target: template-linux-release
+          #   runner: ubuntu-24.04
+    runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
