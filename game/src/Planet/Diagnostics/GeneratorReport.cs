@@ -121,7 +121,7 @@ public static class GeneratorReport
         writer.WriteEndObject();
     }
 
-    private static List<BlockSample> ReadKeys(string file)
+    internal static List<BlockSample> ReadKeys(string file)
     {
         var keys = new List<BlockSample>();
         foreach (var line in File.ReadLines(file, Encoding.UTF8))
@@ -139,6 +139,9 @@ public static class GeneratorReport
                 || !int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out var y)
                 || !int.TryParse(parts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out var z)
                 || lod is < 0 or > 15
+                || !OriginInRange(lod, x)
+                || !OriginInRange(lod, y)
+                || !OriginInRange(lod, z)
                 || keys.Count >= 4096)
             {
                 throw new ArgumentException($"--dump-keys {file}: bad line '{text}' (expected 'lod x y z', at most 4096 lines).");
@@ -148,6 +151,13 @@ public static class GeneratorReport
         }
 
         return keys;
+    }
+
+    /// <summary>Block origins beyond 2^24 voxels would overflow <see cref="BlockSample.Origin"/> and lie far outside any planet.</summary>
+    private static bool OriginInRange(int lod, int key)
+    {
+        const long MaxOriginVoxels = 1L << 24;
+        return Math.Abs((long)key * ((long)BlockSample.BlockSize << lod)) <= MaxOriginVoxels;
     }
 
     /// <summary>Raw dump: for each block int32 LE lod, x, y, z, then the SDF channel bytes and the material channel bytes.</summary>

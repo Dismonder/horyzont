@@ -68,5 +68,12 @@ public static class DevModes
             GD.Print($"ARGUMENT ERROR: {ex.Message}");
             host.GetTree().Quit(ExitBadArguments);
         }
+        catch (Exception ex)
+        {
+            // Headless CI tool: any other failure must end the process with an error instead of leaving it running.
+            GD.PushError($"Generator report failed: {ex}");
+            GD.Print($"GENERATOR REPORT FAILED: {ex.Message}");
+            host.GetTree().Quit(1);
+        }
     }
 }
