@@ -33,6 +33,13 @@ public sealed class BlockTypeCatalogTests
         Assert.StartsWith(path, e.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("{ \"formatVersion\": 1, \"materials\": [ { \"key\": \"stone\", \"color\": \"#808080\" } ], \"blocks\": [ { \"key\": \"core:stone\n\", \"shape\": \"cube\", \"material\": \"stone\" } ] }")]
+    [InlineData("{ \"formatVersion\": 1, \"materials\": [ { \"key\": \"stone\n\", \"color\": \"#808080\" } ], \"blocks\": [] }")]
+    [InlineData("{ \"formatVersion\": 1, \"materials\": [ { \"key\": \"stone\", \"color\": \"#808080\n\" } ], \"blocks\": [] }")]
+    public void Parse_TrailingNewlineInKeyOrColor_IsRejected(string json) =>
+        Assert.Throws<InvalidDataException>(() => Parse(json));
+
     [Fact]
     public void Parse_ValidFile_ProducesCatalog()
     {

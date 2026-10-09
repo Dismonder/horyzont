@@ -214,12 +214,12 @@ public sealed partial class BlockTypeCatalog
 
     private static InvalidDataException Invalid(string path, string message) => new($"{path}: {message}");
 
-    [GeneratedRegex("^[a-z0-9_]+:[a-z0-9_/]+$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^[a-z0-9_]+:[a-z0-9_/]+\\z", RegexOptions.CultureInvariant)]
     private static partial Regex BlockKeyRegex();
 
-    [GeneratedRegex("^[a-z0-9_]+$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^[a-z0-9_]+\\z", RegexOptions.CultureInvariant)]
     private static partial Regex MaterialKeyRegex();
 
-    [GeneratedRegex("^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?\\z", RegexOptions.CultureInvariant)]
     private static partial Regex ColorRegex();
 }
