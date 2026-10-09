@@ -19,6 +19,8 @@ namespace Horyzont.Game.Constructs;
 /// Makes constructs visible and physical: one <see cref="ConstructNode"/> per construct in range, one
 /// <see cref="ConstructChunkNode"/> per non-empty chunk. Chunks are meshed on worker threads from snapshots copied on the main
 /// thread; results are applied in a per-frame time budget. Everything except the workers runs on the main thread.
+/// Leaving the scene tree permanently shuts this world down, including during reparenting. The composition root must not
+/// move an initialized world with RemoveChild/AddChild; reattaching it does not restart the workers.
 /// </summary>
 public sealed partial class ConstructWorld : Node3D
 {

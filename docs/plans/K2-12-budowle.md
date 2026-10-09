@@ -330,6 +330,8 @@ public sealed partial class ConstructWorld : Node3D
 }
 ```
 
+**K2-13 krok 0 — cykl życia:** wyjście `ConstructWorld` z drzewa sceny (`_ExitTree`) trwale zamyka świat. Przepięcie przez `RemoveChild`/`AddChild` również go zamyka; ponowne dołączenie nie uruchamia workerów. Composition root musi dodać węzeł od razu pod docelowego rodzica i nie przenosić go w ten sposób po inicjalizacji. Test: `SceneExitWithActiveJobs_ReattachStaysShutdown`.
+
 ### Kontrakty konsumowane
 
 | Potrzeba | Od | Typ |
@@ -454,6 +456,8 @@ Fikstury `ConstructFixtures` (w `tests/Horyzont.Testing`, przez publiczny `World
 - **P9. Materiały wizualne bloków poza zapisem świata.** Domyślnie: katalog materiałów bloków jest treścią (bez zapisu i bez wysyłania w `ServerHello`); różnica treści między klientem a serwerem zmienia tylko wygląd, nie stan.
 
 ## Odstępstwa
+
+- **Końcowy przegląd Opus 5.5 — integracja i skalowanie.** Stałe warstw kolizji są w przestrzeni nazw `Horyzont.Game.Physics` (plik `game/src/Shared/Physics/CollisionLayers.cs`), a nie w `Horyzont.Game.Shared.Physics`; K2-11 musi używać rzeczywistej przestrzeni nazw. Katalog `Shared/Physics` nie określa przestrzeni nazw. `ChunkRemeshQueue.TryStartNext` ma koszt O(dirty) na każde uruchomione zadanie; w K3 należy obserwować ten koszt przy wzroście budowli i liczby brudnych chunków.
 
 - **Poprawki przeglądu 1–6 (GPT-6.1 Sol).** Unieważnianie odroczonych kolizji przy zmianie generacji i resyncu; zamykanie świata przy wyjściu z drzewa; jednokrotne zwalnianie zasobów po zakończeniu ostatniego workera także po timeoutcie (bez zmiany `ShutdownTimeout`); natychmiastowe przeładowanie widoczności po zmianie ramy; pełne pokrycie callbacków przed pomiarem latencji; jawne odrzucanie siatek wielopowierzchniowych. Każda poprawka ma test regresji wykonany najpierw na czerwono, potem na zielono; kontrakty chronione i progi czasu bez zmian.
 
