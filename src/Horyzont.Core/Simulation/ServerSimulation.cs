@@ -108,12 +108,10 @@ public sealed class ServerSimulation
         }
 
         var operation = IntentResolver.Resolve(State, player, intent, facts);
-        if (!_applier.CheckPreconditions(operation, out var failure))
-        {
-            throw new InvalidOperationException($"A validated {operation.Kind} breaks a precondition: {failure}");
-        }
 
-        var applied = ApplyAndJournal(player, operation);
+        // A refused operation changed nothing (the applier rolled it back), so the simulation is not faulted.
+        var applied = TryApplyAndJournal(player, operation, out var failure, out _)
+            ?? throw new InvalidOperationException($"A validated {operation.Kind} breaks a precondition: {failure}");
         IntentValidator.BucketFor(intent, buckets!)!.Consume();
         if (intent is TerrainToolIntent)
         {
@@ -161,7 +159,7 @@ public sealed class ServerSimulation
             SpawnPoint(planet), Quaternion.Identity);
     }
 
-    /// <summary>Applies and journals a server operation (join, leave). A broken precondition throws.</summary>
+    /// <summary>Applies and journals a server operation (join, leave, item operations). A broken precondition throws.</summary>
     /// <param name="operation">The operation.</param>
     /// <returns>The applied operation.</returns>
     /// <exception cref="InvalidOperationException">A precondition does not hold; nothing changed.</exception>
@@ -169,12 +167,10 @@ public sealed class ServerSimulation
     {
         EnsureNotFaulted();
         ArgumentNullException.ThrowIfNull(operation);
-        if (!_applier.CheckPreconditions(operation, out var failure))
-        {
-            throw new InvalidOperationException($"{operation.Kind} breaks a precondition: {failure}");
-        }
-
-        var applied = ApplyAndJournal(null, operation);
+        var applied = TryApplyAndJournal(null, operation, out var failure, out var componentIndex)
+            ?? throw new InvalidOperationException(componentIndex < 0
+                ? $"{operation.Kind} breaks a precondition: {failure}"
+                : $"{operation.Kind} breaks a precondition of component {componentIndex}: {failure}");
         RaiseApplied(applied);
         return applied;
     }
@@ -197,11 +193,14 @@ public sealed class ServerSimulation
 
     /// <summary>
     /// Replays a journal entry: requires <c>Id == LastOpId.Next</c>, sets CurrentTick to the entry tick and does not
-    /// write to the journal. Loads the terrain area before a terrain edit.
-    /// A tick before the current one is rejected; a failure while loading or applying faults the simulation.
+    /// write to the journal. Loads the terrain area before a terrain edit, also the last component of a compound operation
+    /// (<see cref="OperationTerrain"/>). A tick before the current one is rejected; a broken precondition changes nothing; an exception
+    /// while loading or applying faults the simulation.
     /// </summary>
     /// <param name="entry">The entry.</param>
-    /// <exception cref="ReplayFailedException">A gap in operation numbers, a tick going backwards or a broken precondition.</exception>
+    /// <exception cref="ReplayFailedException">
+    /// A gap in operation numbers, a tick going backwards or a broken precondition (with the component index for a compound operation).
+    /// </exception>
     public void Replay(JournalEntry entry)
     {
         EnsureNotFaulted();
@@ -217,25 +216,37 @@ public sealed class ServerSimulation
             throw new ReplayFailedException(entry.Id, kind, $"tick {entry.Tick.Value} is before the current tick {State.CurrentTick.Value}");
         }
 
-        if (!_applier.CheckPreconditions(entry.Operation, out var failure))
+        // The terrain precondition does not depend on items (D4 of K6-29W), so it is checked before the area is loaded, as in K2.
+        var hasEdit = OperationTerrain.TryGetTerrainEdit(entry.Operation, out var edit);
+        if (hasEdit && !_applier.CheckPreconditions(edit!, out var terrainFailure))
         {
-            throw new ReplayFailedException(entry.Id, kind, failure);
+            throw new ReplayFailedException(entry.Id, kind, ComponentOf(entry.Operation), terrainFailure);
         }
 
+        var previousTick = State.CurrentTick;
+        bool applied;
+        string failure;
+        int componentIndex;
         try
         {
-            if (entry.Operation is TerrainEditOp edit && State.Planets.TryGet(edit.Planet, out var planet))
+            if (hasEdit && State.Planets.TryGet(edit!.Planet, out var planet))
             {
                 _terrain.LoadAreaBlocking(edit.Planet, edit.Center, edit.Radius + (TerrainRules.EditMarginVoxels * planet.VoxelSizeMeters));
             }
 
             State.SetTick(entry.Tick);
-            _applier.Apply(entry.Id, entry.Tick, entry.Actor, entry.Operation);
+            applied = _applier.TryApply(entry.Id, entry.Tick, entry.Actor, entry.Operation, out _, out failure, out componentIndex);
         }
         catch (Exception exception)
         {
             Fault(exception, entry.Id, kind);
             throw;
+        }
+
+        if (!applied)
+        {
+            State.SetTick(previousTick);
+            throw new ReplayFailedException(entry.Id, kind, componentIndex < 0 ? null : componentIndex, failure);
         }
     }
 
@@ -339,22 +350,26 @@ public sealed class ServerSimulation
         return true;
     }
 
-    private AppliedOperation ApplyAndJournal(PlayerId? actor, Operation operation)
+    private static int? ComponentOf(Operation operation) => operation is CompoundOp compound ? compound.Components.Count - 1 : null;
+
+    private AppliedOperation? TryApplyAndJournal(PlayerId? actor, Operation operation, out string failure, out int componentIndex)
     {
         var id = State.LastOpId.Next;
-        AppliedOperation applied;
         try
         {
-            applied = _applier.Apply(id, State.CurrentTick, actor, operation);
+            if (!_applier.TryApply(id, State.CurrentTick, actor, operation, out var applied, out failure, out componentIndex))
+            {
+                return null;
+            }
+
             _journal.Append(new JournalEntry(applied.Id, applied.Tick, actor, operation));
+            return applied;
         }
         catch (Exception exception)
         {
             Fault(exception, id, operation.Kind);
             throw;
         }
-
-        return applied;
     }
 
     // After the journal and the limiter bookkeeping: a subscriber (K2-13: the construct view of a host) sees only operations that are

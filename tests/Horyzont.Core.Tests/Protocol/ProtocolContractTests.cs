@@ -3,6 +3,7 @@ using System.Numerics;
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
+using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
@@ -30,7 +31,9 @@ public sealed class ProtocolContractTests
     {
         AssertValues((OperationKind.TerrainEdit, 1), (OperationKind.ConstructCreate, 2), (OperationKind.BlockSet, 3), (OperationKind.BlockClear, 4),
             (OperationKind.PlayerJoin, 5), (OperationKind.PlayerLeave, 6), (OperationKind.EntityReparent, 7),
-            (OperationKind.ShipModeSet, 20), (OperationKind.ShipFuelAdd, 21), (OperationKind.MarkerSet, 22), (OperationKind.MarkerRemove, 23));
+            (OperationKind.ShipModeSet, 20), (OperationKind.ShipFuelAdd, 21), (OperationKind.MarkerSet, 22), (OperationKind.MarkerRemove, 23),
+            (OperationKind.Compound, 30), (OperationKind.ItemTransfer, 31), (OperationKind.ItemSwap, 32), (OperationKind.ItemCreate, 33),
+            (OperationKind.ItemDestroy, 34), (OperationKind.ContainerCreate, 35));
         AssertValues((RejectReason.None, 0), (RejectReason.UnknownPlayer, 1), (RejectReason.PlayerOffline, 2), (RejectReason.RateLimited, 3),
             (RejectReason.InvalidParameters, 4), (RejectReason.RayOriginMismatch, 5), (RejectReason.NoHit, 6), (RejectReason.OutOfReach, 7),
             (RejectReason.AreaNotLoaded, 8), (RejectReason.BelowCore, 9), (RejectReason.OutsideAtmosphere, 10), (RejectReason.UnknownPlanet, 11),
@@ -57,7 +60,17 @@ public sealed class ProtocolContractTests
         AssertValues((ConstructMode.Static, 0), (ConstructMode.Ship, 1));
         AssertValues((BlockShape.Cube, 1), (BlockShape.Mesh, 2));
         AssertValues((BlobKind.ConstructHeader, 1), (BlobKind.Player, 2), (BlobKind.ConstructChunk, 3), (BlobKind.PlanetParams, 4),
-            (BlobKind.TerrainBlock, 5), (BlobKind.StarSystemParams, 10), (BlobKind.Marker, 11), (BlobKind.ShipState, 12));
+            (BlobKind.TerrainBlock, 5), (BlobKind.StarSystemParams, 10), (BlobKind.Marker, 11), (BlobKind.ShipState, 12), (BlobKind.Container, 20));
+        AssertValues((ItemSource.Harvest, 1), (ItemSource.Craft, 2), (ItemSource.Station, 3), (ItemSource.Crop, 4), (ItemSource.Refund, 5),
+            (ItemSource.Loot, 6), (ItemSource.Admin, 7), (ItemSource.Recovered, 8), (ItemSource.Starter, 9));
+        AssertValues((ItemSink.Craft, 1), (ItemSink.Station, 2), (ItemSink.Eat, 3), (ItemSink.Fuel, 4), (ItemSink.BuildCost, 5),
+            (ItemSink.SuitRefill, 6), (ItemSink.Plant, 7), (ItemSink.Despawn, 8), (ItemSink.Admin, 9), (ItemSink.Ammo, 10), (ItemSink.Offering, 11));
+        AssertValues((ContainerKind.PlayerBag, 1), (ContainerKind.Hotbar, 2), (ContainerKind.Equipment, 3), (ContainerKind.Chest, 4),
+            (ContainerKind.CargoHold, 5), (ContainerKind.StationInput, 6), (ContainerKind.StationOutput, 7), (ContainerKind.Tombstone, 8),
+            (ContainerKind.DroppedItem, 9));
+        AssertValues((ContainerHostKind.Player, 1), (ContainerHostKind.ConstructBlock, 2), (ContainerHostKind.PersistentEntity, 3),
+            (ContainerHostKind.Poi, 4));
+        AssertValues((ContainerAccess.Shared, 1), (ContainerAccess.Private, 2));
         AssertValues((TerrainShape.Sphere, 1));
         AssertValues((TerrainEditMode.Remove, 1), (TerrainEditMode.Add, 2));
         AssertValues((EntityKind.Player, 1), (EntityKind.Construct, 2));

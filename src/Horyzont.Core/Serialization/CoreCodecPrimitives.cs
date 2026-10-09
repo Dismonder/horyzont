@@ -1,5 +1,7 @@
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
+using Horyzont.Core.Items;
+using Horyzont.Core.Protocol;
 using Horyzont.Core.World.Constructs;
 
 namespace Horyzont.Core.Serialization;
@@ -127,5 +129,103 @@ internal static class CoreCodecPrimitives
         }
 
         return block;
+    }
+
+    public static void WriteSlotRef(ByteWriter w, SlotRef slot)
+    {
+        w.WriteVarUInt(slot.Container.Value);
+        w.WriteVarUInt(slot.Slot);
+    }
+
+    public static SlotRef ReadSlotRef(ref ByteReader r)
+    {
+        var container = new ContainerId(r.ReadVarUInt());
+        ushort slot = r.ReadVarUInt16();
+        return new SlotRef(container, slot);
+    }
+
+    public static byte ReadEnumByte(ref ByteReader r, byte first, byte last, string what)
+    {
+        byte value = r.ReadByte();
+        if (value < first || value > last)
+        {
+            throw new ProtocolViolationException($"Unknown {what} {value}.");
+        }
+
+        return value;
+    }
+
+    public static void WriteContainerHost(ByteWriter w, ContainerHost host)
+    {
+        if (!Enum.IsDefined(host.Kind))
+        {
+            throw new ArgumentException($"Invalid ContainerHostKind {(byte)host.Kind}.", nameof(host));
+        }
+
+        w.WriteByte((byte)host.Kind);
+        w.WriteVarUInt(host.Id);
+        switch (host.Kind)
+        {
+            case ContainerHostKind.ConstructBlock:
+                WriteCellPos(w, host.Cell);
+                break;
+            case ContainerHostKind.Poi:
+                w.WriteVarUInt(host.Site);
+                w.WriteVarUInt(host.Number);
+                break;
+        }
+    }
+
+    public static ContainerHost ReadContainerHost(ref ByteReader r)
+    {
+        var kind = (ContainerHostKind)ReadEnumByte(ref r, (byte)ContainerHostKind.Player, (byte)ContainerHostKind.Poi, "container host kind");
+        ulong id = r.ReadVarUInt();
+        return kind switch
+        {
+            ContainerHostKind.ConstructBlock => new ContainerHost(kind, id, ReadCellPos(ref r), 0, 0),
+            ContainerHostKind.Poi => new ContainerHost(kind, id, default, r.ReadVarUInt(), r.ReadVarUInt()),
+            _ => new ContainerHost(kind, id, default, 0, 0),
+        };
+    }
+
+    /// <summary>A non-empty stack: varuint type (1..4096), varuint count (at least 1), instance byte 0.</summary>
+    public static void WriteItemStack(ByteWriter w, ItemStack stack)
+    {
+        if (stack.IsEmpty || stack.Type.Value > ProtocolConstants.MaxItemTypes || stack.Count == 0)
+        {
+            throw new ArgumentException($"Invalid item stack {stack.Type.Value} x {stack.Count}.", nameof(stack));
+        }
+
+        if (stack.Instance is not null)
+        {
+            throw new ArgumentException("Item instance data is not supported in format 1.", nameof(stack));
+        }
+
+        w.WriteVarUInt(stack.Type.Value);
+        w.WriteVarUInt(stack.Count);
+        w.WriteByte(0);
+    }
+
+    public static ItemStack ReadItemStack(ref ByteReader r)
+    {
+        ushort type = r.ReadVarUInt16();
+        if (type == 0 || type > ProtocolConstants.MaxItemTypes)
+        {
+            throw new ProtocolViolationException($"Item type {type} must be in 1..{ProtocolConstants.MaxItemTypes}.");
+        }
+
+        ushort count = r.ReadVarUInt16();
+        if (count == 0)
+        {
+            throw new ProtocolViolationException("Item stack count 0.");
+        }
+
+        byte instance = r.ReadByte();
+        if (instance != 0)
+        {
+            throw new ProtocolViolationException($"Item instance byte {instance} is not supported in format 1.");
+        }
+
+        return new ItemStack(new ItemTypeId(type), count);
     }
 }

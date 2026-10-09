@@ -7,6 +7,7 @@ using FsCheck.Fluent;
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
+using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
@@ -189,7 +190,7 @@ public static class CodecGen
     /// <summary>Chunks of 4096 well-formed block states in assorted shapes (empty, uniform, sparse, banded, worst-case alternating, random).</summary>
     public static Gen<uint[]> ChunkBlocks { get; } = Gen.Choose(0, 5).SelectMany(shape => Gen.Choose(0, int.MaxValue).SelectMany(seed => BuildChunk(shape, seed)));
 
-    /// <summary>Operations of all nine kinds.</summary>
+    /// <summary>Operations of every kind (1-7, 20-23 and 30-35).</summary>
     public static Gen<Operation> Operation => Gen.OneOf(
         TerrainEditOp.Select(o => (Operation)o),
         ConstructCreateOp.Select(o => (Operation)o),
@@ -201,7 +202,13 @@ public static class CodecGen
         ShipModeSetOp.Select(o => (Operation)o),
         MarkerSetOp.Select(o => (Operation)o),
         MarkerRemoveOp.Select(o => (Operation)o),
-        ShipFuelAddOp.Select(o => (Operation)o));
+        ShipFuelAddOp.Select(o => (Operation)o),
+        CompoundOp.Select(o => (Operation)o),
+        ItemTransferOp.Select(o => (Operation)o),
+        ItemSwapOp.Select(o => (Operation)o),
+        ItemCreateOp.Select(o => (Operation)o),
+        ItemDestroyOp.Select(o => (Operation)o),
+        ContainerCreateOp.Select(o => (Operation)o));
 
     /// <summary>Terrain edit operations.</summary>
     public static Gen<TerrainEditOp> TerrainEditOp { get; } =
@@ -267,6 +274,103 @@ public static class CodecGen
         from velocity in Vector
         from seat in Optional(Cell)
         select new EntityReparentOp(entity, parent, parentSeq, position, rotation, velocity, seat);
+
+    /// <summary>Item type ids, mostly inside the registry range, sometimes any 16-bit value (operations carry them unchecked).</summary>
+    public static Gen<ItemTypeId> ItemType { get; } =
+        Gen.Frequency((3, Gen.Choose(0, ProtocolConstants.MaxItemTypes)), (1, Gen.Choose(0, ushort.MaxValue))).Select(v => new ItemTypeId((ushort)v));
+
+    /// <summary>Container ids from 1.</summary>
+    public static Gen<ContainerId> ContainerId { get; } = VarU64.Select(v => new ContainerId(Math.Max(1, v)));
+
+    /// <summary>Slot references.</summary>
+    public static Gen<SlotRef> SlotRef { get; } =
+        from container in ContainerId
+        from slot in VarU16
+        select new SlotRef(container, slot);
+
+    /// <summary>Container hosts of every kind.</summary>
+    public static Gen<ContainerHost> ContainerHost { get; } = Gen.OneOf(
+        PlayerId.Select(p => Horyzont.Core.Items.ContainerHost.Player(p)),
+        EntityId.SelectMany(e => Cell.Select(c => Horyzont.Core.Items.ContainerHost.ConstructBlock(e, c))),
+        EntityId.Select(e => Horyzont.Core.Items.ContainerHost.PersistentEntity(e)),
+        PlanetId.SelectMany(p => VarU64.SelectMany(s => VarU64.Select(n => Horyzont.Core.Items.ContainerHost.Poi(p, s, n)))));
+
+    /// <summary>Non-empty item stacks within the codec limits.</summary>
+    public static Gen<ItemStack> ItemStack { get; } =
+        from type in Gen.Choose(1, ProtocolConstants.MaxItemTypes)
+        from count in Gen.Frequency((3, Gen.Choose(1, 500)), (1, Gen.Choose(1, ushort.MaxValue)))
+        select new ItemStack(new ItemTypeId((ushort)type), (ushort)count);
+
+    /// <summary>Item transfer operations.</summary>
+    public static Gen<ItemTransferOp> ItemTransferOp { get; } =
+        from source in SlotRef
+        from target in SlotRef
+        from type in ItemType
+        from count in VarU16
+        from limit in VarU16
+        select new ItemTransferOp(source, target, type, count, limit);
+
+    /// <summary>Item swap operations.</summary>
+    public static Gen<ItemSwapOp> ItemSwapOp { get; } =
+        from a in SlotRef
+        from b in SlotRef
+        from expectedA in ItemType
+        from expectedB in ItemType
+        select new ItemSwapOp(a, b, expectedA, expectedB);
+
+    /// <summary>Item create operations of every source.</summary>
+    public static Gen<ItemCreateOp> ItemCreateOp { get; } =
+        from slot in SlotRef
+        from type in ItemType
+        from count in VarU16
+        from limit in VarU16
+        from source in Gen.Elements(Enum.GetValues<ItemSource>())
+        select new ItemCreateOp(slot, type, count, limit, source);
+
+    /// <summary>Item destroy operations of every sink.</summary>
+    public static Gen<ItemDestroyOp> ItemDestroyOp { get; } =
+        from slot in SlotRef
+        from type in ItemType
+        from count in VarU16
+        from sink in Gen.Elements(Enum.GetValues<ItemSink>())
+        select new ItemDestroyOp(slot, type, count, sink);
+
+    /// <summary>Container create operations of every kind, host kind and access.</summary>
+    public static Gen<ContainerCreateOp> ContainerCreateOp { get; } =
+        from id in ContainerId
+        from kind in Gen.Elements(Enum.GetValues<ContainerKind>())
+        from host in ContainerHost
+        from owner in VarU64
+        from access in Gen.Elements(Enum.GetValues<ContainerAccess>())
+        from size in VarU16
+        select new ContainerCreateOp(id, kind, host, new PlayerId(owner), access, size);
+
+    /// <summary>Item components of compound operations.</summary>
+    public static Gen<Operation> ItemComponent { get; } = Gen.OneOf(
+        ItemTransferOp.Select(o => (Operation)o),
+        ItemSwapOp.Select(o => (Operation)o),
+        ItemCreateOp.Select(o => (Operation)o),
+        ItemDestroyOp.Select(o => (Operation)o),
+        ContainerCreateOp.Select(o => (Operation)o));
+
+    /// <summary>Compound operations of 1..6 item components, about half of them ending with a terrain edit.</summary>
+    public static Gen<CompoundOp> CompoundOp { get; } =
+        from count in Gen.Choose(1, 6)
+        from items in ItemComponent.ArrayOf(count)
+        from edit in Gen.Frequency((1, Gen.Constant<TerrainEditOp?>(null)), (1, TerrainEditOp.Select(e => (TerrainEditOp?)e)))
+        select new CompoundOp(edit is null ? items : [.. items, edit]);
+
+    /// <summary>Container records: 1..256 slots, some of them filled.</summary>
+    public static Gen<ContainerRecord> ContainerRecord { get; } =
+        from id in ContainerId
+        from kind in Gen.Elements(Enum.GetValues<ContainerKind>())
+        from host in ContainerHost
+        from owner in VarU64
+        from access in Gen.Elements(Enum.GetValues<ContainerAccess>())
+        from size in Gen.Frequency((4, Gen.Choose(1, 40)), (1, Gen.Choose(1, ProtocolConstants.MaxContainerSlots)))
+        from version in VarU32
+        from slots in Gen.Frequency((1, Gen.Constant(Horyzont.Core.Items.ItemStack.Empty)), (1, ItemStack)).ArrayOf(size)
+        select new ContainerRecord(id, kind, host, new PlayerId(owner), access, (ushort)size, version, slots);
 
     /// <summary>Intents of all five kinds.</summary>
     public static Gen<Intent> Intent => Gen.OneOf(

@@ -16,9 +16,13 @@ namespace Horyzont.Core.Hashing;
 /// XxHash64 of a canonical byte stream of the state: exactly what checkpoints plus journal replay restore.
 /// Excludes CurrentTick, the kinematics of online players (the pose of offline players is hashed) and the pose of <see cref="ConstructMode.Ship"/> constructs (they change
 /// outside the journal) and terrain voxels (outside Core; only block versions are hashed). Floats are hashed bitwise.
+/// The survival section (item types, next container id, containers) is appended only when the world has item types or containers or a
+/// container counter other than 1, so the hash of a world without items is the same as before K6-29 (D7 of K6-29W).
 /// </summary>
 public static class StateHasher
 {
+    private const byte SurvivalSectionTag = 0x53;
+
     /// <summary>Hashes a state.</summary>
     /// <param name="state">The state.</param>
     /// <returns>The hash.</returns>
@@ -152,7 +156,49 @@ public static class StateHasher
             }
         }
 
+        if (state.ItemTypes.Entries.Count > 0 || state.Containers.Count > 0 || state.ContainerIds.NextValue != 1)
+        {
+            Survival(hash, state);
+        }
+
         return hash.GetCurrentHashAsUInt64();
+    }
+
+    private static void Survival(XxHash64 hash, WorldState state)
+    {
+        Span<byte> tag = [SurvivalSectionTag];
+        hash.Append(tag);
+        Registry(hash, state.ItemTypes.Entries);
+        U64(hash, state.ContainerIds.NextValue);
+        U32(hash, (uint)state.Containers.Count);
+        foreach (var container in state.Containers.All)
+        {
+            U64(hash, container.Id.Value);
+            U32(hash, (uint)container.Kind);
+            U32(hash, (uint)container.Host.Kind);
+            U64(hash, container.Host.Id);
+            U32(hash, (uint)container.Host.Cell.X);
+            U32(hash, (uint)container.Host.Cell.Y);
+            U32(hash, (uint)container.Host.Cell.Z);
+            U64(hash, container.Host.Site);
+            U64(hash, container.Host.Number);
+            U64(hash, container.Owner.Value);
+            U32(hash, (uint)container.Access);
+            U32(hash, (uint)container.Size);
+            U32(hash, container.Version);
+            var slots = container.Slots;
+            for (var i = 0; i < slots.Length; i++)
+            {
+                if (!slots[i].IsEmpty)
+                {
+                    U32(hash, (uint)i);
+                    U32(hash, slots[i].Type.Value);
+                    U32(hash, slots[i].Count);
+                }
+            }
+
+            U32(hash, uint.MaxValue);
+        }
     }
 
     private static void Registry(XxHash64 hash, IReadOnlyList<RegistryEntry> entries)

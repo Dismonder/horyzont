@@ -74,4 +74,16 @@ public static class ProtocolConstants
 
     /// <summary>Largest terrain block payload.</summary>
     public const int MaxTerrainBlockDataBytes = 64 * 1024;
+
+    /// <summary>Most item types in a world (<see cref="Ids.ItemTypeId"/> 1..4096).</summary>
+    public const int MaxItemTypes = 4096;
+
+    /// <summary>Most slots of one container.</summary>
+    public const int MaxContainerSlots = 256;
+
+    /// <summary>Most components of one <see cref="Operations.CompoundOp"/>.</summary>
+    public const int MaxCompoundComponents = 4096;
+
+    /// <summary>Largest encoded <see cref="Operations.CompoundOp"/> frame (kind, version, count and components).</summary>
+    public const int MaxCompoundBytes = 160 * 1024;
 }

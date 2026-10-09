@@ -4,6 +4,7 @@ using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Items;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Space;
 using Horyzont.Core.World;
@@ -717,6 +718,118 @@ public static class StateCodec
         }
 
         return value;
+    }
+
+    /// <summary>
+    /// Writes a container record without a prefix: id, kind, host, owner, access, size, version, the number of non-empty slots and
+    /// (slot, stack) for each of them in ascending slot order.
+    /// </summary>
+    /// <param name="w">Target writer.</param>
+    /// <param name="c">Record.</param>
+    public static void WriteContainer(ByteWriter w, ContainerRecord c)
+    {
+        ArgumentNullException.ThrowIfNull(w);
+        ArgumentNullException.ThrowIfNull(c);
+        if (!Enum.IsDefined(c.Kind) || !Enum.IsDefined(c.Access) || !Enum.IsDefined(c.Host.Kind))
+        {
+            throw new ArgumentException("Invalid container kind, access or host kind.", nameof(c));
+        }
+
+        if (c.Size == 0 || c.Size > ProtocolConstants.MaxContainerSlots || c.Slots is null || c.Slots.Count != c.Size)
+        {
+            throw new ArgumentException($"A container has 1..{ProtocolConstants.MaxContainerSlots} slots and exactly Size slot entries.", nameof(c));
+        }
+
+        w.WriteVarUInt(c.Id.Value);
+        w.WriteByte((byte)c.Kind);
+        CoreCodecPrimitives.WriteContainerHost(w, c.Host);
+        w.WriteVarUInt(c.Owner.Value);
+        w.WriteByte((byte)c.Access);
+        w.WriteVarUInt(c.Size);
+        w.WriteVarUInt(c.Version);
+        var filled = 0;
+        foreach (var stack in c.Slots)
+        {
+            if (!stack.IsEmpty || stack.Count != 0)
+            {
+                filled++;
+            }
+        }
+
+        w.WriteVarUInt((ulong)filled);
+        for (var slot = 0; slot < c.Slots.Count; slot++)
+        {
+            var stack = c.Slots[slot];
+            if (!stack.IsEmpty || stack.Count != 0)
+            {
+                w.WriteVarUInt((ulong)slot);
+                CoreCodecPrimitives.WriteItemStack(w, stack);
+            }
+        }
+    }
+
+    /// <summary>Reads a container record.</summary>
+    /// <param name="r">Reader.</param>
+    /// <returns>The record.</returns>
+    public static ContainerRecord ReadContainer(ref ByteReader r)
+    {
+        var id = new ContainerId(r.ReadVarUInt());
+        var kind = (ContainerKind)CoreCodecPrimitives.ReadEnumByte(ref r, (byte)ContainerKind.PlayerBag, (byte)ContainerKind.DroppedItem, "container kind");
+        var host = CoreCodecPrimitives.ReadContainerHost(ref r);
+        var owner = new PlayerId(r.ReadVarUInt());
+        var access = (ContainerAccess)CoreCodecPrimitives.ReadEnumByte(ref r, (byte)ContainerAccess.Shared, (byte)ContainerAccess.Private, "container access");
+        ushort size = r.ReadVarUInt16();
+        if (size == 0 || size > ProtocolConstants.MaxContainerSlots)
+        {
+            throw new ProtocolViolationException($"Container size {size} must be in 1..{ProtocolConstants.MaxContainerSlots}.");
+        }
+
+        uint version = r.ReadVarUInt32();
+        ulong filled = r.ReadVarUInt();
+        if (filled > size)
+        {
+            throw new ProtocolViolationException($"Container lists {filled} filled slots but has {size}.");
+        }
+
+        var slots = new ItemStack[size];
+        var previous = -1;
+        for (ulong i = 0; i < filled; i++)
+        {
+            ulong slot = r.ReadVarUInt();
+            if (slot >= size || (long)slot <= previous)
+            {
+                throw new ProtocolViolationException($"Container slot {slot} is out of range or out of order.");
+            }
+
+            slots[slot] = CoreCodecPrimitives.ReadItemStack(ref r);
+            previous = (int)slot;
+        }
+
+        return new ContainerRecord(id, kind, host, owner, access, size, version, slots);
+    }
+
+    /// <summary>Encodes a container record as a SQLite blob (<see cref="BlobKind.Container"/>).</summary>
+    /// <param name="c">Record.</param>
+    /// <returns>The blob.</returns>
+    public static byte[] EncodeContainerBlob(ContainerRecord c)
+    {
+        var w = new ByteWriter();
+        w.WriteByte((byte)BlobKind.Container);
+        w.WriteByte(CurrentFormatVersion);
+        WriteContainer(w, c);
+        return w.WrittenSpan.ToArray();
+    }
+
+    /// <summary>Decodes a container blob.</summary>
+    /// <param name="blob">Blob bytes.</param>
+    /// <returns>The record.</returns>
+    public static ContainerRecord DecodeContainerBlob(ReadOnlySpan<byte> blob)
+    {
+        ValidateBlobHeader(blob, BlobKind.Container);
+        var r = new ByteReader(blob.Slice(2));
+        var result = ReadContainer(ref r);
+        r.EnsureEnd();
+        return result;
     }
 
     private static void ValidateBlobHeader(ReadOnlySpan<byte> blob, BlobKind expectedKind)

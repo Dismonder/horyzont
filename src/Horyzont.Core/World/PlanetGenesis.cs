@@ -38,7 +38,7 @@ public static class PlanetGenesis
     /// <param name="galaxySeed">Galaxy seed.</param>
     /// <param name="planetIndex">Index of the planet in the galaxy.</param>
     /// <param name="generatorProfile">Generator profile key with version.</param>
-    /// <returns>Parameters accepted by <see cref="WorldState.CreateNew(Ids.WorldId, ulong, IEnumerable{PlanetParams}, IEnumerable{string}, IEnumerable{string})"/>.</returns>
+    /// <returns>Parameters accepted by <see cref="WorldState.CreateNew(Ids.WorldId, ulong, IEnumerable{PlanetParams}, IEnumerable{string}, IEnumerable{string}, IEnumerable{string})"/>.</returns>
     /// <exception cref="ArgumentException">The profile is empty or longer than allowed.</exception>
     public static PlanetParams CreatePlanet(ulong galaxySeed, uint planetIndex, string generatorProfile)
     {

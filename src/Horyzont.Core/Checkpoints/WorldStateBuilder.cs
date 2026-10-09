@@ -3,6 +3,7 @@ using System.Text;
 
 using Horyzont.Core.Ids;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Items;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.Space;
@@ -31,11 +32,14 @@ public sealed class WorldStateBuilder
     private readonly List<MarkerRecord> _markers = [];
     private readonly List<ShipStateRecord> _shipStates = [];
     private StarSystemParams? _starSystem;
+    private readonly List<RegistryEntry> _itemTypes = [];
+    private readonly List<ContainerRecord> _containers = [];
     private OpId _lastOpId;
     private Tick _tick;
     private ulong _nextEntityId = 1;
     private ulong _nextPlayerId = 1;
     private ulong _nextMarkerId = 1;
+    private ulong _nextContainerId = 1;
     private bool _built;
 
     /// <summary>Starts a world.</summary>
@@ -58,6 +62,22 @@ public sealed class WorldStateBuilder
         _tick = tick;
         _nextEntityId = nextEntityId;
         _nextPlayerId = nextPlayerId;
+    }
+
+    /// <summary>Sets the container counter (<c>next_container_id</c>); 1 when never set.</summary>
+    /// <param name="nextContainerId">Next container id.</param>
+    public void SetNextContainerId(ulong nextContainerId) => _nextContainerId = nextContainerId;
+
+    /// <summary>Adds an item type registry entry.</summary>
+    /// <param name="entry">The entry.</param>
+    public void AddItemType(RegistryEntry entry) => _itemTypes.Add(entry);
+
+    /// <summary>Adds a container; its host player must be added too.</summary>
+    /// <param name="container">The container.</param>
+    public void AddContainer(ContainerRecord container)
+    {
+        ArgumentNullException.ThrowIfNull(container);
+        _containers.Add(container);
     }
 
     /// <summary>Adds a planet.</summary>
@@ -157,7 +177,7 @@ public sealed class WorldStateBuilder
         WorldState state;
         try
         {
-            state = new WorldState(_id, _galaxySeed, _lastOpId, _tick, _nextEntityId, _nextPlayerId, _nextMarkerId);
+            state = new WorldState(_id, _galaxySeed, _lastOpId, _tick, _nextEntityId, _nextPlayerId, _nextMarkerId, _nextContainerId);
         }
         catch (ArgumentOutOfRangeException e)
         {
@@ -182,6 +202,11 @@ public sealed class WorldStateBuilder
         foreach (var entry in _materials)
         {
             state.Materials.Add(entry);
+        }
+
+        foreach (var entry in _itemTypes)
+        {
+            state.ItemTypes.Add(entry);
         }
 
         foreach (var header in _constructs)
@@ -231,6 +256,11 @@ public sealed class WorldStateBuilder
         foreach (var record in _players)
         {
             LoadPlayer(state, record);
+        }
+
+        foreach (var container in _containers)
+        {
+            LoadContainer(state, container);
         }
 
         foreach (var version in _terrain)
@@ -328,6 +358,47 @@ public sealed class WorldStateBuilder
         state.Players.Load(new PlayerState(
             record.Player, record.Identity, record.DisplayName, record.Entity, record.Frame, record.ParentSeq, record.Seat,
             record.Position, record.BodyRotation, record.Pitch, record.IsOnline));
+    }
+
+    private static void LoadContainer(WorldState state, ContainerRecord record)
+    {
+        var id = record.Id;
+        if (!state.ContainerIds.IsUsedId(id) || state.Containers.TryGet(id, out _))
+        {
+            throw new InvalidDataException($"Container {id.Value} is not below NextContainerId or is used twice.");
+        }
+
+        if (!Enum.IsDefined(record.Kind) || !Enum.IsDefined(record.Access) || record.Size == 0
+            || record.Size > ProtocolConstants.MaxContainerSlots || record.Slots is null || record.Slots.Count != record.Size)
+        {
+            throw new InvalidDataException($"Container {id.Value} has an invalid kind, access or size.");
+        }
+
+        if (record.Host.Kind != ContainerHostKind.Player
+            || !state.Players.TryGet(record.Host.PlayerId, out _)
+            || state.Containers.TryGetOfPlayer(record.Host.PlayerId, record.Kind, out _))
+        {
+            throw new InvalidDataException($"Container {id.Value} has an unknown host or duplicates a container of its player.");
+        }
+
+        if (!record.Owner.IsNone && !state.Players.TryGet(record.Owner, out _))
+        {
+            throw new InvalidDataException($"Container {id.Value} has an unknown owner.");
+        }
+
+        foreach (var stack in record.Slots)
+        {
+            if ((stack.IsEmpty && stack.Count != 0) || (!stack.IsEmpty && (stack.Count == 0 || !state.ItemTypes.IsKnown(stack.Type))))
+            {
+                throw new InvalidDataException($"Container {id.Value} holds an invalid stack or an unknown item type {stack.Type.Value}.");
+            }
+        }
+
+        var container = state.Containers.Add(id, record.Kind, record.Host, record.Owner, record.Access, record.Size, record.Version);
+        for (var slot = 0; slot < record.Slots.Count; slot++)
+        {
+            container.SetSlot(slot, record.Slots[slot]);
+        }
     }
 
     private static void CheckEntity(WorldState state, EntityId id)
