@@ -1,10 +1,5 @@
 ; Engine configuration file.
-; It's best edited using the editor UI and not directly,
-; since the parameters that go here are not all obvious.
-;
-; Format:
-;   [section] ; section goes between []
-;   param=value ; assign values to parameters
+; Game project (docs/plans/K1-02-szkielet-rozwiazania.md, stage B).
 
 config_version=5
 
@@ -27,4 +22,10 @@ project/assembly_name="Horyzont.Game"
 
 [physics]
 
+common/physics_ticks_per_second=60
 3d/physics_engine="Jolt Physics"
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+rendering_device/driver.windows="vulkan"
