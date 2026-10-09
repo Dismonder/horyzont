@@ -67,6 +67,7 @@ public sealed class EngineTestScene : IAsyncDisposable
         if (GodotObject.IsInstanceValid(_root))
         {
             var tree = _root.GetTree();
+            _root.GetParent()?.RemoveChild(_root);
             _root.QueueFree();
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         }
