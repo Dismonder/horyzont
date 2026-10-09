@@ -51,7 +51,16 @@ internal sealed class ModeFixture
     public static int NextPort() => Interlocked.Increment(ref _nextPort);
 
     /// <summary>Parses the arguments like the command line, composes the mode, adds it to the scene and starts it.</summary>
-    public static async Task<ModeFixture> StartAsync(EngineTestScene scene, string directory, bool connectClient, params string[] args)
+    public static Task<ModeFixture> StartAsync(EngineTestScene scene, string directory, bool connectClient, params string[] args) =>
+        StartCoreAsync(scene, directory, connectClient, null, args);
+
+    /// <summary>Like <see cref="StartAsync"/>, with a hook that sees every printed line and may throw to inject a failure.</summary>
+    public static Task<ModeFixture> StartWithPrintHookAsync(
+        EngineTestScene scene, string directory, bool connectClient, Action<string> onPrint, params string[] args) =>
+        StartCoreAsync(scene, directory, connectClient, onPrint, args);
+
+    private static async Task<ModeFixture> StartCoreAsync(
+        EngineTestScene scene, string directory, bool connectClient, Action<string>? onPrint, string[] args)
     {
         var launch = LaunchOptions.Parse(args);
         var printed = new List<string>();
@@ -62,7 +71,11 @@ internal sealed class ModeFixture
             UserDataDir = Path.Combine(directory, "user"),
             ExecutableDir = directory,
             Render = false,
-            Print = printed.Add,
+            Print = line =>
+            {
+                printed.Add(line);
+                onPrint?.Invoke(line);
+            },
         };
         var composition = GameComposition.Create(launch, env);
         var fixture = new ModeFixture(scene, composition, directory, printed);
@@ -96,7 +109,13 @@ internal sealed class ModeFixture
     {
         Composition.RequestShutdown();
         var finished = await WaitUntil(() => Composition.IsFinished, seconds);
-        Composition.Release();
+        return await ReleaseAsync(finished);
+    }
+
+    /// <summary>Waits for the final cleanup like the quit coordinator does, then removes the composition from the scene.</summary>
+    public async Task<bool> ReleaseAsync(bool finished = true)
+    {
+        var released = await WaitUntil(Composition.ReleaseStep, 15);
         if (GodotObject.IsInstanceValid(Composition.Root))
         {
             Composition.Root.GetParent()?.RemoveChild(Composition.Root);
@@ -104,7 +123,7 @@ internal sealed class ModeFixture
         }
 
         await _scene.WaitFrames(2);
-        return finished;
+        return finished && released;
     }
 
     /// <summary>Y of the surface above the planet's north pole (+Y axis) from the generator.</summary>

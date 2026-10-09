@@ -35,6 +35,9 @@ public sealed class GameComposition
 {
     private const string RootScene = "res://scenes/Root.tscn";
 
+    /// <summary>How long the quit coordinator waits for the final cleanup (the client transport) before it quits anyway.</summary>
+    private static readonly TimeSpan ReleaseTimeout = TimeSpan.FromSeconds(5);
+
     private readonly LaunchOptions _launch;
     private readonly GameEnvironment _env;
     private readonly ILogger<GameComposition> _logger;
@@ -51,6 +54,9 @@ public sealed class GameComposition
     private bool _released;
     private bool _clientStopRequested;
     private int _clientExitCode;
+    private int _failureExitCode;
+    private Task? _transportDispose;
+    private bool _transportDisposeLogged;
 
     private GameComposition(
         LaunchOptions launch, GameEnvironment env, Node root, ITransport? serverTransport, ITransport? clientTransport, ServerRuntime? server,
@@ -110,7 +116,7 @@ public sealed class GameComposition
     public bool IsFinished => Server is not null ? Server.IsStopped : _clientEnded && (_clientTransport?.IsDrained ?? true);
 
     /// <summary>Gets the exit code of the process; valid once <see cref="IsFinished"/>.</summary>
-    public int ExitCode => Server?.ExitCode ?? _clientExitCode;
+    public int ExitCode => Server is null ? _clientExitCode : Server.ExitCode != 0 ? Server.ExitCode : _failureExitCode;
 
     /// <summary>Builds the services and the scene of the mode. Main thread; nothing is started and nothing enters the scene tree yet.</summary>
     /// <param name="launch">The parsed command line.</param>
@@ -275,8 +281,8 @@ public sealed class GameComposition
         {
             var quit = new QuitCoordinator { Name = "Quit" };
             quit.Initialize(
-                composition.RequestShutdown, () => composition.IsFinished, () => composition.ExitCode, composition.Release, env.RegisterSignals,
-                loggers.CreateLogger<QuitCoordinator>());
+                composition.RequestShutdown, () => composition.IsFinished, () => composition.ExitCode, composition.ReleaseStep, env.RegisterSignals,
+                loggers.CreateLogger<QuitCoordinator>(), env.Time, ReleaseTimeout);
             root.AddChild(quit);
             composition.Quit = quit;
         }
@@ -296,33 +302,67 @@ public sealed class GameComposition
     /// <returns>Null while the process runs on; otherwise the exit code the process must end with (the world did not start).</returns>
     public async Task<int?> StartAsync(CancellationToken ct, bool connectClient = true)
     {
-        if (Server is not null)
-        {
-            var outcome = await StartServerAsync(ct).ConfigureAwait(true);
-            if (outcome is { } exit)
-            {
-                Release();
-                return exit;
-            }
-        }
-
-        if (Client is not null)
+        try
         {
             if (Server is not null)
             {
-                ClientNode!.TerrainProvider = new SharedTerrainProvider(TerrainFactory!.Terrain!.Voxel);
-                if (connectClient)
+                var outcome = await StartServerAsync(ct).ConfigureAwait(true);
+                if (outcome is { } exit)
                 {
-                    Client.Connect(new InMemoryEndpoint("server"), _profile!.Identity, _profile.DisplayName, _launch.Password);
+                    Release();
+                    return exit;
                 }
             }
-            else
-            {
-                Client.Connect(new UdpEndpoint(_launch.ConnectHost!, _launch.ConnectPort), _profile!.Identity, _profile.DisplayName, _launch.Password);
-            }
+
+            ConnectClient(connectClient);
+        }
+#pragma warning disable CA1031 // The server already runs: any failure of the rest of the start must end it through the canonical shutdown, not abandon it.
+        catch (Exception ex) when (Server is { RuntimeState: ServerRuntimeState.Running or ServerRuntimeState.SafeMode })
+#pragma warning restore CA1031
+        {
+            FailAfterServerStart(ex);
         }
 
         return null;
+    }
+
+    private void ConnectClient(bool connectClient)
+    {
+        if (Client is null)
+        {
+            return;
+        }
+
+        if (Server is not null)
+        {
+            ClientNode!.TerrainProvider = new SharedTerrainProvider(TerrainFactory!.Terrain!.Voxel);
+            if (connectClient)
+            {
+                Client.Connect(new InMemoryEndpoint("server"), _profile!.Identity, _profile.DisplayName, _launch.Password);
+            }
+        }
+        else
+        {
+            Client.Connect(new UdpEndpoint(_launch.ConnectHost!, _launch.ConnectPort), _profile!.Identity, _profile.DisplayName, _launch.Password);
+        }
+    }
+
+    /// <summary>
+    /// A failure after the server reached Running: the process still ends with the canonical shutdown (checkpoint, flush, writer,
+    /// terrain, with their deadlines) and then with the error code, instead of dropping the live world.
+    /// </summary>
+    private void FailAfterServerStart(Exception exception)
+    {
+        _logger.LogStartFailedAfterRunning(exception);
+        _failureExitCode = Boot.ExitFaulted;
+        if (Quit is not null)
+        {
+            Quit.RequestStop();
+        }
+        else
+        {
+            RequestShutdown();
+        }
     }
 
     /// <summary>Starts the canonical shutdown: the server's, or the disconnect of a remote client. A second call is ignored by the server.</summary>
@@ -342,9 +382,34 @@ public sealed class GameComposition
 
     /// <summary>
     /// Last cleanup after the server stopped (or did not start): the local client of a solo or host process leaves after the server
-    /// (it gets <c>HostLeft</c> through the in-memory transport while the server drains) and its transport is disposed. Idempotent.
+    /// (it gets <c>HostLeft</c> through the in-memory transport while the server drains) and its transport is disposed, here on the
+    /// calling thread. Idempotent; the quit coordinator uses <see cref="ReleaseStep"/> instead.
     /// </summary>
-    public void Release()
+    public void Release() => BeginRelease(inline: true);
+
+    /// <summary>
+    /// The same cleanup as <see cref="Release"/> for the quit coordinator: the transport of the client is disposed on a worker thread
+    /// (LiteNetLib stops its thread with an unbounded join), so the main thread keeps running frames while it waits.
+    /// </summary>
+    /// <returns>True when the cleanup is complete.</returns>
+    public bool ReleaseStep()
+    {
+        BeginRelease(inline: false);
+        if (_transportDispose is not { IsCompleted: true } done)
+        {
+            return _transportDispose is null;
+        }
+
+        if (done.IsFaulted && !_transportDisposeLogged)
+        {
+            _transportDisposeLogged = true;
+            _logger.LogTransportDisposeFailed(done.Exception!.GetBaseException());
+        }
+
+        return true;
+    }
+
+    private void BeginRelease(bool inline)
     {
         if (_released)
         {
@@ -365,7 +430,17 @@ public sealed class GameComposition
             _serverTransport?.Dispose();
         }
 
-        _clientTransport?.Dispose();
+        if (_clientTransport is { } transport)
+        {
+            if (inline)
+            {
+                transport.Dispose();
+            }
+            else
+            {
+                _transportDispose = Task.Run(transport.Dispose);
+            }
+        }
     }
 
     private static string WorldPathOf(string savesDir, Guid id) => Path.Combine(savesDir, id.ToString("D"), "world.db");
@@ -438,7 +513,15 @@ public sealed class GameComposition
         }
 
         // The configuration is never rewritten; the id of a world this run created goes to a side file for the operator.
-        File.WriteAllText(Path.Combine(_savesDir!, "last-world.txt"), _worldId.ToString("D") + "\n");
+        // A hint for the operator, not part of the world: a failure here must not stop a running server.
+        try
+        {
+            File.WriteAllText(Path.Combine(_savesDir!, "last-world.txt"), _worldId.ToString("D") + "\n");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogLastWorldNotWritten(ex);
+        }
     }
 
     private void OnClientEnded(DisconnectCode code)
@@ -446,6 +529,21 @@ public sealed class GameComposition
         if (Server is not null)
         {
             _logger.LogDisconnectedLocal(code);
+
+            // The player of a solo or host process left: the world is saved and the remote players get HostLeft (spec: Wyj�cie hosta).
+            // During the shutdown the server itself ends this session, so only a running server is asked to stop.
+            if (Server.RuntimeState is ServerRuntimeState.Running or ServerRuntimeState.SafeMode)
+            {
+                if (Quit is not null)
+                {
+                    Quit.RequestStop();
+                }
+                else
+                {
+                    RequestShutdown();
+                }
+            }
+
             return;
         }
 
@@ -472,4 +570,13 @@ internal static partial class GameCompositionLog
 {
     [LoggerMessage(EventId = 9201, Level = LogLevel.Information, Message = "the local client ended its session: {Code}")]
     internal static partial void LogDisconnectedLocal(this ILogger logger, DisconnectCode code);
+
+    [LoggerMessage(EventId = 9202, Level = LogLevel.Error, Message = "the start failed after the server was running; shutting the server down")]
+    internal static partial void LogStartFailedAfterRunning(this ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 9203, Level = LogLevel.Warning, Message = "last-world.txt could not be written; the server keeps running")]
+    internal static partial void LogLastWorldNotWritten(this ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 9204, Level = LogLevel.Warning, Message = "disposing the client transport failed")]
+    internal static partial void LogTransportDisposeFailed(this ILogger logger, Exception exception);
 }

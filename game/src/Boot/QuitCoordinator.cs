@@ -20,7 +20,11 @@ public sealed partial class QuitCoordinator : Node
     private Action? _requestShutdown;
     private Func<bool>? _isFinished;
     private Func<int>? _exitCode;
-    private Action? _beforeQuit;
+    private Func<bool>? _cleanup;
+    private TimeProvider _time = TimeProvider.System;
+    private TimeSpan _cleanupTimeout = TimeSpan.FromSeconds(5);
+    private long _cleanupStarted;
+    private bool _cleanupBegun;
     private ILogger<QuitCoordinator>? _logger;
     private bool _registerSignals;
     private int _stopRequested;
@@ -34,11 +38,17 @@ public sealed partial class QuitCoordinator : Node
     /// <param name="requestShutdown">Starts the canonical shutdown of the process (server: <c>RequestShutdown</c>; client: disconnect).</param>
     /// <param name="isFinished">True when the shutdown is complete and the process may exit.</param>
     /// <param name="exitCode">Exit code of the process, read when the shutdown is complete.</param>
-    /// <param name="beforeQuit">Last cleanup before the tree quits (local client of a host, logs); may be null.</param>
+    /// <param name="cleanup">
+    /// Last cleanup before the tree quits (local client of a host, client transport); may be null. Called once per frame until it
+    /// returns true, so slow work can run on a worker thread; the coordinator quits anyway after <paramref name="cleanupTimeout"/>.
+    /// </param>
     /// <param name="registerSignals">Whether to react to process signals.</param>
     /// <param name="logger">Logger.</param>
+    /// <param name="time">Clock of the cleanup deadline; the system clock when null.</param>
+    /// <param name="cleanupTimeout">Longest wait for the cleanup; five seconds when null.</param>
     public void Initialize(
-        Action requestShutdown, Func<bool> isFinished, Func<int> exitCode, Action? beforeQuit, bool registerSignals, ILogger<QuitCoordinator> logger)
+        Action requestShutdown, Func<bool> isFinished, Func<int> exitCode, Func<bool>? cleanup, bool registerSignals, ILogger<QuitCoordinator> logger,
+        TimeProvider? time = null, TimeSpan? cleanupTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(requestShutdown);
         ArgumentNullException.ThrowIfNull(isFinished);
@@ -47,7 +57,9 @@ public sealed partial class QuitCoordinator : Node
         _requestShutdown = requestShutdown;
         _isFinished = isFinished;
         _exitCode = exitCode;
-        _beforeQuit = beforeQuit;
+        _cleanup = cleanup;
+        _time = time ?? TimeProvider.System;
+        _cleanupTimeout = cleanupTimeout ?? TimeSpan.FromSeconds(5);
         _registerSignals = registerSignals;
         _logger = logger;
     }
@@ -103,6 +115,17 @@ public sealed partial class QuitCoordinator : Node
             return;
         }
 
+        if (Advance())
+        {
+            _quitting = true;
+            GetTree().Quit(_exitCode!());
+        }
+    }
+
+    /// <summary>One frame of the coordinator: starts the shutdown when asked and runs the cleanup once the shutdown is complete.</summary>
+    /// <returns>True when the process may quit now.</returns>
+    internal bool Advance()
+    {
         if (Volatile.Read(ref _stopRequested) == 1 && !_shutdownStarted)
         {
             _shutdownStarted = true;
@@ -110,12 +133,34 @@ public sealed partial class QuitCoordinator : Node
             _requestShutdown!();
         }
 
-        if (_isFinished!())
+        if (!_isFinished!())
         {
-            _quitting = true;
-            _beforeQuit?.Invoke();
-            GetTree().Quit(_exitCode!());
+            return false;
         }
+
+        if (_cleanup is null)
+        {
+            return true;
+        }
+
+        if (!_cleanupBegun)
+        {
+            _cleanupBegun = true;
+            _cleanupStarted = _time.GetTimestamp();
+        }
+
+        if (_cleanup())
+        {
+            return true;
+        }
+
+        if (_time.GetElapsedTime(_cleanupStarted) < _cleanupTimeout)
+        {
+            return false;
+        }
+
+        QuitLog.CleanupTimedOut(_logger!);
+        return true;
     }
 
     /// <summary>Replaces the hard exit of the third SIGINT (tests).</summary>
@@ -159,6 +204,9 @@ internal static partial class QuitLog
 
     [LoggerMessage(EventId = 9002, Level = LogLevel.Information, Message = "received {Signal}; stopping")]
     internal static partial void SignalReceived(ILogger logger, PosixSignal signal);
+
+    [LoggerMessage(EventId = 9005, Level = LogLevel.Warning, Message = "the final cleanup did not finish in time; quitting anyway")]
+    internal static partial void CleanupTimedOut(ILogger logger);
 
     [LoggerMessage(EventId = 9003, Level = LogLevel.Warning, Message = "received {Signal} while stopping; ignored (a third Ctrl+C ends the process at once)")]
     internal static partial void SecondRequestIgnored(ILogger logger, PosixSignal signal);
