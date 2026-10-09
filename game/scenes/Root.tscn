@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/Server/ServerNode.cs" id="1_server"]
+[ext_resource type="Script" path="res://src/Client/ClientNode.cs" id="2_client"]
+
+[node name="Root" type="Node"]
+
+[node name="Server" type="Node" parent="."]
+script = ExtResource("1_server")
+
+[node name="Client" type="Node" parent="."]
+script = ExtResource("2_client")
