@@ -22,7 +22,8 @@ jobs:
       fail-fast: false
       matrix:
         # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
-        os: [windows-latest]  # was: [windows-latest, ubuntu-latest]
+        # os: [windows-latest, ubuntu-latest]
+        os: [windows-latest]
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 30
     steps:
