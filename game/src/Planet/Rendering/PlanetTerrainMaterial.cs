@@ -12,7 +12,7 @@ public static class PlanetTerrainMaterial
     public const int TextureSize = 64;
 
     // Base colours by texture index (stone, dirt, sand, ore, bedrock).
-    private static readonly Color[] BaseColors =
+    private static readonly Color[] _baseColors =
     [
         new(0.46f, 0.46f, 0.48f),
         new(0.38f, 0.26f, 0.15f),
@@ -34,7 +34,7 @@ public static class PlanetTerrainMaterial
     public static Texture2DArray CreateTextureArray()
     {
         var images = new Godot.Collections.Array<Image>();
-        for (var index = 0; index < BaseColors.Length; index++)
+        for (var index = 0; index < _baseColors.Length; index++)
         {
             images.Add(CreateImage(index));
         }
@@ -52,7 +52,7 @@ public static class PlanetTerrainMaterial
     private static Image CreateImage(int index)
     {
         var image = Image.CreateEmpty(TextureSize, TextureSize, true, Image.Format.Rgb8);
-        var baseColor = BaseColors[index];
+        var baseColor = _baseColors[index];
         for (var y = 0; y < TextureSize; y++)
         {
             for (var x = 0; x < TextureSize; x++)

@@ -22,6 +22,7 @@
   </ItemGroup>
   <ItemGroup Condition="'$(Configuration)' == 'ExportDebug' Or '$(Configuration)' == 'ExportRelease'">
     <Compile Remove="tests/**" />
+    <Compile Remove="gdunit4_testadapter_v5/**" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../src/Horyzont.Core/Horyzont.Core.csproj" />

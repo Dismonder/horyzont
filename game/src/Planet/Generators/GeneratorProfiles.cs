@@ -15,13 +15,13 @@ public static class GeneratorProfiles
     /// <summary>Profile of new worlds.</summary>
     public const string Current = PlanetV1;
 
-    private static readonly string[] Known = [PlanetV1];
+    private static readonly string[] _known = [PlanetV1];
 
     /// <summary>Known profiles sorted ordinally and joined with ';'; a component of the build hash, so peers with different generators do not connect.</summary>
-    public static string BuildHashComponent { get; } = string.Join(';', Known.Order(StringComparer.Ordinal));
+    public static string BuildHashComponent { get; } = string.Join(';', _known.Order(StringComparer.Ordinal));
 
     /// <summary>Whether the profile is known to this build.</summary>
-    public static bool IsSupported(string profile) => Array.IndexOf(Known, profile) >= 0;
+    public static bool IsSupported(string profile) => Array.IndexOf(_known, profile) >= 0;
 
     /// <summary>Creates and compiles the generator of the profile of the planet. Main thread.</summary>
     /// <exception cref="NotSupportedException">Unknown profile or a voxel size other than 1.</exception>
