@@ -59,6 +59,8 @@ jobs:
           global-json-file: global.json
 
       - uses: actions/setup-python@v5
+        # Self-hosted Windows uses the system Python 3.12: the action's installer needs admin rights (HKLM) and hangs there.
+        if: runner.environment == 'github-hosted'
         with:
           python-version: "3.12"
 
@@ -138,6 +140,8 @@ jobs:
           global-json-file: global.json
 
       - uses: actions/setup-python@v5
+        # Self-hosted Windows uses the system Python 3.12: the action's installer needs admin rights (HKLM) and hangs there.
+        if: runner.environment == 'github-hosted'
         with:
           python-version: "3.12"
 
@@ -191,6 +195,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
+        # Self-hosted Windows uses the system Python 3.12: the action's installer needs admin rights (HKLM) and hangs there.
+        if: runner.environment == 'github-hosted'
         with:
           python-version: "3.12"
 
