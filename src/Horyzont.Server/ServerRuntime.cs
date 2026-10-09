@@ -127,7 +127,8 @@ public sealed partial class ServerRuntime
     /// <summary>
     /// Registers a task of step 7a of the shutdown, which runs after the terrain is shut down and before the transport is disposed
     /// (K2-13: the construct world of a host). The tasks run one after another in registration order, each started on the main thread;
-    /// a failure is logged and marks the shutdown as failed. Call before <see cref="StartAsync"/>.
+    /// every task runs even if an earlier one throws, and each failure is logged. A failure (or a timeout) of the step is only
+    /// logged, like the terrain step: it does not change the exit code. Call before <see cref="StartAsync"/>.
     /// </summary>
     /// <param name="task">The shutdown work; it must not touch the scene tree off the main thread.</param>
     public void AddAfterTerrainShutdown(Func<Task> task)

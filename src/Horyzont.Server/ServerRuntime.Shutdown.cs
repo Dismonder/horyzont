@@ -173,9 +173,26 @@ public sealed partial class ServerRuntime
 
     private async Task RunAfterTerrainShutdownAsync()
     {
+        // Every registered task runs even if an earlier one throws; each failure is logged and the step fails with all of them.
+        List<Exception>? failures = null;
         foreach (var task in _afterTerrainShutdown)
         {
-            await task().ConfigureAwait(true);
+            try
+            {
+                await task().ConfigureAwait(true);
+            }
+#pragma warning disable CA1031 // One failing game system must not keep the others from shutting down.
+            catch (Exception exception)
+#pragma warning restore CA1031
+            {
+                _logger.AfterTerrainShutdownTaskFailed(exception);
+                (failures ??= []).Add(exception);
+            }
+        }
+
+        if (failures is not null)
+        {
+            throw new AggregateException(failures);
         }
     }
 
