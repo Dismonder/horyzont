@@ -62,7 +62,7 @@ jobs:
           python-version: "3.12"
 
       - uses: actions/setup-dotnet@v4
-        # Self-hosted Windows uses the installed .NET SDK: the action cannot write to C:Program Filesdotnet without admin rights.
+        # Self-hosted Windows uses the installed .NET SDK: the action cannot write to C:\Program Files\dotnet without admin rights.
         if: runner.environment == 'github-hosted'
         with:
           global-json-file: global.json
