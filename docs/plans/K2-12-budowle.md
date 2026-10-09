@@ -402,8 +402,8 @@ Fikstury `ConstructFixtures` (w `tests/Horyzont.Testing`, przez publiczny `World
 - [ ] 2. Uprząż silnika: jeśli jest na `main`, użyj jej. Jeśli nie — dodaj ją tak, jak opisuje K2-09 krok 3 (edytor Linux z K2-08A; gdUnit4Net w `Directory.Packages.props`, opis w PR i zielony test dymny silnika, ZASADY pkt 3; job `game` na Windows i Linux); pakiet scalany jako drugi przechodzi na uprząż pierwszego przy rebase (Pytanie P8).
 - [x] 3. Testy Core (czerwone): `BlockOrientationTests`, rozszerzenie `ProtocolContractTests`. Potem `BlockOrientation` i `BlockShape.Mesh = 2`. Powtórz `rg BlockShape src/Horyzont.Core/Serialization src/Horyzont.Core/Hashing` (oczekiwane: pusto; inaczej stop i pytanie). Zielone.
 - [x] 4. `BlockTypeCatalogTests` → `BlockTypeCatalog`, `BlockTypeContent`, `BlockMaterialDef`, `ShapeMesh`, `IShapeMeshResolver`, `BuiltInShapeMeshes`; `game/content/blocks/blocks.json` z treścią K2 i `game/locale/blocks.csv`. Zielone.
-- [ ] 5. `BlockRenderTableTests` → `BlockRenderInfo`, `BlockRenderTable`. Zielone.
-- [ ] 6. `NaiveFaceOracle`, testy meshera (przykłady, właściwości, alokacje) → `ChunkMeshInput`, `ChunkMeshData`, `ChunkMesher` (render i kolizja). Zielone, w tym test alokacji.
+- [x] 5. `BlockRenderTableTests` → `BlockRenderInfo`, `BlockRenderTable`. Zielone.
+- [x] 6. `NaiveFaceOracle`, testy meshera (przykłady, właściwości, alokacje) → `ChunkMeshInput`, `ChunkMeshData`, `ChunkMesher` (render i kolizja). Zielone, w tym test alokacji.
 - [ ] 7. `ConstructDirtyChunksTests`, `WorldStateConstructSourceTests`, `ChunkRemeshQueueTests` → `Sources/*`, `Scheduling/*`. Zielone.
 - [ ] 8. `ConstructFixtures` i `MesherTimingTests` `[Slow]`; wpisz czasy do opisu PR.
 - [ ] 9. Gra: `CollisionLayers` i nazwy warstw w `project.godot`; `BlockContentLoader`, `GodotShapeMeshResolver`, `BlockVisuals` + `blocks.gdshader`, `ChunkMeshUploader`, `MeshWorkerPool`, `ConstructChunkNode`, `ConstructNode`, `ConstructWorld`, `BlockMeshFactory`. Logowanie wyłącznie `[LoggerMessage]`.
