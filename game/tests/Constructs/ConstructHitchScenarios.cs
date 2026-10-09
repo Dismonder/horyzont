@@ -122,7 +122,8 @@ internal static class ConstructHitchScenarios
                 ConstructDirtyChunks.Collect(applied.Operation, applied.ConstructChanges, dirty, created, removed);
                 foreach (var key in dirty)
                 {
-                    if (pending.TryAdd(key, now))
+                    // The edited chunk completes even when emptied; absent neighbours are never queued.
+                    if ((key.Chunk == cell.Chunk || w.Source.TryGetChunkBlocks(key.Construct, key.Chunk, out _)) && pending.TryAdd(key, now))
                     {
                         expectedCallbacks++;
                     }

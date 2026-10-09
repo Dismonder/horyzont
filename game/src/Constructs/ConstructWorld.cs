@@ -148,7 +148,8 @@ public sealed partial class ConstructWorld : Node3D
 
         foreach (var key in _dirtyScratch)
         {
-            if (_entries.ContainsKey(key.Construct))
+            if (_entries.TryGetValue(key.Construct, out var entry) &&
+                (_source.TryGetChunkBlocks(key.Construct, key.Chunk, out _) || entry.KnownChunks.Contains(key.Chunk)))
             {
                 MarkDirty(key, RemeshPriority.Edit);
             }
@@ -355,6 +356,7 @@ public sealed partial class ConstructWorld : Node3D
                 // The chunk is empty or gone: no mesh work, apply the empty result right away.
                 if (_queue.Complete(job))
                 {
+                    _retryChunks.Remove(job.Key);
                     ApplyEmpty(job.Key);
                 }
 
@@ -432,9 +434,14 @@ public sealed partial class ConstructWorld : Node3D
     private void ApplyEmpty(ConstructChunkKey key)
     {
         _collisionPoints.Remove(key);
-        if (_entries.TryGetValue(key.Construct, out var entry))
+        if (_entries.TryGetValue(key.Construct, out var entry) && entry.KnownChunks.Contains(key.Chunk))
         {
             entry.Node.RemoveChunk(key.Chunk);
+            if (!_source.TryGetChunkBlocks(key.Construct, key.Chunk, out _))
+            {
+                entry.KnownChunks.Remove(key.Chunk);
+            }
+
             ChunkMeshApplied?.Invoke(key.Construct, key.Chunk);
         }
     }
@@ -648,6 +655,11 @@ public sealed partial class ConstructWorld : Node3D
     private void MarkDirty(ConstructChunkKey key, RemeshPriority priority)
     {
         _retryChunks.Remove(key);
+        if (_entries.TryGetValue(key.Construct, out var entry) && _source.TryGetChunkBlocks(key.Construct, key.Chunk, out _))
+        {
+            entry.KnownChunks.Add(key.Chunk); // keep until an emptied chunk completes, even before its first mesh upload
+        }
+
         _queue.MarkDirty(key, priority);
     }
 
@@ -662,5 +674,7 @@ public sealed partial class ConstructWorld : Node3D
         public ConstructNode Node { get; } = node;
 
         public bool Collision { get; set; }
+
+        public HashSet<ChunkPos> KnownChunks { get; } = [];
     }
 }

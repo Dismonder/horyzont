@@ -12,6 +12,48 @@ namespace Horyzont.Game.Tests.Constructs;
 public sealed class ConstructWorldTests : EngineTestBase
 {
     [EngineTest]
+    public async Task FaceEdit_MissingNeighbours_AreNotQueuedOrReported()
+    {
+        using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(BlockContentLoader.Load()));
+        var id = w.Create(new CellPos(2, 2, 2));
+        await Idle(w);
+        w.World.SetProcess(false);
+        var applied = new List<ChunkPos>();
+        w.World.ChunkMeshApplied += (_, chunk) => applied.Add(chunk);
+        foreach (var cell in new[]
+        {
+            new CellPos(0, 2, 2), new CellPos(15, 2, 2),
+            new CellPos(2, 0, 2), new CellPos(2, 15, 2),
+            new CellPos(2, 2, 0), new CellPos(2, 2, 15), new CellPos(0, 0, 0),
+        })
+        {
+            applied.Clear();
+            w.Set(id, cell);
+            EngineAssert.Equal(1, w.World.PendingJobs, "only the edited chunk is queued");
+            await WaitUntil(() => { w.World.Pump(4); return w.World.PendingJobs == 0; }, 600, "face edit to drain");
+            EngineAssert.Equal(1, applied.Count, "no callbacks for missing neighbours");
+            EngineAssert.Equal(new ChunkPos(0, 0, 0), applied[0], "callback for edited chunk");
+        }
+    }
+
+    [EngineTest]
+    public async Task ClearLastBlockInChunk_RemovesOldMeshAndReportsCompletion()
+    {
+        using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(BlockContentLoader.Load()));
+        var id = w.Create(new CellPos(2, 2, 2));
+        var cell = new CellPos(16, 2, 2);
+        w.Set(id, cell);
+        await Idle(w);
+        var applied = new List<ChunkPos>();
+        w.World.ChunkMeshApplied += (_, chunk) => applied.Add(chunk);
+        w.Clear(id, cell);
+        await Idle(w);
+        EngineAssert.Equal(2, applied.Count, "existing neighbour and emptied chunk complete");
+        EngineAssert.True(applied.Contains(cell.Chunk), "emptied chunk still completes waiters");
+        EngineAssert.True(w.World.TryGetConstruct(id, out var node) && !node.TryGetChunk(cell.Chunk, out _), "old mesh removed");
+    }
+
+    [EngineTest]
     public async Task WorkerFailure_EditDuringRetry_DropsStaleFailure()
     {
         using var release = new ManualResetEventSlim();
