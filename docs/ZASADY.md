@@ -25,6 +25,7 @@ Każda sesja pracy zaczyna się od przeczytania tego pliku i planu pakietu. Niej
 - Każda zmiana świata to operacja z `Horyzont.Core.Operations`, stosowana przez `ServerSimulation` i zapisywana w dzienniku. Nie ma innej drogi zmiany stanu świata.
 - Kanoniczny stan każdego bytu to rama rodzica (`FrameRef`), licznik przepięć `ParentSeq` i poza lokalna w tej ramie (`System.Numerics.Vector3` i `Quaternion`, metry). Pozycja w świecie jest zawsze wartością pochodną: zapis, dziennik i sieć znają wyłącznie pozycje lokalne.
 - Ramy składa się tylko w podwójnej precyzji (`Vector3D`, `QuaternionD` i `FrameMath` w Core, od K5-20). Pojedyncza precyzja wystarcza wewnątrz ramy planety albo budowli.
+- Konwersja między Godotem (`double`) a ramą planety (`System.Numerics`, `float`) odbywa się wyłącznie przez `PlanetFrames` (`game/src/Shared/Frames/`, K2-11), z kontrolą skończoności. Nigdzie indziej nie rzutuje się wektorów ani kwaternionów Godota na `System.Numerics`.
 - Gracz w dzienniku, zapisie i sieci to wewnętrzny `PlayerId`. Tożsamość platformy (`PlatformIdentity`, np. SteamID) służy tylko do łączenia z kontem, banów i administratorów.
 
 ## 3. Kontrakty chronione
@@ -37,6 +38,7 @@ Każda zmiana w `src/Horyzont.Core/` wymaga przeglądu Opus 5.5, bo cały Core d
 | `src/Horyzont.Core/Ids/` (w tym `FrameRef`, `PlatformIdentity`), `src/Horyzont.Core/World/` (typy zapisywane: `BlockState`, `BlockOrientation` (tabela 24 orientacji jest formatem `BlockState`), `CellPos`, `ChunkPos`, `Face`, `BlockShape`, `ConstructMode`, `TerrainBlockKey`, `TerrainBlockVersion`, `PlanetParams`, `RegistryEntry`), `src/Horyzont.Core/Checkpoints/` | wersję formatu każdej ramki, która zawiera zmieniony typ (operacje, intencje, komunikaty, bloby), i odczyt starej wersji w Persistence |
 | `src/Horyzont.Core/Hashing/` | opis w PR: skróty zapisane w testach i raportach przestają się zgadzać |
 | `src/Horyzont.Core/Protocol/`, `src/Horyzont.Core/Serialization/` | `ProtocolConstants.ProtocolVersion` albo wersję formatu komunikatu |
+| `src/Horyzont.Core/Motion/SurfaceFrame.cs` (konwencja kąta `PlayerInput.Yaw`: rama odniesienia „północy”, zwrot obrotu, przełączenie przy biegunach) | `ProtocolConstants.ProtocolVersion`: `SurfaceFrame` definiuje znaczenie pola `Yaw`, więc klient i serwer o różnych konwencjach rozjeżdżają się bez błędu kodeka |
 | `src/Horyzont.Persistence/Migrations/` | nowa migracja z następnym wolnym numerem w chwili scalenia do `main`; istniejących migracji nigdy się nie edytuje, a numery są ciągłe od 1 |
 | `engine/engine.json`, `nuget.config`, `global.json`, `Directory.Build.props`, `Directory.Packages.props` | opis zmiany w PR i zielony test dymny silnika |
 | `game/src/Terrain/TerrainEditSemantics.cs`, `voxel.ref` w `engine/engine.json` (semantyka edycji terenu, K2-09) | podbicie `TerrainEditSemantics.SemanticsVersion` i aktualizacja skrótu złotego `EditSemantics_GoldenDigest` z opisem w PR; ogon dziennika zapisany inną wersją semantyki (`meta.terrain_semantics`) nie jest powtarzany, świat otwiera się w trybie bezpiecznym |
