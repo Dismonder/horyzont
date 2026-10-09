@@ -30,6 +30,23 @@ Wymagania budowania Godota dla `linuxbsd` według dokumentacji „Compiling for 
 4. Zbuduj i przetestuj rozwiązanie: `dotnet build Horyzont.sln`, potem `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"`.
 5. Otwórz `game/project.godot` edytorem z `engine/out/<klucz>/` (plik `godot.windows.editor.double.x86_64.mono.exe`).
 
+## Uruchamianie trybów
+
+Tryb wybiera się argumentem po `--` (K2-10; menu przyjdzie w K3-18). `E` to edytor z `engine/out/<klucz>/` (`godot.windows.editor.double.x86_64.mono.exe`; wariant `.console.exe` jest nakładką, która nie przekazuje sygnałów konsoli), projekt to `game`. Przed pierwszym uruchomieniem: `E --headless --path game --import --quit-after 1000`.
+
+| Tryb | Komenda |
+| --- | --- |
+| Solo | `E --path game -- --solo [--world <WorldId>] [--seed <hex>]` |
+| Host (LAN, UDP) | `E --path game -- --host [--world <WorldId>] [--port 27015] [--bind 0.0.0.0] [--password <tekst>]` |
+| Klient | `E --path game -- --connect <host>:<port> [--password <tekst>] [--profile <plik>]` |
+| Serwer dedykowany | `E --headless --path game -- --server --config <server.json> [--data-dir <katalog>] [--restore-latest-backup] [--recover-from-checkpoint]` |
+| Przykładowa konfiguracja | `E --headless --path game -- --write-default-config <server.json>` |
+
+- Bez `--world` powstaje nowy świat; zapisy są w `user://saves/<WorldId>/world.db` (solo i host) albo `<data-dir>/saves/<WorldId>/world.db` (serwer; domyślnie katalog pliku wykonywalnego, id nowego świata trafia do `saves/last-world.txt`). `--data-dir` działa też dla solo i hosta. Tożsamość i nazwa gracza: `user://profile.json` (`--profile` pozwala uruchomić dwie instancje na jednej maszynie).
+- Serwer dedykowany czyta polecenia ze standardowego wejścia: `save`, `stop`, `players`, `kick <id>`, `help`. `Ctrl+C`/`SIGTERM` kończy go tą samą kolejnością zamykania; trzeci sygnał kończy proces natychmiast.
+- Eksport serwera: presety `server-windows` i `server-linux` (`godot --headless --path game --export-release server-windows ../build/server-windows/HoryzontServer.exe`; wymaga szablonów eksportu, np. wskazanych w `custom_template/release` presetu). Uruchomienie: `HoryzontServer.exe --headless -- --server --config server.json`.
+- Test dymny serwera (uruchamia serwer z `--dev`; polecenie konsoli `dev-op` zmienia świat): `python tools/server_smoke.py --godot <edytor>` albo `--export <wyeksportowany serwer>`.
+
 ## Zmierzone czasy i rozmiary (K1-01, 2026-10-08)
 
 Windows 11, 16 wątków, Visual Studio 2026 Community (MSVC działa tak samo jak z Build Tools 2022), repozytorium na osobnym dysku SSD:

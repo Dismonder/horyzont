@@ -10,10 +10,29 @@
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <GodotFloat64>true</GodotFloat64>
   </PropertyGroup>
+  <PropertyGroup>
+    <RunSettingsFilePath>$(MSBuildProjectDirectory)/.runsettings</RunSettingsFilePath>
+  </PropertyGroup>
+  <!-- Engine tests (K2-08) and their packages must not reach the game and server exports. -->
+  <ItemGroup Condition="'$(Configuration)' != 'ExportDebug' And '$(Configuration)' != 'ExportRelease'">
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="gdUnit4.api" />
+    <PackageReference Include="gdUnit4.test.adapter" />
+    <PackageReference Include="gdUnit4.analyzers" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(Configuration)' == 'ExportDebug' Or '$(Configuration)' == 'ExportRelease'">
+    <Compile Remove="tests/**" />
+    <Compile Remove="gdunit4_testadapter_v5/**" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../src/Horyzont.Core/Horyzont.Core.csproj" />
     <ProjectReference Include="../src/Horyzont.Persistence/Horyzont.Persistence.csproj" />
     <ProjectReference Include="../src/Horyzont.Net/Horyzont.Net.csproj" />
+    <ProjectReference Include="../src/Horyzont.Server/Horyzont.Server.csproj" />
+    <ProjectReference Include="../src/Horyzont.Client/Horyzont.Client.csproj" />
     <ProjectReference Include="../src/Horyzont.Constructs/Horyzont.Constructs.csproj" />
   </ItemGroup>
   <!-- Engine tests (game/tests) and their fixtures exist only in Debug; the export configurations ship neither. -->

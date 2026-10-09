@@ -1,3 +1,4 @@
+using Horyzont.Core.Hashing;
 using Horyzont.Core.Protocol;
 using Horyzont.Server.Console;
 using Horyzont.Server.Tests.Support;
@@ -72,6 +73,38 @@ public sealed class ConsoleCommandProcessorTests
         Assert.True(await rig.RunUntilAsync(() => second.Disconnections.Count == 1));
         Assert.Equal([DisconnectCode.Kicked], second.Disconnections);
         Assert.Empty(first.Disconnections);
+        await rig.StopAsync();
+    }
+
+    [Fact]
+    public async Task DevOp_WithDevCommands_JournalsAChangeOfTheWorld()
+    {
+        await using var rig = await StartedAsync();
+        var processor = new ConsoleCommandProcessor(rig.Runtime, NullLogger<ConsoleCommandProcessor>.Instance, devCommands: true);
+        var before = StateHasher.Hash(rig.Runtime.State);
+        var lastOp = rig.Runtime.State.LastOpId;
+
+        var first = processor.Execute("dev-op");
+        var second = processor.Execute("dev-op");
+
+        Assert.StartsWith("dev-op applied", first, StringComparison.Ordinal);
+        Assert.NotEqual(first, second);
+        Assert.NotEqual(lastOp, rig.Runtime.State.LastOpId);
+        Assert.NotEqual(before, StateHasher.Hash(rig.Runtime.State));
+        Assert.Empty(rig.Runtime.State.Players.Online);
+        await rig.StopAsync();
+    }
+
+    [Fact]
+    public async Task DevOp_WithoutDevCommands_IsUnknownAndChangesNothing()
+    {
+        await using var rig = await StartedAsync();
+        var before = StateHasher.Hash(rig.Runtime.State);
+
+        var reply = Processor(rig).Execute("dev-op");
+
+        Assert.Contains("commands:", reply, StringComparison.Ordinal);
+        Assert.Equal(before, StateHasher.Hash(rig.Runtime.State));
         await rig.StopAsync();
     }
 

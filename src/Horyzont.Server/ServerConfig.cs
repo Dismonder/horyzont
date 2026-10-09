@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 using Horyzont.Net.Session;
 using Horyzont.Net.Transport;
 using Horyzont.Persistence;
@@ -42,6 +44,7 @@ public sealed record ServerConfig
     public string LogDirectory { get; set; } = "logs";
 
     /// <summary>Gets the interval between checkpoints.</summary>
+    [JsonIgnore]
     public TimeSpan CheckpointInterval => TimeSpan.FromSeconds(CheckpointIntervalSeconds);
 
     /// <summary>Builds the session options.</summary>

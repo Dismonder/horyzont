@@ -125,4 +125,15 @@ public sealed class ServerConfigLoaderTests
         Assert.True(ok, error);
         Assert.Equal(new ServerConfig(), config);
     }
+
+    [Fact]
+    public void WriteDefault_DoesNotWriteComputedProperties()
+    {
+        using var dir = new TempDirectory();
+        var path = dir.File("server.json");
+
+        ServerConfigLoader.WriteDefault(path);
+
+        Assert.DoesNotContain("\"checkpointInterval\"", File.ReadAllText(path), StringComparison.Ordinal);
+    }
 }
