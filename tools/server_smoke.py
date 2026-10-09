@@ -7,9 +7,12 @@ Usage:
 
 Steps (real time, one limit for the whole run, default 180 s):
  1. write a default configuration, start the server, wait for "SERVER READY world=<id> state hash=<hash>";
- 2. console: "players" -> "0 players", "save" -> "checkpoint committed", "stop" -> exit code 0; world.db and a startup backup exist;
- 3. second start with the world id from saves/last-world.txt: same world, same state hash as the first shutdown;
- 4. third start ended by SIGTERM (Linux) or CTRL_BREAK (Windows): exit code 0 and a checkpoint written;
+ 2. console: "players" -> "0 players", "dev-op" (a journaled change of the world, enabled by --dev) -> "dev-op applied", "save" ->
+    "checkpoint committed", "stop" -> exit code 0; the state hash at the stop differs from the initial one; world.db and a startup
+    backup exist;
+ 3. second start with the world id from saves/last-world.txt: same world, same state hash as the first shutdown (so not the initial one);
+ 4. third start: another "dev-op", then SIGTERM (Linux) or CTRL_BREAK (Windows): exit code 0; a checkpoint written after the signal
+    and the state hash at the stop differs from the one at the start;
  5. damaged world.db: exit code 3 with the list of backups; --restore-latest-backup: ready again.
 """
 
@@ -168,14 +171,16 @@ def main() -> int:
         settings["port"] = free_udp_port()
         config.write_text(json.dumps(settings, indent=2), encoding="utf-8")
 
-        server_args = ["--server", "--config", str(config), "--data-dir", str(data)]
+        server_args = ["--server", "--config", str(config), "--data-dir", str(data), "--dev"]
 
         # 1 and 2
         s1 = start("run1", *server_args)
         ready = s1.wait_line(READY, 120)
-        world_id, _ = ready.group(1), ready.group(2)
+        world_id, initial_hash = ready.group(1), ready.group(2)
         s1.send("players")
         s1.wait_line(r"^0 players$", 30)
+        s1.send("dev-op")
+        s1.wait_line(r"dev-op applied", 30)
         s1.send("save")
         s1.wait_line(r"checkpoint committed", 60)
         s1.send("stop")
@@ -185,6 +190,8 @@ def main() -> int:
         if not stopped:
             raise SmokeFailure("run1: no 'Stopped; state hash=' line")
         hash1 = stopped[-1]
+        if hash1 == initial_hash:
+            raise SmokeFailure("run1: the state hash did not change after dev-op, the reload check would prove nothing")
         world_dir = data / "saves" / world_id
         if not (world_dir / "world.db").is_file():
             raise SmokeFailure("run1: world.db missing")
@@ -207,15 +214,22 @@ def main() -> int:
 
         # 4
         s3 = start("run3", *server_args)
-        s3.wait_line(READY, 120)
+        ready3 = s3.wait_line(READY, 120)
+        s3.send("dev-op")
+        s3.wait_line(r"dev-op applied", 30)
+        mark = len(s3.lines)  # only what the server prints after this point can come from the shutdown
         if os.name == "nt":
             s3.process.send_signal(signal.CTRL_BREAK_EVENT)
         else:
             s3.process.send_signal(signal.SIGTERM)
         if (code := s3.wait_exit(90)) != 0:
             raise SmokeFailure(f"run3: exit code {code} after the signal, expected 0")
-        if not any(STOPPED.search(line) for line in s3.lines) or not any("checkpoint committed" in line for line in s3.lines):
+        after = s3.lines[mark:]
+        stopped3 = [m.group(1) for line in after if (m := STOPPED.search(line))]
+        if not stopped3 or not any("checkpoint committed" in line for line in after):
             raise SmokeFailure("run3: no checkpoint and 'Stopped' line after the signal")
+        if stopped3[-1] == ready3.group(2):
+            raise SmokeFailure("run3: the state hash at the stop equals the one at the start, the change was not saved")
 
         # 5
         for name in ("world.db", "world.db-wal", "world.db-shm"):

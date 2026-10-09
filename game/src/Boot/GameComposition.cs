@@ -36,7 +36,7 @@ public sealed class GameComposition
     private const string RootScene = "res://scenes/Root.tscn";
 
     /// <summary>How long the quit coordinator waits for the final cleanup (the client transport) before it quits anyway.</summary>
-    private static readonly TimeSpan ReleaseTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan _releaseTimeout = TimeSpan.FromSeconds(5);
 
     private readonly LaunchOptions _launch;
     private readonly GameEnvironment _env;
@@ -239,7 +239,7 @@ public sealed class GameComposition
             {
                 console = new DedicatedConsole(
                     new ConsoleInputPump(env.ConsoleInput, loggers.CreateLogger<ConsoleInputPump>()),
-                    new ConsoleCommandProcessor(server, loggers.CreateLogger<ConsoleCommandProcessor>()),
+                    new ConsoleCommandProcessor(server, loggers.CreateLogger<ConsoleCommandProcessor>(), launch.Dev),
                     env.Print);
             }
 
@@ -282,7 +282,7 @@ public sealed class GameComposition
             var quit = new QuitCoordinator { Name = "Quit" };
             quit.Initialize(
                 composition.RequestShutdown, () => composition.IsFinished, () => composition.ExitCode, composition.ReleaseStep, env.RegisterSignals,
-                loggers.CreateLogger<QuitCoordinator>(), env.Time, ReleaseTimeout);
+                loggers.CreateLogger<QuitCoordinator>(), env.Time, _releaseTimeout);
             root.AddChild(quit);
             composition.Quit = quit;
         }

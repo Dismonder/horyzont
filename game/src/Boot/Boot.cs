@@ -17,7 +17,7 @@ public partial class Boot : Node
 
     private const string Usage =
         "Horyzont modes (after --): --solo [--world <id>] | --host [--world <id>] [--port 27015] [--bind <ipv4>] [--password <text>] | --connect <host:port> [--password <text>]"
-        + " | --server --config <server.json> [--data-dir <dir>] [--restore-latest-backup] | --write-default-config <path>";
+        + " | --server --config <server.json> [--data-dir <dir>] [--restore-latest-backup] [--dev] | --write-default-config <path>";
 
     private ILoggerFactory? _loggers;
 

@@ -15,7 +15,7 @@ public sealed record LaunchOptions
 
     private static readonly string[] _flags =
     [
-        "--solo", "--host", "--server", "--restore-latest-backup", "--recover-from-checkpoint",
+        "--solo", "--host", "--server", "--restore-latest-backup", "--recover-from-checkpoint", "--dev",
     ];
 
     private static readonly string[] _valued =
@@ -61,6 +61,9 @@ public sealed record LaunchOptions
 
     /// <summary>Gets a value indicating whether a journal tail written with other terrain semantics is dropped (owner decision).</summary>
     public bool RecoverFromCheckpoint { get; init; }
+
+    /// <summary>Gets a value indicating whether development console commands (<c>dev-op</c>) are available; never set by players.</summary>
+    public bool Dev { get; init; }
 
     /// <summary>Gets the path to write a default server configuration to; the process then exits.</summary>
     public string? WriteDefaultConfig { get; init; }
@@ -147,6 +150,7 @@ public sealed record LaunchOptions
         RequireOnly(reader, "--data-dir", mode, ProcessMode.Solo, ProcessMode.Host, ProcessMode.DedicatedServer);
         RequireOnly(reader, "--restore-latest-backup", mode, ProcessMode.Solo, ProcessMode.Host, ProcessMode.DedicatedServer);
         RequireOnly(reader, "--recover-from-checkpoint", mode, ProcessMode.Solo, ProcessMode.Host, ProcessMode.DedicatedServer);
+        RequireOnly(reader, "--dev", mode, ProcessMode.DedicatedServer);
         RequireOnly(reader, "--seed", mode, ProcessMode.Solo, ProcessMode.Host, ProcessMode.DedicatedServer);
         if (mode == ProcessMode.DedicatedServer && config is null)
         {
@@ -168,6 +172,7 @@ public sealed record LaunchOptions
             GalaxySeed = reader.GalaxySeed(),
             RestoreLatestBackup = reader.Has("--restore-latest-backup"),
             RecoverFromCheckpoint = reader.Has("--recover-from-checkpoint"),
+            Dev = reader.Has("--dev"),
         };
     }
 

@@ -15,7 +15,7 @@ namespace Horyzont.Game.Tests.Client;
 [TestSuite]
 public class ClientTerrainApiTests
 {
-    private static readonly Type[] Forbidden = [typeof(VoxelLodTerrain), typeof(VoxelTool), typeof(VoxelTerrain), typeof(PlanetTerrain), typeof(VoxelTerrainService)];
+    private static readonly Type[] _forbidden = [typeof(VoxelLodTerrain), typeof(VoxelTool), typeof(VoxelTerrain), typeof(PlanetTerrain), typeof(VoxelTerrainService)];
 
     [TestCase]
     public void ClientFacingTerrainApi_ExposesNoMutableTerrain()
@@ -29,7 +29,7 @@ public class ClientTerrainApiTests
             {
                 foreach (var used in TypesOf(member))
                 {
-                    if (Forbidden.Any(f => f.IsAssignableFrom(used)))
+                    if (_forbidden.Any(f => f.IsAssignableFrom(used)))
                     {
                         leaks.Add($"{type.Name}.{member.Name} uses {used.Name}");
                     }

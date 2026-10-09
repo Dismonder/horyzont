@@ -56,6 +56,14 @@ public class LaunchOptionsTests
     }
 
     [TestCase]
+    public void Parse_Dev_OnlyForTheDedicatedServer()
+    {
+        AssertThat(LaunchOptions.Parse(["--server", "--config", "server.json", "--dev"]).Dev).IsTrue();
+        AssertThat(LaunchOptions.Parse(["--server", "--config", "server.json"]).Dev).IsFalse();
+        AssertThat(Throws(["--solo", "--dev"])).IsTrue();
+    }
+
+    [TestCase]
     public void Parse_WriteDefaultConfig_StandsAlone()
     {
         AssertThat(LaunchOptions.Parse(["--write-default-config", "x.json"]).WriteDefaultConfig).IsNotNull();
