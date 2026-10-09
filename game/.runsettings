@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <RunConfiguration>
+    <MaxCpuCount>1</MaxCpuCount>
+    <ResultsDirectory>./TestResults</ResultsDirectory>
+    <TestSessionTimeout>1200000</TestSessionTimeout>
+    <TargetFrameworkVersion>net10.0</TargetFrameworkVersion>
+  </RunConfiguration>
+  <GdUnit4>
+    <!-- Godot is started by the adapter from the GODOT_BIN environment variable. -->
+    <DisplayName>FullyQualifiedName</DisplayName>
+    <CompileProcessTimeout>120000</CompileProcessTimeout>
+    <Parameters>--headless</Parameters>
+  </GdUnit4>
+</RunSettings>

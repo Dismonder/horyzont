@@ -1,0 +1,5 @@
+[*.cs]
+# gdUnit4Net discovers [TestCase] methods; ZASADY point 8 names them Method_Scenario_Expected.
+dotnet_diagnostic.CA1707.severity = none
+# Test methods stay instance methods for the test framework.
+dotnet_diagnostic.CA1822.severity = none
