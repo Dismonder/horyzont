@@ -1,0 +1,15 @@
+{
+  "formatVersion": 1,
+  "materials": [
+    { "key": "stone", "color": "#8A8D91" },
+    { "key": "wood", "color": "#A67B4B" },
+    { "key": "metal", "color": "#B8C4D0" }
+  ],
+  "blocks": [
+    { "key": "core:stone_block", "shape": "cube", "material": "stone" },
+    { "key": "core:wood_planks", "shape": "cube", "material": "wood" },
+    { "key": "core:metal_plate", "shape": "cube", "material": "metal" },
+    { "key": "core:stone_slab", "shape": "mesh", "mesh": "builtin:slab", "material": "stone" },
+    { "key": "core:stone_slope", "shape": "mesh", "mesh": "builtin:slope", "material": "stone" }
+  ]
+}
