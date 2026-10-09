@@ -38,6 +38,8 @@ internal sealed class ConstructTestWorld : IDisposable
 
     public static FrameRef Planet => FrameRef.Of(WorldFactory.HomePlanet);
 
+    public static FrameRef OtherPlanet => FrameRef.Of(new PlanetId(2));
+
     public ConstructWorldOptions Options { get; }
 
     public WorldState State { get; }
@@ -58,6 +60,15 @@ internal sealed class ConstructTestWorld : IDisposable
     public static WorldState NewState(Horyzont.Constructs.Content.BlockTypeCatalog catalog) =>
         WorldState.CreateNew(WorldFactory.DefaultWorldId, 42, [WorldFactory.HomePlanetParams], catalog.BlockTypeKeys, ["stone", "dirt"]);
 
+    /// <summary>A new world with the K2 block content and two empty planets (<see cref="Planet"/> and <see cref="OtherPlanet"/>).</summary>
+    public static WorldState NewStateWithTwoPlanets(Horyzont.Constructs.Content.BlockTypeCatalog catalog) =>
+        WorldState.CreateNew(
+            WorldFactory.DefaultWorldId,
+            42,
+            [WorldFactory.HomePlanetParams, new PlanetParams(new PlanetId(2), new SystemId(1), 8, "core:test/2")],
+            catalog.BlockTypeKeys,
+            ["stone", "dirt"]);
+
     public ushort TypeId(string key)
     {
         State.BlockTypes.TryGetId(key, out var id);
@@ -72,10 +83,10 @@ internal sealed class ConstructTestWorld : IDisposable
         return applied;
     }
 
-    public EntityId Create(CellPos cell, string blockKey = "core:stone_block", Vector3? origin = null)
+    public EntityId Create(CellPos cell, string blockKey = "core:stone_block", Vector3? origin = null, FrameRef? parent = null)
     {
         var id = State.EntityIds.PeekNext();
-        Apply(new ConstructCreateOp(id, Planet, origin ?? new Vector3(0, 4000, 0), Quaternion.Identity, cell, BlockState.Create(TypeId(blockKey), 0)));
+        Apply(new ConstructCreateOp(id, parent ?? Planet, origin ?? new Vector3(0, 4000, 0), Quaternion.Identity, cell, BlockState.Create(TypeId(blockKey), 0)));
         return id;
     }
 

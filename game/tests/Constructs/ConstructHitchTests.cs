@@ -17,7 +17,7 @@ public sealed class ConstructHitchTests : EngineTestBase
         Report($"physics engine: {ProjectSettings.GetSetting("physics/3d/physics_engine")}");
         foreach (var pattern in new[] { ConstructPattern.Solid, ConstructPattern.Building, ConstructPattern.Random35 })
         {
-            await BestOfAsync(() => ConstructHitchScenarios.LoadInAsync(this, pattern, assertLimit: true));
+            await ConstructHitchScenarios.LoadInAsync(this, pattern, assertLimit: true);
         }
 
         // Worst case for the face count: reported, not gated (P3).
@@ -26,29 +26,7 @@ public sealed class ConstructHitchTests : EngineTestBase
 
     [EngineTest(Slow = true)]
     public async Task Construct64_EditStream_MaxFrame50ms_RemeshP99Under100ms() =>
-        await BestOfAsync(() => ConstructHitchScenarios.EditStreamAsync(this, assertLimits: true));
-
-    /// <summary>
-    /// Passes when one of three attempts stays within the limits. A single frame over the limit can come from the machine (a
-    /// shared CI runner or a busy workstation preempting the process), a regression in the code shows in every attempt. The limits
-    /// themselves are not relaxed.
-    /// </summary>
-    private static async Task BestOfAsync<T>(Func<Task<T>> attempt)
-    {
-        const int Attempts = 3;
-        for (var i = 1; ; i++)
-        {
-            try
-            {
-                await attempt();
-                return;
-            }
-            catch (EngineTestFailedException e) when (i < Attempts)
-            {
-                Report($"attempt {i} of {Attempts} over the limit ({e.Message}); measuring again");
-            }
-        }
-    }
+        await ConstructHitchScenarios.EditStreamAsync(this, assertLimits: true);
 }
 
 /// <summary>Same scenarios with a window and a GPU (<c>godot --path game -- --engine-tests --manual --filter=ConstructHitchManual</c>); nothing is gated, the numbers go to the PR.</summary>

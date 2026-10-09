@@ -149,6 +149,39 @@ public sealed class ConstructWorldTests : EngineTestBase
     }
 
     [EngineTest]
+    public async Task TwoParentFrames_OnlyTheShownFrameIsLoaded_AndLaterCreatesDoNotSwitchIt()
+    {
+        var catalog = Horyzont.Game.Constructs.BlockContentLoader.Load();
+        using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewStateWithTwoPlanets(catalog));
+        w.World.RebuildAll(ConstructTestWorld.Planet);
+        var onShown = w.Create(new CellPos(2, 2, 2));
+        var onOther = w.Create(new CellPos(2, 2, 2), parent: ConstructTestWorld.OtherPlanet);
+        await Idle(w);
+
+        EngineAssert.True(w.World.TryGetConstructNode(onShown, out _), "the construct of the shown frame is loaded");
+        EngineAssert.True(!w.World.TryGetConstructNode(onOther, out _), "a construct created later under another frame must not be shown");
+
+        // Edits of the other frame's construct neither load it nor move the shown frame.
+        w.Set(onOther, new CellPos(3, 2, 2));
+        w.Set(onShown, new CellPos(3, 2, 2));
+        await Idle(w);
+        EngineAssert.True(!w.World.TryGetConstructNode(onOther, out _), "an edit under another frame must not load the construct");
+        w.World.TryGetConstruct(onShown, out var shownNode);
+        EngineAssert.True(shownNode!.ChunkCount > 0, "the shown construct keeps its chunks");
+
+        w.World.RebuildAll(ConstructTestWorld.OtherPlanet);
+        await Idle(w);
+        EngineAssert.True(!w.World.TryGetConstructNode(onShown, out _), "after switching the frame the old construct is unloaded");
+        EngineAssert.True(w.World.TryGetConstructNode(onOther, out _), "after switching the frame the other construct is loaded");
+
+        // A create under the first frame must not switch the shown frame back.
+        var again = w.Create(new CellPos(5, 5, 5));
+        await Idle(w);
+        EngineAssert.True(!w.World.TryGetConstructNode(again, out _), "a create under the previous frame must not switch the shown frame");
+        EngineAssert.True(w.World.TryGetConstructNode(onOther, out _), "the shown frame keeps its construct");
+    }
+
+    [EngineTest]
     public async Task RemovedDuringMeshing_DropsResult()
     {
         using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(Horyzont.Game.Constructs.BlockContentLoader.Load()));
