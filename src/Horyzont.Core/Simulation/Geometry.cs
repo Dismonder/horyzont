@@ -1,7 +1,5 @@
 using System.Numerics;
 
-using Horyzont.Core.World.Terrain;
-
 namespace Horyzont.Core.Simulation;
 
 /// <summary>Deterministic float geometry used by validation.</summary>
@@ -18,15 +16,6 @@ internal static class Geometry
     internal static bool IsDirection(Vector3 v) => IsFinite(v) && MathF.Abs(v.Length() - 1f) <= DirectionTolerance;
 
     internal static bool IsRotation(Quaternion q) => IsFinite(q) && MathF.Abs(q.Length() - 1f) <= RotationTolerance;
-
-    /// <summary>Segment of the capsule axis: the sphere centres at both ends.</summary>
-    internal static void CapsuleAxis(Vector3 feet, GameRules rules, out Vector3 bottom, out Vector3 top)
-    {
-        var up = TerrainMath.UpAt(feet);
-        var r = rules.PlayerCapsuleRadius;
-        bottom = feet + (up * r);
-        top = feet + (up * MathF.Max(r, rules.PlayerCapsuleHeight - r));
-    }
 
     internal static float DistanceToSegment(Vector3 point, Vector3 a, Vector3 b)
     {
