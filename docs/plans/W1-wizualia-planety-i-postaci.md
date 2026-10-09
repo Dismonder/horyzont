@@ -24,7 +24,7 @@ Nic z tego pakietu nie trafia do symulacji, dziennika, zapisu ani sieci:
 
 | Część | Pliki |
 | --- | --- |
-| Postać „Explorer” (skafander, 17 kości, animacje Idle, Walk, Run, Sprint, Jump, Fall, Fly) | `tools/art/explorer_character.py` → `game/assets/characters/explorer.glb`; `game/src/Client/Character/CharacterVisual.cs` |
+| Postać „Explorer” (egzoszkielet w stylu NMS: gładki kombinezon z modyfikatora Skin z wagami automatycznymi, warstwowy pancerz, hełm z wizjerem, plecak z jetpackiem i płomieniem `JetFlame`, komputer na nadgarstku, rękawice z palcami, `Multitool` w dłoni; 26 kości z obojczykami, palcami i palcami stóp; animacje Idle, Walk, Run, Sprint, Jump, Fall, Fly) | `tools/art/explorer_character.py` → `game/assets/characters/explorer.glb`; `game/src/Client/Character/CharacterVisual.cs` |
 | Teren: tekstury z szumu (9 warstw) i malowanie powierzchni | `game/src/Planet/Rendering/PlanetTerrainMaterial.cs`, `game/shaders/planet_terrain.gdshader`, `PlanetLook.cs` |
 | Niebo, mgła, gwiazdy obracające się ze słońcem, kolor słońca o świcie i zmierzchu, mgła pod wodą | `game/shaders/planet_sky.gdshader`, `PlanetSky.cs`, `ClientDayNight.cs` |
 | Ocean (fale, kolor od głębokości, piana przy brzegu) | `game/shaders/planet_ocean.gdshader`, `PlanetOcean.cs` |

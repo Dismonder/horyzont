@@ -38,6 +38,9 @@ public class CharacterVisualTests
         AssertThat(CharacterVisual.Choose(MovementMode.Falling, 0, -3, 0.5).Animation.ToString()).IsEqual("Fall");
         AssertThat(CharacterVisual.Choose(MovementMode.DevFlying, 20, 0, 1).Animation.ToString()).IsEqual("Fly");
         AssertThat(CharacterVisual.Choose(MovementMode.Frozen, 0, 0, 1).Animation.ToString()).IsEqual("Idle");
+        AssertThat(CharacterVisual.JetBurns(MovementMode.DevFlying, 0)).IsTrue();
+        AssertThat(CharacterVisual.JetBurns(MovementMode.Jumping, 3)).IsTrue();
+        AssertThat(CharacterVisual.JetBurns(MovementMode.Walking, 0)).IsFalse();
     }
 
     [TestCase(Timeout = 60000)]
@@ -55,7 +58,7 @@ public class CharacterVisualTests
         AssertThat(visual.GetParent() == body.Visual).IsTrue();
         var skeleton = FindFirst<Skeleton3D>(visual);
         AssertThat(skeleton is not null).IsTrue();
-        AssertThat(skeleton!.GetBoneCount()).IsGreaterEqual(17);
+        AssertThat(skeleton!.GetBoneCount()).IsGreaterEqual(25);
         var player = FindFirst<AnimationPlayer>(visual);
         AssertThat(player is not null).IsTrue();
         foreach (var name in new[] { "Idle", "Walk", "Run", "Sprint", "Jump", "Fall", "Fly" })
@@ -64,6 +67,8 @@ public class CharacterVisualTests
         }
 
         AssertThat(player!.GetAnimation("Walk").LoopMode).IsEqual(Animation.LoopModeEnum.Linear);
+        AssertThat(visual.FindChild("Multitool", recursive: true, owned: false) is Node3D { Visible: true }).IsTrue();
+        AssertThat(visual.FindChild("JetFlame", recursive: true, owned: false) is Node3D { Visible: false }).IsTrue();
         AssertThat(visual.CurrentAnimation?.ToString()).IsEqual("Idle");
 
         // The model is purely visual: the body keeps exactly its collision shape.

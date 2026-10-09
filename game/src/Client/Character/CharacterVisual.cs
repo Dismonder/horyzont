@@ -8,8 +8,9 @@ namespace Horyzont.Game.Client.Character;
 /// <summary>
 /// The character model of a body on a rendering client: the space suit "Explorer" (<c>tools/art/explorer_character.py</c>) under
 /// <see cref="PlayerBody.Visual"/>. It only reads the body (mode, velocity, up) and never feeds anything back, so the server and the
-/// prediction do not depend on it. The model turns towards the horizontal movement (the body itself keeps the camera yaw) and plays
-/// the animation that matches the movement mode and speed.
+/// prediction do not depend on it. The model turns towards the horizontal movement (the body itself keeps the camera yaw), plays
+/// the animation that matches the movement mode and speed, and lights the jetpack exhaust (<c>JetFlame</c>) while flying or taking
+/// off. The multitool (<c>Multitool</c>) stays in the right hand.
 /// </summary>
 public sealed partial class CharacterVisual : Node3D
 {
@@ -38,6 +39,7 @@ public sealed partial class CharacterVisual : Node3D
 
     private PlayerBody? _body;
     private AnimationPlayer? _player;
+    private Node3D? _flame;
     private StringName? _current;
     private Vector3 _facing;
     private double _airborne;
@@ -109,8 +111,21 @@ public sealed partial class CharacterVisual : Node3D
             }
         }
 
+        _flame = FindChild("JetFlame", recursive: true, owned: false) as Node3D;
+        if (_flame is not null)
+        {
+            _flame.Visible = false;
+        }
+
         _facing = _body is null ? Vector3.Forward : -_body.GlobalBasis.Z;
     }
+
+    /// <summary>Whether the jetpack exhaust burns for a movement mode.</summary>
+    /// <param name="mode">Movement mode of the body.</param>
+    /// <param name="verticalSpeed">Speed along "up" (m/s).</param>
+    /// <returns>True while flying and while rising after a jump.</returns>
+    public static bool JetBurns(MovementMode mode, double verticalSpeed) =>
+        mode == MovementMode.DevFlying || (mode == MovementMode.Jumping && verticalSpeed > 0.5);
 
     /// <inheritdoc/>
     public override void _Process(double delta)
@@ -135,6 +150,7 @@ public sealed partial class CharacterVisual : Node3D
             return;
         }
 
+        UpdateFlame(JetBurns(mode, vertical));
         var (animation, playback) = Choose(mode, speed, vertical, _airborne);
         if (animation != _current)
         {
@@ -143,6 +159,16 @@ public sealed partial class CharacterVisual : Node3D
         }
 
         _player.SpeedScale = playback;
+    }
+
+    private void UpdateFlame(bool burning)
+    {
+        if (_flame is null)
+        {
+            return;
+        }
+
+        _flame.Visible = burning;
     }
 
     private static float PlaybackSpeed(double ratio) => (float)Math.Clamp(ratio, 0.6, 1.8);
