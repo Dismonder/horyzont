@@ -19,6 +19,14 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
     private const float CellReachSlack = 0.87f;
     private const float SightEpsilon = 1e-3f;
 
+    /// <summary>
+    /// Ignores the final 0.25 m of terrain occlusion along the sight ray to allow SDF march uncertainty
+    /// and predicted ray origins grazing the target surface. Terrain thinner than this slack at the target
+    /// cannot hide it; a wall of at least 1 m still occludes it. Construct checks retain their exact tolerance.
+    /// This is an intent validation tolerance, not terrain edit or replay semantics.
+    /// </summary>
+    private const float TerrainSightSlackMeters = 0.25f;
+
     internal RejectReason Validate(PlayerId playerId, Intent intent, PlayerBuckets? buckets, out IntentFacts facts)
     {
         facts = default;
@@ -123,8 +131,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.OutOfReach;
         }
 
-        if (ConstructRaycast.Raycast(state.Constructs, FrameRef.Of(tool.Planet), tool.RayOrigin, tool.RayDirection, hit.Distance, out var blocker)
-            && blocker.Distance < hit.Distance)
+        if (!HasLineOfSight(tool.Planet, eye, hit.Position, null, default))
         {
             return RejectReason.NoLineOfSight;
         }
@@ -260,8 +267,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.OutOfReach;
         }
 
-        if (ConstructRaycast.Raycast(state.Constructs, FrameRef.Of(target.Planet), target.RayOrigin, target.RayDirection, hit.Distance, out var blocker)
-            && blocker.Distance < hit.Distance)
+        if (!HasLineOfSight(target.Planet, eye, hit.Position, null, default))
         {
             return RejectReason.NoLineOfSight;
         }
@@ -345,7 +351,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
     /// <summary>
     /// The ray from the eye to a target point inside or on the target cell hits no terrain and no other cell first.
     /// </summary>
-    private bool HasLineOfSight(PlanetId planet, Vector3 eye, Vector3 target, EntityId construct, CellPos cell)
+    private bool HasLineOfSight(PlanetId planet, Vector3 eye, Vector3 target, EntityId? construct, CellPos cell)
     {
         var toTarget = target - eye;
         var distance = toTarget.Length();
@@ -363,7 +369,8 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
         }
 
         var reach = hit.Construct == construct && hit.Cell == cell ? MathF.Min(hit.Distance, distance) : distance;
-        return !terrain.Raycast(planet, eye, direction, MathF.Max(0f, reach - SightEpsilon), out _);
+        return !terrain.Raycast(planet, eye, direction, reach, out var terrainHit)
+            || terrainHit.Distance >= reach - TerrainSightSlackMeters;
     }
 
     private bool TryGetEye(PlayerState player, out PlanetId planet, out Vector3 eye)

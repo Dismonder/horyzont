@@ -10,6 +10,76 @@ namespace Horyzont.Core.Tests.Simulation;
 
 public sealed class IntentValidationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Submit_OffsetRayGrazesSlopeNearTarget_Accepted(bool placement)
+    {
+        var f = CurvedSlopeFixture();
+        var p = f.Join();
+        var intent = OffsetSlopeIntent(f, p, 0.56f, placement, out var target);
+        var eye = f.Eye(p);
+        var distance = Vector3.Distance(eye, target);
+        Assert.True(f.Terrain.Raycast(SimFixture.Planet, eye, Vector3.Normalize(target - eye), distance, out var first));
+        // The eye ray grazes the same curved surface about 22 cm before the intended hit.
+        Assert.InRange(distance - first.Distance, 0.20f, 0.24f);
+
+        Assert.Equal(RejectReason.None, f.Sim.Submit(p, intent).Reason);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Submit_OffsetRayBehindTerrainRidgeAtLeastOneMeter_NoLineOfSight(bool placement)
+    {
+        var f = CurvedSlopeFixture();
+        var p = f.Join();
+        var intent = OffsetSlopeIntent(f, p, 0.65f, placement, out var target);
+        var eye = f.Eye(p);
+        var distance = Vector3.Distance(eye, target);
+        Assert.True(f.Terrain.Raycast(SimFixture.Planet, eye, Vector3.Normalize(target - eye), distance, out var first));
+        // The segment to the far surface crosses more than one metre of solid terrain.
+        Assert.InRange(distance - first.Distance, 1f, 2f);
+
+        Assert.Equal(RejectReason.NoLineOfSight, f.Sim.Submit(p, intent).Reason);
+    }
+
+    private static SimFixture CurvedSlopeFixture()
+    {
+        // A small sphere makes both sides of a curved ridge reachable in the eight metre tool range.
+        var planet = WorldFactory.HomePlanetParams with { RadiusMeters = 10f, CoreDepthMeters = 4f };
+        return new SimFixture(terrain: new FakeTerrainService(10f), state: WorldFactory.CreateWith(planet));
+    }
+
+    private static Intent OffsetSlopeIntent(SimFixture f, PlayerId p, float angle, bool placement, out Vector3 target)
+    {
+        target = new Vector3(10f * MathF.Sin(angle), 10f * MathF.Cos(angle), 0f);
+        var origin = f.Eye(p) + (Vector3.UnitX * 1.5f);
+        var direction = Vector3.Normalize(target - origin);
+        Assert.InRange(Vector3.Distance(origin, f.Eye(p)), 0f, f.Rules.MaxRayOriginErrorMeters);
+        Assert.True(f.Terrain.Raycast(SimFixture.Planet, origin, direction, f.Rules.ReachMeters, out var hit));
+        Assert.InRange(Vector3.Distance(hit.Position, target), 0f, 0.001f);
+        return placement
+            ? new PlaceBlockIntent(new TerrainTarget(SimFixture.Planet, origin, direction, -Vector3.UnitZ), f.Stone, 0)
+            : new TerrainToolIntent(SimFixture.Planet, origin, direction, 0.5f, TerrainEditMode.Remove, 0);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Submit_RawRayOriginBehindOneMeterWall_NoLineOfSight(bool placement)
+    {
+        var f = new SimFixture();
+        var p = f.Join();
+        var eye = f.Eye(p);
+        // One metre along X, spanning the ray's height; the raw origin lies beyond it.
+        AddConstruct(f, new Vector3(0.25f, eye.Y - 0.5f, -0.5f));
+        var target = f.Ground(4);
+        Intent intent = placement ? PlaceShiftedToward(f, p, target, 1.5f) : DigShiftedToward(f, p, target, 1.5f);
+
+        Assert.Equal(RejectReason.NoLineOfSight, f.Sim.Submit(p, intent).Reason);
+    }
+
     private static readonly Dictionary<RejectReason, Func<RejectReason>> _scenarios = new()
     {
         [RejectReason.UnknownPlayer] = () =>
