@@ -355,7 +355,9 @@ public sealed class ShutdownSequenceTests
         await rig.StopAsync();
 
         var entry = Assert.Single(rig.Log.Entries, e => e.Message.StartsWith("Stopped;", StringComparison.Ordinal));
-        Assert.Equal("Stopped; state hash=" + rig.Hash.ToString("X16", System.Globalization.CultureInfo.InvariantCulture), entry.Message);
+        Assert.Equal(
+            "Stopped; state hash=" + rig.Hash.ToString("X16", System.Globalization.CultureInfo.InvariantCulture) + " last op=" + rig.Runtime.State.LastOpId.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            entry.Message);
     }
 
     private sealed class SpyParticipant(ServerRuntime runtime, List<string> events) : IServerTickParticipant

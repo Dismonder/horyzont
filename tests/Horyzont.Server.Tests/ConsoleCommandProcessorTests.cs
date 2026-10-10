@@ -21,7 +21,33 @@ public sealed class ConsoleCommandProcessorTests
 
         Assert.Equal("save queued", reply);
         Assert.True(await rig.RunUntilAsync(() => terrain.CommittedCheckpoints == 2));
-        Assert.True(rig.Log.Contains("checkpoint committed op="));
+        Assert.True(rig.Log.Contains("Checkpoint started boundary="));
+        Assert.True(rig.Log.Contains("Checkpoint committed boundary="));
+        await rig.StopAsync();
+    }
+
+    [Fact]
+    public async Task Stats_AfterTicks_PrintsTickWindowLastOpAndCheckpointState()
+    {
+        await using var rig = await StartedAsync();
+        var processor = new ConsoleCommandProcessor(rig.Runtime, NullLogger<ConsoleCommandProcessor>.Instance, devCommands: true);
+        await rig.JoinAsync("a", 1);
+        Assert.True(await rig.RunUntilAsync(() => rig.Runtime.Session.PlayersInGame.Count == 1));
+        processor.Execute("dev-op");
+        _ = processor.Execute("stats");
+        rig.StepMany(50);
+
+        var reply = processor.Execute("stats");
+
+        var match = System.Text.RegularExpressions.Regex.Match(
+            reply, @"^STATS tick_ms mean=(\d+\.\d{3}) p95=(\d+\.\d{3}) p99=(\d+\.\d{3}) max=(\d+\.\d{3}) n=(\d+) players=1 last_op=(\d+) checkpoint=(idle|running)$");
+        Assert.True(match.Success, reply);
+        Assert.True(int.Parse(match.Groups[5].Value, System.Globalization.CultureInfo.InvariantCulture) >= 50);
+        Assert.Equal(rig.Runtime.State.LastOpId.Value.ToString(System.Globalization.CultureInfo.InvariantCulture), match.Groups[6].Value);
+
+        // The window restarts with every stats command.
+        var second = processor.Execute("stats");
+        Assert.Contains(" n=0 ", second, StringComparison.Ordinal);
         await rig.StopAsync();
     }
 
