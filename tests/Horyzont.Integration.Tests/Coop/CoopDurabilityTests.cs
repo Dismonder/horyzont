@@ -35,18 +35,24 @@ public sealed class CoopDurabilityTests
         rig.Server.RequestCheckpoint();
         Assert.True(await rig.RunUntilAsync(() => rig.Terrain.Last.CommittedCheckpoints > committedCheckpoints), "no checkpoint");
         await rig.RunAsync(240);
-        await Task.Delay(300, TestContext.Current.CancellationToken);
-        var armedAt = rig.Server.State.LastOpId;
+        await rig.DrainWriterAsync();
+        var armedAt = rig.Server.DurableOpId;
 
         // The process dies right after the next journal commit: the rows are on disk, the writer is gone.
+        // Every frame is recorded with its virtual time and last operation: the crash happened at the latest at the last frame
+        // and at the earliest at the one before, so an operation made at least one flush interval before that earlier frame must be on disk.
+        var history = new List<(DateTimeOffset At, OpId Last)> { (rig.Time.GetUtcNow(), armedAt) };
         faults.Arm(FaultPoint.AfterJournalCommit);
         for (var i = 0; i < 3000 && !faults.Crashed; i++)
         {
             rig.Step();
+            history.Add((rig.Time.GetUtcNow(), rig.Server.State.LastOpId));
             await Task.Delay(1, TestContext.Current.CancellationToken);
         }
 
         Assert.True(faults.Crashed, "the writer never reached the fault point");
+        var crashNotBefore = history.Count >= 2 ? history[^2].At : history[0].At;
+        var acknowledgedBeforeCrash = history.LastOrDefault(entry => entry.At <= crashNotBefore - CoopRig.Persistence.FlushInterval, history[0]).Last;
 
         // The process does not know it is dead for a moment longer: what the bots do now never reaches the disk.
         await rig.RunAsync(120);
@@ -54,6 +60,9 @@ public sealed class CoopDurabilityTests
 
         var committedLast = new OpId(MaxJournalOpId(rig.WorldPath));
         Assert.True(committedLast >= armedAt, "an operation that was durable before the crash is lost");
+        Assert.True(
+            committedLast >= acknowledgedBeforeCrash,
+            $"operation {acknowledgedBeforeCrash.Value} was made more than one flush interval before the crash but only {committedLast.Value} is on disk");
         Assert.True(committedLast <= liveLast);
 
         // Recovery: load the file, replay the tail into a fresh simulation, compare with the live state at that operation.

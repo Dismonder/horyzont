@@ -31,6 +31,9 @@ internal sealed class CoopRig : IAsyncDisposable
 {
     public const ulong Build = 0x4B34_0000_0000_0019UL;
 
+    /// <summary>The persistence options of every server of the rig.</summary>
+    public static readonly PersistenceOptions Persistence = new() { GameVersion = "k4-19-test", BackupInterval = Timeout.InfiniteTimeSpan };
+
     public static readonly TimeSpan FrameTime = TimeSpan.FromTicks(TimeSpan.TicksPerSecond / 60);
 
     private readonly string _dir;
@@ -40,6 +43,8 @@ internal sealed class CoopRig : IAsyncDisposable
     private readonly bool _hashEveryOperation;
     private readonly InMemoryNetwork _network;
     private InMemoryTransport _serverTransport;
+    private readonly Queue<(DateTimeOffset At, OpId Last)> _opHistory = new();
+    private readonly bool _expectsCrash;
     private long _frame;
     private int _spawned;
     private ServerRuntime? _server;
@@ -50,6 +55,7 @@ internal sealed class CoopRig : IAsyncDisposable
         _dir = dir ?? Path.Combine(Path.GetTempPath(), "horyzont-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_dir);
         _faults = faults ?? NoFaults.Instance;
+        _expectsCrash = faults is not null;
         _hashEveryOperation = hashEveryOperation;
         Time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 10, 12, 0, 0, TimeSpan.Zero));
         _network = new InMemoryNetwork(Time, conditions);
@@ -133,9 +139,44 @@ internal sealed class CoopRig : IAsyncDisposable
         }
 
         _frame++;
+        _opHistory.Enqueue((Time.GetUtcNow(), Server.State.LastOpId));
     }
 
-    /// <summary>Steps frames; yields every few seconds of virtual time so the writer thread keeps up.</summary>
+    /// <summary>
+    /// Waits (real time) until the writer thread has made durable every operation that is older than one flush interval of virtual
+    /// time, which is what it promises; it replaces a blind sleep that only hoped the thread had run. Without injected faults a
+    /// writer that does not catch up within a few seconds fails the test.
+    /// </summary>
+    public async Task DrainWriterAsync()
+    {
+        var due = Time.GetUtcNow() - Persistence.FlushInterval - FrameTime;
+        var target = OpId.None;
+        while (_opHistory.Count > 1 && _opHistory.Peek().At < due - TimeSpan.FromSeconds(5))
+        {
+            _opHistory.Dequeue();
+        }
+
+        foreach (var (at, last) in _opHistory)
+        {
+            if (at <= due)
+            {
+                target = last;
+            }
+        }
+
+        var limit = Environment.TickCount64 + 5000;
+        while (Server.DurableOpId < target && Environment.TickCount64 < limit)
+        {
+            await Task.Delay(1, TestContext.Current.CancellationToken);
+        }
+
+        if (!_expectsCrash)
+        {
+            Assert.True(Server.DurableOpId >= target, $"the writer is at operation {Server.DurableOpId.Value}, expected {target.Value}");
+        }
+    }
+
+    /// <summary>Steps frames; every few seconds of virtual time the writer thread is given the chance to catch up.</summary>
     public async Task RunAsync(int frames)
     {
         for (var i = 0; i < frames; i++)
@@ -143,7 +184,7 @@ internal sealed class CoopRig : IAsyncDisposable
             Step();
             if (i % 300 == 299)
             {
-                await Task.Delay(1, TestContext.Current.CancellationToken);
+                await DrainWriterAsync();
             }
         }
     }
@@ -160,7 +201,7 @@ internal sealed class CoopRig : IAsyncDisposable
             Step();
             if (i % 50 == 49)
             {
-                await Task.Delay(1, TestContext.Current.CancellationToken);
+                await DrainWriterAsync();
             }
         }
 
@@ -221,7 +262,7 @@ internal sealed class CoopRig : IAsyncDisposable
             WorldPath = WorldPath,
             BackupsDirectory = Path.Combine(_dir, "saves", "backups"),
             ServerOptions = new ServerOptions { BuildHash = Build },
-            PersistenceOptions = new PersistenceOptions { GameVersion = "k4-19-test", BackupInterval = Timeout.InfiniteTimeSpan },
+            PersistenceOptions = Persistence,
             Listen = [new InMemoryEndpoint("server")],
             Faults = _faults,
             BlockTypeKeys = [WorldFactory.StoneBlockKey],

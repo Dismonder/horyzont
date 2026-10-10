@@ -96,6 +96,9 @@ public sealed partial class ServerRuntime
     /// <summary>Gets a value indicating whether the shutdown is over (also after a fault) and the process may exit.</summary>
     public bool IsStopped => RuntimeState == ServerRuntimeState.Stopped || (RuntimeState == ServerRuntimeState.Faulted && _shutdown is { IsFinished: true });
 
+    /// <summary>Gets the last operation known to be on disk (journal or checkpoint); readable from any thread, <see cref="OpId.None"/> without a writer.</summary>
+    public OpId DurableOpId => _writer?.DurableOpId ?? OpId.None;
+
     /// <summary>Gets the world state after <see cref="StartAsync"/>; main thread, read-only outside the hooks.</summary>
     /// <exception cref="InvalidOperationException">The world was not started.</exception>
     public WorldState State => _worldState ?? throw new InvalidOperationException("The server has not loaded a world.");
