@@ -14,9 +14,9 @@ namespace Horyzont.Client.Replication;
 public sealed class ConstructMirror(TimeProvider time) : IConstructSource
 {
     private const int MaxStagingBytes = 16 * 1024 * 1024;
-    private static readonly TimeSpan StallTimeout = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan TotalTimeout = TimeSpan.FromSeconds(120);
-    private static readonly TimeSpan InvalidDecay = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan _stallTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan _totalTimeout = TimeSpan.FromSeconds(120);
+    private static readonly TimeSpan _invalidDecay = TimeSpan.FromSeconds(30);
     private readonly ConstructReplicaSet _set = new();
     private readonly Dictionary<EntityId, Transfer> _transfers = [];
     private readonly ResyncTracker _resync = new(time);
@@ -241,7 +241,7 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
         foreach (var pair in _transfers)
         {
             // A slow transfer under the shared send budget may legitimately take long: only a stall (or an absurd total) is repaired.
-            if (time.GetElapsedTime(pair.Value.Progress, now) >= StallTimeout || time.GetElapsedTime(pair.Value.Start, now) >= TotalTimeout)
+            if (time.GetElapsedTime(pair.Value.Progress, now) >= _stallTimeout || time.GetElapsedTime(pair.Value.Start, now) >= _totalTimeout)
             {
                 _expired.Add(pair.Key);
             }
@@ -343,7 +343,7 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
         DropTransfer(id);
         RequestResync(id);
         var now = time.GetTimestamp();
-        if (_invalid > 0 && time.GetElapsedTime(_lastInvalid, now) >= InvalidDecay)
+        if (_invalid > 0 && time.GetElapsedTime(_lastInvalid, now) >= _invalidDecay)
         {
             _invalid = 0;
         }
