@@ -152,7 +152,7 @@ Fixture xUnit: `FakeTimeProvider`, `InMemoryTransport`, 60 Hz fizyki/20 Hz stan�
 - [x] 0. Baza potwierdzona: K2 + K3-00, czysta gałąź pakietu; bez zbędnego rebase. Rebase na scalone K2 i K3-00; sprawdzić nazwy oraz zastosować szwy S4–S7 i własność plików według X10. Nie zmieniać cudzych testów akceptacyjnych bez zgody.
 - [x] 1. RED: brak API; GREEN: Client 173/173, interpolacja/ring/clock i 0 B w gorących ścieżkach. Testy czyste prezentacji i ringów, następnie implementacja; mały commit Conventional Commits po zielonym kroku.
 - [x] 2. GREEN: Client 177/177; replay 1..128, pauza/ACK i pełny sink z resetem sesji. Testy replay/pauzy/ACK; adapter pełnej migawki do próbek, bez regresji `Validate(Snapshot, ...)`.
-- [ ] 3. Testy polityki budżetu, implementacja bez alokacji i API dla K3-15.
+- [x] 3. RED: brak API; GREEN: Server 124/124; budżet per klient, forced full i 0 B. Testy polityki budżetu, implementacja bez alokacji i API dla K3-15.
 - [ ] 4. Testy Godota, odseparować siatkę/kamerę od kapsuły; zdalny widok tylko wizualny. Sprawdzić FPP/TPP, bieguny i ściany.
 - [ ] 5. Test łącza, pomiary płynności i alokacji; raport seedów, błędów i niedoborów próbek. Po dwóch nieudanych próbach tego samego testu eskalować z testem i logiem zgodnie z ZASADY pkt 12.
 - [ ] 6. Po scaleniu K3-15 (albo w K3-15, jeśli scala później — X10) powtórzyć scenariusz na prawdziwych migawkach delta/spawn/despawn i sprawdzić actual bytes. Bez tej integracji nie ogłaszać kompletnego odbioru co-op.
