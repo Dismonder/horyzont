@@ -36,6 +36,10 @@ public sealed class RemoteTerrainPrediction : IEditPrediction, IIntentReplyObser
     private readonly List<TerrainBlockKey> _keys = [];
     private readonly List<PredictedEdit> _scratchEdits = [];
     private readonly List<PredictedEdit> _expired = [];
+    private readonly HashSet<TerrainBlockKey> _groupSet = [];
+    private readonly List<TerrainBlockKey> _group = [];
+    private readonly TerrainBlockKey[] _single = new TerrainBlockKey[1];
+    private readonly List<PredictedEdit> _groupEdits = [];
     private ClientTerrainSyncState? _sync;
     private TerrainMaterialMap? _materials;
 
@@ -239,7 +243,8 @@ public sealed class RemoteTerrainPrediction : IEditPrediction, IIntentReplyObser
             held.Voxels.CopyChannelFrom(authoritative, channel);
         }
 
-        Rebuild([key], node);
+        _single[0] = key;
+        Rebuild(_single, node);
         return true;
     }
 
@@ -259,31 +264,42 @@ public sealed class RemoteTerrainPrediction : IEditPrediction, IIntentReplyObser
     private void Rebuild(IReadOnlyList<TerrainBlockKey> start, PlanetTerrain node)
     {
         // The edits that remain and the blocks they share form one group: a sphere cannot be applied to a single block of it.
-        var group = new HashSet<TerrainBlockKey>(start);
-        var edits = new List<PredictedEdit>();
-        var changed = true;
-        while (changed)
+        // The buffers are reused; the group list grows while it is walked, which visits every block once.
+        _groupSet.Clear();
+        _group.Clear();
+        _groupEdits.Clear();
+        foreach (var key in start)
         {
-            changed = false;
-            foreach (var key in group.ToArray())
+            if (_groupSet.Add(key))
             {
-                _ledger.CollectTouching(key, _scratchEdits);
-                foreach (var other in _scratchEdits)
+                _group.Add(key);
+            }
+        }
+
+        var edits = _groupEdits;
+        for (var i = 0; i < _group.Count; i++)
+        {
+            _ledger.CollectTouching(_group[i], _scratchEdits);
+            foreach (var other in _scratchEdits)
+            {
+                if (edits.Contains(other))
                 {
-                    if (!edits.Contains(other))
+                    continue;
+                }
+
+                edits.Add(other);
+                foreach (var shared in other.Keys)
+                {
+                    if (_groupSet.Add(shared))
                     {
-                        edits.Add(other);
-                        foreach (var shared in other.Keys)
-                        {
-                            changed |= group.Add(shared);
-                        }
+                        _group.Add(shared);
                     }
                 }
             }
         }
 
         edits.Sort(static (a, b) => a.ClientSeq.CompareTo(b.ClientSeq));
-        foreach (var key in group)
+        foreach (var key in _group)
         {
             if (_bases.TryGetValue(key, out var held) && held.Voxels is not null)
             {
@@ -305,7 +321,6 @@ public sealed class RemoteTerrainPrediction : IEditPrediction, IIntentReplyObser
 
             TerrainSphereEdit.Apply(node.Tool, edit.Mode, TerrainVectors.ToGodot(edit.Center), edit.Radius, texture);
         }
-
     }
 
     private void ReleaseBases(PredictedEdit edit)

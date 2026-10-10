@@ -44,7 +44,7 @@ public sealed class ClientTerrainReplicator : IClientSessionListener, IClientWor
     private readonly ILogger _logger;
     private readonly TerrainViewReporter _reporter;
     private readonly TerrainChecksumScheduler _scheduler;
-    private readonly Queue<AcceptedBlock> _accepted = new();
+    private readonly BarrierOrderedInbox<AcceptedBlock> _accepted = new();
     private readonly Dictionary<TerrainBlockKey, WatchedBlock> _recheck = [];
     private readonly List<TerrainBlockKey> _recheckKeys = [];
     private readonly List<TerrainBlockKey> _candidates = [];
@@ -359,45 +359,46 @@ public sealed class ClientTerrainReplicator : IClientSessionListener, IClientWor
                     _repairs++;
                 }
 
-                _accepted.Enqueue(new AcceptedBlock(data.Key, data.Version, hash, data.Data));
+                _accepted.EnqueueBlock(new AcceptedBlock(data.Key, data.Version, hash, data.Data));
                 break;
         }
     }
 
-    private void ApplyAccepted()
+    private void ApplyAccepted() => _accepted.Drain(MaxAppliedPerFrame, ApplyBlock, OnBarrierReached);
+
+    private bool ApplyBlock(AcceptedBlock block)
     {
-        for (var i = 0; i < MaxAppliedPerFrame && _accepted.TryDequeue(out var block); i++)
+        try
         {
-            try
-            {
-                _terrain.Codec.Decode(block.Envelope, _scratch);
-            }
-            catch (ProtocolViolationException exception)
-            {
-                // A bad block never reaches the cache or the scene; the good cache stays as it is.
-                _rejected++;
-                ClientTerrainLog.BadBlock(_logger, exception, block.Key);
-                Leave($"block {block.Key} is not a valid envelope");
-                return;
-            }
-
-            _terrain.Cache?.Put(block.Key, block.Version, block.Hash, block.Envelope);
-            _terrain.OnBlockStored(block.Key);
-            if (!_terrain.TryGetNode(block.Key.Planet, out var node))
-            {
-                continue;
-            }
-
-            if (_prediction is not null && _prediction.TryApplyAuthoritative(node, block.Key, _scratch))
-            {
-                continue;
-            }
-
-            if (!Paste(node.Tool, block.Key, _scratch))
-            {
-                Watch(block);
-            }
+            _terrain.Codec.Decode(block.Envelope, _scratch);
         }
+        catch (ProtocolViolationException exception)
+        {
+            // A bad block never reaches the cache or the scene; the good cache stays as it is.
+            _rejected++;
+            ClientTerrainLog.BadBlock(_logger, exception, block.Key);
+            Leave($"block {block.Key} is not a valid envelope");
+            return false;
+        }
+
+        _terrain.Cache?.Put(block.Key, block.Version, block.Hash, block.Envelope);
+        _terrain.OnBlockStored(block.Key);
+        if (!_terrain.TryGetNode(block.Key.Planet, out var node))
+        {
+            return true;
+        }
+
+        if (_prediction is not null && _prediction.TryApplyAuthoritative(node, block.Key, _scratch))
+        {
+            return true;
+        }
+
+        if (!Paste(node.Tool, block.Key, _scratch))
+        {
+            Watch(block);
+        }
+
+        return true;
     }
 
     private void Watch(AcceptedBlock block)
@@ -502,7 +503,10 @@ public sealed class ClientTerrainReplicator : IClientSessionListener, IClientWor
         _runtime.Session.Send(new TerrainChecksums(viewers.Planet, [.. _digests]));
     }
 
-    private void OnBarrierCompleted(OpId operation, IReadOnlyList<TerrainSyncEntry> entries) => _prediction?.OnBarrier(operation, entries);
+    // The blocks of the edit are queued ahead of the barrier: the prediction lets go of its overlay only after they were applied.
+    private void OnBarrierCompleted(OpId operation, IReadOnlyList<TerrainSyncEntry> entries) => _accepted.EnqueueBarrier(operation, entries);
+
+    private void OnBarrierReached(OpId operation, IReadOnlyList<TerrainSyncEntry> entries) => _prediction?.OnBarrier(operation, entries);
 
     private void Leave(string reason)
     {
