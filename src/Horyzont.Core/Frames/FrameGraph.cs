@@ -95,6 +95,39 @@ public sealed class FrameGraph
     }
 
     /// <summary>
+    /// A point of a frame expressed in the frame's region (<see cref="TryGetRegion"/>), composed only up to the region: unlike
+    /// <see cref="TryExpress"/> it needs no planet placement, so it works for every planet (interest distances, K5-20).
+    /// </summary>
+    /// <param name="frame">Frame of the point.</param>
+    /// <param name="local">The point in <paramref name="frame"/>.</param>
+    /// <param name="region">Receives the region.</param>
+    /// <param name="point">Receives the point in the region.</param>
+    /// <returns>False for an unknown frame, a missing construct pose or a chain that is too deep.</returns>
+    public bool TryExpressInRegion(FrameRef frame, Vector3 local, out FrameRef region, out Vector3D point)
+    {
+        point = Vector3D.Zero;
+        if (!TryGetRegion(frame, out region))
+        {
+            return false;
+        }
+
+        if (frame == region)
+        {
+            point = Vector3D.FromFloat(local);
+            return true;
+        }
+
+        if (!TryGetPoseIn(_source, frame, region, MaxDepth, out var pose))
+        {
+            region = default;
+            return false;
+        }
+
+        point = FrameMath.TransformPoint(pose, Vector3D.FromFloat(local));
+        return true;
+    }
+
+    /// <summary>
     /// Pose of <paramref name="frame"/> in <paramref name="ancestor"/> (<c>default</c> = the world), composed up the parent chain
     /// over at most <paramref name="maxLinks"/> links (the link of the system frame to the root does not count).
     /// </summary>
