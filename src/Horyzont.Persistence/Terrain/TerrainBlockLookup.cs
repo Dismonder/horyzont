@@ -1,6 +1,6 @@
 namespace Horyzont.Persistence.Terrain;
 
-/// <summary>Result of <see cref="ITerrainBlockSource.TryLoad"/>.</summary>
+/// <summary>Result of <see cref="ITerrainBlockSource.TryLoad(Horyzont.Core.World.Terrain.TerrainBlockKey, out uint, out byte[])"/>.</summary>
 public enum TerrainBlockLookup
 {
     /// <summary>The block was never edited: the voxel stream lets the generator produce it.</summary>

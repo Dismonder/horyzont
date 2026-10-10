@@ -22,8 +22,16 @@ public sealed class TerrainMaterialMap
     public static TerrainMaterialMap Build(MaterialRegistry registry)
     {
         ArgumentNullException.ThrowIfNull(registry);
+        return Build(registry.Entries);
+    }
+
+    /// <summary>Builds the map from the material entries of a world (the server hello carries them).</summary>
+    /// <exception cref="InvalidDataException">A key of the entries is not in <see cref="TerrainMaterials"/> (a server of a newer game version).</exception>
+    public static TerrainMaterialMap Build(IEnumerable<RegistryEntry> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
         var map = new TerrainMaterialMap();
-        foreach (var entry in registry.Entries)
+        foreach (var entry in entries)
         {
             var textureIndex = -1;
             foreach (var (key, index) in TerrainMaterials.All)
