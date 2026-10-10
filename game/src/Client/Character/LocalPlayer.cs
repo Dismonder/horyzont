@@ -128,7 +128,7 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
 
     /// <summary>Gets immutable motion counters for tests and the K4 performance gate.</summary>
     public MotionStatistics Motion => new(_smallCorrections, _largeCorrections, _maxPresentationOffset,
-        RemoteMotion?.SampleUnderruns ?? 0, 0.1);
+        RemoteMotion?.SampleUnderruns ?? 0, RemoteMotion?.InterpolationDelaySeconds ?? 0.1);
 
     /// <summary>Gets or sets the session's remote full-snapshot sink, supplied by composition.</summary>
     public RemoteMotionSampleAdapter? RemoteMotion { get; set; }
@@ -645,7 +645,7 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
 
         _cameraOrigin = origin;
         _cameraDirection = direction;
-        ApplyVisualPresentation(_snapCamera);
+        ApplyVisualPresentation(_snapCamera, origin);
         body.SetVisualVisible(_cameraMode == CameraMode.ThirdPerson);
         if (_snapCamera)
         {
@@ -659,7 +659,7 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
 
     }
 
-    private void ApplyVisualPresentation(bool teleport)
+    private void ApplyVisualPresentation(bool teleport, NumVector3? resolvedOrigin = null)
     {
         var body = _body!;
         var rig = _rig!;
@@ -675,7 +675,9 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         var rotation = NumQuaternion.Normalize(_presentation.RotationOffset * _orientation!.BodyRotation);
         var pose = CameraRigMath.Compute(body.Feet + _presentation.PositionOffset, rotation, _orientation.Pitch,
             _smoother.Up, _cameraMode, TppOffsets.Default, _rules);
-        var origin = rig.ResolvePresentation(planet.Id, Eye, pose.Origin);
+        var uncorrected = _presentation.PositionOffset == NumVector3.Zero && _presentation.RotationOffset == NumQuaternion.Identity;
+        // With no correction the pose equals the physical one already resolved by UpdateCamera: skip the second arm ray.
+        var origin = uncorrected && _cameraMode == CameraMode.ThirdPerson && resolvedOrigin is { } reused ? reused : rig.ResolvePresentation(planet.Id, Eye, pose.Origin);
         rig.Apply(planet.Id, origin, pose.Direction, _smoother.Up, teleport);
         FollowViewers(planet, origin, body.Feet);
     }

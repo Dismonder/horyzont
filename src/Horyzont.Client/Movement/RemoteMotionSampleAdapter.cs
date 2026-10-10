@@ -20,6 +20,9 @@ public sealed class RemoteMotionSampleAdapter : IFullSnapshotSink, IClientSessio
     /// <summary>Gets the single remote interpolation clock.</summary>
     public RemoteMotionPolicy Clock { get; }
 
+    /// <summary>Gets the current interpolation delay in seconds.</summary>
+    public double InterpolationDelaySeconds => Clock.DelaySeconds;
+
     /// <summary>Gets the total number of sample underruns in active remote rings.</summary>
     public long SampleUnderruns
     {

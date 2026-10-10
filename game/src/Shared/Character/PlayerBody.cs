@@ -37,6 +37,7 @@ public sealed partial class PlayerBody : CharacterBody3D
     private float _tickSeconds = 1f / 60f;
     private MovementMode _mode = MovementMode.Frozen;
     private float _visualHeight;
+    private MeshInstance3D? _visual;
 
     /// <summary>Gets the planet whose frame the body lives in.</summary>
     public PlanetId Planet => _planet;
@@ -96,6 +97,7 @@ public sealed partial class PlayerBody : CharacterBody3D
         capsule.Position = new Vector3(0f, rules.PlayerCapsuleHeight * 0.5f, 0f);
         if (GetNodeOrNull<MeshInstance3D>("Visual") is { } visual)
         {
+            _visual = visual;
             visual.Mesh = new CapsuleMesh { Radius = rules.PlayerCapsuleRadius, Height = rules.PlayerCapsuleHeight };
             visual.Position = capsule.Position;
         }
@@ -105,7 +107,7 @@ public sealed partial class PlayerBody : CharacterBody3D
     /// <param name="visible">Whether the mesh is shown.</param>
     public void SetVisualVisible(bool visible)
     {
-        if (GetNodeOrNull<MeshInstance3D>("Visual") is { } visual)
+        if (_visual is { } visual)
         {
             visual.Visible = visible;
         }
@@ -116,7 +118,7 @@ public sealed partial class PlayerBody : CharacterBody3D
     /// <param name="rotationOffset">Correction multiplied on the left of the body rotation.</param>
     public void ApplyPresentation(NumVector3 positionOffset, NumQuaternion rotationOffset)
     {
-        if (GetNodeOrNull<MeshInstance3D>("Visual") is not { } visual)
+        if (_visual is not { } visual)
         {
             return;
         }

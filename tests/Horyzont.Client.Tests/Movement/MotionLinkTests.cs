@@ -35,12 +35,16 @@ public sealed class MotionLinkTests(ITestOutputHelper output)
             link.Step(tick, tick <= 3600);
         }
 
-        output.WriteLine($"seed={seed} RTT={latencyMs * 2} jitter={jitterMs} dup={duplication} snapshots={link.Delivered} corrections={link.Corrections} snaps={link.Snaps} max_jump={link.MaxCorrectionJump:F6} max_offset={link.MaxOffset:F6} underruns={link.Remote.SampleUnderruns} final_error={Vector3.Distance(link.Client.Feet, link.Server.Feet):F6} convergence_snapshots={link.ConvergenceSnapshots}");
+        output.WriteLine($"seed={seed} RTT={latencyMs * 2} jitter={jitterMs} dup={duplication} snapshots={link.Delivered} corrections={link.Corrections} snaps={link.Snaps} max_fade_step={link.MaxFadeStep:F6} max_offset={link.MaxOffset:F6} underruns={link.Remote.SampleUnderruns} justified_snaps={link.Snaps - link.UnjustifiedSnaps} final_error={Vector3.Distance(link.Client.Feet, link.Server.Feet):F6} convergence_snapshots={link.ConvergenceSnapshots}");
+        foreach (var line in link.Debug) { output.WriteLine(line); }
         Assert.True(link.Delivered > 900);
+        Assert.True(link.Corrections > 0, "5% loss must produce at least one reconciliation");
         Assert.True(link.Converged);
         Assert.InRange(link.ConvergenceSnapshots, 0, 2);
         Assert.True(Vector3.Distance(link.Client.Feet, link.Server.Feet) < 0.01f);
-        Assert.True(link.MaxCorrectionJump <= 0.02f);
+        Assert.True(link.MaxOffset < 1f, $"offset {link.MaxOffset}");
+        Assert.True(link.MaxFadeStep <= 0.0201f, $"per-frame fade step {link.MaxFadeStep}");
+        Assert.True(link.Remote.SampleUnderruns <= (latencyMs == 50 ? 120 : 360), $"underruns {link.Remote.SampleUnderruns}");
         Assert.Equal(0, link.UnjustifiedSnaps);
     }
 
@@ -66,6 +70,7 @@ public sealed class MotionLinkTests(ITestOutputHelper output)
         private readonly PredictionBuffer _history = new(new CorrectionPolicy(), NullLogger<PredictionBuffer>.Instance);
         private readonly PresentationCorrection _presentation = new();
         private readonly OwnStateValidator _validator;
+        private readonly RemoteMotionSampleAdapter _remote;
         private readonly PredictionEntry[] _replay = new PredictionEntry[128];
         private readonly PredictedState[] _states = new PredictedState[128];
         private readonly ByteWriter _writer = new();
@@ -92,12 +97,16 @@ public sealed class MotionLinkTests(ITestOutputHelper output)
             }
 
             Assert.True(_clientReceiver.Connected);
-            var initial = new Vector3(0, _planet.RadiusMeters, 0);
+            var initial = Vector3.Normalize(new Vector3(1, 1, 0.5f)) * _planet.RadiusMeters;
             Client = Server = new PredictedState(initial, Vector3.Zero, Quaternion.Identity, 0, MovementMode.Walking, true);
             var hello = new ServerHello(default, new Tick(0), 60, new PlayerId(1), new EntityId(1), [_planet], [], []);
             _validator = OwnStateValidator.FromHello(hello, NullLogger<OwnStateValidator>.Instance);
+            _remote = new RemoteMotionSampleAdapter(_time);
+            _remote.OnServerHello(hello);
+            _remote.Register(new EntityId(2), Remote);
         }
 
+        public List<string> Debug { get; } = [];
         public PredictedState Client { get; private set; }
         public PredictedState Server { get; private set; }
         public RemoteMotionBuffer Remote { get; } = new();
@@ -105,7 +114,7 @@ public sealed class MotionLinkTests(ITestOutputHelper output)
         public int Corrections { get; private set; }
         public int Snaps { get; private set; }
         public int UnjustifiedSnaps { get; private set; }
-        public float MaxCorrectionJump { get; private set; }
+        public float MaxFadeStep { get; private set; }
         public float MaxOffset { get; private set; }
         public int ConvergenceSnapshots { get; private set; }
         public bool Converged { get; private set; }
@@ -135,7 +144,10 @@ public sealed class MotionLinkTests(ITestOutputHelper output)
             {
                 Send(_serverTransport, _serverReceiver.Connection, new Snapshot(++_snapshotId, new Tick(tick), 0, _lastSeq,
                     [new SnapshotFrame(FrameRef.Of(_planet.Id), 0)],
-                    [new EntityState(new EntityId(1), (EntityStateFields)15, 0, 0, Server.Feet, Server.BodyRotation, Server.Velocity, (byte)Server.Mode)]));
+                    [
+                        new EntityState(new EntityId(1), (EntityStateFields)15, 0, 0, Server.Feet, Server.BodyRotation, Server.Velocity, (byte)Server.Mode),
+                        new EntityState(new EntityId(2), (EntityStateFields)15, 0, 0, Server.Feet + new Vector3(3, 0, 0), Server.BodyRotation, Server.Velocity, (byte)Server.Mode),
+                    ]));
             }
 
             _clientTransport.Poll(_clientReceiver);
@@ -156,8 +168,10 @@ public sealed class MotionLinkTests(ITestOutputHelper output)
                 Send(_clientTransport, _clientReceiver.Connection, new InputBatch(first, inputs));
             }
 
+            var preFade = _presentation.PositionOffset;
             _presentation.Advance(1f / 60);
-            Remote.TrySample(tick - 6, out _);
+            MaxFadeStep = MathF.Max(MaxFadeStep, Vector3.Distance(preFade, _presentation.PositionOffset));
+            Remote.TrySample(_remote.Clock.RenderTick, out _);
             _time.Advance(TimeSpan.FromTicks(TimeSpan.TicksPerSecond / 60));
         }
 
@@ -177,10 +191,9 @@ public sealed class MotionLinkTests(ITestOutputHelper output)
             if (_validator.Validate(snapshot, out var own) != OwnStateVerdict.Accepted) { return; }
             Delivered++;
             var server = own.ToPredicted(0, own.Mode is MovementMode.Walking or MovementMode.Sprinting);
-            Remote.Push(new RemoteMotionSample(new EntityId(2), FrameRef.Of(_planet.Id), 0, snapshot.ServerTick,
-                server.Feet, server.BodyRotation, server.Velocity, (byte)server.Mode));
+            _remote.OnFullSnapshot(snapshot);
             var before = Client;
-            var visible = before.Feet + _presentation.PositionOffset;
+            var visibleOffset = _presentation.PositionOffset;
             var historyCount = _history.CopyUnacknowledged(_replay);
             var found = false;
             for (var i = 0; i < historyCount; i++) { found |= _replay[i].Seq == own.LastProcessedInputSeq; }
@@ -195,12 +208,11 @@ public sealed class MotionLinkTests(ITestOutputHelper output)
                 if (_presentation.Snapped)
                 {
                     Snaps++;
-                    if (found && Vector3.Distance(before.Feet, Client.Feet) < 1f
-                        && MathF.Abs(Quaternion.Dot(before.BodyRotation, Client.BodyRotation)) > MathF.Cos(MathF.PI / 8)) { UnjustifiedSnaps++; }
+                    // Independent rule: an acknowledged input found in history and a non-frozen server leave no reason to snap.
+                    if (found && server.Mode != MovementMode.Frozen && Vector3.Distance(before.Feet + visibleOffset, Client.Feet) < 1f) { UnjustifiedSnaps++; Debug.Add($"DBG tick={_tick} dist={Vector3.Distance(before.Feet, Client.Feet)} off={_presentation.PositionOffset} rot={before.BodyRotation} cl={Client.BodyRotation} sv={server.BodyRotation} own={own.Rotation}"); }
                 }
                 else
                 {
-                    MaxCorrectionJump = MathF.Max(MaxCorrectionJump, Vector3.Distance(visible, Client.Feet + _presentation.PositionOffset));
                     MaxOffset = MathF.Max(MaxOffset, _presentation.PositionOffset.Length());
                 }
             }

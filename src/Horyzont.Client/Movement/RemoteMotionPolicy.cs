@@ -26,6 +26,12 @@ public sealed class RemoteMotionPolicy
         get { Advance(); return _renderTick; }
     }
 
+    /// <summary>Gets the current render delay behind the estimated server time, in seconds.</summary>
+    public double DelaySeconds
+    {
+        get { Advance(); return _started && _rate > 0 ? (_tick - _renderTick) / _rate : InterpolationTicks / 60.0; }
+    }
+
     /// <summary>Starts a new clock from ServerHello, without inferring one-way latency from RTT.</summary>
     /// <param name="tick">Hello server tick.</param>
     /// <param name="tickRate">Server physics rate.</param>
@@ -68,7 +74,7 @@ public sealed class RemoteMotionPolicy
         var seconds = _time.GetElapsedTime(_timestamp, now).TotalSeconds;
         _timestamp = now;
         _tick += seconds * _rate;
-        _slewAllowance += seconds;
+        _slewAllowance = Math.Min(1.0, _slewAllowance + seconds);
         _renderTick = Math.Max(_renderTick, _tick - _rate * 0.1);
     }
 }

@@ -7,7 +7,10 @@ namespace Horyzont.Client.Movement;
 /// <summary>Visual correction independent of the immediately reconciled physics state.</summary>
 public sealed class PresentationCorrection
 {
-    private const float Duration = 100f;
+    private const float MinDurationMs = 100f;
+    // 2 cm per frame at 60 Hz: larger small-corrections fade for longer than 100 ms instead of exceeding the visible step limit.
+    private const float MaxFadeSpeed = 1.2f;
+    private float _duration = MinDurationMs;
     private Vector3 _startPosition;
     private Quaternion _startRotation = Quaternion.Identity;
     private float _elapsed;
@@ -27,32 +30,34 @@ public sealed class PresentationCorrection
     /// <param name="discontinuity">Missing history, teleport, initialization or parent change.</param>
     public void Reconcile(in PredictedState before, in PredictedState after, bool discontinuity)
     {
-        var distance = Vector3.Distance(before.Feet, after.Feet);
-        var dot = MathF.Abs(Quaternion.Dot(before.BodyRotation, after.BodyRotation));
+        var startPosition = before.Feet + PositionOffset - after.Feet;
+        var startRotation = Quaternion.Normalize(RotationOffset * before.BodyRotation * Quaternion.Inverse(after.BodyRotation));
+        var dot = MathF.Abs(Quaternion.Dot(startRotation, Quaternion.Identity));
         if (discontinuity || before.Mode == MovementMode.Frozen || after.Mode == MovementMode.Frozen
-            || distance >= 1f || dot <= MathF.Cos(MathF.PI / 8f))
+            || startPosition.Length() >= 1f || dot <= MathF.Cos(MathF.PI / 8f))
         {
             Reset();
             Snapped = true;
             return;
         }
 
-        _startPosition = before.Feet + PositionOffset - after.Feet;
-        _startRotation = Quaternion.Normalize(RotationOffset * before.BodyRotation * Quaternion.Inverse(after.BodyRotation));
+        _startPosition = startPosition;
+        _duration = MathF.Max(MinDurationMs, startPosition.Length() / MaxFadeSpeed * 1000f);
+        _startRotation = startRotation;
         PositionOffset = _startPosition;
         RotationOffset = _startRotation;
         _elapsed = 0;
         Snapped = false;
     }
 
-    /// <summary>Linearly removes the current correction over 100 ms without allocating.</summary>
+    /// <summary>Linearly removes the current correction over 100 ms (at most 1.2 m/s for larger ones) without allocating.</summary>
     /// <param name="deltaSeconds">Elapsed presentation time, finite and nonnegative.</param>
     public void Advance(float deltaSeconds)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(deltaSeconds);
         if (!float.IsFinite(deltaSeconds)) { throw new ArgumentOutOfRangeException(nameof(deltaSeconds)); }
-        _elapsed = MathF.Min(Duration, _elapsed + deltaSeconds * 1000f);
-        var fraction = _elapsed / Duration;
+        _elapsed = MathF.Min(_duration, _elapsed + deltaSeconds * 1000f);
+        var fraction = _elapsed / _duration;
         PositionOffset = _startPosition * (1f - fraction);
         RotationOffset = Quaternion.Normalize(Quaternion.Slerp(_startRotation, Quaternion.Identity, fraction));
     }
@@ -62,7 +67,7 @@ public sealed class PresentationCorrection
     {
         _startPosition = PositionOffset = Vector3.Zero;
         _startRotation = RotationOffset = Quaternion.Identity;
-        _elapsed = Duration;
+        _elapsed = _duration = MinDurationMs;
         Snapped = false;
     }
 }

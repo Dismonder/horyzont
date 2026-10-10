@@ -93,7 +93,7 @@ public class MotionPresentationTests
 
     [TestCase(Timeout = 60000)]
     [RequireGodotRuntime]
-    public async Task UpdateCamera_CorrectionNearWall_DoesNotCrossWallOrChangeAimEye()
+    public async Task ResolvePresentation_NearWall_StaysOnEyeSideAndKeepsPoleBasisFinite()
     {
         await using var scene = EngineTestScene.Create();
         var rig = scene.Add(new CameraRig());
@@ -115,6 +115,59 @@ public class MotionPresentationTests
         AssertThat(rig.Camera.GlobalBasis.IsFinite()).IsTrue();
         rig.ToggleBodyMode();
         AssertThat(rig.BodyMode).IsEqual(Horyzont.Client.CameraMode.FirstPerson);
+    }
+
+    [TestCase(Timeout = 60000)]
+    [RequireGodotRuntime]
+    public async Task UpdateCamera_CorrectionNearWall_DoesNotCrossWallOrChangeAimEye()
+    {
+        await using var scene = EngineTestScene.Create();
+        var dir = ModeFixture.NewDirectory();
+        var fixture = await ModeFixture.StartWithCharactersAsync(scene, dir, true, true,
+            "--solo", "--data-dir", dir, "--profile", Path.Combine(dir, "profile.json"), "--world", Guid.NewGuid().ToString());
+        AssertThat(await fixture.WaitInGame()).IsTrue();
+        var player = fixture.Composition.LocalPlayer!;
+        AssertThat(await fixture.WaitUntil(() => player.IsActive, 180)).IsTrue();
+        AssertThat(await fixture.WaitTerrainIdle()).IsTrue();
+        var start = player.ClientTick;
+        AssertThat(await fixture.WaitUntil(() => player.ClientTick >= start + 60, 30)).IsTrue();
+        AssertThat(player.CameraMode).IsEqual(Horyzont.Client.CameraMode.ThirdPerson);
+
+        // A wall halfway along the third-person arm, perpendicular to it.
+        var hello = fixture.Composition.Client!.Hello!;
+        fixture.Composition.ServerNode!.SetPhysicsProcess(false);
+        player.SetPhysicsProcess(false);
+        var eye = PlanetFrames.ToGodot(player.Planet, player.Eye);
+        var arm = PlanetFrames.ToGodot(player.Planet, player.CameraOrigin) - eye;
+        AssertThat(arm.Length()).IsGreater(0.5f);
+        var wallDistance = arm.Length() * 0.5f;
+        var wall = new StaticBody3D { CollisionLayer = CollisionLayers.ConstructsMask };
+        wall.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = new Vector3(40, 40, 0.1f) } });
+        scene.Add(wall);
+        wall.GlobalTransform = new Transform3D(Basis.LookingAt(arm.Normalized(), Vector3.Up), eye + (arm.Normalized() * wallDistance));
+        await scene.WaitFrames(3);
+
+        // Inject a small authoritative correction towards the wall and let a render frame apply the presentation offset.
+        var before = player.PredictedFeet;
+        var snapshot = new Snapshot(2_000_001, new Tick(2_000_001), 0, player.ClientTick,
+            [new SnapshotFrame(FrameRef.Of(player.Planet), 0)],
+            [new EntityState(hello.YourEntity, (EntityStateFields)15, 0, 0, before + NumVector3.UnitZ * 0.2f,
+                player.BodyRotation, NumVector3.Zero, (byte)MovementMode.Walking)]);
+        player.OnFullSnapshot(snapshot);
+        player._PhysicsProcess(1d / 60);
+        player._Process(1d / 60);
+
+        // Physics: eye follows the corrected capsule, never the smoothed presentation.
+        var expectedEye = player.PredictedFeet + (Horyzont.Core.World.Terrain.TerrainMath.UpAt(player.PredictedFeet) * new GameRules().EyeHeight);
+        AssertThat(NumVector3.Distance(player.Eye, expectedEye)).IsLess(1e-4f);
+        // Camera: between the physical eye and the wall.
+        var camera = player.GetViewport().GetCamera3D();
+        var eyeNow = PlanetFrames.ToGodot(player.Planet, player.Eye);
+        var along = (camera.GlobalPosition - eyeNow).Dot(arm.Normalized());
+        AssertThat(along).IsLess(wallDistance);
+        player.OnDisconnected(Horyzont.Core.Protocol.DisconnectCode.Normal);
+        fixture.Composition.ServerNode.SetPhysicsProcess(true);
+        AssertThat(await fixture.StopAsync()).IsTrue();
     }
 
     [TestCase(Timeout = 60000)]

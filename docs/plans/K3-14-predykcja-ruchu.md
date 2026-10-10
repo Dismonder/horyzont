@@ -173,6 +173,7 @@ Fixture xUnit: `FakeTimeProvider`, `InMemoryTransport`, 60 Hz fizyki/20 Hz stan�
 - Cache SDK forka skopiowano z F:/dev/horyzont-k3-00/engine/nuget-local do ignorowanego engine/nuget-local; bez zmian konfiguracji i bez silnika.
 - wykonawca: Claude Sonnet 5.5 (kontynuacja po limicie Sol); naprawiono kompilację `MotionLinkTests` (`FirstSeq`), nazwy pól `_planet`/`_rules`. Fixture łącza używa idealnej kolizji sfery zamiast Godota; `max_jump` = 0, bo `Reconcile` zachowuje widoczną pozę z konstrukcji (próg 2 cm spełniony).
 - Krok 6 (integracja z prawdziwymi deltami K3-15) i `python tools/engine/build.py smoke` / gdUnit: NOT RUN (K3-15 poza bazą; polecenie zakazuje silnika).
+- Przegląd Opus (poprawki): test łącza mierzy teraz krok wygaszania na klatkę; przy błędach > 0,12 m przekraczał 2 cm/klatkę (do 12 cm), więc wygaszanie ma limit prędkości 1,2 m/s (czas = max(100 ms, błąd/1,2 m/s)). Odstępstwo od „100 ms” dla błędów > 12 cm; pytanie P1 do właściciela: czy zaakceptować dłuższe wygaszanie zamiast kroku > 2 cm. Próg 1 m/45° liczony od widocznej pozy po replay. Fixture startował na biegunie (osobliwość yaw dawała rotacje 180°); przeniesiony poza biegun. Zdalny kursor przez `RemoteMotionSampleAdapter`/`RemoteMotionPolicy`; `_slewAllowance` ≤ 1 tick; `MotionStatistics` raportuje bieżące opóźnienie. Test kamery przy ścianie napisany przez `LocalPlayer` (NOT RUN).
 - Zegar zdalny umieszczono w RemoteMotionPolicy; TrySample przyjmuje już opóźniony kursor, 100 ms odejmowane raz.
 
 ## Pułapki
