@@ -263,7 +263,7 @@ Pomocnicze w `tests/Horyzont.Testing`: `SurvivalContentFactory.CreateTest()` (pr
 - [x] C3. `WorldCreator`, `WorldLoader` (`item_types` z `GrowRegistries`, kontenery, `next_container_id`), `WorldLoadOptions.ItemTypeKeys`, `PersistenceWriter` (upsert/usuwanie kontenerów, meta), `TerrainSemanticsMeta` przez `OperationTerrain`.
 - [x] C4. `Horyzont.Server`: `ServerRuntimeOptions.Content`/`ItemTypeKeys`, `ServerSimulation` z treścią, `IServerClientMessageHandler` + `ServerRuntime.AddClientMessageHandler`, `GameServerHooks.OnClientMessage` przekazuje 42/43, `InventoryService` (D6, D20; delty z `ServerSimulation.Applied`, logi `[LoggerMessage]` z `PlayerId` i `OpId`).
 - [x] C5. `game/`: `VoxelTerrainService.MeasureSphere` (bez alokacji, wątek główny), `TerrainReplay` przez `OperationTerrain`, `SurvivalContentLoader`, wpięcie w `GameComposition` (treść do `ServerRuntimeOptions`, `InventoryService.Register(server)`).
-- [ ] C6. Sprawdzenie (z `dotnet test game` i `smoke`), commit(y): `feat(persistence): add the survival migration and container storage`, `feat(server): create player containers and replicate them`.
+- [x] C6. Sprawdzenie (z `dotnet test game` i `smoke`), commit(y): `feat(persistence): add the survival migration and container storage`, `feat(server): create player containers and replicate them`.
 
 ### Etap D — klient (Sonnet 5.5; wygląd ogląda Dismond)
 
@@ -274,7 +274,7 @@ Pomocnicze w `tests/Horyzont.Testing`: `SurvivalContentFactory.CreateTest()` (pr
 - [x] D5. `HotbarHud` (dół ekranu, 10 slotów 56 px, numery 1–0, nazwa wybranego przedmiotu nad paskiem), `InventoryScreen` (środek: siatka plecaka 8 × 5, pod nią pasek, panel wyposażenia wyszarzony z napisem „wkrótce”, podpowiedź z nazwą, kategorią, liczbą i limitem stosu), `PickupToasts` (prawa strona, „+12 Kamień”, znikanie po 3 s), ostrzeżenie „Ekwipunek pełny”; `ToolHud` pokazuje licznik surowca zasypywania.
 - [x] D6. `game/locale/items.csv` (`ITEM_CORE_STONE,Stone,Kamień` itd., `INV_*` dla etykiet), import tłumaczeń i wpis w `internationalization/locale/translations`; podpowiedzi narzędzi w `tools.csv` (nowe skróty).
 - [x] D7. `InventoryNode` w `/Root/Client` dla każdego klienta z postacią; narzędzia (tylko host i solo, jak K2-13) czytają wybrany slot.
-- [ ] D8. Test ręczny solo z zrzutami ekranu, sprawdzenie, commit(y): `feat(client): add the hotbar, the inventory screen and pickup toasts`. **Częściowo:** test ręczny solo i zrzuty zrobione (`docs/reports/k6-29w/`), commity zrobione; zostają testy Godot (GODOT TESTS PENDING, patrz Etap D w uwagach).
+- [x] D8. Test ręczny solo z zrzutami ekranu, sprawdzenie, commit(y): `feat(client): add the hotbar, the inventory screen and pickup toasts`. Test ręczny solo i zrzuty w `docs/reports/k6-29w/`. Testy Godot uruchomione 2026-10-10 po 03:30 UTC (wolny runner): gdUnit 153/153 (po poprawce czasu w `InventoryUiTests.Toasts_AggregateTheYield_AndWarnWhenFull`: test zgłaszał kopanie w tej samej milisekundzie co przyrost, a ostrzeżenie słusznie wymaga 250 ms bez przyrostu), `--engine-tests` passed=18 failed=0, `--smoke` BOOT OK, `server_smoke.py` SERVER SMOKE OK.
 
 ### Sprawdzenie na końcu każdego etapu
 

@@ -129,6 +129,8 @@ public class InventoryUiTests
         AssertThat(toasts.Texts.Count).IsEqual(1);
         AssertThat(toasts.Texts[0]).IsEqual("+12 Stone");
 
+        // A later dig into a full inventory: no gain follows within the grace time, so the warning appears.
+        rig.Now = 2000;
         rig.Node.Feed.OnDigAccepted(rig.Now, inventoryFull: true);
         rig.Now += 400;
         await scene.WaitFrames(2);
