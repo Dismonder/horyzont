@@ -1,0 +1,289 @@
+# K5-22 · Wiele terenów i przejście orbita–powierzchnia
+
+| | |
+| --- | --- |
+| Prowadzi | Opus 5.5 (Claude Code, `claude --model opus`) |
+| Testy akceptacyjne | Opus 5.5 (krok 1 — teren pod przesuniętym węzłem planety, wielokrotna aktywacja i wygaszanie, próbnik powierzchni z generatora — przed jakimkolwiek kodem produkcyjnym) |
+| Przegląd | GPT-6.1 Sol (ZASADY pkt 9: pakiet Opus → drugi przegląd Sol). Pakiet nie planuje zmian w `src/Horyzont.Core/`; każda wymuszona zmiana Core → przegląd Opus 5.5 w świeżej sesji (ZASADY pkt 3) |
+| Zależy od | K5-21 scalony na `main` (spec 02:247). Pośrednio: K5-20 (`FrameNodes`, `FrameGraph`, `ClientFrameGraph`), K3-16 (replikacja terenu, `TerrainView` 25), K4-19 (`coop_soak.py`, `BotRunner`, komenda `stats`, raport benchmarku). **Nie** zależy od K5-23/K5-24: zejście w testach jest skryptowe (kamera/sonda), statki tylko jako budowle `Ship` z `TestShips` (K5-20) |
+| Gałąź | `pakiet/k5-22-tereny` (worktree `F:/dev/horyzont-k5-22`) |
+| Kamień milowy | K5 Kosmos; odbiór wg spec 02:247: „zejście z 8 km bez dziur; cztery tereny na serwerze w budżecie ticku” |
+| Równolegle | K5-24, K5-27 (wszystkie po K5-21; brak krawędzi startu); punkty styku w sekcji „Kody i punkty styku” |
+
+**Cel:** zastąpić strażnika „jeden teren” z K5-21 aktywacją terenów na żądanie — serwer trzyma teren CLIPBOX (sama kolizja) tylko dla planet zajętych przez graczy i wygasza go 60 s po wyjściu ostatniego, klient trzyma aktywny teren tylko planety, do której się zbliża (od 4 R), a pozostałe ciała rysuje jako impostory z tego samego generatora, z przenikaniem impostor–woksele na wysokości 1–2 R i teksturowaniem w przestrzeni planety — tak, żeby zejście z 8 km nie miało dziur ani luk w kolizji, a serwer z 8 graczami na czterech ciałach trzymał tick średnio ≤ 8 ms.
+
+## Kontekst
+
+- `docs/ZASADY.md`: pkt 2 (wątki robocze nie czytają `WorldState`; `ITerrainService` tylko na wątku głównym; zero mutowalnego stanu statycznego; jeden composition root), 3 (`game/src/Planet/Generators/` chroniony — generator się nie zmienia; `TerrainEditSemantics`/`voxel.ref` chronione; zamrożony korpus złoty), 6 (gorące ścieżki bez alokacji), 7 (`[LoggerMessage]`, kolejność zamykania), 8 (kategorie; testy silnika mierzą klatki — X11).
+- `docs/spec/02-kosmos.md`: :129–133 (wiele planet: CLIPBOX na serwerze, jeden widz na gracza, wygaszanie 60 s, najwyżej 4 tereny; klient: aktywny teren tylko planety strefy, wczytywanie od 4 R; impostory 64×64 na ścianę sześcianu z tego samego generatora, materiał w przestrzeni planety; przenikanie na wysokości 1–2 R; trójplanarne zawsze w przestrzeni planety), :207–208 (teren niegotowy przy wejściu statku w strefę; kolizja niegotowa przy schodzeniu), :211 (przekroczenie budżetu ticku: rzadsze aktualizacje terenu, log czasu każdego terenu), :220–223 (testy: zejście z 8 km w 20 próbach, 8 botów na 4 planetach, trójplanarne na C, zamiana impostora), :236 (8 ms przy 8 graczach), :247 (odbiór), :261 (plan awaryjny: mniejsze promienie i odległości — dane K5-21).
+- `docs/plans/README.md`: X3 (wspólny budżet niezawodny 27 000 B/s), X4/D4, X10 (integruje scalany później), X11 (pomiary z silnikiem).
+- `docs/plans/K5-20-ramy-odniesienia.md`: decyzje 1 (świat Godota = rama układu, bez pływającego początku), 4 (`FrameGraph.TryGetRegion`), 12 (`ClientFrameGraph`), 16 („węzeł terenu planety domowej zostaje, K5-22 przeniesie tereny pod węzły planet”), 17 (`PlanetFrames` przyjmuje przestrzeń lokalną węzła planety, `FrameNodes.ToPlanetLocal`); test `FarFromOrigin_VoxelTerrainAt110km_*` (wykonalność terenu daleko od początku).
+- `docs/plans/K5-21-uklad-gwiezdny.md`: decyzje 11 (strażnicy jednego terenu z komentarzem `// K5-22`), 15 (`StarSystemModel`, `ClientStarSystem`), 16 (`ServerZoneTransitions`, histereza 3,0 R / 3,2 R), 10 (`WorldState.HomePlanet`, `hello.Planets[0]` = domowa).
+- `docs/plans/K4-19-odbior.md`: `coop_soak.py --profile tick` (8 botów, maska 6 rdzeni, średni tick ≤ 8 ms), `BenchmarkReport` (`orbitToSurface` mierzy tylko biegacz z renderem), nocny job `bench`, `check_budgets.py`.
+- `docs/plans/K5-27-mapa-i-nawigacja.md` decyzja 12 (`PlanetMapSampler`: bisekcja SDF generatora wzdłuż promienia) — wspólny próbnik powierzchni (punkty styku).
+
+Kod, na którym pakiet buduje (zweryfikowany w `F:/dev/horyzont-k3-16` — gałąź K3-16 — oraz `F:/dev/horyzont-k3-15`/`F:/dev/horyzont-k4-19`; nazwy K5-20/K5-21 z ich planów; krok 0 potwierdza na `main`):
+
+| Co | Gdzie |
+| --- | --- |
+| `VoxelServerTerrainFactory.Create`: sklep bloków, `ServerTerrainBlocks`, `VoxelTerrainService`, `DerivedTerrain`, potem **węzeł dla każdej planety** z `state.Planets.All` (K5-21 ogranicza do domowej) | `game/src/Server/VoxelServerTerrainFactory.cs:75-127` |
+| `VoxelTerrainService.AddPlanet(planet, configured, derived)` (węzeł spoza drzewa, bez strumienia; nowy `TerrainStream`), `TryGetPlanet`, `IsAreaLoaded`, `LoadAreaBlocking` (obszar musi być wcześniej wczytany), `Raycast`, `ApplyEdit`; **brak `RemovePlanet`** | `game/src/Terrain/VoxelTerrainService.cs:91-214` |
+| `PlanetTerrain` (węzeł), `TerrainStream`, `DerivedTerrain`/`DerivedLodRebuilder` (`ReloadRequested += node.ReloadFromStream`) | `game/src/Terrain/` |
+| `PlanetTerrainFactory.Create`: `StreamingSystem = Clipbox`, `LodDistance = 96`, `MaxViewDistance = 16384`, kolizja tylko LOD 0; `PlanetTerrainLayout.HalfExtentMeters = R + MaxRelief + 64` | `game/src/Planet/PlanetTerrainFactory.cs:17-58`, `PlanetTerrainLayout.cs:17-41` |
+| `PlanetTerrainOptions.Server/Client/Preview` | `game/src/Planet/PlanetTerrainOptions.cs` |
+| Widz serwera: `VoxelViewer` 64 m (kolizja, bez wizualiów) na każdym ciele gracza | `game/src/Server/Characters/ServerCharacters.cs:32`, `:148` |
+| Widze klienta: wizualny `ViewDistanceFor(altitude)` 2048–16384 m, kolizyjny 64 m tylko u zdalnego klienta (host dzieli kolizję serwera) | `game/src/Client/Character/LocalPlayer.cs:526-550`, `:598-620` |
+| `OwnTerrainProvider.Prepare(hello)` tworzy węzeł dla każdej planety z `hello.Planets` (K5-21: tylko `[0]`); `IClientTerrainProvider`; `SharedTerrainProvider` (host: jedna instancja terenu) | `game/src/Client/OwnTerrainProvider.cs:105-150`, `IClientTerrainProvider.cs`, `SharedTerrainProvider.cs` |
+| K3-16 serwer: `ServerTerrainReplicator` (transfery i raporty per planeta; `HandleView` odrzuca widok „innej planety niż postać” i widza dalej niż `ViewerTolerance` od stóp) | `src/Horyzont.Server/Terrain/ServerTerrainReplicator.cs:356-409`, `TerrainReplicationPolicy.cs` |
+| `ITerrainReplicationHost.TryGetFeet(PlayerId, out PlanetId, out Vector3)`, implementacja `Host` | `src/Horyzont.Server/Terrain/ITerrainReplicationHost.cs:21-24`, `game/src/Server/Terrain/ServerTerrainReplicatorBinder.cs:112-118` |
+| K3-16 komunikaty z planetą: `TerrainView(Planet, ViewSeq, …)` 25, `TerrainSync(…, Planet, …)` 24, `TerrainCacheReport`, `TerrainChecksums` | `src/Horyzont.Core/Protocol/Messages/` |
+| K3-16 klient: `ClientTerrainReplicator`, `ITerrainViewerSource` (`LocalPlayer.TryGetViewers`) | `game/src/Client/Terrain/ClientTerrainReplicator.cs`, `game/src/Client/Character/LocalPlayer.cs:92-105` |
+| Powtórka dziennika terenu: `TerrainReplay` + `TerrainAreaLoader` (tymczasowe widze) | `game/src/Terrain/TerrainReplay.cs`, `TerrainAreaLoader.cs` |
+| `PlanetGeneratorV1.Create(planet)`: szum próbkowany na kuli nominalnej (wysokość = funkcja kierunku, ±300 m), jaskinie tylko ≥ 6 m pod powierzchnią, SDF = `r − (R + h)` nad powierzchnią; **chroniony** | `game/src/Planet/Generators/PlanetGeneratorV1.cs:48-112` |
+| Materiał terenu (shader trójplanarny) | `game/src/Planet/Rendering/PlanetTerrainMaterial.cs` |
+| `BenchmarkReport.Run` (bez grafiki; `orbitToSurface` pominięty), `coop_soak.py`, `check_budgets.py`, `TickTimeRecorder`, komenda `stats` | `game/src/Planet/Diagnostics/BenchmarkReport.cs:14-27`, `tools/coop/coop_soak.py`, `tools/bench/check_budgets.py`, `src/Horyzont.Server/Diagnostics/TickTimeRecorder.cs` |
+| `SpawnLocator` (miejsce startu na planecie) | `game/src/Server/Characters/SpawnLocator.cs` |
+| K5-20: `FrameNodes` (`Planet_<id>`), `FrameGraph`, `ServerFrameHistory`, `ClientFrameGraph`, `GodotFrames`, komenda `frame` | `game/src/Shared/Frames/`, `src/Horyzont.Core/Frames/`, `src/Horyzont.Server/Frames/`, `src/Horyzont.Client/Frames/` |
+| K5-21: `StarSystemModel` (`TryFindZone`, `BodyInfo`), `ClientStarSystem`, `WorldState.HomePlanet`, strażnicy `// K5-22`, `GameComposition.Space.cs` | `src/Horyzont.Core/Space/`, `src/Horyzont.Client/Space/`, `game/src/Boot/` |
+
+## Zakres
+
+1. **Serwer — aktywacja terenów:** czysta polityka `PlanetActivityPolicy` (zapotrzebowanie z regionów graczy, poruszających się statków i dzierżaw; wygaszanie 60 s; planeta domowa zawsze aktywna), `ServerPlanetTerrains` (gra) stosujący ją przez `VoxelTerrainService.AddPlanet` i nowe `RemovePlanet`; dzierżawy dla powtórki dziennika i innych pakietów; usunięcie strażnika K5-21 z `VoxelServerTerrainFactory`.
+2. **Serwer — statki i gotowość:** widz kolizyjny dla budowli `Ship` w ramie aktywnej planety (z wyprzedzeniem zależnym od prędkości), interfejs gotowości `IPlanetTerrainReadiness` (`Inactive`/`Streaming`/`Ready`) dla K5-24, statystyki czasu każdego terenu i regulator przy przekroczeniu budżetu ticku.
+3. **K3-16:** widok terenu planety innej niż region gracza dozwolony do 4,4 R (`ITerrainReplicationHost` liczy stopy w ramie żądanej planety przez `FrameGraph`); pasażer statku ma widza kolizyjnego w środku statku.
+4. **Klient:** `ClientTerrainSelection` (czysta logika: aktywny teren od 4 R, zwolnienie powyżej 4,4 R), `ClientPlanetTerrains` (gra: tworzenie i zwalnianie węzłów na żądanie, widze przy kamerze, przełączanie `TerrainView`), host dzieli węzeł z serwerem (dzierżawy po obu stronach), węzły terenów pod węzłami planet `FrameNodes`.
+5. **Impostory i przejście:** `PlanetSurfaceSampler` (wysokość i materiał powierzchni z generatora, bez zmiany generatora), `PlanetImpostorMeshBuilder` (sfera-sześcian 6 × 64 × 64), `PlanetImpostor` + materiał w przestrzeni planety, `ImpostorBlend` (przenikanie 1–2 R, dopełniające się ditheringi), materiał terenu trójplanarny w przestrzeni węzła planety.
+6. **Pomiary i narzędzia:** komenda deweloperska `place`, profil `planets4` w `coop_soak.py`, test zejścia z 8 km (20 prób), wpisy raportu benchmarku i nocnego joba, skrypt różnic klatek do testów ręcznych.
+
+## Poza zakresem
+
+- Model lotu, egzekwowanie limitu prędkości, „nie niżej niż 2 R” i zawis przy niegotowej kolizji (K5-24 — konsumuje `IPlanetTerrainReadiness` przez swoją bramkę `IShipTerrainGate`; adapter pisze pakiet scalany później). Replikacja statków i zasięg w ramie układu (K5-26).
+- Mapa planety (K5-27; jej `PlanetMapSampler` może używać `PlanetSurfaceSampler` — punkty styku). Atmosfera, chmury, efekty wejścia w atmosferę, grafika ciał (K8-50).
+- Zmiana generatora albo profili (`game/src/Planet/Generators/` chroniony), edycje terenu widoczne na impostorach, LOD impostora (jedna siatka na ciało), obrót planet.
+- Nowe kody operacji, intencji, odmów, komunikatów, blobów i migracje: **żadnych**.
+
+## Fazy i zależność od niescalonych pakietów
+
+| Faza | Kroki | Wymaga scalonych | Co daje |
+| --- | --- | --- | --- |
+| A | 0–3 | K5-21 | ryzyka silnika najpierw; polityka aktywacji; aktywacja i wygaszanie na serwerze; powtórka z dzierżawą |
+| B | 4–5 | K5-21 | widze statków, gotowość, regulator ticku; K3-16: widok innej planety, pasażer |
+| C | 6–8 | K5-21 | aktywny teren klienta od 4 R, impostory, przenikanie, trójplanarne w przestrzeni planety |
+| D | 9–11 | K5-21 (+ K4-19 na `main`) | zejście z 8 km, 8 botów na 4 ciałach, testy ręczne |
+| E | 12 | — | odbiór, dokumentacja, PR |
+
+## Mapa kryteriów → dowód
+
+| # | Kryterium (źródło) | Dowód | Kategoria / job | Faza |
+| --- | --- | --- | --- | --- |
+| 1 | Zejście z 8 km przy τ = 8 s: brak luk w kolizji przy przyziemieniu w 20 próbach (02:220, :247) | `Descent8km_TwentyTrials_NoCollisionGapsAtTouchdown` (księżyc i planeta C, 10 + 10 prób) | silnik; 3 próby w jobie `game`, 20 w nocnym `bench` | D |
+| 2 | Zejście z 8 km: brak dziur w terenie (02:220) | wpis `descent8km` w raporcie benchmarku z renderem (promienie z kamery trafiają w siatkę, udział 100 %) | nocny `bench` na runnerze z GPU (P5) | D |
+| 3 | Cztery tereny na serwerze w budżecie ticku; 8 botów na 4 planetach: RAM, CPU, czas budowy kolizji (02:221, :236, :247) | `coop_soak.py --profile planets4` (8 botów, 2 na ciało, 10 min, maska 6 rdzeni): średni tick ≤ 8 ms; raport RAM, p99, czas terenu na ciało | nocny `bench` (twardy próg 8 ms) | D |
+| 4 | Serwer trzyma teren tylko zajętych planet, wygasza 60 s po wyjściu ostatniego (02:131) | `PlanetActivityPolicy_*` (8 testów) + `ServerPlanetTerrains_Activation_*`/`…_Deactivation_*` | domyślna + silnik | A |
+| 5 | Wejście w strefę uruchamia wczytywanie; gotowość kolizji widoczna dla lotu (02:207–208) | `ServerPlanetTerrains_Readiness_InactiveStreamingReady`, `PlanetActivityPolicy_MovingShipDemands_ParkedDoesNot` | silnik + domyślna | B |
+| 6 | Klient: aktywny teren tylko planety strefy, wczytywanie od 4 R (02:132) | `ClientTerrainSelection_*` + `ClientPlanetTerrains_ApproachMoon_ActivatesAt4R_ReleasesHome` | domyślna + silnik | C |
+| 7 | Impostory z tego samego generatora, 64 × 64 na ścianę (02:132) | `PlanetSurfaceSampler_FastPathMatchesBisection_1000Directions`, `PlanetImpostorMesh_64PerFace_HeightsMatchSampler` | silnik | A, C |
+| 8 | Przenikanie impostor–woksele na wysokości 1–2 R bez widocznego skoku (02:133, :223) | `ImpostorBlend_*` + `Manual_ImpostorTransition_NoVisibleJump` (metryka różnicy klatek ze skryptu) | domyślna + Manual | C, D |
+| 9 | Trójplanarne zawsze w przestrzeni planety; planeta C bez migotania (02:133, :222) | `PlanetTerrainMaterial_TriplanarUsesNodeLocalCoordinates` + `Manual_TriplanarPlanetC_NoFlicker` | silnik + Manual | C, D |
+| 10 | Przekroczenie budżetu ticku: rzadsze aktualizacje terenu, log czasu każdego terenu (02:211) | `TerrainTickGovernor_OverBudget_ThrottlesSoloPlanets_RestoresBelow` + `…_LogsEveryTerrain` | domyślna | B |
+| 11 | Zapis i powtórka: edycje na nieaktywnym ciele po restarcie (02:235) | `Replay_EditsOnInactivePlanet_ActivatesWithLeaseAndReplays` (ten sam skrót) | silnik | A |
+
+## Projekt
+
+### Decyzje
+
+1. **Tereny pod węzłami planet.** Węzeł `PlanetTerrain` każdego ciała jest dzieckiem `Planet_<id>` z `FrameNodes` (K5-20) z transformacją lokalną = tożsamość, więc przestrzeń lokalna węzła terenu = rama planety. Wszystkie wejścia API terenu (`IsAreaLoaded`, `LoadAreaBlocking`, `Raycast`, `ApplyEdit`, `TrySampleSolid` z K5-23, widze `TerrainAreaLoader`) przyjmują współrzędne ramy planety; `VoxelViewer` to `Node3D` z pozycją globalną, a `VoxelLodTerrain` sam przelicza ją do swojej przestrzeni. Krok 1 sprawdza to dla węzła przesuniętego o 108 km (księżyc/C): każde API daje ten sam wynik co przy węźle w początku (audyt listy wywołań w PR). Planeta domowa stoi w tożsamości, więc jej zachowanie jest bitowo to samo.
+2. **Polityka aktywacji serwera** (`PlanetActivityPolicy`, `src/Horyzont.Server/Space/`, czysta, bez alokacji po rozgrzaniu). Co 30 ticków (0,5 s) zbiera zapotrzebowanie: (a) każdy gracz w grze → `FrameGraph.TryGetRegion` własnej ramy; region `Planet(p)` → zapotrzebowanie na `p` (pasażer statku dziedziczy region statku); (b) budowla `Mode == Ship` z rodzicem `Planet(p)`, której poza w świecie z `ServerFrameHistory` zmieniła się o > 0,5 m w ostatnich 30 tickach (lecący statek uruchamia wczytywanie przy wejściu w strefę — spec :207; zaparkowany nie); (c) dzierżawy (decyzja 4); (d) planeta domowa — zawsze (P2). Planeta bez zapotrzebowania gaśnie po `LingerTicks = 3600` (60 s przy 60 Hz); powrót zapotrzebowania w tym czasie kasuje odliczanie. Wynik: listy `Activate`/`Deactivate` posortowane po id (determinizm, test). Czas = ticki serwera, nie zegar.
+3. **`ServerPlanetTerrains`** (`game/src/Server/Terrain/ServerPlanetTerrains.cs`, uczestnik ticka fazy `Compose` — po ruchu statków i postaci, więc widzi pozy z bieżącego ticku): stosuje politykę. Aktywacja: `PlanetTerrainFactory.Create` → `VoxelTerrainService.AddPlanet` → dodanie pod `Planet_<id>`; generatory (`PlanetGeneratorV1.Create`, kompilacja grafu) tworzone **raz przy starcie** dla wszystkich ciał i trzymane (aktywacja nie kompiluje grafu na wątku głównym w locie); `DerivedTerrain.Add` raz na ciało. Wygaszenie: nowe `VoxelTerrainService.RemovePlanet(PlanetId)` (wątek główny; odmowa przy aktywnej powtórce albo dzierżawie; odpina `ReloadRequested`, usuwa węzeł z drzewa, `Stream.Close()`, `QueueFree`); dane edycji żyją w `ServerTerrainBlocks`, więc wygaszenie nie traci niczego (test). Fabryka przestaje tworzyć węzły planet (zostaje sklep, bufor, usługa, `DerivedTerrain`); strażnik `// K5-22` z K5-21 znika. Teren nieaktywnej planety: `IsAreaLoaded` → `false`, więc intencje terenu → `AreaNotLoaded` (jak dziś dla niewczytanego obszaru).
+4. **Dzierżawy.** `ServerPlanetTerrains.Acquire(PlanetId planet, PlanetLeaseReason reason) → PlanetTerrainLease : IDisposable` (licznik per planeta; powód do logu: `Replay`, `Settle`, `Dev`, `External`). Używają: powtórka dziennika (`TerrainReplay` bierze dzierżawę każdej planety z edycjami w ogonie, przed `TerrainAreaLoader`), komenda `place`, K5-24 (odstawienie statków po wczytaniu, autolądowanie bez graczy — przez adapter bramki). Zwolnienie dzierżawy uruchamia zwykłe odliczanie 60 s.
+5. **Widze statków.** Dla każdej budowli `Ship` w ramie aktywnej planety jeden `VoxelViewer` (kolizja, bez wizualiów) w środku jej sfery obejmującej (z `FrameGraph`), `ViewDistance = promień + clamp(2 s · prędkość, 64, 512)` m (prędkość z `ServerFrameHistory`); aktualizacja pozycji i zasięgu co 10 ticków, usunięcie, gdy statek opuści ramę planety albo przejdzie w `Static`. Postacie mają swoje widze (K2-11) — pasażer przyczepiony (K5-20) nie dostaje osobnego, bo jego ciało nie koliduje.
+6. **Gotowość** (`IPlanetTerrainReadiness`, `src/Horyzont.Server/Space/`; implementuje `ServerPlanetTerrains`): `PlanetTerrainReadiness Get(PlanetId planet, Vector3 localCenter, float radius)` → `Inactive` (brak węzła; zapytanie samo nie aktywuje — aktywuje zapotrzebowanie z decyzji 2), `Streaming` (węzeł jest, obszar niewczytany), `Ready` (`IsAreaLoaded`). K5-24 mapuje: `Inactive`/`Streaming` daleko od powierzchni → „nie niżej niż 2 R”, `Streaming` blisko → zawis. Interfejs w czystym .NET, żeby K5-24 testował bez silnika.
+7. **Regulator ticku** (`TerrainTickGovernor`, `src/Horyzont.Server/Space/`, czysty; dane z `TickTimeRecorder` K4-19): średnia z 5 s > 8 ms → planety z dokładnie jednym graczem przechodzą w tryb „rzadkich aktualizacji” (widz odczepiony od ciała i przestawiany co 4. tick zamiast podążać co tick); powrót, gdy średnia < 6 ms przez 10 s. Co 10 s przekroczenia jeden wpis `[LoggerMessage]` na teren: planeta, liczba widzów, bloki w pamięci, czas aktualizacji terenu (statystyki `VoxelLodTerrain`). Wartości w `TerrainTickGovernorOptions` (P6).
+8. **K3-16: widok innej planety.** `ITerrainReplicationHost.TryGetFeet` zmienia sygnaturę na `bool TryGetFeet(PlayerId player, PlanetId planet, out Vector3 feetInPlanet)`: poza własnego bytu w świecie (`FrameGraph`, także pasażer w ramie statku) wyrażona w ramie żądanej planety, `true` gdy odległość od środka ≤ `4,4 R`. `HandleView`: zamiast „inna planeta niż postać” → odrzucenie „za daleko od planety” (gdy `false` przy istniejącym bycie); brak bytu → jak dziś (bez sprawdzenia pozycji). Tolerancja widza kolizyjnego: `ViewerTolerance` + promień statku, gdy gracz jest w ramie budowli `Ship` (widz kolizyjny pasażera stoi w środku statku — decyzja 10). Zmiana tylko w `src/Horyzont.Server/Terrain/` i `game/src/Server/Terrain/` (nie Core).
+9. **Wybór terenu klienta** (`ClientTerrainSelection`, `src/Horyzont.Client/Space/`, czysta): wejście — poza kamery w świecie (`ClientFrameGraph`, render tick) i ciała z `ClientStarSystem` (przed `StarSystemState`: tylko `hello.Planets[0]`); aktywne ciało = najbliższe względem `r/R`, gdy `r ≤ 4 R`; zwolnienie, gdy `r > 4,4 R` albo inne ciało wygrało; najwyżej jedno aktywne + jedno wygaszane (10 s na dokończenie przenikania). Bez alokacji.
+10. **`ClientPlanetTerrains`** (`game/src/Client/Terrain/ClientPlanetTerrains.cs`): `OwnTerrainProvider.Prepare` przestaje tworzyć węzły (tylko rejestruje parametry planet i pamięć podręczną); węzeł powstaje przy aktywacji i ginie przy zwolnieniu (pamięć podręczna bloków K3-16 na dysku zostaje, więc powrót jest szybki). Widze klienta przechodzą z `LocalPlayer` do `ClientPlanetTerrains`: wizualny przy kamerze (`ViewDistanceFor` rozszerzone do wysokości 3 R → 16 384 m), kolizyjny (tylko zdalny klient) przy stopach albo — w ramie statku — w środku statku z zasięgiem promień + 64 m; `LocalPlayer.TryGetViewers` (`ITerrainViewerSource`) deleguje (X10: `LocalPlayer.cs` należy do K3-14; zmiana ograniczona do usunięcia tworzenia widzów i delegacji). `ClientTerrainReplicator` wysyła `TerrainView` aktywnej planety; bez aktywnej — nic. **Host:** `SharedTerrainProvider` trzyma węzeł, gdy chce go serwer **albo** klient (dzierżawa klienta); zwolnienie przez klienta usuwa tylko jego widze.
+11. **Próbnik powierzchni** (`PlanetSurfaceSampler`, `game/src/Planet/Surface/`): na własnej instancji grafu `PlanetGeneratorV1.Create(planet)` (bez zmiany generatora). Wysokość w kierunku `d`: szybka ścieżka — jedna próbka SDF w `r_s = R + MaxReliefMeters + 2` (nad powierzchnią jaskinie są wygaszone, więc SDF = `r − R − h`) → `h = r_s − R − sdf`; krok 1 porównuje ją z bisekcją w [R − 300; R + 300] (do 0,25 m) na 1000 kierunkach; niezgodność (np. przez `SdfClipThreshold`) → zawsze bisekcja (≤ 12 próbek). Materiał: kanał tekstury w `R + h − 1`. Wątek: budowa na `WorkerThreadPool` z instancją grafu tylko tego zadania (P8: krok 1 sprawdza bezpieczeństwo `generate_single` poza wątkiem głównym; w razie problemu — budowa porcjami na wątku głównym w ramach 2 ms na klatkę).
+12. **Impostory.** `PlanetImpostorMeshBuilder`: sfera-sześcian, 6 ścian × 64 × 64 czworokąty (65 × 65 wierzchołków na ścianę, 49 152 trójkąty), wierzchołek = `d · (R + h(d))` w ramie planety (lokalnie względem węzła — nigdy w świecie), normalne z sąsiadów, kolor wierzchołka z palety `TerrainMaterials` (średni kolor tekstury). `PlanetImpostor` (`MeshInstance3D` pod `Planet_<id>`, bez cieni, bez kolizji) z `PlanetImpostorMaterial` (shader: kolor wierzchołka, Lambert z kierunkiem słońca z `SunLight`, współrzędne wyłącznie modelu). Budowa dla wszystkich ciał po `StarSystemState` w tle, wynik w pamięci per (profil, ziarno, R); do gotowości impostor ukryty.
+13. **Przenikanie** (`ImpostorBlend`, `src/Horyzont.Client/Space/`, czysta): wysokość `h = r − R` kamery nad aktywnym ciałem; `h ≥ 2 R` → impostor 1, teren 0; `h ≤ R` → impostor 0, teren 1; pomiędzy `smoothstep`. Oba materiały dostają ten sam uniform `blend` i **dopełniające się** odrzucanie pikseli wg wzoru Bayera 4 × 4 w przestrzeni ekranu (piksel rysuje impostor albo teren, nigdy oba) — bez sortowania przezroczystości i bez z-fightingu. Ciała nieaktywne zawsze jako impostor. Teren wczytywany od 4 R (r) ma siatki przed `h = 2 R` (r = 3 R).
+14. **Trójplanarne w przestrzeni planety.** `PlanetTerrainMaterial`: współrzędne trójplanarne i normalne z przestrzeni modelu (wierzchołek przed `MODEL_MATRIX`, przekazany jako `varying`), nie ze świata ani widoku. Planeta domowa w tożsamości → obraz bez zmian (test silnika porównuje zrzut z wersją sprzed zmiany na scenie testowej, jeśli silnik testów renderuje; inaczej test źródła shadera).
+15. **Komenda `place <player> <planet:id> [lat lon]`** (tylko `--dev`): dzierżawa planety, czekanie na obszar (`SpawnLocator`), potem `EntityReparentOp` z pozą startu na tej planecie przez `ServerSimulation.ApplyServerOperation` (operacja serwera w dzienniku). Linia odpowiedzi `PLACE player=… planet=… ok|fail reason=…`. Używa jej profil `planets4` i testy ręczne.
+16. **Protokół.** Brak nowych kodów i zmian formatu; zmienia się reguła przyjęcia `TerrainView` (widok planety innej niż region gracza) — klient K5-22 z serwerem sprzed K5-22 dostawałby ciche odmowy, więc `ProtocolVersion` = (main przy scaleniu) + 1 (D4, P1).
+
+### Pliki
+
+```
+src/Horyzont.Server/Space/            PlanetActivityPolicy, PlanetActivityOptions, IPlanetTerrainReadiness, PlanetTerrainReadiness,
+                                      PlanetLeaseReason, TerrainTickGovernor, TerrainTickGovernorOptions, PlanetTerrainLog
+src/Horyzont.Server/Terrain/          ITerrainReplicationHost (sygnatura TryGetFeet), ServerTerrainReplicator (HandleView)
+src/Horyzont.Client/Space/            ClientTerrainSelection, ImpostorBlend
+src/Horyzont.Core/Protocol/ProtocolConstants.cs     ProtocolVersion (D4) — jedyna linia w Core
+game/src/Terrain/VoxelTerrainService.cs             + RemovePlanet
+game/src/Server/VoxelServerTerrainFactory.cs         bez węzłów planet; generatory raz przy starcie
+game/src/Server/Terrain/ServerPlanetTerrains.cs, ServerShipViewers.cs, ServerTerrainReplicatorBinder.cs (Host)
+game/src/Terrain/TerrainReplay.cs                    dzierżawy planet z ogona
+game/src/Client/OwnTerrainProvider.cs, SharedTerrainProvider.cs, Terrain/ClientPlanetTerrains.cs, Terrain/ClientTerrainReplicator.cs
+game/src/Client/Character/LocalPlayer.cs             widze → ClientPlanetTerrains (delegacja ITerrainViewerSource)
+game/src/Planet/Surface/PlanetSurfaceSampler.cs, game/src/Planet/Impostors/ PlanetImpostorMeshBuilder, PlanetImpostor, PlanetImpostorMaterial
+game/src/Planet/Rendering/PlanetTerrainMaterial.cs   trójplanarne w przestrzeni modelu + uniform blend
+game/src/Server/Console (komenda place; plik wg kroku 0), game/src/Boot/GameComposition.Planets.cs (nowy partial)
+game/src/Planet/Diagnostics/BenchmarkReport.cs       wpis descent8km (tryb z renderem)
+tools/coop/coop_soak.py (profil planets4), tools/space/frame_diff.py (+ --self-test), .github/workflows/nightly.yml (bench)
+tests/Horyzont.Server.Tests/Space/   PlanetActivityPolicyTests, TerrainTickGovernorTests
+tests/Horyzont.Server.Tests/Terrain/ TerrainViewOtherPlanetTests
+tests/Horyzont.Client.Tests/Space/   ClientTerrainSelectionTests, ImpostorBlendTests
+game/tests/Terrain/MultiPlanetTerrainTests.cs, game/tests/Server/ServerPlanetTerrainsTests.cs,
+game/tests/Planet/PlanetSurfaceSamplerTests.cs, PlanetImpostorTests.cs, PlanetTerrainMaterialTests.cs, game/tests/Space/DescentTests.cs
+```
+
+## Testy akceptacyjne (napisz najpierw)
+
+| Test | Plik | Kategoria | Faza | Co sprawdza |
+| --- | --- | --- | --- | --- |
+| `PlanetTerrain_NodeAt108km_ApisUsePlanetLocalCoordinates` | `game/tests/Terrain/MultiPlanetTerrainTests.cs` | silnik | A (krok 1) | węzeł pod `Planet_<id>` w (108 000, 0, 0): `IsAreaLoaded`, `Raycast`, `ApplyEdit`, `TrySampleSolid` w ramie planety = wyniki przy węźle w początku; widz globalny ładuje właściwy obszar |
+| `PlanetTerrains_ActivateDeactivate_Repeated20_NoLeakAndEditsKept` | jw. | silnik | A (krok 1) | 20 cykli aktywacji/wygaszenia księżyca z edycją w każdym: pamięć statyczna i liczba węzłów wracają do poziomu wyjściowego (± 5 %), edycje obecne po ponownej aktywacji, brak błędów strumienia |
+| `PlanetSurfaceSampler_FastPathMatchesBisection_1000Directions` / `…_OffMainThread_SameHeights` | `game/tests/Planet/PlanetSurfaceSamplerTests.cs` | silnik | A (krok 1) | decyzja 11; \|Δh\| ≤ 0,25 m; wynik z `WorkerThreadPool` = z wątku głównego |
+| `PlanetActivityPolicy_PlayerInRegion_Activates` / `…_LastPlayerLeaves_DeactivatesAfter60s` / `…_ReturnsWithinLinger_StaysActive` / `…_LeaseKeepsActive` / `…_MovingShipDemands_ParkedDoesNot` / `…_PassengerUsesShipRegion` / `…_HomeAlwaysActive` / `…_OutputSortedById` | `tests/Horyzont.Server.Tests/Space/PlanetActivityPolicyTests.cs` | domyślna | A | decyzje 2, 4 (`ServerRig`, `WorldFactory.CreateWithStarSystem`, `TestShips`) |
+| `PlanetActivityPolicy_Update_AllocatesZeroBytes` | jw. | domyślna | A | 8 graczy, 8 statków, 10 000 wywołań = 0 B |
+| `ServerPlanetTerrains_Activation_AddsNodeUnderPlanetFrame` / `…_Deactivation_RemovesNodeAfterLinger` / `…_DeactivationRefusedDuringReplayOrLease` | `game/tests/Server/ServerPlanetTerrainsTests.cs` | silnik | A | decyzja 3 |
+| `Replay_EditsOnInactivePlanet_ActivatesWithLeaseAndReplays` | `game/tests/Terrain/MultiPlanetTerrainTests.cs` | silnik | A | dziennik z edycjami na księżycu, restart: powtórka bierze dzierżawę, skrót stanu równy, po powtórce i 60 s księżyc zgaszony |
+| `ServerPlanetTerrains_Readiness_InactiveStreamingReady` / `ServerShipViewers_FollowMovingShip_RadiusWithLookahead` | `game/tests/Server/ServerPlanetTerrainsTests.cs` | silnik | B | decyzje 5, 6 |
+| `TerrainTickGovernor_OverBudget_ThrottlesSoloPlanets_RestoresBelow` / `…_LogsEveryTerrain` | `tests/Horyzont.Server.Tests/Space/TerrainTickGovernorTests.cs` | domyślna | B | decyzja 7 (czas ticku z atrapy rejestratora) |
+| `TerrainView_NearbyPlanetFromSystemFrame_Accepted` / `…_FarPlanet_Rejected` / `…_PassengerCollisionViewerAtShipCentre_Accepted` | `tests/Horyzont.Server.Tests/Terrain/TerrainViewOtherPlanetTests.cs` | domyślna | B | decyzja 8 (atrapa `ITerrainReplicationHost` nad `FrameGraph`) |
+| `ClientTerrainSelection_ActivatesAt4R_ReleasesBeyond4_4R` / `…_NearestByRatioWins` / `…_AtMostOneActivePlusFading` / `…_BeforeStarSystemState_HomeOnly` / `…_AllocatesZeroBytes` | `tests/Horyzont.Client.Tests/Space/ClientTerrainSelectionTests.cs` | domyślna | C | decyzja 9 |
+| `ImpostorBlend_Boundaries_MonotonicAndComplementary` | `tests/Horyzont.Client.Tests/Space/ImpostorBlendTests.cs` | domyślna | C | decyzja 13 (1 przy 2 R, 0 przy R, suma = 1) |
+| `ClientPlanetTerrains_ApproachMoon_ActivatesAt4R_ReleasesHome` / `SharedTerrain_HostKeepsNodeWhileServerOrClientWants` | `game/tests/Terrain/MultiPlanetTerrainTests.cs` | silnik | C | decyzja 10; kamera skryptowa |
+| `PlanetImpostorMesh_64PerFace_HeightsMatchSampler` / `PlanetImpostor_FourBodies_BuiltInBackgroundUnder2s` | `game/tests/Planet/PlanetImpostorTests.cs` | silnik | C | 6 × 65 × 65 wierzchołków, promienie w [R − 300; R + 300], pozycje lokalne; czas budowy w raporcie, próg 2 s |
+| `PlanetTerrainMaterial_TriplanarUsesNodeLocalCoordinates` | `game/tests/Planet/PlanetTerrainMaterialTests.cs` | silnik | C | shader terenu i impostora nie używa współrzędnych świata ani widoku do trójplanarnych (źródło + przypadek węzła w 108 km) |
+| `Descent8km_TwentyTrials_NoCollisionGapsAtTouchdown` | `game/tests/Space/DescentTests.cs` | silnik (`Slow`) | D | patrz „Pomiar zejścia” |
+| `coop_soak.py --profile planets4` | `tools/coop/coop_soak.py` | noc (`bench`) | D | średni tick ≤ 8 ms, raport RAM i czasu terenów |
+| `Manual_ImpostorTransition_NoVisibleJump` / `Manual_TriplanarPlanetC_NoFlicker` | procedura w PR + `tools/space/frame_diff.py` | `Manual` | D | patrz „Testy ręczne” |
+
+### Pomiar zejścia (kryteria 1–2)
+
+- Scena testu: serwer z `ServerPlanetTerrains` (opcje serwera) i klient z `ClientPlanetTerrains` w jednym procesie silnika, układ `WorldFactory.CreateWithStarSystem(0)`; sonda (węzeł z widzem jak statek, decyzja 5) i kamera klienta schodzą z `h = 8000 m` nad księżycem (10 prób) i planetą C (10 prób, ok. 108 km od początku), kierunki z ziarna próby.
+- Profil prędkości jak w spec: `v = clamp(h/τ, 100, 2000)`, τ = 8 s, kopia wzoru w teście (K5-24 nie jest zależnością; po scaleniu obu test może brać `FlightRules`). Krok fizyki 60 Hz, czas symulacji, bez snu.
+- Luka w kolizji: od `h ≤ 50 m` co tick promień fizyki w dół spod sondy trafia w kolizję terenu, a punkt trafienia leży ≤ 1 m od powierzchni z `PlanetSurfaceSampler` (z poprawką na edycje = brak). Przyziemienie (`h ≤ 2 m`) bez kolizji = porażka próby. Raport: liczba prób, maks. czas oczekiwania na kolizję, czas zejścia.
+- Dziury wizualne (nocny raport z renderem): co klatkę 64 promienie z kamery w stożku 60° w dół trafiają w siatkę terenu albo impostora (przecięcie z siatką) — udział 100 %. Bez GPU wpis nieobecny, a `check_budgets.py` go pomija (jak `orbitToSurface` w K4-19).
+
+### Testy ręczne
+
+- `Manual_ImpostorTransition_NoVisibleJump`: `--dev`, host, lot kamerą deweloperską (`DevFlyCamera`) z 4 R do powierzchni księżyca i planety C; zapis klatek (`ScreenshotHook`) co klatkę w paśmie 0,8–2,2 R; `python -I tools/space/frame_diff.py <katalog>` liczy średnią bezwzględną różnicę luminancji kolejnych klatek: maks. w paśmie przenikania ≤ 2 × mediana poza pasmem (brak skoku). Wykres i zrzuty w PR.
+- `Manual_TriplanarPlanetC_NoFlicker`: postać stoi 10 s i idzie 10 s na planecie C; różnica klatek przy staniu ≤ 1/255 średnio, brak pasów i drgań tekstury przy chodzeniu (ocena + zrzuty).
+
+## Kroki
+
+Każdy krok: test czerwony → kod → zielone testy → mały commit (Conventional Commits). Wyszukiwanie kodu i uruchamianie testów zlecać subagentowi Haiku (CLAUDE.md projektu).
+
+**Faza A — serwer**
+
+- [ ] 0. Warunki wejścia: `git status`; worktree `F:/dev/horyzont-k5-22` od `origin/main` po scaleniu K5-21; w „Odstępstwach” zapisać scalone pakiety (K3-16, K4-19, K5-20/21/23/24/27 — które są) i rzeczywiste nazwy: `FrameNodes`, `FrameGraph.TryGetRegion`, `ServerFrameHistory`, `StarSystemModel`, `ClientStarSystem`, strażnicy `// K5-22`, `ITerrainReplicationHost`, plik komend konsoli serwera w grze; wypisać wszystkie wywołania API terenu z pozycjami (lista do decyzji 1) i wszystkie miejsca tworzące węzły terenu. Sprawdzić, czy K5-27 już dodał `PlanetMapSampler` (wtedy decyzja 11 rozszerza go zamiast tworzyć osobny próbnik). Commit `docs:`.
+- [ ] 1. **Ryzyko najpierw** (bez kodu produkcyjnego poza `RemovePlanet` w wersji szkicowej za flagą testu): `PlanetTerrain_NodeAt108km_*`, `PlanetTerrains_ActivateDeactivate_Repeated20_*`, `PlanetSurfaceSampler_*`. Niezaliczony test → stop, raport (pamięć, błędy strumienia, różnice wysokości) i eskalacja do Opus + właściciela przed krokiem 2 (plan B: węzły wszystkich ciał tworzone raz i tylko „uśpione” bez widzów — droższe w RAM, P3). Commit `test:`.
+- [ ] 2. `PlanetActivityPolicy` + opcje + testy (osiem przypadków, alokacja). Commity `test:`, `feat:`.
+- [ ] 3. `ServerPlanetTerrains`, `VoxelTerrainService.RemovePlanet`, fabryka bez węzłów (generatory raz), usunięcie strażnika K5-21, dzierżawy, `TerrainReplay` z dzierżawami; `GameComposition.Planets.cs` (serwer dedykowany i host). Testy `ServerPlanetTerrains_*` (aktywacja, wygaszenie, odmowa) i `Replay_EditsOnInactivePlanet_*`; istniejące testy terenu (job `game`) zielone. Commity `test:`, `feat:`.
+
+**Faza B — statki, gotowość, K3-16**
+
+- [ ] 4. `ServerShipViewers`, `IPlanetTerrainReadiness` (+ implementacja), `TerrainTickGovernor` + log per teren. Testy decyzji 5–7. Commity `test:`, `feat:`.
+- [ ] 5. `ITerrainReplicationHost.TryGetFeet(player, planet, out feet)` przez `FrameGraph` (4,4 R), `HandleView` („za daleko od planety”), tolerancja pasażera; testy `TerrainView_*`; `ProtocolVersion` (D4) z aktualizacją `ProtocolVersion_MatchesDocumentedMergeValue` i `Constants_GoldenValues`. Commity `test:`, `feat:`.
+
+**Faza C — klient**
+
+- [ ] 6. `ClientTerrainSelection` (biblioteka klienta) + testy; `ClientPlanetTerrains`, `OwnTerrainProvider` bez węzłów w `Prepare`, `SharedTerrainProvider` (dzierżawy obu stron), widze z `LocalPlayer` do `ClientPlanetTerrains`, `TerrainView` aktywnej planety; testy silnika `ClientPlanetTerrains_*`, `SharedTerrain_*`. Commity `test:`, `feat:`, `refactor:`.
+- [ ] 7. `PlanetSurfaceSampler` (wersja produkcyjna), `PlanetImpostorMeshBuilder`, `PlanetImpostor`, `PlanetImpostorMaterial`, budowa w tle po `StarSystemState`; testy `PlanetImpostor*`. Commity `test:`, `feat:`.
+- [ ] 8. `ImpostorBlend` + uniform `blend` i dopełniający dithering w obu materiałach; `PlanetTerrainMaterial` trójplanarne w przestrzeni modelu; testy `ImpostorBlend_*`, `PlanetTerrainMaterial_*`; `python tools/engine/build.py smoke`. Commity `test:`, `feat:`.
+
+**Faza D — pomiary**
+
+- [ ] 9. `Descent8km_TwentyTrials_*` (job `game`: 3 próby; `bench`: 20) + wpis `descent8km` w `BenchmarkReport` (tryb z renderem) + budżet w `budgets.json`; raport liczb w PR. Commity `test:`, `feat:`.
+- [ ] 10. Komenda `place` (decyzja 15); profil `planets4` w `coop_soak.py` (8 botów, `place` po 2 na ciało, 10 min, `stats` co 60 s, RAM procesu) + `--self-test`; wpis w `nightly.yml` (`bench`); `workflow_dispatch` z `minutes=10` i numer runu do PR. Niezaliczone 8 ms → regulator (decyzja 7) i pomiar ponownie; dalej niezaliczone → plan awaryjny spec :261 (mniejsze promienie — nowy `StarSystemLayout` K5-21, decyzja właściciela). Commity `feat:`, `ci:`.
+- [ ] 11. `tools/space/frame_diff.py` (+ `--self-test`), testy ręczne `Manual_ImpostorTransition_*` i `Manual_TriplanarPlanetC_*`, zrzuty i wykresy do PR. Commit `test:`.
+
+**Faza E — odbiór**
+
+- [ ] 12. Rebase na `main`; pełne komendy odbioru; `docs/ZASADY.md` pkt 2: „tereny planet są dziećmi węzłów `Planet_<id>`; API terenu przyjmuje współrzędne ramy planety”, „teren ciała istnieje tylko, gdy jest aktywny (`ServerPlanetTerrains`); planeta domowa zawsze”, „trójplanarne i impostory liczone w przestrzeni modelu planety”; pkt 7: wygaszanie terenu w kolejności zamykania (aktywne węzły zamyka `ShutdownAsync` usługi); wiersz K5-22 w sekcji „Pakiety K5” `docs/plans/README.md` z wartością `ProtocolVersion`; PR z raportem kryteriów 1–3, odstępstwami i odpowiedziami. Commit `docs:`.
+
+## Odbiór
+
+```
+dotnet build Horyzont.sln
+dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"
+dotnet format Horyzont.sln --verify-no-changes
+python tools/engine/build.py smoke
+python -I tools/space/frame_diff.py --self-test
+python -I tools/coop/coop_soak.py --self-test
+```
+
+Plus job `game` (testy silnika `game/tests/Terrain/`, `Server/`, `Planet/`, `Space/` — w tym 3 próby zejścia), nocny `bench` (20 prób zejścia, `descent8km`, `planets4` — numery runów w PR) i wyniki testów ręcznych.
+
+## Kody i punkty styku
+
+K5-22 **nie zajmuje żadnych kodów** (`OperationKind`, `IntentCode`, `RejectReason`, `MessageType`, `BlobKind`) ani migracji; jedyna zmiana w Core to `ProtocolVersion` (D4).
+
+Przydział kodów Kosmosu (zakresy K1-03: op 20–29, intencje 10–19, odmowy 30–39, komunikaty 30–39, bloby 10–19), stan po planach K5-20…K5-27 — bez kolizji:
+
+| Rodzaj | Kod | Nazwa | Pakiet |
+| --- | --- | --- | --- |
+| `OperationKind` | 20 / 21 / 22 / 23 / 24–29 | `ShipModeSet` / `ShipFuelAdd` / `MarkerSet` / `MarkerRemove` / wolne | K5-23 / K5-24 / K5-27 / K5-27 / — |
+| `IntentCode` | 10 / 11 / 12 / 13 / 14 / 15 / 16 / 17–19 | `ShipMode` / `SeatEnter` / `SeatExit` / `Refuel` / `MarkerSet` / `MarkerRemove` / `SeatEvict` / wolne | K5-23 / K5-25 / K5-25 / K5-24 / K5-27 / K5-27 / K5-25 / — |
+| `RejectReason` | 30, 31, 37 / 32–35, 38 / 36 / 39 | `NoCockpit`, `ShipAnchored`, `NoEngine` / `SeatOccupied`, `SeatOutOfReach`, `EjectTooFast`, `NotPilot`, `ConstructNotEmpty` / `MarkerLimit` / `ShipNotParked` | K5-23 / K5-25 / K5-27 / K5-24 |
+| `MessageType` | 30 / 31 / 32 / 33 / 34 / 35 / 36–39 | `ShipInputBatch` / `ShipStatus` / `StarSystemState` / `MarkersState` / `ShipCorrection` / `MapPresence` (rezerwacja warunkowa, K5-27 P1) / wolne | K5-25 / K5-26 / K5-21 / K5-27 / K5-25 / K5-27 / — |
+| `BlobKind` | 10 / 11 / 12 / 13–19 | `StarSystemParams` / `Marker` / `ShipState` / wolne | K5-21 / K5-27 / K5-24 / — |
+| Migracja | M0002 | `M0002_Space` (3 tabele) | K5-21 (jedyna w K5) |
+
+Kolejność scalania K5: **(K5-23 ↔ K5-20) → K5-21 → {K5-22, K5-24, K5-27} → {K5-25, K5-26} → K5-28**. K5-22 nie czeka na K5-24 ani odwrotnie; rekomendacja: K5-22 przed K5-24, jeśli oba gotowe (K5-24 pisze wtedy adapter bramki na gotowym interfejsie). Zasada X10 — integruje scalany później.
+
+| Plik / punkt | K5-22 | Inny pakiet | Rozwiązanie |
+| --- | --- | --- | --- |
+| `IPlanetTerrainReadiness` ↔ `IShipTerrainGate` (K5-24) | gotowość terenu | K5-24 bramka lotu (domyślnie `HomeOnlyGate`) | scalany później dopisuje adapter `PlanetTerrainShipGate` (jedna klasa + linia w partialu) |
+| Dzierżawy `ServerPlanetTerrains.Acquire` | API | K5-24 (odstawienie po wczytaniu, autolądowanie) | K5-24 bierze dzierżawę przez adapter; przed K5-22 domowa i tak aktywna |
+| `PlanetSurfaceSampler` ↔ `PlanetMapSampler` (K5-27) | wysokość z generatora | K5-27 mapa planety | scalany później usuwa duplikat i używa istniejącego próbnika (ta sama bisekcja) |
+| Strażnicy `// K5-22` (K5-21) w `VoxelServerTerrainFactory`, `OwnTerrainProvider` | usuwa | K5-21 | K5-22 scalany po K5-21 |
+| `ServerTerrainReplicator.cs`, `ITerrainReplicationHost.cs`, `ServerTerrainReplicatorBinder.cs` (K3-16) | `TryGetFeet` z planetą | — (K3-16 scalony) | — |
+| `LocalPlayer.cs` (właściciel K3-14, X10) | usunięcie tworzenia widzów, delegacja | K5-20 (rebase/frozen), K5-25 (pilot) | edycja ograniczona; scalany później robi rebase |
+| `FrameNodes` (K5-20) | tereny pod `Planet_<id>` | K5-20 | brak edycji `FrameNodes` — tylko `Attach` |
+| `ProtocolConstants.ProtocolVersion` + dwa testy | podbicie | wszystkie K5 z formatem | D4 |
+| `GameComposition` | `GameComposition.Planets.cs` | `.Frames` (K5-20), `.Ships` (K5-23), `.Space` (K5-21), `.Flight` (K5-24), `.Navigation` (K5-27) | osobne partiale |
+| `tools/coop/coop_soak.py`, `BenchmarkReport.cs`, `nightly.yml`, `budgets.json` (K4-19) | profil `planets4`, wpis `descent8km` | K5-28 (testy Kosmosu) | dopisywanie obok; K5-28 rozszerza |
+| `docs/ZASADY.md`, `docs/plans/README.md` | wiersze K5-22 | wszyscy | scalany później dopisuje obok |
+
+## Ryzyka
+
+| Ryzyko | Skutek | Odpowiedź |
+| --- | --- | --- |
+| Usuwanie `VoxelLodTerrain` ze strumieniem w toku (wycieki, awaria wątków Voxel Tools) | awaria serwera przy wygaszaniu | krok 1 (20 cykli) przed kodem; plan B: uśpienie węzła bez widzów (P3) |
+| API terenu mieszające współrzędne globalne i lokalne | edycje i promienie w złym miejscu na księżycu i C | decyzja 1, audyt wywołań, test z węzłem w 108 km |
+| Koszt czterech terenów CLIPBOX (spec: największa niewiadoma) | tick > 8 ms | pomiar `planets4`; regulator; plan awaryjny w danych K5-21 (spec :261) |
+| Przycięcie zakresu SDF (`SdfClipThreshold`) psuje szybką ścieżkę próbnika | złe wysokości impostora | test z bisekcją w kroku 1; zawsze bisekcja w razie różnicy |
+| `generate_single` poza wątkiem głównym | wyścigi w grafie | osobna instancja grafu na zadanie; test w kroku 1; plan B porcjami na wątku głównym |
+| Kompilacja grafu generatora przy aktywacji | przycięcie klatki | generatory tworzone raz przy starcie |
+| Zalew transferów terenu przy zmianie planety | opóźnione edycje innych graczy | wspólny kubełek X3 bez zmian; manifest nowej planety jako `Bulk` |
+| Widz klienta w ramie układu (bez aktywnej planety) | brak terenu przy dolocie | aktywacja od 4 R (r), przed wejściem w strefę (3,0 R) |
+| Sztuczny skok przy przenikaniu (różne normalne impostora i terenu) | widoczny skok obrazu | dopełniający dithering, przenikanie przez całe R wysokości; test ręczny z metryką |
+| Edycje graczy niewidoczne na impostorze | inny obraz z orbity | akceptowane w EA (spec: impostor z generatora); widoczne po przejściu na woksele |
+
+## Pytania do właściciela (wariant domyślny obowiązuje bez odpowiedzi)
+
+| # | Pytanie | Wariant domyślny |
+| --- | --- | --- |
+| P1 | Podbijać `ProtocolVersion` bez nowych kodów (zmiana reguły przyjęcia `TerrainView`)? | tak (D4) |
+| P2 | Planeta domowa zawsze aktywna na serwerze? | tak — brak opóźnienia pierwszego wejścia i zachowanie K2–K4 bez zmian; ciała 1–3 na żądanie |
+| P3 | Co, jeśli usuwanie węzłów Voxel Tools okaże się niestabilne? | węzły ciał tworzone raz, „uśpione” bez widzów (wyższy RAM), decyzja po kroku 1 |
+| P4 | Wygaszanie po 60 s i progi klienta 4 R / 4,4 R? | jak w spec; dane w opcjach |
+| P5 | Kryterium „bez dziur” automatycznie? | nocny `bench` z renderem na runnerze właściciela; bez GPU — test ręczny z nagraniem |
+| P6 | Progi regulatora ticku? | 8 ms średnio przez 5 s → widze co 4. tick dla planet z jednym graczem; powrót < 6 ms przez 10 s |
+| P7 | Wyprzedzenie widza statku? | promień + 2 s × prędkość, 64–512 m |
+| P8 | Wygląd impostora? | kolory wierzchołków z palety materiałów + Lambert; tekstury i atmosfera w K8-50 |
+
+## Pułapki
+
+- Nie tworzyć węzłów terenu dla wszystkich planet z `state.Planets.All` ani `hello.Planets` — tylko przez `ServerPlanetTerrains`/`ClientPlanetTerrains`.
+- Pozycje wierzchołków impostora i współrzędne trójplanarne zawsze w przestrzeni modelu planety; nigdy `VERTEX` w świecie (drgania ok. 110 km od początku).
+- Generator jest chroniony: próbnik czyta graf, nie zmienia go; żadnych nowych węzłów w `PlanetGeneratorV1`.
+- `RemovePlanet` tylko na wątku głównym i nigdy w trakcie powtórki ani przy żywej dzierżawie.
+- Polityka aktywacji liczy w tickach i sortuje wyjście po id; bez `Dictionary` w kolejności decyzji.
+- Host ma jedną instancję terenu: zwolnienie przez klienta nie może usunąć węzła potrzebnego serwerowi (i odwrotnie).
+- Testy .NET na `FakeTimeProvider`/tickach; testy silnika mierzą klatki (X11).
+
+## Odstępstwa i decyzje wykonawcy
+
+(wypełnia wykonawca: stan K3/K4/K5 na `main`, rzeczywiste nazwy API, wyniki kroku 1, wartości z pomiarów zejścia i `planets4`, odpowiedzi właściciela, różnice od planu)
