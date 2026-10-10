@@ -36,6 +36,10 @@ public sealed class OperationIntentEdgeCaseTests
     [Theory]
     [InlineData("00 01 05")]
     [InlineData("08 01 05")]
+    [InlineData("13 01 05")]
+    [InlineData("15 01 05")]
+    [InlineData("14 00 05 01 02 09 00")]
+    [InlineData("14 02 05 01 02 09 00")]
     [InlineData("FF 01 05")]
     [InlineData("04 00 05 00 00 00")]
     [InlineData("04 02 05 00 00 00")]
@@ -43,6 +47,14 @@ public sealed class OperationIntentEdgeCaseTests
     [InlineData("")]
     [InlineData("04")]
     public void Read_UnknownOperationKindOrVersionOrEmpty_ThrowsProtocolViolation(string hex) => Kit.AssertOperationViolation(hex);
+
+    [Fact]
+    public void Read_ShipModeSetWithUnknownMode_ThrowsProtocolViolation() =>
+        Kit.AssertOperationViolation("14 01 05 02 02 09 00  00 00 00 00 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 00 00 00 00 00 00 80 3F");
+
+    [Fact]
+    public void Read_ShipModeIntentWithUnknownMode_ThrowsProtocolViolation() =>
+        Kit.AssertIntentViolation("0A 01 05 00 00 00 02  00 00 00 00 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 00 00 80 3F");
 
     [Fact]
     public void Read_ControlFramesDecode()
@@ -183,6 +195,9 @@ public sealed class OperationIntentEdgeCaseTests
     [InlineData("FF 01 05 00 00 00")]
     [InlineData("03 00 05 00 00 00")]
     [InlineData("03 02 05 00 00 00")]
+    [InlineData("09 01 05 00 00 00")]
+    [InlineData("0B 01 05 00 00 00")]
+    [InlineData("0A 02 05 00 00 00")]
     [InlineData("")]
     [InlineData("03")]
     public void Read_UnknownIntentCodeOrVersionOrEmpty_ThrowsProtocolViolation(string hex) => Kit.AssertIntentViolation(hex);

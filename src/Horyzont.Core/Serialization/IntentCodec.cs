@@ -15,6 +15,7 @@ public static class IntentCodec
         TerrainTool = 1,
         PlaceBlock = 2,
         RemoveBlock = 3,
+        ShipMode = 10,
     }
 
     private enum BlockTargetCode : byte
@@ -89,6 +90,21 @@ public static class IntentCodec
                 CoreCodecPrimitives.WriteCellPos(w, rb.Cell);
                 break;
 
+            case ShipModeIntent sm:
+                if (sm.TargetMode < ConstructMode.Static || sm.TargetMode > ConstructMode.Ship)
+                {
+                    throw new ArgumentException($"Invalid ConstructMode {(byte)sm.TargetMode}.", nameof(intent));
+                }
+
+                w.WriteByte((byte)IntentCode.ShipMode);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(sm.Construct.Value);
+                CoreCodecPrimitives.WriteCellPos(w, sm.CockpitCell);
+                w.WriteByte((byte)sm.TargetMode);
+                w.WriteVector3(sm.RayOrigin);
+                w.WriteVector3(sm.RayDirection);
+                break;
+
             default:
                 throw new ArgumentException($"Unknown intent type {intent.GetType().Name}.", nameof(intent));
         }
@@ -100,7 +116,7 @@ public static class IntentCodec
     public static Intent Read(ref ByteReader r)
     {
         byte codeByte = r.ReadByte();
-        if (codeByte < (byte)IntentCode.TerrainTool || codeByte > (byte)IntentCode.RemoveBlock)
+        if (codeByte is < (byte)IntentCode.TerrainTool or > (byte)IntentCode.RemoveBlock and not (byte)IntentCode.ShipMode)
         {
             throw new ProtocolViolationException($"Unknown intent code {codeByte}.");
         }
@@ -164,6 +180,19 @@ public static class IntentCodec
                 var rbConstruct = new EntityId(r.ReadVarUInt());
                 var rbCell = CoreCodecPrimitives.ReadCellPos(ref r);
                 return new RemoveBlockIntent(rbConstruct, rbCell);
+
+            case IntentCode.ShipMode:
+                var smConstruct = new EntityId(r.ReadVarUInt());
+                var smCell = CoreCodecPrimitives.ReadCellPos(ref r);
+                byte smModeByte = r.ReadByte();
+                if (smModeByte > (byte)ConstructMode.Ship)
+                {
+                    throw new ProtocolViolationException($"Unknown construct mode {smModeByte}.");
+                }
+
+                var smOrigin = r.ReadVector3();
+                var smDirection = r.ReadVector3();
+                return new ShipModeIntent(smConstruct, smCell, (ConstructMode)smModeByte, smOrigin, smDirection);
 
             default:
                 throw new ProtocolViolationException($"Unhandled intent code {code}.");

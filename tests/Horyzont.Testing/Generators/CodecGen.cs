@@ -188,7 +188,7 @@ public static class CodecGen
     /// <summary>Chunks of 4096 well-formed block states in assorted shapes (empty, uniform, sparse, banded, worst-case alternating, random).</summary>
     public static Gen<uint[]> ChunkBlocks { get; } = Gen.Choose(0, 5).SelectMany(shape => Gen.Choose(0, int.MaxValue).SelectMany(seed => BuildChunk(shape, seed)));
 
-    /// <summary>Operations of all seven kinds.</summary>
+    /// <summary>Operations of all eight kinds.</summary>
     public static Gen<Operation> Operation => Gen.OneOf(
         TerrainEditOp.Select(o => (Operation)o),
         ConstructCreateOp.Select(o => (Operation)o),
@@ -196,7 +196,8 @@ public static class CodecGen
         BlockClearOp.Select(o => (Operation)o),
         PlayerJoinOp.Select(o => (Operation)o),
         PlayerLeaveOp.Select(o => (Operation)o),
-        EntityReparentOp.Select(o => (Operation)o));
+        EntityReparentOp.Select(o => (Operation)o),
+        ShipModeSetOp.Select(o => (Operation)o));
 
     /// <summary>Terrain edit operations.</summary>
     public static Gen<TerrainEditOp> TerrainEditOp { get; } =
@@ -263,11 +264,12 @@ public static class CodecGen
         from seat in Optional(Cell)
         select new EntityReparentOp(entity, parent, parentSeq, position, rotation, velocity, seat);
 
-    /// <summary>Intents of all three kinds.</summary>
+    /// <summary>Intents of all four kinds.</summary>
     public static Gen<Intent> Intent => Gen.OneOf(
         TerrainToolIntent.Select(i => (Intent)i),
         PlaceBlockIntent.Select(i => (Intent)i),
-        RemoveBlockIntent.Select(i => (Intent)i));
+        RemoveBlockIntent.Select(i => (Intent)i),
+        ShipModeIntent.Select(i => (Intent)i));
 
     /// <summary>Terrain tool intents.</summary>
     public static Gen<TerrainToolIntent> TerrainToolIntent { get; } =
@@ -303,6 +305,25 @@ public static class CodecGen
         from id in EntityId
         from cell in Cell
         select new RemoveBlockIntent(id, cell);
+
+    /// <summary>Ship mode switch operations.</summary>
+    public static Gen<ShipModeSetOp> ShipModeSetOp { get; } =
+        from id in EntityId
+        from mode in Gen.Elements(ConstructMode.Static, ConstructMode.Ship)
+        from parent in FrameRef
+        from parentSeq in VarU32
+        from origin in Vector
+        from rotation in UnitQuaternion
+        select new ShipModeSetOp(id, mode, parent, parentSeq, origin, rotation);
+
+    /// <summary>Ship mode intents.</summary>
+    public static Gen<ShipModeIntent> ShipModeIntent { get; } =
+        from id in EntityId
+        from cell in Cell
+        from mode in Gen.Elements(ConstructMode.Static, ConstructMode.Ship)
+        from origin in Vector
+        from direction in Vector
+        select new ShipModeIntent(id, cell, mode, origin, direction);
 
     /// <summary>Construct header records.</summary>
     public static Gen<ConstructHeaderRecord> ConstructHeader { get; } =
@@ -511,7 +532,7 @@ public static class CodecGen
     /// <summary>Intent reply messages.</summary>
     public static Gen<IntentReply> IntentReply { get; } =
         from seq in VarU32
-        from reason in Gen.Choose(0, 20)
+        from reason in Gen.Elements(Enumerable.Range(0, 22).Append(30).Append(31).Append(37).ToArray())
         from op in OpId
         select new IntentReply(seq, (RejectReason)reason, op);
 
