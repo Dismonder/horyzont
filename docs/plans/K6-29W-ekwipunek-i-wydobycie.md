@@ -249,12 +249,12 @@ Pomocnicze w `tests/Horyzont.Testing`: `SurvivalContentFactory.CreateTest()` (pr
 
 ### Etap B — intencje, urobek, protokół (Opus 5.5)
 
-- [ ] B1. Testy z tabeli etapu B (czerwone), przegląd Opus.
-- [ ] B2. `RejectReason` 40–43, `ItemMoveIntent`, `ItemDropIntent`, `IntentCodec` (kody 20, 21), kubełek `Items` w `PlayerBuckets` i `GameRules`, `AdvanceTick` uzupełnia go.
-- [ ] B3. Walidacja i rozwiązanie intencji przedmiotów; `ItemPlacement` (rozmieszczenie i pobranie, deterministyczne).
-- [ ] B4. `ITerrainService.MeasureSphere` (+ `FakeTerrainService`, `NoTerrain`); `MiningYield`, `YieldLedger`; resolver kopania i zasypywania (D9–D12); `SurvivalContent` w `ServerSimulation` (nowy konstruktor, stary deleguje z `null`).
-- [ ] B5. Komunikaty 40–43, 49, `MessageCodec`, `MessageChannels`, `MessageRouter`; `ProtocolVersion = 4` i jego test.
-- [ ] B6. Sprawdzenie, commit(y): `feat(core): add item intents and mining yield`, `feat(protocol): add container messages and bump the protocol to 4`.
+- [x] B1. Testy z tabeli etapu B (czerwone), przegląd Opus.
+- [x] B2. `RejectReason` 40–43, `ItemMoveIntent`, `ItemDropIntent`, `IntentCodec` (kody 20, 21), kubełek `Items` w `PlayerBuckets` i `GameRules`, `AdvanceTick` uzupełnia go.
+- [x] B3. Walidacja i rozwiązanie intencji przedmiotów; `ItemPlacement` (rozmieszczenie i pobranie, deterministyczne).
+- [x] B4. `ITerrainService.MeasureSphere` (+ `FakeTerrainService`, `NoTerrain`); `MiningYield`, `YieldLedger`; resolver kopania i zasypywania (D9–D12); `SurvivalContent` w `ServerSimulation` (nowy konstruktor, stary deleguje z `null`).
+- [x] B5. Komunikaty 40–43, 49, `MessageCodec`, `MessageChannels`, `MessageRouter`; `ProtocolVersion = 4` i jego test.
+- [x] B6. Sprawdzenie, commit(y): `feat(core): add item intents and mining yield`, `feat(protocol): add container messages and bump the protocol to 4`.
 
 ### Etap C — zapis i serwer (Sonnet 5.5; przegląd Opus migracji i `VoxelTerrainService.MeasureSphere`)
 
@@ -324,3 +324,17 @@ git diff <commit startu A>..HEAD -- tests/Horyzont.Core.Tests/Golden/TerrainJour
 - **Zmienione istniejące pliki testów** (poza korpusem i `DeterminismTests`, które są bez zmian): `ProtocolContractTests` (złote wartości nowych enumów), `CodecGen` i `CodecCases` (generatory operacji 30–35 i przypadek `ContainerBlob`, więc tabelaryczne właściwości kodeków obejmują nowe ramki), `WorldFactory` (nowe pomocnicze). Poprawione `cref` do przeciążonego `CreateNew` w `PlanetGenesis`, `WorldCreator` i `WorldFactory`.
 - **CA1711** wyciszone atrybutem dla `ItemStack` i `ItemFlags` (nazwy ze spec 03).
 - **Przegląd testów przed kodem** zrobił ten sam wykonawca (Opus 5.5) w tej sesji; osobny przegląd Opus zostaje w PR. Test właściwości sprawdzono mutacją (usunięte cofanie w złożonej → trzy testy czerwone).
+
+### Etap B (Opus 5.5, 2026-10-10)
+
+- **Gdzie są testy z tabeli.** `ProtocolVersionTests` i `RejectReasonGoldenTests` nie powstały jako osobne pliki: te same kryteria sprawdzają istniejące `ProtocolContractTests` (`ProtocolVersion_IsFour`, `Constants_GoldenValues`, `Enums_GoldenValues` z kodami 40–43 odmów i 40–43, 49 komunikatów, lista rekordów komunikatów). `MessageRouterTests` w `Horyzont.Net.Tests` nie istniał, więc powstał jako nowy plik. Kubełek przedmiotów ma złoty test w `GameRulesTests`, scenariusze kodów 40–43 dopisano też do `IntentValidationTests.AllReasons`.
+- **Rozwiązanie Przetrwania w osobnej klasie.** Walidacja parametrów i rozwiązanie intencji przedmiotów, urobek i koszt zasypywania są w wewnętrznym `SurvivalRules` (z `ItemPlacement`, `MiningYield`, `YieldLedger`); `IntentResolver` zostaje statyczny dla reguł K2, `IntentFacts` bez zmian. Kolejność kodów jak w planie: krok parametrów (z `ContainerLocked`) w walidatorze przed kubełkiem, a `ContainerChanged`, `NotEnoughItems` i reguły celu w rozwiązaniu po kubełku.
+- **Doprecyzowania walidacji (plan milczy).** Nieistniejący kontener = `ContainerLocked` (jak cudzy; klient nie odróżnia). Dozwolone są tylko własne `PlayerBag` i `Hotbar` (gospodarz `Player` i właściciel = gracz); `Equipment` i inne rodzaje → `InvalidParameters`. `ExpectedType` 0, cel równy źródłu, „dowolny” w kontenerze źródła i „dowolny” ze slotem ≠ 0 → `InvalidParameters` (kodek zapisu odrzuca taki cel `ArgumentException`). Przeniesienie do pustego slotu też jest przycinane do limitu stosu z treści (limit mógł zmaleć po aktualizacji treści), 0 → `InventoryFull`. Cel „dowolny” daje zawsze `CompoundOp`, także z jednym przeniesieniem. Wyrzucenie z pustego slotu albo więcej niż w slocie → `NotEnoughItems`; typ nieobecny w treści → `InvalidParameters`.
+- **Pomiar niemożliwy.** `MeasureSphere` = false (teren niewczytany, `NoTerrain`): kopanie to zwykły `TerrainEditOp` bez zmiany reszty, zasypywanie → `AreaNotLoaded`. Zasypywanie materiałem bez przedmiotu urobku → `NotEnoughItems` także przy zerowej objętości; gracz bez paska lub plecaka: kopanie zwykłe, zasypywanie `NotEnoughItems`.
+- **Arytmetyka urobku.** Zaokrąglenia z tolerancją 1e-9 (`floor(x + ε)`, `ceil(x − ε)`), żeby sumy typu 0,1 + 0,2 nie gubiły sztuki; górna granica 1 000 000 sztuk na rozwiązanie. Kilka materiałów w jednym kopaniu: składowe `ItemCreateOp` w kolejności rosnącego `MaterialId`, każdy materiał rozmieszczany na kopii slotów uwzględniającej poprzednie.
+- **`VoxelTerrainService.MeasureSphere`** dostał zaślepkę zwracającą false (wątek główny sprawdzany); prawdziwy pomiar to krok C5. Gra w etapie B nie przekazuje treści, więc zachowanie gry się nie zmienia.
+- **Rozmiar `ItemRegistry`.** 4096 wpisów z kluczami po 64 bajty to ok. 268 KiB, więcej niż limit kanału niezawodnego (256 KiB). Rejestr mieści się przy kluczach do 60 bajtów (tak jest w `MaxMessages`); większą ramkę zapis odrzuca. Pytanie do przeglądu: limit 60 bajtów na klucz przedmiotu w `ContentLoader` albo dzielenie komunikatu na części (jak `ConstructState`).
+- **Zmienione istniejące pliki testów i pomocnicze:** `ProtocolContractTests`, `IntentValidationTests`, `GameRulesTests`, `CodecGen` (generatory intencji 20–21 i komunikatów 40–43, 49; `IntentReply` z każdym kodem odmowy), `MaxMessages`, `SimFixture` i `ItemFixture` (parametr treści), `WorldFactory` (materiał `bedrock` o id 3 w `CreateWithPlayerContainers`), `FakeTerrainService` (`MeasureResult`, `MeasureCalls`; typ `MeasuredSphere`). Korpus złoty i `DeterminismTests` bez zmian (`git diff eee8f17..HEAD` na ich ścieżkach pusty).
+- **TDD.** Testy etapu powstały przed kodem; czerwień widziana dla kodeków i protokołu (21 testów), testy symulacji pierwszy raz uruchomione po napisaniu resolvera — sprawdzone mutacją (bez `Commit` księgi urobku trzy testy `MiningYieldTests` czerwone). Przegląd testów przed kodem zrobił ten sam wykonawca; osobny przegląd Opus zostaje w PR.
+- **Niestabilny test etapu A.** `ItemConservationProperties.Generator_ProducesAcceptedAndRefusedOperationsOfEveryKind` losuje bez ziarna i przy 100 sekwencjach liczba przyjętych `ItemSwapOp` krążyła wokół progu 10 (czerwony mniej więcej co drugi przebieg); próbka zwiększona do 400 sekwencji (osobny commit `test`).
+- **Commity.** Najpierw protokół (`feat(protocol)`, z tymczasowym wyłączeniem kodów ≥ 40 w `IntentValidationTests.AllReasons`), potem symulacja (`feat(core)`), która dodaje ich scenariusze; każdy commit buduje się i przechodzi testy.

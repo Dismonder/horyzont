@@ -1,3 +1,4 @@
+using Horyzont.Core.Content;
 using Horyzont.Core.Hashing;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
@@ -10,10 +11,13 @@ namespace Horyzont.Core.Tests.Items;
 /// <summary>A <see cref="SimFixture"/> over <see cref="WorldFactory.CreateWithPlayerContainers"/> with helpers for item operations.</summary>
 internal sealed class ItemFixture
 {
-    public ItemFixture(int players = 1, FakeTerrainService? terrain = null)
+    public ItemFixture(int players = 1, FakeTerrainService? terrain = null, SurvivalContent? content = null)
     {
-        Sim = new SimFixture(terrain: terrain, state: WorldFactory.CreateWithPlayerContainers(players));
+        Sim = new SimFixture(terrain: terrain, state: WorldFactory.CreateWithPlayerContainers(players), survival: content);
     }
+
+    /// <summary>Player 1 of the world.</summary>
+    public static PlayerId Player1 => new(1);
 
     public static ItemTypeId Tool => WorldFactory.Item(SurvivalContentFactory.ToolKey);
 

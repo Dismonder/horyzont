@@ -36,6 +36,11 @@ public sealed record GameRules
 
     /// <summary>Marker intents available at once (K5-27).</summary>
     public int MarkerIntentBurst { get; init; } = 8;
+    /// <summary>Item intents (move, drop) refilled per second (K6-29W D19).</summary>
+    public int ItemIntentsPerSecond { get; init; } = 20;
+
+    /// <summary>Item intents available at once (K6-29W D19).</summary>
+    public int ItemIntentBurst { get; init; } = 40;
 
     /// <summary>Largest distance between an intent's ray origin and the player's eye.</summary>
     public float MaxRayOriginErrorMeters { get; init; } = 2f;

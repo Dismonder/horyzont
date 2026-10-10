@@ -1,5 +1,6 @@
 using System.Numerics;
 
+using Horyzont.Core.Content;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
@@ -25,6 +26,7 @@ public sealed class ServerSimulation
     private readonly ILogger<ServerSimulation> _logger;
     private readonly OperationApplier _applier;
     private readonly IntentValidator _validator;
+    private readonly SurvivalRules? _survival;
     private readonly Dictionary<PlayerId, PlayerBuckets> _buckets = [];
     private readonly List<PlayerBuckets> _bucketList = [];
 
@@ -39,7 +41,24 @@ public sealed class ServerSimulation
     {
     }
 
-    /// <summary>Creates the simulation over a state with the block definitions of the game content.</summary>
+    /// <summary>Creates the simulation over a state with the survival rules of <paramref name="survival"/> and an empty block content table.</summary>
+    /// <param name="state">World state.</param>
+    /// <param name="terrain">Terrain service.</param>
+    /// <param name="journal">Journal sink.</param>
+    /// <param name="rules">Game rules.</param>
+    /// <param name="survival">Survival content, or null for the K2 rules.</param>
+    /// <param name="logger">Logger.</param>
+    public ServerSimulation(
+        WorldState state, ITerrainService terrain, IJournalSink journal, GameRules rules, SurvivalContent? survival, ILogger<ServerSimulation> logger)
+        : this(state, terrain, journal, rules, logger, BlockContentTable.Empty, survival)
+    {
+    }
+
+    /// <summary>
+    /// Creates the simulation over a state with the block definitions of the game content and, optionally, the survival rules of
+    /// <paramref name="survival"/> (K6-29W D8): item intents, mining yield and the fill cost. Without survival content the behaviour is
+    /// exactly that of K2 (no yield, free fill, item intents rejected).
+    /// </summary>
     /// <param name="state">World state.</param>
     /// <param name="terrain">Terrain service.</param>
     /// <param name="journal">Journal sink.</param>
@@ -49,9 +68,10 @@ public sealed class ServerSimulation
     /// Block definitions by type id. Read by intent validators only (the ship mode needs cockpits, engines and block masses);
     /// the operation applier never sees it.
     /// </param>
+    /// <param name="survival">Survival content, or null for the K2 rules.</param>
     public ServerSimulation(
         WorldState state, ITerrainService terrain, IJournalSink journal, GameRules rules, ILogger<ServerSimulation> logger,
-        BlockContentTable content)
+        BlockContentTable content, SurvivalContent? survival = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(terrain);
@@ -66,11 +86,16 @@ public sealed class ServerSimulation
         _journal = journal;
         _logger = logger;
         _applier = new OperationApplier(state, terrain);
-        _validator = new IntentValidator(state, terrain, rules, content);
+        _survival = survival is null ? null : new SurvivalRules(state, terrain, survival);
+        Survival = survival;
+        _validator = new IntentValidator(state, terrain, rules, content, _survival);
     }
 
     /// <summary>World state.</summary>
     public WorldState State { get; }
+
+    /// <summary>Survival content, or null when the simulation runs the K2 rules.</summary>
+    public SurvivalContent? Survival { get; }
 
     /// <summary>Game rules.</summary>
     public GameRules Rules { get; }
@@ -107,11 +132,27 @@ public sealed class ServerSimulation
             return IntentResult.Rejected(reason);
         }
 
-        var operation = IntentResolver.Resolve(State, player, intent, facts);
+        Operation operation;
+        if (_survival is null)
+        {
+            operation = IntentResolver.Resolve(State, player, intent, facts);
+        }
+        else
+        {
+            // Survival resolution may still refuse: items missing for a fill, a full target, a changed source (K6-29W).
+            reason = _survival.Resolve(player, intent, facts, out operation);
+            if (reason != RejectReason.None)
+            {
+                return IntentResult.Rejected(reason);
+            }
+        }
 
         // A refused operation changed nothing (the applier rolled it back), so the simulation is not faulted.
         var applied = TryApplyAndJournal(player, operation, out var failure, out _)
             ?? throw new InvalidOperationException($"A validated {operation.Kind} breaks a precondition: {failure}");
+
+        // The yield remainder and the fill credit change only after the operation holds (K6-29W D10, D12).
+        _survival?.Commit();
         IntentValidator.BucketFor(intent, buckets!)!.Consume();
         if (intent is TerrainToolIntent)
         {
@@ -260,6 +301,7 @@ public sealed class ServerSimulation
             _bucketList[i].Terrain.Refill();
             _bucketList[i].Blocks.Refill();
             _bucketList[i].Markers.Refill();
+            _bucketList[i].Items.Refill();
         }
     }
 

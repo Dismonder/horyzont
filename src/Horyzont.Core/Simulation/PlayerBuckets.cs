@@ -12,4 +12,6 @@ internal sealed class PlayerBuckets(GameRules rules)
 
     /// <summary>Marker intents (K5-27).</summary>
     internal TokenBucket Markers { get; } = new(rules.MarkerIntentsPerSecond, rules.MarkerIntentBurst, rules.TickRate);
+    /// <summary>Item intents (move, drop), K6-29W D19.</summary>
+    internal TokenBucket Items { get; } = new(rules.ItemIntentsPerSecond, rules.ItemIntentBurst, rules.TickRate);
 }

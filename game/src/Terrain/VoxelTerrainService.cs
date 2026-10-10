@@ -326,6 +326,19 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Until K6-29W stage C (step C5) measures the voxels this reports nothing measurable, so digging yields nothing and filling is refused
+    /// only when the game passes survival content; stage B does not pass any.
+    /// </remarks>
+    public bool MeasureSphere(PlanetId planet, Vector3 center, float radius, Span<int> solidVoxelsByMaterial, out int airVoxels)
+    {
+        EnsureMainThread();
+        solidVoxelsByMaterial.Clear();
+        airVoxels = 0;
+        return false;
+    }
+
+    /// <inheritdoc />
     /// <exception cref="InvalidOperationException">
     /// Unknown planet or shape, a terrain fault (<see cref="FirstFault"/>), versions other than the affected blocks, or an area that
     /// is not editable; nothing changed.

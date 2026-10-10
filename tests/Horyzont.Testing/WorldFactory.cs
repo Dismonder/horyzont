@@ -14,6 +14,9 @@ public static class WorldFactory
 {
     public const string StoneBlockKey = "core:stone_block";
 
+    /// <summary>Material id 3 of <see cref="CreateWithPlayerContainers"/>; the test content gives it no yield.</summary>
+    public const string BedrockMaterialKey = "bedrock";
+
     public const ushort BagSize = 40;
     public const ushort HotbarSize = 10;
     public const ushort EquipmentSize = 7;
@@ -39,13 +42,14 @@ public static class WorldFactory
     }
 
     /// <summary>
-    /// The default world with the item types of <see cref="SurvivalContentFactory"/> (ids 1..4) and <paramref name="players"/> joined players
+    /// The default world plus material <see cref="BedrockMaterialKey"/> (id 3, no yield) with the item types of <see cref="SurvivalContentFactory"/> (ids 1..4) and <paramref name="players"/> joined players
     /// (player n has identity Dev n). Every player got, in one compound operation, a bag (<see cref="BagOf"/>, 40 slots), a hotbar
     /// (<see cref="HotbarOf"/>, 10 slots) and an equipment container (<see cref="EquipmentOf"/>, 7 slots); all are empty.
     /// </summary>
     public static WorldState CreateWithPlayerContainers(int players = 1)
     {
-        var state = WorldState.CreateNew(DefaultWorldId, 42, [HomePlanetParams], [StoneBlockKey], ["stone", "dirt"], SurvivalContentFactory.ItemKeys);
+        var state = WorldState.CreateNew(
+            DefaultWorldId, 42, [HomePlanetParams], [StoneBlockKey], ["stone", "dirt", BedrockMaterialKey], SurvivalContentFactory.ItemKeys);
         var sim = new ServerSimulation(state, new FakeTerrainService(), new InMemoryJournal(), new GameRules(), NullLogger<ServerSimulation>.Instance);
         for (var n = 1; n <= players; n++)
         {
