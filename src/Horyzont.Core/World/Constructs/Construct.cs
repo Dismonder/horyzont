@@ -167,6 +167,17 @@ public sealed class Construct
         _tracker.MarkConstruct(Id);
     }
 
+    /// <summary>
+    /// Moves a ship-mode construct within its parent frame outside the journal (K5-20, <c>ServerSimulation.UpdateConstructKinematics</c>);
+    /// marks the header changed so the checkpoint stores the pose.
+    /// </summary>
+    internal void SetPose(Vector3 origin, Quaternion rotation)
+    {
+        Origin = origin;
+        Rotation = rotation;
+        _tracker.MarkConstruct(Id);
+    }
+
     /// <summary>Loads a chunk without marking changes (world loader).</summary>
     internal void LoadChunk(ChunkPos position, ReadOnlySpan<uint> blocks)
     {
