@@ -69,7 +69,12 @@ def check(
             if old and old["meanNs"] > 0 and value["meanNs"] > old["meanNs"] * (1 + limit / 100):
                 change = (value["meanNs"] / old["meanNs"] - 1) * 100
                 warnings.append(f"{key}: {change:.0f}% slower than the baseline ({old['meanNs'] / 1000:.2f} us -> {value['meanNs'] / 1000:.2f} us)")
-    if engine is not None:
+    if engine is None:
+        # The headless engine report has no flight (it needs a rendered scene). Phase C of K4-19 adds it and turns this into an error.
+        message = "criterion 3 not measured: no orbit-to-surface flight in the engine report (phase C of K4-19 makes this an error)"
+        warnings.append(message)
+        info.append("criterion 3 (orbit to surface): NOT MEASURED")
+    else:
         max_frame = float(engine.get("maxFrameMs", 0))
         hit = float(engine.get("rayHitRatio", 0))
         info.append(f"engine: max frame {max_frame:.1f} ms, ray hit ratio {hit:.4f}")
@@ -94,7 +99,7 @@ def self_test() -> int:
     }
     results = {"A.Zero": {"meanNs": 100.0, "allocBytes": 0.0}, "B.Param(X=1)": {"meanNs": 100.0, "allocBytes": 10.0}}
     errors, warnings, _ = check(budgets, results, None, {"maxFrameMs": 49.9, "rayHitRatio": 1.0}, {"tick": {"mean": 7.9}})
-    assert errors == [] and warnings == [], (errors, warnings)
+    assert errors == [] and warnings == [], (errors, warnings)  # engine report with the flight present
 
     bad = {"A.Zero": {"meanNs": 100.0, "allocBytes": 8.0}, "B.Param(X=1)": {"meanNs": 100.0, "allocBytes": 11.0}}
     errors, _, _ = check(budgets, bad, None, None, None)
@@ -110,7 +115,11 @@ def self_test() -> int:
 
     baseline = {"A.Zero": {"meanNs": 70.0, "allocBytes": 0.0}, "B.Param(X=1)": {"meanNs": 90.0, "allocBytes": 10.0}}
     errors, warnings, _ = check(budgets, results, baseline, None, None)
-    assert errors == [] and len(warnings) == 1 and warnings[0].startswith("A.Zero"), warnings
+    assert errors == [] and len(warnings) == 2 and warnings[0].startswith("A.Zero"), warnings
+    assert warnings[1].startswith("criterion 3 not measured"), warnings
+    errors, warnings, info = check(budgets, results, None, None, None)
+    assert errors == [] and [w for w in warnings if w.startswith("criterion 3 not measured")], "absent flight must be reported, not silent"
+    assert "criterion 3 (orbit to surface): NOT MEASURED" in info
 
     report = {"Benchmarks": [{"Type": "T", "Method": "M", "Parameters": "P=1", "Statistics": {"Mean": 5.0}, "Memory": {"BytesAllocatedPerOperation": 3}}]}
     assert parse_report(report) == {"T.M(P=1)": {"meanNs": 5.0, "allocBytes": 3.0}}
