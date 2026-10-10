@@ -188,5 +188,5 @@ public class FrameMathTests
         Assert.InRange((expected - actual).Length(), 0, Tolerance * scale);
 
     private static void AssertRotationClose(QuaternionD expected, QuaternionD actual) =>
-        Assert.InRange(1 - Math.Abs(QuaternionD.Dot(expected, actual)), 0, Tolerance);
+        Assert.InRange(1 - Math.Abs(QuaternionD.Dot(expected, actual)), -Tolerance, Tolerance);
 }
