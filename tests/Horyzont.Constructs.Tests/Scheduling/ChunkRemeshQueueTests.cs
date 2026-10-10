@@ -182,7 +182,8 @@ public sealed class ChunkRemeshQueueTests
             var at = System.Diagnostics.Stopwatch.GetTimestamp();
             var ok = queue.TryStartNext(out var job);
             var took = System.Diagnostics.Stopwatch.GetElapsedTime(at);
-            slowest = took > slowest ? took : slowest;
+            // The very first call pays the JIT; the per-frame cost is what the pick must keep small.
+            slowest = started > 0 && took > slowest ? took : slowest;
             if (!ok)
             {
                 break;
