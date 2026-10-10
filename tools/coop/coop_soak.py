@@ -227,6 +227,26 @@ def duplicate_ops(ops: list[int]) -> list[int]:
     return duplicates
 
 
+def split_duplicates(
+    intents: list[tuple[float, int]], kill_at: float | None, last_op_after: int | None
+) -> tuple[list[int], int]:
+    """
+    Duplicated op ids, and the number of operations that a kill may legitimately have lost.
+    After a kill the restarted server reuses the op ids above the last op it recovered, so an operation acknowledged before the
+    kill with an id above that last op was lost (allowed within the durability margin) and is not a duplicate of its reuse.
+    """
+    if kill_at is None or last_op_after is None:
+        return duplicate_ops([op for _at, op in sorted(intents)]), 0
+    kept: list[int] = []
+    lost = 0
+    for at, op in sorted(intents):
+        if at <= kill_at and op > last_op_after:
+            lost += 1
+        else:
+            kept.append(op)
+    return duplicate_ops(kept), lost
+
+
 def accepted_intents(report: dict) -> list[tuple[float, int]]:
     """(reply time in seconds on the clock of perf_counter, op id) of every accepted intent of a bots.json."""
     frequency = float(report["frequency"])
@@ -307,6 +327,12 @@ def self_test() -> int:
     ok, _ = check_durability(intents, 100.0, last_op_after=1, lines=[(19.0, "Checkpoint started boundary=1")])
     assert ok, "with a checkpoint open since 19 s only the operations before 18.85 s must survive"
     assert duplicate_ops([1, 2, 3, 2, 3]) == [2, 3] and duplicate_ops([1, 2, 3]) == []
+    # A kill: ops 3 and 4 were acked before it but not recovered (last op 2); the restart hands out 3 and 4 again.
+    after_kill = [(10.0, 1), (20.0, 2), (99.9, 3), (99.95, 4), (101.0, 3), (102.0, 4), (103.0, 5)]
+    assert split_duplicates(after_kill, 100.0, 2) == ([], 2)
+    assert split_duplicates(after_kill, None, None)[0] == [3, 4]
+    assert split_duplicates(after_kill + [(104.0, 5)], 100.0, 2) == ([5], 2), "a real duplicate after the restart still counts"
+    assert split_duplicates([(10.0, 1), (11.0, 1)], 100.0, 5) == ([1], 0)
 
     report = {
         "frequency": 10_000_000,
@@ -331,7 +357,15 @@ def self_test() -> int:
     assert stopped is not None and stopped.group(2) == "9"
     assert progress is not None and progress.group(1) == "8"
 
-    assert clean_exit(0) and clean_exit(3221225477) and not clean_exit(3) and not clean_exit(-1)
+    assert clean_exit(0, False) and clean_exit(3221225477, True) and not clean_exit(3221225477, False)
+    assert not clean_exit(3, True) and not clean_exit(-1, True)
+    assert is_access_violation(3221225477) and not is_access_violation(0)
+    assert plan_events("tick", None, None, 600.0) == (None, None) and plan_events("tick", 1.0, 2.0, 600.0) == (None, None)
+    assert plan_events("smoke", None, None, 600.0) == (200.0, 400.0) and plan_events("smoke", 0, 0, 600.0) == (None, None)
+    assert plan_events("smoke", None, None, 120.0) == (None, None)
+    assert av_budget_check(0)[0] and av_budget_check(1)[0] and not av_budget_check(2)[0]
+    server_lines = [Line(1.0, "x"), Line(2.0, "Stopped; state hash=0123456789ABCDEF last op=9")]
+    assert stopped_in(server_lines) and not stopped_in([Line(1.0, "Stopped")])
     print("coop_soak self-test OK")
     return 0
 
@@ -343,9 +377,38 @@ ACCESS_VIOLATION = 0xC0000005
 ENGINE_EXIT_WARNING = "Godot crashed at exit after a complete shutdown (access violation); state is safe, engine shutdown defect to follow up"
 
 
-def clean_exit(code: int) -> bool:
-    """A zero exit, or the Windows access violation that Godot raises while tearing down after the server's own 'Stopped' line."""
-    return code == 0 or (code & 0xFFFFFFFF) == ACCESS_VIOLATION
+ENGINE_EXIT_AV_LIMIT = 1  # per run; documented exception in the K4-19 report
+
+
+def is_access_violation(code: int) -> bool:
+    return (code & 0xFFFFFFFF) == ACCESS_VIOLATION
+
+
+def clean_exit(code: int, stopped: bool) -> bool:
+    """A zero exit, or the access violation that Godot raises while tearing down, but only after this same process wrote 'Stopped'."""
+    return code == 0 or (is_access_violation(code) and stopped)
+
+
+def stopped_in(lines: list[Line]) -> list[re.Match[str]]:
+    """The 'Stopped' lines of one process (never those of an earlier one)."""
+    return [m for line in lines if (m := STOPPED.search(line.text))]
+
+
+def event_time(value: float | None, total: float, fraction: float) -> float | None:
+    if value is not None:
+        return value * 60 if value > 0 else None
+    return total * fraction if total >= 150 else None
+
+
+def plan_events(profile: str, restart_arg: float | None, kill_arg: float | None, total: float) -> tuple[float | None, float | None]:
+    """(restart_at, kill_at) in seconds. Profile tick measures the steady state: neither, whatever the arguments say."""
+    if profile == "tick":
+        return None, None
+    return event_time(restart_arg, total, 1 / 3), event_time(kill_arg, total, 2 / 3)
+
+
+def av_budget_check(count: int) -> tuple[bool, str]:
+    return count <= ENGINE_EXIT_AV_LIMIT, f"{count} engine exits with an access violation after Stopped (limit {ENGINE_EXIT_AV_LIMIT} per run)"
 
 
 def free_udp_port() -> int:
@@ -386,6 +449,7 @@ class Run:
         self.kill_at: float | None = None
         self.last_op_after_kill: int | None = None
         self.runner_generation = 0
+        self.engine_exit_av = 0
 
     # --- commands ---
 
@@ -508,8 +572,7 @@ class Run:
             self.start_runner(epoch_ms)
             run_start = time.monotonic()
             total = args.minutes * 60.0
-            restart_at = self.event_time(args.restart_at, total, 1 / 3)
-            kill_at = self.event_time(args.kill_at, total, 2 / 3)
+            restart_at, kill_at = plan_events(args.profile, args.restart_at, args.kill_at, total)
             next_stats = run_start + 60
             restarted = killed = False
             while time.monotonic() - run_start < total:
@@ -551,12 +614,6 @@ class Run:
             if not self.args.keep:
                 shutil.rmtree(self.work, ignore_errors=True)
 
-    @staticmethod
-    def event_time(value: float | None, total: float, fraction: float) -> float | None:
-        if value is not None:
-            return value * 60 if value > 0 else None
-        return total * fraction if total >= 150 else None
-
     def start_runner(self, epoch_ms: int) -> None:
         self.runner_generation += 1
         command, cwd = self.runner_command(epoch_ms, self.runner_generation)
@@ -570,11 +627,12 @@ class Run:
         self.server.send("stop")
         code = self.server.wait_exit(120)
         self.collect_server_lines()
-        stopped = [m for _at, text in self.server_lines if (m := STOPPED.search(text))]
-        if not clean_exit(code) or not stopped:
+        stopped = stopped_in(self.server.lines)
+        if not clean_exit(code, bool(stopped)) or not stopped:
             self.checks.append(Check("graceful_stop", False, f"exit {code}, stopped lines {len(stopped)}"))
             raise Failure("the graceful stop failed")
         if code != 0:
+            self.engine_exit_av += 1
             print(f"warning: {ENGINE_EXIT_WARNING} (exit {code:#x}) after the stop line", flush=True)
         hash_stop, last_op_stop = stopped[-1].group(1), stopped[-1].group(2)
         self.server, ready = self.start_server_waiting("server-restart", retry_same_port=True)
@@ -609,7 +667,10 @@ class Run:
             self.server.send("stop")
             try:
                 code = self.server.wait_exit(120)
-                self.checks.append(Check("server_exits_clean", clean_exit(code), f"exit {code:#x}" + ("; " + ENGINE_EXIT_WARNING if code else "")))
+                stopped = bool(stopped_in(self.server.lines))
+                if code != 0 and clean_exit(code, stopped):
+                    self.engine_exit_av += 1
+                self.checks.append(Check("server_exits_clean", clean_exit(code, stopped), f"exit {code:#x}" + ("; " + ENGINE_EXIT_WARNING if code else "")))
             except Failure as failure:
                 self.checks.append(Check("server_exits_clean", False, str(failure)))
         self.collect_server_lines()
@@ -638,8 +699,11 @@ class Run:
             self.checks.append(Check("bots_reached_the_game", all(bot["joins"] >= 1 for bot in report["bots"]), f"{sum(bot['joins'] for bot in report['bots'])} joins"))
             accepted = accepted_intents(report)
             self.checks.append(Check("edits_accepted", len(accepted) > 0, f"{len(accepted)} accepted intents"))
-            dups = duplicate_ops([op for _at, op in accepted])
-            self.checks.append(Check("no_operation_acknowledged_twice", not dups, f"{len(dups)} duplicated op ids" if dups else "every op id once"))
+            dups, allowed_losses = split_duplicates(accepted, self.kill_at, self.last_op_after_kill)
+            self.checks.append(Check(
+                "no_operation_acknowledged_twice", not dups,
+                (f"{len(dups)} duplicated op ids" if dups else "every op id once") + f"; {allowed_losses} acknowledged ops lost to the kill and not counted",
+            ))
             if self.kill_at is not None and self.last_op_after_kill is not None:
                 ok, detail = check_durability(accepted, self.kill_at, self.last_op_after_kill, self.server_lines)
                 self.checks.append(Check("kill_loses_at_most_the_last_batch", ok, detail))
@@ -651,8 +715,11 @@ class Run:
         ticks = aggregate_ticks(self.tick_windows)
         if args.profile == "tick":
             self.checks.append(Check("tick_mean_within_budget", 0 < ticks["ticks"] and ticks["mean"] <= TICK_BUDGET_MS, f"mean {ticks['mean']:.3f} ms (budget {TICK_BUDGET_MS} ms)"))
+        av_ok, av_detail = av_budget_check(self.engine_exit_av)
+        self.checks.append(Check("engine_exit_av_within_limit", av_ok, av_detail))
         passed = all(c.passed for c in self.checks)
         summary = {
+            "engine_exit_av": self.engine_exit_av,
             "verdict": "PASS" if passed else "FAIL", "minutes": args.minutes, "bots": args.bots, "profile": args.profile,
             "port": self.port, "tick": ticks, "rejections": rejection_totals(report), "checks": [c.__dict__ for c in self.checks],
         }
