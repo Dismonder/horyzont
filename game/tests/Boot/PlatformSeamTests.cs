@@ -58,7 +58,10 @@ public class PlatformSeamTests
         };
         var composition = GameComposition.Create(new LaunchOptions
         {
-            Mode = Horyzont.Server.ProcessMode.Host, DataDir = dir, BindAddress = "127.0.0.1", Port = ModeFixture.NextPort(),
+            Mode = Horyzont.Server.ProcessMode.Host,
+            DataDir = dir,
+            BindAddress = "127.0.0.1",
+            Port = ModeFixture.NextPort(),
         }, env);
         scene.Add(composition.Root);
         var quit = composition.Root.GetNode<QuitCoordinator>("Quit");
@@ -130,8 +133,13 @@ public class PlatformSeamTests
 
     private static GameEnvironment Environment(string dir, TimeProvider time, ICompositionPlatform platform) => new()
     {
-        Time = time, Loggers = NullLoggerFactory.Instance, UserDataDir = dir, ExecutableDir = dir,
-        Characters = false, Print = _ => { }, CompositionPlatform = platform,
+        Time = time,
+        Loggers = NullLoggerFactory.Instance,
+        UserDataDir = dir,
+        ExecutableDir = dir,
+        Characters = false,
+        Print = _ => { },
+        CompositionPlatform = platform,
     };
 
     private sealed class IdleTransport : ITransport

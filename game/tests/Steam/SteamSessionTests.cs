@@ -1,10 +1,10 @@
-using Godot;
-
 using GdUnit4;
 
+using Godot;
+
 using Horyzont.Client.Steam;
-using Horyzont.Game.Boot;
 using Horyzont.Core.Ids;
+using Horyzont.Game.Boot;
 using Horyzont.Game.Tests.Support;
 using Horyzont.Testing;
 
@@ -81,12 +81,21 @@ public class SteamSessionTests
     {
         var env = new GameEnvironment
         {
-            Time = time, Loggers = NullLoggerFactory.Instance, UserDataDir = dir, ExecutableDir = dir,
-            Characters = false, Print = _ => { }, Platform = services,
+            Time = time,
+            Loggers = NullLoggerFactory.Instance,
+            UserDataDir = dir,
+            ExecutableDir = dir,
+            Characters = false,
+            Print = _ => { },
+            Platform = services,
         };
         return GameComposition.Create(new LaunchOptions
         {
-            Mode = Horyzont.Server.ProcessMode.Host, DataDir = dir, BindAddress = "127.0.0.1", Port = ModeFixture.NextPort(), EnableSteam = true,
+            Mode = Horyzont.Server.ProcessMode.Host,
+            DataDir = dir,
+            BindAddress = "127.0.0.1",
+            Port = ModeFixture.NextPort(),
+            EnableSteam = true,
         }, env);
     }
 }
