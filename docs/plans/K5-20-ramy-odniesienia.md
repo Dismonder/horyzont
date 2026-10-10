@@ -269,3 +269,14 @@ Brak krawędzi startu: oba pakiety ruszają od razu. Zasada X10: **integruje pak
 ## Odstępstwa i decyzje wykonawcy
 
 (wypełnia wykonawca: stan K3/K4 przy każdej fazie, rzeczywiste nazwy API, wyniki kroku 1 i testu 1000 przepięć, odpowiedzi właściciela, różnice od planu)
+
+**Krok 0 (2026-10-10, fazy A–B).**
+
+- Gałąź `pakiet/k5-20-ramy-odniesienia` (nie `pakiet/k5-20-ramy`), worktree `F:/dev/horyzont-k5-20`, od `plany/k5` (44dad6e) nad `main` a711512. Scalone: K2 (#11–#18), K3-00 (#19), K3-15 (#20). K3-14 **nie** jest scalony → fazy C–D czekają. K4-19 nie scalony (nie jest warunkiem — P11).
+- `ProtocolConstants.ProtocolVersion = 4` (K3-15), zgodnie z Y3.
+- `OperationApplier`: `ApplyReparent` (:127), `CheckReparent` (:294), `IsPose` (:392, `internal static`) — jak w tabeli.
+- `ServerSimulation.ApplyServerOperation` (:138), `UpdatePlayerKinematics` (:235) — jak w tabeli.
+- `EntityMirror.MaxFrameDepth = 8` (`private const`, :19); `EntityReplication.ForwardReparent` jest w :491 (plan: :498-501), lista ruchomych bytów to `PlayerState.Mobile`.
+- `BlockOverlap`: nie ma publicznego `TryGetPose`; jest prywatne rekurencyjne `TryGetPose(store, construct, frame, depth, …)` nad `ConstructStore` (głębokość `MaxNestingDepth = 64`) i publiczne `TryGetConstructPose`. Krok 3 zostawia ścieżkę głębokości 1 bez zmian, a głębsze składa w `double` przez `FrameGraph` z zachowaniem limitu 64 (bez zmiany zachowania walidatora dla głębokich zagnieżdżeń).
+- Krok 1: `PlayerBody` działa w ramie planety przez `PlanetFrames` (planeta w tożsamości, `MaxCoordinate = 100 km`, stan zaokrąglany do `float` co tick), więc nie może stać 115 km od początku przed fazą D (wejście `PlanetFrames` = przestrzeń lokalna węzła planety). Testy `FarFromOrigin_*` używają testowego `CharacterBody3D` z tą samą konfiguracją co `PlayerBody` (kapsuła `GameRules`, `SafeMargin`, przyciąganie do podłoża, docisk 0,05 m/s), ruch w `double` z grawitacją względem testowego środka. Pełna ścieżka `PlayerBody` na planecie przesuniętej o 115 km — testy `FrameNodes_*` (krok 12).
+- Krok 1 — walidacja: testów silnika nie uruchamia się lokalnie (wspólny runner, jeden potok gdUnit); `ci.yml` rusza tylko dla PR i `main`, więc wynik kroku 1 przyjdzie z jobu `game` po otwarciu PR. Do tego czasu kryterium 1 jest **niezweryfikowane**; fazy A–B idą dalej na polecenie prowadzącego (P1 obowiązuje, gdy job `game` pokaże porażkę).
