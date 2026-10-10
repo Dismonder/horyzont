@@ -151,7 +151,7 @@ Fixture xUnit: `FakeTimeProvider`, `InMemoryTransport`, 60 Hz fizyki/20 Hz stan�
 
 - [x] 0. Baza potwierdzona: K2 + K3-00, czysta gałąź pakietu; bez zbędnego rebase. Rebase na scalone K2 i K3-00; sprawdzić nazwy oraz zastosować szwy S4–S7 i własność plików według X10. Nie zmieniać cudzych testów akceptacyjnych bez zgody.
 - [x] 1. RED: brak API; GREEN: Client 173/173, interpolacja/ring/clock i 0 B w gorących ścieżkach. Testy czyste prezentacji i ringów, następnie implementacja; mały commit Conventional Commits po zielonym kroku.
-- [ ] 2. Testy replay/pauzy/ACK; adapter pełnej migawki do próbek, bez regresji `Validate(Snapshot, ...)`.
+- [x] 2. GREEN: Client 177/177; replay 1..128, pauza/ACK i pełny sink z resetem sesji. Testy replay/pauzy/ACK; adapter pełnej migawki do próbek, bez regresji `Validate(Snapshot, ...)`.
 - [ ] 3. Testy polityki budżetu, implementacja bez alokacji i API dla K3-15.
 - [ ] 4. Testy Godota, odseparować siatkę/kamerę od kapsuły; zdalny widok tylko wizualny. Sprawdzić FPP/TPP, bieguny i ściany.
 - [ ] 5. Test łącza, pomiary płynności i alokacji; raport seedów, błędów i niedoborów próbek. Po dwóch nieudanych próbach tego samego testu eskalować z testem i logiem zgodnie z ZASADY pkt 12.
