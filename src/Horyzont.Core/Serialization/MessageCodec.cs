@@ -386,6 +386,15 @@ public static class MessageCodec
 
                 break;
 
+            case ResyncRequest request:
+                if (request.Entity.IsNone)
+                {
+                    throw new ArgumentException("Resync entity must be nonzero.", nameof(message));
+                }
+
+                w.WriteVarUInt(request.Entity.Value);
+                break;
+
             case SnapshotAck sa:
                 w.WriteVarUInt(sa.SnapshotId);
                 break;
@@ -749,6 +758,15 @@ public static class MessageCodec
                 }
 
                 return new Snapshot(snapId, sTick, baseline, lastInput, frames, entities);
+
+            case MessageType.ResyncRequest:
+                var requested = new EntityId(r.ReadVarUInt());
+                if (requested.IsNone)
+                {
+                    throw new ProtocolViolationException("Resync entity must be nonzero.");
+                }
+
+                return new ResyncRequest(requested);
 
             case MessageType.SnapshotAck:
                 uint saSnapId = r.ReadVarUInt32();

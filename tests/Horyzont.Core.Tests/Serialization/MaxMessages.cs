@@ -154,6 +154,7 @@ public static class MaxMessages
             new Ping(ulong.MaxValue),
             new Pong(ulong.MaxValue, new Tick(ulong.MaxValue)),
             new Disconnect(DisconnectCode.HandshakeTimeout),
+            new ResyncRequest(new EntityId(ulong.MaxValue)),
             new TerrainSync(uint.MaxValue, 2, new PlanetId(ulong.MaxValue), new OpId(ulong.MaxValue), ushort.MaxValue, false,
                 Enumerable.Range(0, 1024).Select(i => new TerrainSyncEntry(
                     new TerrainBlockKey(new PlanetId(ulong.MaxValue), 0, int.MinValue + i, int.MinValue, int.MinValue), uint.MaxValue, ulong.MaxValue)).ToArray()),

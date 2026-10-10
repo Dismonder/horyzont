@@ -1,11 +1,6 @@
-using Godot;
-
-using Horyzont.Client.Replication;
 using Horyzont.Core;
-using Horyzont.Core.Simulation;
 using Horyzont.Game.Client;
 using Horyzont.Game.Client.Terrain;
-using Horyzont.Game.Client.Tools;
 using Horyzont.Game.Planet.Generators;
 using Horyzont.Game.Server;
 using Horyzont.Game.Server.Terrain;
@@ -29,14 +24,11 @@ public sealed partial class GameComposition
     /// <summary>Gets the terrain replication of a remote client; null for a host, solo and dedicated server.</summary>
     public ClientTerrainReplicator? ClientTerrainReplication { get; private set; }
 
-    /// <summary>Gets the tools of a remote client (K3-16); null elsewhere and with characters off.</summary>
-    public ToolNode? RemoteTools { get; private set; }
-
     /// <summary>
     /// Gets the reliable replication budget of the process (27 000 B/s). One instance per process serves every client, as the shared
     /// bucket of X3 requires: entity replication (K3-15) takes the same one when both packages are integrated.
     /// </summary>
-    internal IReplicationSendBudget TerrainSendBudget => _terrainSendBudget ??= new TokenBucketReplicationBudget(_env.Time);
+    internal IReplicationSendBudget TerrainSendBudget => ReplicationBudget ?? (_terrainSendBudget ??= new TokenBucketReplicationBudget(_env.Time));
 
     partial void ConfigureTerrainReplication()
     {
@@ -88,17 +80,8 @@ public sealed partial class GameComposition
         player.WorldReadiness = replicator;
         var prediction = new RemoteTerrainPrediction(own, _env.Time, _env.Loggers.CreateLogger<RemoteTerrainPrediction>());
         replicator.Attach(prediction);
-        var raycast = new RemoteTerrainRaycast(own);
-        var scene = GD.Load<PackedScene>(ToolsScene) ?? throw new InvalidOperationException($"Scene {ToolsScene} not found.");
-        var tools = scene.Instantiate<ToolNode>();
-        tools.Initialize(client, hello => new RemoteToolWorldView(hello, raycast), () => prediction, player, new GameRules(), _env.Loggers);
-        if (_env.Render)
-        {
-            tools.AddChild(new TerrainToolPreview(tools));
-            tools.AddChild(new ToolHud(tools));
-        }
-
-        node.AddChild(tools);
-        RemoteTools = tools;
+        // The tools of the remote client belong to K3-15 (ConfigureReplication runs first); they read these two seams when the hello arrives.
+        RemoteTerrain = new RemoteTerrainRaycast(own);
+        TerrainPrediction = prediction;
     }
 }

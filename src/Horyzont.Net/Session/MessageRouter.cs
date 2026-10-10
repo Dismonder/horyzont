@@ -27,7 +27,7 @@ internal static class MessageRouter
     private static bool IsKnownType(byte type) => type switch
     {
         1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10
-            or 11 or 12 or 13 or 14 or 15 or 16 or 17 or 18 or 19 or 20 or 24 or 25 => true,
+            or 11 or 12 or 13 or 14 or 15 or 16 or 17 or 18 or 19 or 20 or 21 or 24 or 25 => true,
         _ => false,
     };
 
@@ -37,7 +37,7 @@ internal static class MessageRouter
         PeerState.AwaitingHello => type is MessageType.ClientHello or MessageType.Disconnect,
         PeerState.Loading => type is MessageType.TerrainView or MessageType.TerrainCacheReport or MessageType.ClientReady or MessageType.Disconnect or MessageType.Ping,
         PeerState.InGame => type is MessageType.TerrainView or MessageType.IntentSubmit or MessageType.TerrainCacheReport or MessageType.TerrainChecksums
-            or MessageType.Disconnect or MessageType.InputBatch or MessageType.SnapshotAck or MessageType.Ping,
+            or MessageType.Disconnect or MessageType.InputBatch or MessageType.SnapshotAck or MessageType.Ping or MessageType.ResyncRequest,
         _ => false,
     };
 
@@ -56,5 +56,5 @@ internal static class MessageRouter
 
     /// <summary>Client-to-server types the game sends itself through <see cref="ClientSession.Send"/>.</summary>
     public static bool IsGameMessageFromClient(MessageType type) =>
-        type is MessageType.TerrainView or MessageType.TerrainCacheReport or MessageType.TerrainChecksums or MessageType.SnapshotAck;
+        type is MessageType.TerrainView or MessageType.TerrainCacheReport or MessageType.TerrainChecksums or MessageType.SnapshotAck or MessageType.ResyncRequest;
 }

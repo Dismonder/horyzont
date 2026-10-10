@@ -166,6 +166,22 @@ public sealed class ServerSession
         }
     }
 
+    /// <summary>Sends a trusted encoded game frame on its required transport channel.</summary>
+    /// <param name="player">Recipient.</param>
+    /// <param name="channel">Required delivery channel.</param>
+    /// <param name="frame">Complete type/version/payload bytes.</param>
+    /// <exception cref="ArgumentException">Invalid type, channel or length.</exception>
+    public void SendEncoded(PlayerId player, TransportChannel channel, ReadOnlySpan<byte> frame)
+    {
+        if (frame.Length < 2 || !MessageRouter.TryGetType(frame, out var type)
+            || !MessageRouter.IsGameMessageFromServer(type) || channel != ToTransport(MessageChannels.For(type)))
+        {
+            throw new ArgumentException("Encoded frame routing or channel is invalid.", nameof(frame));
+        }
+
+        SendEncoded(player, type, frame);
+    }
+
     /// <summary>Sends a game message once encoded to every InGame player for whom <paramref name="subject"/> is visible.</summary>
     /// <param name="subject">The entity the message is about.</param>
     /// <param name="message">A server-to-client game message.</param>

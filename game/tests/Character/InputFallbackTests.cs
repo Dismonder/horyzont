@@ -1,6 +1,7 @@
 using GdUnit4;
 
 using Horyzont.Core.Motion;
+using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Game.Client.Character;
 using Horyzont.Game.Tests.Support;
@@ -31,10 +32,10 @@ public class InputFallbackTests
         AssertThat(yaw).IsEqual(1.25f);
     }
 
-    /// <summary>The snapshot counter of a player is dropped when the player leaves.</summary>
+    /// <summary>The replication state (snapshot history, interest) of a player is dropped when the player leaves.</summary>
     [TestCase(Timeout = 300000)]
     [RequireGodotRuntime]
-    public async Task OwnStateSender_PlayerLeaves_CounterForgotten()
+    public async Task EntityReplication_PlayerLeaves_StateForgotten()
     {
         await using var scene = EngineTestScene.Create();
         var dir = ModeFixture.NewDirectory();
@@ -42,14 +43,15 @@ public class InputFallbackTests
             scene, dir, true, false, "--solo", "--data-dir", dir, "--profile", Path.Combine(dir, "profile.json"), "--world", Guid.NewGuid().ToString());
         var composition = fixture.Composition;
         AssertThat(await fixture.WaitInGame(120)).IsTrue();
-        AssertThat(await fixture.WaitUntil(() => composition.OwnState!.TrackedPlayers == 1, 30)).IsTrue();
+        AssertThat(await fixture.WaitUntil(() => composition.Replication?.TrackedPlayers == 1, 30)).IsTrue();
         var player = composition.Client!.Hello!.YourPlayer;
 
-        composition.OwnState!.Forget(player);
-        AssertThat(composition.OwnState.TrackedPlayers).IsEqual(0);
-        AssertThat(await fixture.WaitUntil(() => composition.OwnState.TrackedPlayers == 1, 30)).IsTrue();
+        composition.Replication!.OnPlayerLeaving(player, DisconnectCode.Normal);
+        AssertThat(composition.Replication.TrackedPlayers).IsEqual(0);
+        AssertThat(await fixture.WaitUntil(() => composition.Replication.TrackedPlayers == 1, 30)).IsTrue();
 
+        var replication = composition.Replication;
         AssertThat(await fixture.StopAsync()).IsTrue();
-        AssertThat(composition.OwnState.TrackedPlayers).IsEqual(0);
+        AssertThat(replication.TrackedPlayers).IsEqual(0);
     }
 }

@@ -28,7 +28,7 @@ public sealed class LayeringTests
     [InlineData("src/Horyzont.Net/Horyzont.Net.csproj", "Horyzont.Core")]
     [InlineData("src/Horyzont.Constructs/Horyzont.Constructs.csproj", "Horyzont.Core")]
     [InlineData("src/Horyzont.Server/Horyzont.Server.csproj", "Horyzont.Core,Horyzont.Persistence,Horyzont.Net")]
-    [InlineData("src/Horyzont.Client/Horyzont.Client.csproj", "Horyzont.Core,Horyzont.Net")]
+    [InlineData("src/Horyzont.Client/Horyzont.Client.csproj", "Horyzont.Core,Horyzont.Net,Horyzont.Constructs")]
     public void ProjectFile_HasOnlyAllowedReferences(string path, string allowedCsv)
     {
         var allowedProjects = allowedCsv.Split(',', StringSplitOptions.RemoveEmptyEntries);
