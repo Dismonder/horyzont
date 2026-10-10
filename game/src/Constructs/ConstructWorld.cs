@@ -79,6 +79,72 @@ public sealed partial class ConstructWorld : Node3D
     /// <summary>Number of constructs that currently have a node.</summary>
     public int LoadedConstructCount => _entries.Count;
 
+    /// <summary>Whether all construct chunks near a saved pose have installed their current collision result.</summary>
+    /// <param name="frame">The saved planet frame.</param>
+    /// <param name="position">Saved feet position in that frame.</param>
+    /// <param name="radius">Radius enclosing the support search.</param>
+    /// <returns>False during loading, edits, failed builds or pending collision uploads.</returns>
+    public bool AreCollisionsReady(FrameRef frame, System.Numerics.Vector3 position, float radius)
+    {
+        if (!_initialized || IsShutdown || frame != _frame || _rangeDirty)
+        {
+            return false;
+        }
+
+        _constructScratch.Clear();
+        _source.CollectConstructs(frame, _constructScratch);
+        foreach (var id in _constructScratch)
+        {
+            if (!_source.TryGetPose(id, out var pose))
+            {
+                continue;
+            }
+
+            var low = new System.Numerics.Vector3(pose.BoundsMin.X, pose.BoundsMin.Y, pose.BoundsMin.Z);
+            var high = new System.Numerics.Vector3(pose.BoundsMax.X + 1, pose.BoundsMax.Y + 1, pose.BoundsMax.Z + 1);
+            var centre = pose.Origin + System.Numerics.Vector3.Transform((low + high) / 2, pose.Rotation);
+            if ((position - centre).Length() > radius + ((high - low).Length() / 2))
+            {
+                continue;
+            }
+
+            _chunkScratch.Clear();
+            _source.CollectChunks(id, _chunkScratch);
+            if (!_entries.TryGetValue(id, out var entry))
+            {
+                if (_chunkScratch.Count > 0)
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (!entry.Collision && _chunkScratch.Count > 0)
+            {
+                return false;
+            }
+
+            foreach (var chunk in _chunkScratch)
+            {
+                if (!entry.CollisionReadyChunks.Contains(chunk))
+                {
+                    return false;
+                }
+            }
+
+            foreach (var chunk in entry.KnownChunks)
+            {
+                if (!entry.CollisionReadyChunks.Contains(chunk))
+                {
+                    return false; // includes an emptied chunk whose old shape is still waiting to be removed
+                }
+            }
+        }
+
+        return true;
+    }
+
     /// <summary>Connects the world to its inputs and starts the workers.</summary>
     /// <param name="source">Where constructs are read from (main thread only).</param>
     /// <param name="table">Render table of the world session.</param>
@@ -405,6 +471,7 @@ public sealed partial class ConstructWorld : Node3D
         {
             _collisionPoints.Remove(key); // a queued older shape would be stale (the chunk lost its collision faces)
             chunk.ClearCollision();
+            entry.CollisionReadyChunks.Add(key.Chunk); // current geometry intentionally has no collision faces
             ChunkMeshApplied?.Invoke(key.Construct, key.Chunk);
             return;
         }
@@ -429,6 +496,7 @@ public sealed partial class ConstructWorld : Node3D
 
         var collisionStart = Stopwatch.GetTimestamp();
         entry.Node.GetOrCreateChunk(key.Chunk).ApplyCollision(result.Points);
+        entry.CollisionReadyChunks.Add(key.Chunk);
         Timings.AddCollision(collisionStart);
         ChunkMeshApplied?.Invoke(key.Construct, key.Chunk);
     }
@@ -442,6 +510,11 @@ public sealed partial class ConstructWorld : Node3D
             if (!_source.TryGetChunkBlocks(key.Construct, key.Chunk, out _))
             {
                 entry.KnownChunks.Remove(key.Chunk);
+                entry.CollisionReadyChunks.Remove(key.Chunk);
+            }
+            else
+            {
+                entry.CollisionReadyChunks.Add(key.Chunk); // a current non-colliding chunk is also ready
             }
 
             ChunkMeshApplied?.Invoke(key.Construct, key.Chunk);
@@ -652,9 +725,13 @@ public sealed partial class ConstructWorld : Node3D
     private void MarkDirty(ConstructChunkKey key, RemeshPriority priority)
     {
         _retryChunks.Remove(key);
-        if (_entries.TryGetValue(key.Construct, out var entry) && _source.TryGetChunkBlocks(key.Construct, key.Chunk, out _))
+        if (_entries.TryGetValue(key.Construct, out var entry))
         {
-            entry.KnownChunks.Add(key.Chunk); // keep until an emptied chunk completes, even before its first mesh upload
+            entry.CollisionReadyChunks.Remove(key.Chunk);
+            if (_source.TryGetChunkBlocks(key.Construct, key.Chunk, out _))
+            {
+                entry.KnownChunks.Add(key.Chunk); // keep until an emptied chunk completes, even before its first mesh upload
+            }
         }
 
         _queue.MarkDirty(key, priority);
@@ -673,5 +750,7 @@ public sealed partial class ConstructWorld : Node3D
         public bool Collision { get; set; }
 
         public HashSet<ChunkPos> KnownChunks { get; } = [];
+
+        public HashSet<ChunkPos> CollisionReadyChunks { get; } = [];
     }
 }

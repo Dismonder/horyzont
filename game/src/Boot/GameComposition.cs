@@ -293,7 +293,7 @@ public sealed class GameComposition
 
             if (env.Characters)
             {
-                characters = new ServerCharactersBinder(serverNode!, factory, rules, movement, devFlight, loggers);
+                characters = new ServerCharactersBinder(serverNode!, factory, rules, movement, devFlight, loggers, constructs.AreSpawnCollisionsReady);
                 characters.Register(server);
             }
 

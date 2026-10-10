@@ -12,6 +12,40 @@ namespace Horyzont.Game.Tests.Constructs;
 public sealed class ConstructWorldTests : EngineTestBase
 {
     [EngineTest]
+    public async Task SpawnCollision_StalledMesherAndPendingShape_RemainsNotReady()
+    {
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(BlockContentLoader.Load()), beforeBuild: _ =>
+        {
+            entered.Set();
+            release.Wait();
+        });
+        var id = w.Create(new CellPos(0, 0, 0), origin: new System.Numerics.Vector3(0, 4004, 0));
+        var saved = new System.Numerics.Vector3(0.5f, 4005.01f, 0.5f);
+        w.World.SetProcess(false);
+        try
+        {
+            await WaitUntil(() => { w.World.Pump(0); return entered.IsSet; }, 600, "roof mesher to stall");
+            EngineAssert.True(!w.World.AreCollisionsReady(ConstructTestWorld.Planet, saved, 9), "saved roof pose waits for meshing");
+            release.Set();
+            await WaitUntil(() =>
+            {
+                w.World.Pump(0);
+                return w.World.TryGetConstruct(id, out var node) && node.TryGetChunk(new ChunkPos(0, 0, 0), out var chunk) && chunk.MeshInstance is not null;
+            }, 600, "mesh upload before its collision upload");
+            EngineAssert.True(!w.World.AreCollisionsReady(ConstructTestWorld.Planet, saved, 9), "mesh alone does not make roof collision ready");
+            await WaitUntil(() => { w.World.Pump(0); return w.World.AreCollisionsReady(ConstructTestWorld.Planet, saved, 9); }, 600, "roof collision upload");
+            w.Set(id, new CellPos(1, 0, 0));
+            EngineAssert.True(!w.World.AreCollisionsReady(ConstructTestWorld.Planet, saved, 9), "edit invalidates readiness of old collision");
+        }
+        finally
+        {
+            release.Set();
+        }
+    }
+
+    [EngineTest]
     public async Task NoViewers_SavedConstructs_LoadsNothingUntilViewerArrives()
     {
         var options = new ConstructWorldOptions

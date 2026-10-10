@@ -27,6 +27,7 @@ public sealed class ServerCharactersBinder : IServerTickParticipant, IServerPlay
     private readonly MovementRules _movement;
     private readonly bool _devFlightAllowed;
     private readonly ILoggerFactory _loggers;
+    private readonly Func<PlanetId, System.Numerics.Vector3, bool>? _constructsReady;
     private ServerRuntime? _runtime;
     private ServerCharacters? _characters;
     private OwnStateSender? _sender;
@@ -38,8 +39,10 @@ public sealed class ServerCharactersBinder : IServerTickParticipant, IServerPlay
     /// <param name="movement">Movement rules.</param>
     /// <param name="devFlightAllowed">Whether the dev flight button is honoured.</param>
     /// <param name="loggers">Loggers.</param>
+    /// <param name="constructsReady">Readiness of asynchronous construct collisions around a saved position.</param>
     public ServerCharactersBinder(
-        Node parent, VoxelServerTerrainFactory terrainFactory, GameRules rules, MovementRules movement, bool devFlightAllowed, ILoggerFactory loggers)
+        Node parent, VoxelServerTerrainFactory terrainFactory, GameRules rules, MovementRules movement, bool devFlightAllowed, ILoggerFactory loggers,
+        Func<PlanetId, System.Numerics.Vector3, bool>? constructsReady = null)
     {
         ArgumentNullException.ThrowIfNull(parent);
         ArgumentNullException.ThrowIfNull(terrainFactory);
@@ -52,6 +55,7 @@ public sealed class ServerCharactersBinder : IServerTickParticipant, IServerPlay
         _movement = movement;
         _devFlightAllowed = devFlightAllowed;
         _loggers = loggers;
+        _constructsReady = constructsReady;
     }
 
     /// <summary>Gets the characters once the world has started; null before.</summary>
@@ -102,7 +106,7 @@ public sealed class ServerCharactersBinder : IServerTickParticipant, IServerPlay
         var terrain = _terrainFactory.Terrain ?? throw new InvalidOperationException("The server terrain does not exist yet.");
         _characters = new ServerCharacters(
             runtime.Simulation, new SessionInputSource(runtime.Session), terrain.Voxel, _rules, _movement, _devFlightAllowed,
-            _loggers.CreateLogger<ServerCharacters>());
+            _loggers.CreateLogger<ServerCharacters>(), constructsReady: _constructsReady);
         _parent.AddChild(_characters);
         _sender = new OwnStateSender(runtime.Session, runtime.Simulation, _characters);
         return _characters;

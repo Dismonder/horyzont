@@ -23,5 +23,7 @@
     <Compile Include="../../game/src/Server/Characters/OwnStateSender.cs" Link="Game/OwnStateSender.cs" />
     <Compile Include="../../game/src/Server/Characters/IServerCharacterSource.cs" Link="Game/IServerCharacterSource.cs" />
     <Compile Include="../../game/src/Server/Characters/ServerCharacterState.cs" Link="Game/ServerCharacterState.cs" />
+    <Compile Include="../../game/src/Server/Characters/SpawnSupport.cs" Link="Game/SpawnSupport.cs" />
+    <Compile Include="../../game/src/Shared/Physics/CollisionLayers.cs" Link="Game/CollisionLayers.cs" />
   </ItemGroup>
 </Project>

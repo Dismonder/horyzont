@@ -73,6 +73,13 @@ public sealed class HostConstructs : IServerTickParticipant, IDisposable
     /// <summary>Gets a value indicating whether <see cref="Attach"/> ran.</summary>
     public bool IsAttached => _runtime is not null;
 
+    /// <summary>Checks that asynchronous construct collision near a saved spawn pose has reached the physics world.</summary>
+    /// <param name="planet">The player's planet.</param>
+    /// <param name="feet">The saved feet position.</param>
+    /// <returns>True after current collision chunks have been applied.</returns>
+    public bool AreSpawnCollisionsReady(PlanetId planet, System.Numerics.Vector3 feet) =>
+        IsAttached && World.AreCollisionsReady(FrameRef.Of(planet), feet, Server.Characters.ServerCharacters.GroundSearchMeters + 1);
+
     /// <summary>Registers the shutdown step and the tick participant; call after the runtime is created and before it starts.</summary>
     /// <param name="runtime">The server runtime.</param>
     public void Register(ServerRuntime runtime)
