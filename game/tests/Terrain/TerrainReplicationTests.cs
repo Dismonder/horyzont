@@ -1,9 +1,12 @@
 using GdUnit4;
+
 using Godot;
+
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Game.Client.Terrain;
 using Horyzont.Game.Tests.Support;
+
 using static GdUnit4.Assertions;
 
 namespace Horyzont.Game.Tests.Terrain;

@@ -7,6 +7,7 @@ using Horyzont.Game.Client;
 using Horyzont.Game.Client.Terrain;
 using Horyzont.Game.Client.Tools;
 using Horyzont.Game.Planet.Generators;
+using Horyzont.Game.Server;
 using Horyzont.Game.Server.Terrain;
 using Horyzont.Server;
 using Horyzont.Server.Replication;
@@ -45,7 +46,14 @@ public sealed partial class GameComposition
 
     private void ConfigureServerTerrainReplication()
     {
-        if (Server is null || TerrainFactory is null || _launch.Mode == ProcessMode.Solo)
+        if (Server is null || TerrainFactory is null)
+        {
+            return;
+        }
+
+        // The persistent mipmaps serve the terrain of every server, solo included (the deferral of K2-09).
+        new DerivedTerrainTicker(TerrainFactory).Register(Server);
+        if (_launch.Mode == ProcessMode.Solo)
         {
             return;
         }

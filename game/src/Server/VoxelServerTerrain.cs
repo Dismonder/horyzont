@@ -34,8 +34,10 @@ public sealed class VoxelServerTerrain : IServerTerrain, ITerrainReplicationSour
     /// <param name="store">Block store of the world file.</param>
     /// <param name="nodes">The planet nodes (in the scene tree under the server node).</param>
     /// <param name="time">Clock of the area loader.</param>
+    /// <param name="derived">Persistent mipmaps of the planets; stepped by the game and closed in step 7a of the shutdown.</param>
     public VoxelServerTerrain(
-        VoxelTerrainService service, ServerTerrainBlocks blocks, TerrainBlockStore store, IReadOnlyList<PlanetTerrain> nodes, TimeProvider time)
+        VoxelTerrainService service, ServerTerrainBlocks blocks, TerrainBlockStore store, IReadOnlyList<PlanetTerrain> nodes, TimeProvider time,
+        ServerDerivedTerrain? derived = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(blocks);
@@ -47,7 +49,11 @@ public sealed class VoxelServerTerrain : IServerTerrain, ITerrainReplicationSour
         _store = store;
         _nodes = nodes;
         _time = time;
+        Derived = derived;
     }
+
+    /// <summary>Gets the persistent mipmaps of the edited terrain (K3-16); null when the terrain has none.</summary>
+    public ServerDerivedTerrain? Derived { get; }
 
     /// <summary>Gets the terrain service (the host's local client reads the same planets through it).</summary>
     public VoxelTerrainService Voxel { get; }

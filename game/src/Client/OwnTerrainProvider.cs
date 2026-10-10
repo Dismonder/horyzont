@@ -4,8 +4,8 @@ using Godot;
 
 using Horyzont.Core.Ids;
 using Horyzont.Core.Protocol.Messages;
-using Horyzont.Game.Planet;
 using Horyzont.Game.Client.Terrain;
+using Horyzont.Game.Planet;
 using Horyzont.Game.Terrain;
 using Horyzont.Persistence.Terrain;
 

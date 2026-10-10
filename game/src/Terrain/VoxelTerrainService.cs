@@ -253,7 +253,14 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
             tool.Copy(BlockOrigin(key), _copy, TerrainChannels.UsedChannelsMask);
             _blocks.Record(key, versions[i].Version, _codec.Encode(_copy));
         }
+
+        EditApplied?.Invoke(versions);
     }
+
+    /// <summary>
+    /// Raised on the main thread after <see cref="ApplyEdit"/> changed and recorded blocks (K3-16: the mipmaps above them are stale).
+    /// </summary>
+    public event Action<IReadOnlyList<TerrainBlockVersion>>? EditApplied;
 
     /// <summary>
     /// Stops the streams of all planets, then closes <see cref="ServerTerrainBlocks"/> and waits for its reads. Only when this

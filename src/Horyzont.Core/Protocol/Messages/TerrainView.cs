@@ -1,4 +1,5 @@
 using System.Numerics;
+
 using Horyzont.Core.Ids;
 namespace Horyzont.Core.Protocol.Messages;
 /// <summary>Remote client's visual and collision terrain viewers.</summary>

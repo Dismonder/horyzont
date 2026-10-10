@@ -13,14 +13,14 @@ namespace Horyzont.Client.Tests.Terrain;
 
 public sealed class TerrainReplicationHelpersTests
 {
-    private static readonly PlanetId Planet = new(1);
+    private static readonly PlanetId _planet = new(1);
 
     [Fact]
     public void ViewReporter_FirstReportIsImmediate_ThenOnlyOnChangeAtFiveHertz()
     {
         var time = new FakeTimeProvider();
         var reporter = new TerrainViewReporter(time);
-        var viewers = new TerrainViewers(Planet, new Vector3(100f, 4000f, 0f), 2048, new Vector3(100f, 4000f, 0f), 128);
+        var viewers = new TerrainViewers(_planet, new Vector3(100f, 4000f, 0f), 2048, new Vector3(100f, 4000f, 0f), 128);
 
         Assert.True(reporter.TryCreate(viewers, out var first));
         Assert.Equal(1u, first.ViewSeq);
@@ -44,7 +44,7 @@ public sealed class TerrainReplicationHelpersTests
     public void ViewReporter_NonFinitePosition_IsNotReported()
     {
         var reporter = new TerrainViewReporter(new FakeTimeProvider());
-        Assert.False(reporter.TryCreate(new TerrainViewers(Planet, new Vector3(float.NaN, 0f, 0f), 1, Vector3.Zero, 1), out _));
+        Assert.False(reporter.TryCreate(new TerrainViewers(_planet, new Vector3(float.NaN, 0f, 0f), 1, Vector3.Zero, 1), out _));
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public sealed class TerrainReplicationHelpersTests
     {
         var time = new FakeTimeProvider();
         var scheduler = new TerrainChecksumScheduler(time);
-        var candidates = Enumerable.Range(0, 80).Select(i => new TerrainBlockKey(Planet, 0, i, 0, 0)).ToList();
+        var candidates = Enumerable.Range(0, 80).Select(i => new TerrainBlockKey(_planet, 0, i, 0, 0)).ToList();
         var batch = new List<TerrainBlockKey>();
         var seen = new HashSet<TerrainBlockKey>();
 
@@ -74,17 +74,17 @@ public sealed class TerrainReplicationHelpersTests
     public void CacheReports_KeepNearestKeys_InMessagesTheCodecAccepts()
     {
         var versions = Enumerable.Range(0, 70_000)
-            .Select(i => new TerrainBlockVersion(new TerrainBlockKey(Planet, 0, i % 500, i / 500, 0), 1))
+            .Select(i => new TerrainBlockVersion(new TerrainBlockKey(_planet, 0, i % 500, i / 500, 0), 1))
             .ToArray();
 
-        var reports = TerrainCacheReports.Build(Planet, versions, Vector3.Zero, 1f);
+        var reports = TerrainCacheReports.Build(_planet, versions, Vector3.Zero, 1f);
 
         Assert.Equal(TerrainCacheReports.MaxKeysPerPlanet, reports.Sum(r => r.Entries.Count));
         Assert.All(reports, r => Assert.True(r.Entries.Count <= ProtocolConstants.MaxTerrainCacheEntries));
-        Assert.Equal(new TerrainBlockKey(Planet, 0, 0, 0, 0), reports[0].Entries[0].Key);
+        Assert.Equal(new TerrainBlockKey(_planet, 0, 0, 0, 0), reports[0].Entries[0].Key);
         var writer = new ByteWriter();
         MessageCodec.Write(writer, reports[0]);
-        Assert.Empty(TerrainCacheReports.Build(Planet, [], Vector3.Zero, 1f));
+        Assert.Empty(TerrainCacheReports.Build(_planet, [], Vector3.Zero, 1f));
     }
 
     [Fact]
@@ -92,8 +92,8 @@ public sealed class TerrainReplicationHelpersTests
     {
         var time = new FakeTimeProvider();
         var ledger = new EditPredictionLedger(time);
-        var key = new TerrainBlockKey(Planet, 0, 0, 0, 0);
-        PredictedEdit Make(uint seq) => new(seq, Planet, Vector3.Zero, 1f, TerrainEditMode.Remove, 0, [key]);
+        var key = new TerrainBlockKey(_planet, 0, 0, 0, 0);
+        PredictedEdit Make(uint seq) => new(seq, _planet, Vector3.Zero, 1f, TerrainEditMode.Remove, 0, [key]);
 
         Assert.True(ledger.TryBegin(Make(1)));
         Assert.False(ledger.NoteAccepted(1, new OpId(10), out _));
@@ -112,13 +112,13 @@ public sealed class TerrainReplicationHelpersTests
     public void Ledger_RejectionKeepsTheOthers_AndLimitsPending()
     {
         var ledger = new EditPredictionLedger(new FakeTimeProvider());
-        var key = new TerrainBlockKey(Planet, 0, 0, 0, 0);
+        var key = new TerrainBlockKey(_planet, 0, 0, 0, 0);
         for (uint seq = 1; seq <= EditPredictionLedger.MaxEdits; seq++)
         {
-            Assert.True(ledger.TryBegin(new PredictedEdit(seq, Planet, Vector3.Zero, 1f, TerrainEditMode.Add, 1, [key])));
+            Assert.True(ledger.TryBegin(new PredictedEdit(seq, _planet, Vector3.Zero, 1f, TerrainEditMode.Add, 1, [key])));
         }
 
-        Assert.False(ledger.TryBegin(new PredictedEdit(99, Planet, Vector3.Zero, 1f, TerrainEditMode.Add, 1, [key])));
+        Assert.False(ledger.TryBegin(new PredictedEdit(99, _planet, Vector3.Zero, 1f, TerrainEditMode.Add, 1, [key])));
         Assert.NotNull(ledger.Remove(3));
         var touching = new List<PredictedEdit>();
         ledger.CollectTouching(key, touching);
@@ -131,9 +131,9 @@ public sealed class TerrainReplicationHelpersTests
     {
         var time = new FakeTimeProvider();
         var ledger = new EditPredictionLedger(time);
-        var key = new TerrainBlockKey(Planet, 0, 0, 0, 0);
-        ledger.TryBegin(new PredictedEdit(1, Planet, Vector3.Zero, 1f, TerrainEditMode.Remove, 0, [key]));
-        ledger.TryBegin(new PredictedEdit(2, Planet, Vector3.Zero, 1f, TerrainEditMode.Remove, 0, [key]));
+        var key = new TerrainBlockKey(_planet, 0, 0, 0, 0);
+        ledger.TryBegin(new PredictedEdit(1, _planet, Vector3.Zero, 1f, TerrainEditMode.Remove, 0, [key]));
+        ledger.TryBegin(new PredictedEdit(2, _planet, Vector3.Zero, 1f, TerrainEditMode.Remove, 0, [key]));
         ledger.NoteAccepted(1, new OpId(5), out _);
         time.Advance(TimeSpan.FromSeconds(6));
         var expired = new List<PredictedEdit>();
@@ -141,7 +141,7 @@ public sealed class TerrainReplicationHelpersTests
         ledger.TakeExpired(TimeSpan.FromSeconds(5), expired);
 
         Assert.Equal([1u], expired.Select(e => e.ClientSeq));
-        ledger.TryBegin(new PredictedEdit(3, Planet, Vector3.Zero, 1f, TerrainEditMode.Remove, 0, [key]));
+        ledger.TryBegin(new PredictedEdit(3, _planet, Vector3.Zero, 1f, TerrainEditMode.Remove, 0, [key]));
         ledger.TakeAll(expired);
         Assert.Equal([3u, 2u], expired.Select(e => e.ClientSeq));
         Assert.Equal(0, ledger.Count);

@@ -26,6 +26,9 @@ public sealed partial class VoxelServerTerrainFactory : IServerTerrainFactory
     private Material? _material;
     private readonly List<TerrainBlockStore> _failedStores = [];
 
+    /// <summary>File name of the disposable database of derived mipmaps, next to the world file.</summary>
+    public const string DerivedDatabaseName = "terrain-derived.db";
+
     /// <summary>Creates the factory.</summary>
     /// <param name="parent">Node the planet terrains are added to (<c>/Root/Server/Terrain</c>); in the scene tree.</param>
     /// <param name="options">Active parts of the terrain nodes.</param>
@@ -77,6 +80,7 @@ public sealed partial class VoxelServerTerrainFactory : IServerTerrainFactory
         var nodes = new List<PlanetTerrain>();
         VoxelTerrainService? service = null;
         ServerTerrainBlocks? blocks = null;
+        ServerDerivedTerrain? derived = null;
         try
         {
             StoreCreated?.Invoke(store);
@@ -84,9 +88,13 @@ public sealed partial class VoxelServerTerrainFactory : IServerTerrainFactory
             service = new VoxelTerrainService(
                 blocks, new TerrainBlockCodec(), TerrainMaterialMap.Build(state.Materials), _loggers.CreateLogger<VoxelTerrainService>());
             _material ??= _options.Render ? PlanetTerrainMaterial.Create() : null;
+            derived = new ServerDerivedTerrain(new DerivedLodStore(
+                Path.Combine(Path.GetDirectoryName(Path.GetFullPath(worldPath))!, DerivedDatabaseName), _time, _loggers.CreateLogger<DerivedLodStore>()));
             foreach (var planet in state.Planets.All)
             {
-                var node = service.AddPlanet(planet, CreatePlanet(planet, _options, _material));
+                var configured = CreatePlanet(planet, _options, _material);
+                var rebuilder = configured.Generator is { } generator ? derived.Add(planet, blocks, generator) : null;
+                var node = service.AddPlanet(planet, configured, rebuilder);
                 nodes.Add(node);
                 PlanetCreated?.Invoke(node);
             }
@@ -97,7 +105,10 @@ public sealed partial class VoxelServerTerrainFactory : IServerTerrainFactory
                 _parent.AddChild(node);
             }
 
-            Terrain = new VoxelServerTerrain(service, blocks, store, nodes, _time);
+            // After a restart the mipmaps above every edited block are checked against their fingerprint and rebuilt where they differ.
+            derived.Invalidate(state.TerrainVersions.All);
+            service.EditApplied += derived.Invalidate;
+            Terrain = new VoxelServerTerrain(service, blocks, store, nodes, _time, derived);
             return Terrain;
         }
         catch
@@ -110,12 +121,12 @@ public sealed partial class VoxelServerTerrainFactory : IServerTerrainFactory
             }
 
             _failedStores.Add(store);
-            FailureCleanup = CleanupAsync(service, blocks, store);
+            FailureCleanup = CleanupAsync(service, blocks, store, derived);
             throw;
         }
     }
 
-    private async Task CleanupAsync(VoxelTerrainService? service, ServerTerrainBlocks? blocks, TerrainBlockStore store)
+    private async Task CleanupAsync(VoxelTerrainService? service, ServerTerrainBlocks? blocks, TerrainBlockStore store, ServerDerivedTerrain? derived)
     {
         try
         {
@@ -127,6 +138,13 @@ public sealed partial class VoxelServerTerrainFactory : IServerTerrainFactory
                     _failedStores.Remove(store);
                 },
                 () => service?.Dispose()).ConfigureAwait(true);
+
+            if (derived is not null)
+            {
+                // Rebuildable data: a timeout leaves the writer to finish alone and never blocks the cleanup of the world store.
+                await derived.CloseAsync().ConfigureAwait(true);
+                derived.Dispose();
+            }
         }
         catch (Exception exception)
         {

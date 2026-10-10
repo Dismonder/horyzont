@@ -1,6 +1,7 @@
 using Horyzont.Core.Protocol;
 using Horyzont.Net.Session;
 namespace Horyzont.Net.Tests;
+
 public sealed class TerrainMessageRouterTests
 {
     [Fact]

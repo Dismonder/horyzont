@@ -1,3 +1,5 @@
+using Godot;
+
 using Horyzont.Core.World;
 using Horyzont.Core.World.Terrain;
 using Horyzont.Game.Planet;
@@ -19,6 +21,7 @@ public sealed class ServerDerivedTerrain : IDisposable
     private readonly Dictionary<ulong, DerivedLodRebuilder> _rebuilders = [];
     private readonly List<DerivedLodRebuilder> _ordered = [];
     private readonly List<GeneratedBlockSource> _sources = [];
+    private readonly TerrainBlockCodec _codec = new();
 
     /// <summary>Creates the container over an opened store.</summary>
     /// <param name="store">The derived database.</param>
@@ -43,16 +46,16 @@ public sealed class ServerDerivedTerrain : IDisposable
     /// <summary>Makes the rebuilder of a planet.</summary>
     /// <param name="planet">The planet.</param>
     /// <param name="source">Authoritative LOD 0 blocks.</param>
-    /// <param name="generated">Generator blocks of the planet (not owned by the rebuilder; disposed with this container).</param>
-    /// <param name="codec">Envelope codec.</param>
+    /// <param name="generator">Generator of the planet; its blocks fill the children nobody edited (main thread).</param>
     /// <returns>The rebuilder to give to the stream of the planet.</returns>
-    public DerivedLodRebuilder Add(PlanetParams planet, ITerrainBlockSource source, GeneratedBlockSource generated, TerrainBlockCodec codec)
+    public DerivedLodRebuilder Add(PlanetParams planet, ITerrainBlockSource source, VoxelGenerator generator)
     {
         ArgumentNullException.ThrowIfNull(planet);
         ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(generated);
+        ArgumentNullException.ThrowIfNull(generator);
+        var generated = new GeneratedBlockSource(generator, _codec);
         var maxLod = (byte)(PlanetTerrainLayout.LodCount(planet) - 1);
-        var rebuilder = new DerivedLodRebuilder(source, generated.Encode, codec, _store, ProfileOf(planet), maxLod);
+        var rebuilder = new DerivedLodRebuilder(source, generated.Encode, _codec, _store, ProfileOf(planet), maxLod);
         _rebuilders.Add(planet.Id.Value, rebuilder);
         _ordered.Add(rebuilder);
         _sources.Add(generated);
@@ -95,5 +98,6 @@ public sealed class ServerDerivedTerrain : IDisposable
         }
 
         _sources.Clear();
+        _codec.Dispose();
     }
 }
