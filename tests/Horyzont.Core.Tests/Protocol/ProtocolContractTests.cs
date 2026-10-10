@@ -83,7 +83,7 @@ public sealed class ProtocolContractTests
     }
 
     /// <summary>
-    /// K3: każdy pakiet zmieniający Protocol/Serialization ustawia main+1 i aktualizuje ten test oraz Constants_GoldenValues.
+    /// K3: every package that changes Protocol/ or Serialization/ sets main + 1 and updates this test and Constants_GoldenValues.
     /// Gate decision D4: the value on main plus one. K2-10 raised it from 1 to 2; K2-11 adds <see cref="InputButtons.DevFly"/> and
     /// the 0x3F button mask and raises it to 3. A rebase onto a newer main updates this value, the constant and the K2-11 plan together.
     /// </summary>

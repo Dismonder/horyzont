@@ -120,9 +120,9 @@ public sealed class GameServerHooks : IServerGameHooks
     {
         ArgumentNullException.ThrowIfNull(message);
         var handled = false;
-        foreach (var handler in _handlers)
+        for (var i = 0; i < _handlers.Count; i++)
         {
-            handled |= handler.Handle(player, message);
+            handled |= _handlers[i].Handle(player, message);
         }
 
         if (!handled)
