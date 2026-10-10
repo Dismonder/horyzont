@@ -71,7 +71,7 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
         var sim = _simulation();
         Attach(sim);
         var state = sim.State;
-        if (!HasAnyContainer(state, player))
+        if (!HasAllContainers(state, player))
         {
             if (_isReadOnly())
             {
@@ -131,17 +131,17 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
     private static bool IsOwnedBy(Container container, PlayerId player) =>
         container.Owner == player && container.Host is { Kind: ContainerHostKind.Player } host && host.PlayerId == player;
 
-    private static bool HasAnyContainer(WorldState state, PlayerId player)
+    private static bool HasAllContainers(WorldState state, PlayerId player)
     {
         foreach (var kind in _playerKinds)
         {
-            if (state.Containers.TryGetOfPlayer(player, kind, out _))
+            if (!state.Containers.TryGetOfPlayer(player, kind, out _))
             {
-                return true;
+                return false;
             }
         }
 
-        return false;
+        return true;
     }
 
     private static ContainerState StateOf(Container container)
@@ -174,33 +174,49 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
     {
         var state = sim.State;
         var kit = content.StartKit;
-        var first = state.ContainerIds.PeekNext().Value;
-        var bag = new ContainerId(first);
-        var hotbar = new ContainerId(first + 1);
-        var equipment = new ContainerId(first + 2);
+        var next = state.ContainerIds.PeekNext().Value;
         var host = ContainerHost.Player(player);
-        var components = new List<Operation>(3 + kit.Entries.Count)
+        var components = new List<Operation>(3 + kit.Entries.Count);
+        var created = new ContainerKind[3];
+        var targets = new ContainerId[3];
+        var createdCount = 0;
+
+        // Only the missing containers are created (a partial set must not stay broken); items go into the new ones only.
+        foreach (var kind in _playerKinds)
         {
-            new ContainerCreateOp(bag, ContainerKind.PlayerBag, host, player, ContainerAccess.Private, kit.BagSize),
-            new ContainerCreateOp(hotbar, ContainerKind.Hotbar, host, player, ContainerAccess.Private, kit.HotbarSize),
-            new ContainerCreateOp(equipment, ContainerKind.Equipment, host, player, ContainerAccess.Private, kit.EquipmentSize),
-        };
+            if (state.Containers.TryGetOfPlayer(player, kind, out _))
+            {
+                continue;
+            }
+
+            var id = new ContainerId(next++);
+            var size = kind switch
+            {
+                ContainerKind.PlayerBag => kit.BagSize,
+                ContainerKind.Hotbar => kit.HotbarSize,
+                _ => kit.EquipmentSize,
+            };
+            components.Add(new ContainerCreateOp(id, kind, host, player, ContainerAccess.Private, size));
+            created[createdCount] = kind;
+            targets[createdCount++] = id;
+        }
+
         var items = 0;
         foreach (var entry in kit.Entries)
         {
+            var targetIndex = Array.IndexOf(created, entry.Container, 0, createdCount);
+            if (targetIndex < 0)
+            {
+                continue;
+            }
+
             if (!content.Items.TryGet(entry.ItemKey, out var def) || !state.ItemTypes.TryGetId(entry.ItemKey, out var type))
             {
                 _logger.StartKitItemUnknown(player.Value, entry.ItemKey);
                 continue;
             }
 
-            var target = entry.Container switch
-            {
-                ContainerKind.PlayerBag => bag,
-                ContainerKind.Hotbar => hotbar,
-                _ => equipment,
-            };
-            components.Add(new ItemCreateOp(new SlotRef(target, entry.Slot), type, entry.Count, def.MaxStack, ItemSource.Starter));
+            components.Add(new ItemCreateOp(new SlotRef(targets[targetIndex], entry.Slot), type, entry.Count, def.MaxStack, ItemSource.Starter));
             items++;
         }
 

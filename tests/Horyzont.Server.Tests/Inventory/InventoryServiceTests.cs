@@ -179,6 +179,27 @@ public sealed class InventoryServiceTests
     }
 
     [Fact]
+    public void Ready_PartialContainerSet_CreatesEachMissingContainerInOneCompound()
+    {
+        var player = Join(1);
+        var existing = _sim.State.ContainerIds.PeekNext();
+        _sim.ApplyServerOperation(
+            new ContainerCreateOp(existing, ContainerKind.Hotbar, ContainerHost.Player(player), player, ContainerAccess.Private, 10));
+        var before = _journal.Entries.Count;
+
+        _service.OnPlayerReady(player);
+
+        Assert.Equal(before + 1, _journal.Entries.Count);
+        var compound = Assert.IsType<CompoundOp>(_journal.Entries[^1].Operation);
+        Assert.Equal(2, compound.Components.OfType<ContainerCreateOp>().Count());
+        Assert.Equal(3, _sim.State.Containers.Count);
+        Assert.Equal(existing, Container(player, ContainerKind.Hotbar).Id);
+        Assert.Equal(40, Container(player, ContainerKind.PlayerBag).Size);
+        Assert.Equal(7, Container(player, ContainerKind.Equipment).Size);
+        Assert.Equal(1U, Container(player, ContainerKind.Hotbar).Version);
+    }
+
+    [Fact]
     public void ReadOnly_CreatesNothing_SendsExisting()
     {
         var known = Join(1);
