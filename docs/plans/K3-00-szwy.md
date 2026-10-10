@@ -64,11 +64,13 @@ Predykcja/interpolacja, delty i lustra, cache/replikacja terenu, Steam i UI; bez
 ## Kroki
 
 - [x] 0. Sprawdź bazę bramki K2 oraz X1–X11; domyślne decyzje właściciela obowiązują bez odpowiedzi.
-- [ ] 1. Napisz akceptację szwów i regresji przed kodem; nie zmieniaj testów pakietów 14…18 bez zgody.
-- [ ] 2. S1–S4: dispatch, lista routera, nazwa testu i wspólny budżet, bez Core i bumpu protokołu.
-- [ ] 3. S5–S8: pełny sink, readiness, viewers i neutralne narzędzia; zachować zachowanie K2.
-- [ ] 4. S9: partial i puste miejsca wywołań; sprawdzić zakres diffu i własność X10.
+- [x] 1. Napisz akceptację szwów i regresji przed kodem; nie zmieniaj testów pakietów 14…18 bez zgody. Akceptacja w commicie `88d686b`; RED: brak projektowanych API; istniejąca regresja K2 w .NET zielona.
+- [x] 2. S1–S4: dispatch, lista routera, nazwa testu i wspólny budżet, bez Core i bumpu protokołu. Wszystkie handlery bez short-circuit; budżet współdzielony per PlayerId, FakeTimeProvider i test braku alokacji.
+- [x] 3. S5–S8: pełny sink, readiness, viewers i neutralne narzędzia; zachować zachowanie K2. Pełny sink w kompozycji; false readiness zatrzymuje Record/Send; host bez drugiej kopii terenu. Testy gdUnit napisane, do wykonania w CI.
+- [x] 4. S9: partial i puste miejsca wywołań; sprawdzić zakres diffu i własność X10. Cztery wywołania w Create: 15 → 16 → 14 → 17; partial mają dostęp do zależności instancji.
 - [ ] 5. `dotnet build Horyzont.sln`, `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"`, `dotnet format Horyzont.sln --verify-no-changes`, `python tools/engine/build.py smoke`; gdUnit4 szeregowo na runnerze Windows `horyzont`. Wyniki do PR; przegląd Sol i odbiór Opus, zielone CI przed startem 14…18.
+
+  Walidacja lokalna: rozwiązanie i `game/Horyzont.Game.csproj` zbudowane (0 ostrzeżeń/błędów), format OK, 1770/1770 testów .NET. Szczegóły w [opisie PR](K3-00-opis-pr.md). Krok 5 pozostaje otwarty do smoke/gdUnit i zielonego CI oraz przeglądu Opus 5.5.
 
 ## Odbiór
 
@@ -78,6 +80,11 @@ S1–S9 gotowe, pełne build/test/format/smoke zielone, zero zmian zachowania ho
 
 - Decyzja użytkownika: GPT-6.1 Sol pisze testy i implementuje; Opus 5.5 przegląda. Praca na `pakiet/k3-00-szwy`, baza `91de59d` = bramka K2. Bez pushowania.
 - Na polecenie użytkownika nie uruchamiamy Godota, gdUnit ani smoke silnika na jedynym runnerze CI. Testy silnika zostaną napisane i skompilowane; wykonanie i odbiór pozostają dla CI i Opus.
+
+- Cache SDK w worktree uzupełniono kopiami czterech istniejących paczek forka 4.7.2 z `C:/actions-runner/horyzont/_work/horyzont/horyzont/engine/nuget-local`; bez uruchamiania silnika i bez zmian nuget.config/engine.json.
+- Puste instancyjne metody partial S9 mają lokalne wyłączenie CA1822: przyszły właściciel komponuje zależności sesji przez `this`; metody pozostają neutralne.
+- S7: nieobecny viewer ma odległość 0; TryGetViewers zwraca false przed utworzeniem widzów i po zwolnieniu świata. Pozycje wyłącznie przez PlanetFrames.
+- Istniejący test SnapshotProgressTests przeniesiono z OnMessage do OnFullSnapshot, zgodnie z pojedynczą ścieżką S5; asercje regresji bez zmian.
 
 ## Pułapki
 
