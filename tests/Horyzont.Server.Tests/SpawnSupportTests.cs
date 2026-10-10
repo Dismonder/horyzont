@@ -7,13 +7,17 @@ namespace Horyzont.Server.Tests;
 
 public sealed class SpawnSupportTests
 {
+    [Fact]
+    public void CanSettle_BlocksLoadedButTerrainCollisionPending_DoesNotSnapToConstructBelow() =>
+        Assert.False(SpawnSupport.CanSettle(true, false, true));
+
     [Theory]
     [InlineData(false, false, false)]
     [InlineData(false, true, false)]
     [InlineData(true, false, false)]
     [InlineData(true, true, true)]
     public void CanSettle_TerrainArrivesBeforeRoof_WaitsForBoth(bool terrain, bool constructs, bool expected) =>
-        Assert.Equal(expected, SpawnSupport.CanSettle(terrain, constructs));
+        Assert.Equal(expected, SpawnSupport.CanSettle(terrain, terrain, constructs));
 
     [Theory]
     [InlineData(4, 5, false)]

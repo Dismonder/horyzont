@@ -284,7 +284,9 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
         c.FrozenTicks++;
         var constructsReady = _constructsReady(c.Planet.Id, body.Feet);
         var terrainReady = _terrain.IsAreaLoaded(c.Planet.Id, body.Feet, GroundSearchMeters);
-        if (SpawnSupport.CanSettle(terrainReady, constructsReady)
+        var terrainCollisionReady = terrainReady
+            && c.TerrainProbe.TryFindGround(body.GetWorld3D(), body.Feet, GroundSearchMeters, out _);
+        if (SpawnSupport.CanSettle(terrainReady, terrainCollisionReady, constructsReady)
             && c.Probe.TryFindGround(body.GetWorld3D(), body.Feet, GroundSearchMeters, out var ground, GroundClearance))
         {
             var up = TerrainMath.UpAt(ground);
@@ -363,6 +365,8 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
         public PlayerBody Body { get; } = body;
 
         public GroundProbe Probe { get; } = probe;
+
+        public GroundProbe TerrainProbe { get; } = new(planet.Id);
 
         public int Starved { get; set; }
 

@@ -9,7 +9,8 @@ internal static class SpawnSupport
 {
     internal const uint CollisionMask = CollisionLayers.TerrainMask | CollisionLayers.ConstructsMask;
 
-    internal static bool CanSettle(bool terrainReady, bool constructsReady) => terrainReady && constructsReady;
+    internal static bool CanSettle(bool blocksReady, bool terrainCollisionReady, bool constructsReady) =>
+        blocksReady && terrainCollisionReady && constructsReady;
 
     internal static bool CanExpire(int waitedTicks, int deadlineTicks) => waitedTicks >= deadlineTicks;
 

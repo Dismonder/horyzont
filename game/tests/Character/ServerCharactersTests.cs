@@ -20,6 +20,34 @@ public class ServerCharactersTests
 {
     [TestCase(Timeout = 240000)]
     [RequireGodotRuntime]
+    public async Task ServerCharacters_TerrainBlocksReadyButCollisionAbsent_DoesNotSnapToConstructBelow()
+    {
+        await using var scene = EngineTestScene.Create();
+        await using var rig = await CharacterRig.CreateAsync(scene);
+        rig.World.Node.Terrain.SetGenerateCollisions(false);
+        rig.World.Node.Terrain.SetCollisionLodCount(0);
+        var floor = scene.Add(new Godot.StaticBody3D
+        {
+            Position = new Godot.Vector3(0, TerrainTestWorld.Surface - 2.5, 0),
+            CollisionLayer = CollisionLayers.ConstructsMask,
+            CollisionMask = 0,
+        });
+        floor.AddChild(new Godot.CollisionShape3D { Shape = new Godot.BoxShape3D { Size = new Godot.Vector3(10, 1, 10) } });
+        var feet = new Vector3(0, TerrainTestWorld.Surface + 0.01f, 0);
+        var player = rig.Join(1, feet);
+        AssertThat(await scene.WaitFramesUntil(() => rig.World.Service.IsAreaLoaded(TerrainTestWorld.Planet.Id, feet, 8), 600)).IsTrue();
+        var terrainOnly = new Horyzont.Game.Character.GroundProbe(TerrainTestWorld.Planet.Id);
+        AssertThat(terrainOnly.TryFindGround(rig.BodyOf(player).GetWorld3D(), feet, 8, out _)).IsFalse();
+        var support = new Horyzont.Game.Character.GroundProbe(TerrainTestWorld.Planet.Id,
+            CollisionLayers.TerrainMask | CollisionLayers.ConstructsMask);
+        AssertThat(support.TryFindGround(rig.BodyOf(player).GetWorld3D(), feet, 8, out _)).IsTrue();
+        AssertThat(rig.Characters.TryGetState(player, out var waiting)).IsTrue();
+        AssertThat(waiting.Mode).IsEqual(MovementMode.Frozen);
+        AssertThat(waiting.Feet).IsEqual(feet);
+    }
+
+    [TestCase(Timeout = 240000)]
+    [RequireGodotRuntime]
     public async Task ServerCharacters_LogoutAndRejoinOnRoof_KeepsSavedFeet()
     {
         await using var scene = EngineTestScene.Create();
