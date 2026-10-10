@@ -39,5 +39,8 @@ public sealed class TokenBucketReplicationBudget : IReplicationSendBudget
         return allowed;
     }
 
+    /// <inheritdoc />
+    public void Forget(PlayerId player) => _buckets.Remove(player);
+
     private readonly record struct Bucket(double Tokens, long Timestamp);
 }

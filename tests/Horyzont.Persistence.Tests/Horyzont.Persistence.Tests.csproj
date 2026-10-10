@@ -19,6 +19,9 @@
     <ProjectReference Include="../Horyzont.Persistence.CrashHost/Horyzont.Persistence.CrashHost.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="../../game/src/Server/TerrainFailureCleanup.cs" Link="Game/TerrainFailureCleanup.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <None Include="Fixtures/*.db" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
