@@ -94,7 +94,7 @@ public sealed class WriterValidationTests
         RejectsMessage("DisconnectCode", new Disconnect((DisconnectCode)99));
         RejectsMessage("RejectReason", new IntentReply(1, (RejectReason)99, new OpId(1)));
         RejectsMessage("EntityKind", new EntitySpawn(_entity, (EntityKind)9, 1, null, new SnapshotFrame(_frame, 0), State(), []));
-        RejectsMessage("InputButtons", new InputBatch(1, [new PlayerInput(0, 0, 0, 0, 0, (InputButtons)0x20)]));
+        RejectsMessage("InputButtons", new InputBatch(1, [new PlayerInput(0, 0, 0, 0, 0, (InputButtons)0x40)]));
         RejectsMessage("EntityStateFields", Snap(Frames(1), [State(fields: (EntityStateFields)0x10)]));
         Rejects("ConstructMode", () => Kit.Write(w => StateCodec.WriteConstructHeader(w, Header() with { Mode = (ConstructMode)5 })));
     }

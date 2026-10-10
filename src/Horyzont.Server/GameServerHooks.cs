@@ -21,12 +21,18 @@ public sealed class GameServerHooks : IServerGameHooks
     private readonly ServerSimulation _simulation;
     private readonly Func<bool> _acceptsChanges;
     private readonly ILogger<GameServerHooks> _logger;
+    private readonly IReadOnlyList<IServerPlayerObserver> _observers;
+    private readonly NewPlayerSpawn? _spawn;
 
     /// <summary>Initializes a new instance of the <see cref="GameServerHooks"/> class.</summary>
     /// <param name="simulation">The simulation joins, intents and leaves are applied to.</param>
     /// <param name="acceptsChanges">False in safe mode and during the shutdown: joins throw and intents get <see cref="RejectReason.ServerReadOnly"/>.</param>
     /// <param name="logger">Logger.</param>
-    public GameServerHooks(ServerSimulation simulation, Func<bool> acceptsChanges, ILogger<GameServerHooks> logger)
+    /// <param name="observers">Systems told when a player is ready and before a player leaves; none when null.</param>
+    /// <param name="spawn">Pose of a player who joins for the first time; the simulation's own spawn point when null.</param>
+    public GameServerHooks(
+        ServerSimulation simulation, Func<bool> acceptsChanges, ILogger<GameServerHooks> logger,
+        IReadOnlyList<IServerPlayerObserver>? observers = null, NewPlayerSpawn? spawn = null)
     {
         ArgumentNullException.ThrowIfNull(simulation);
         ArgumentNullException.ThrowIfNull(acceptsChanges);
@@ -34,6 +40,8 @@ public sealed class GameServerHooks : IServerGameHooks
         _simulation = simulation;
         _acceptsChanges = acceptsChanges;
         _logger = logger;
+        _observers = observers ?? [];
+        _spawn = spawn;
     }
 
     /// <inheritdoc />
@@ -50,6 +58,14 @@ public sealed class GameServerHooks : IServerGameHooks
         }
 
         var operation = _simulation.PreparePlayerJoin(identity, displayName);
+        if (_spawn is not null && !_simulation.State.Players.TryGetByIdentity(identity, out _)
+            && _simulation.State.Planets.TryGet(new PlanetId(operation.Frame.Id), out var planet))
+        {
+            // A new identity starts where the game wants it (K2-11: the equator); a known one returns to its saved pose.
+            var (feet, rotation) = _spawn(planet);
+            operation = operation with { Position = feet, BodyRotation = rotation };
+        }
+
         if (_simulation.State.Players.TryGet(operation.Player, out var known) && known.IsOnline)
         {
             throw new InvalidOperationException($"player {operation.Player.Value} is already online");
@@ -74,7 +90,14 @@ public sealed class GameServerHooks : IServerGameHooks
     }
 
     /// <inheritdoc />
-    public void OnPlayerReady(PlayerId player) => _logger.PlayerReady(player.Value);
+    public void OnPlayerReady(PlayerId player)
+    {
+        _logger.PlayerReady(player.Value);
+        foreach (var observer in _observers)
+        {
+            observer.OnPlayerReady(player);
+        }
+    }
 
     /// <inheritdoc />
     public IntentReply OnIntent(PlayerId player, uint clientSeq, Intent intent)
@@ -101,6 +124,11 @@ public sealed class GameServerHooks : IServerGameHooks
     public void OnPlayerLeft(PlayerId player, DisconnectCode reason)
     {
         _logger.PlayerLeft(player.Value, reason);
+        foreach (var observer in _observers)
+        {
+            NotifyLeaving(observer, player, reason);
+        }
+
         if (_simulation.IsFaulted)
         {
             _logger.LeaveSkipped(player.Value);
@@ -112,6 +140,20 @@ public sealed class GameServerHooks : IServerGameHooks
             // The leave op is serialized with a strict length check; normalize what physics left slightly off (lesson 3c).
             var rotation = Quaternion.Normalize(state.BodyRotation);
             _simulation.ApplyServerOperation(new PlayerLeaveOp(player, state.Frame, state.ParentSeq, state.Position, rotation, state.Pitch));
+        }
+    }
+
+    private void NotifyLeaving(IServerPlayerObserver observer, PlayerId player, DisconnectCode reason)
+    {
+#pragma warning disable CA1031 // The leave must reach the journal even when an observer fails; the failure is logged and the observer cleans up on its own shutdown.
+        try
+        {
+            observer.OnPlayerLeaving(player, reason);
+        }
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _logger.ObserverFailed(player.Value, ex);
         }
     }
 }

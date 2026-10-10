@@ -521,7 +521,7 @@ public static class CodecGen
         from y in UnitRange
         from yaw in Finite
         from pitch in Finite
-        from buttons in Gen.Choose(0, 0x1F)
+        from buttons in Gen.Choose(0, ProtocolConstants.InputButtonsMask)
         select new PlayerInput(tick, x, y, yaw, pitch, (InputButtons)buttons);
 
     /// <summary>Input batches with 1 to 5 inputs.</summary>

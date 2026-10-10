@@ -56,11 +56,13 @@ public class LaunchOptionsTests
     }
 
     [TestCase]
-    public void Parse_Dev_OnlyForTheDedicatedServer()
+    public void Parse_Dev_OnlyForTheDedicatedServerAndTheClient()
     {
         AssertThat(LaunchOptions.Parse(["--server", "--config", "server.json", "--dev"]).Dev).IsTrue();
         AssertThat(LaunchOptions.Parse(["--server", "--config", "server.json"]).Dev).IsFalse();
+        AssertThat(LaunchOptions.Parse(["--connect", "127.0.0.1:27015", "--dev"]).Dev).IsTrue();
         AssertThat(Throws(["--solo", "--dev"])).IsTrue();
+        AssertThat(Throws(["--host", "--dev"])).IsTrue();
     }
 
     [TestCase]

@@ -32,6 +32,7 @@ public sealed partial class ServerRuntime
     private readonly ILoggerFactory _loggers;
     private readonly ILogger<ServerRuntime> _logger;
     private readonly List<IServerTickParticipant> _participants = [];
+    private readonly List<IServerPlayerObserver> _playerObservers = [];
 
     private WorldState? _worldState;
     private ServerSimulation? _simulation;
@@ -112,6 +113,14 @@ public sealed partial class ServerRuntime
     {
         ArgumentNullException.ThrowIfNull(participant);
         _participants.Add(participant);
+    }
+
+    /// <summary>Registers a system told when players are ready and before they leave; call before <see cref="StartAsync"/>.</summary>
+    /// <param name="observer">The observer.</param>
+    public void AddPlayerObserver(IServerPlayerObserver observer)
+    {
+        ArgumentNullException.ThrowIfNull(observer);
+        _playerObservers.Add(observer);
     }
 
     /// <summary>Tells whether a player is the local player of a host (connected through <see cref="ServerRuntimeOptions.LocalClientEndpoint"/>).</summary>

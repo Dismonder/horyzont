@@ -60,15 +60,14 @@ public sealed class ProtocolContractTests
         AssertValues((EntityStateFields.None, 0), (EntityStateFields.Position, 1), (EntityStateFields.Rotation, 2), (EntityStateFields.Velocity, 4),
             (EntityStateFields.MotionFlags, 8));
         AssertValues((InputButtons.None, 0), (InputButtons.Jump, 1), (InputButtons.Sprint, 2), (InputButtons.Crouch, 4), (InputButtons.Primary, 8),
-            (InputButtons.Secondary, 16));
+            (InputButtons.Secondary, 16), (InputButtons.DevFly, 32));
     }
 
     /// <summary>
-    /// K2-10 adds reject reason 21 and raises the protocol version from 1 to 2 (gate decision D4: the value on main plus one; K2-11
-    /// raises it to 3). A rebase onto a newer main updates this value, the constant and the K2-10 plan together.
+    /// K2-10 adds reject reason 21 (and raised the protocol version from 1 to 2; K2-11 raises it to 3, see <see cref="ProtocolVersion_IsThree"/>).
     /// </summary>
     [Fact]
-    public void RejectReason_ServerReadOnly_RoundTripsAndProtocolVersionIsTwo()
+    public void RejectReason_ServerReadOnly_RoundTrips()
     {
         var reply = new IntentReply(7, RejectReason.ServerReadOnly, OpId.None);
         var writer = new ByteWriter();
@@ -78,16 +77,26 @@ public sealed class ProtocolContractTests
 
         Assert.Equal(reply, decoded);
         Assert.Equal(21, (byte)RejectReason.ServerReadOnly);
-        Assert.Equal(2, ProtocolConstants.ProtocolVersion);
         var beyond = writer.WrittenSpan.ToArray();
         beyond[^2] = 22;
         Assert.Throws<ProtocolViolationException>(() => MessageCodec.Read(beyond));
     }
 
+    /// <summary>
+    /// Gate decision D4: the value on main plus one. K2-10 raised it from 1 to 2; K2-11 adds <see cref="InputButtons.DevFly"/> and
+    /// the 0x3F button mask and raises it to 3. A rebase onto a newer main updates this value, the constant and the K2-11 plan together.
+    /// </summary>
+    [Fact]
+    public void ProtocolVersion_IsThree()
+    {
+        Assert.Equal(3, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(0x3F, ProtocolConstants.InputButtonsMask);
+    }
+
     [Fact]
     public void Constants_GoldenValues()
     {
-        Assert.Equal(2, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(3, ProtocolConstants.ProtocolVersion);
         Assert.Equal(262144, ProtocolConstants.MaxReliableMessageBytes);
         Assert.Equal(1150, ProtocolConstants.MaxUnreliableMessageBytes);
         Assert.Equal(32, ProtocolConstants.MaxDisplayNameBytes);

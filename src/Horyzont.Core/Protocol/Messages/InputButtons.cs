@@ -21,4 +21,7 @@ public enum InputButtons : ushort
 
     /// <summary>Secondary action.</summary>
     Secondary = 16,
+
+    /// <summary>Developer flight held (K2-11); ignored by a server that does not allow it.</summary>
+    DevFly = 32,
 }
