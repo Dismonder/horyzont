@@ -1,7 +1,11 @@
+using System.Numerics;
+
+using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Simulation;
+using Horyzont.Core.World.Constructs;
 using Horyzont.Net.Session;
 using Horyzont.Net.Transport;
 
@@ -13,6 +17,9 @@ namespace Horyzont.Server.Replication;
 /// Entity and construct replication of one server (K3-15): interest of players and constructs, reliable spawn and despawn, 20 Hz
 /// delta snapshots against an acknowledged baseline, complete construct states in parts, operations restricted to what a recipient
 /// may see, and rate-limited resynchronisation. Runs after <c>ServerCharactersBinder</c> in the tick; main thread only.
+/// K5-20: ship-mode constructs are snapshot candidates (the mode is read every round), interest distances are measured in the region of
+/// an entity's frame (entities in construct frames inherit the construct's region), and a construct reparent reaches a live copy as
+/// an operation instead of a new transfer.
 /// </summary>
 public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObserver, IServerClientMessageHandler
 {
@@ -36,6 +43,7 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
     private readonly IReplicationSendBudget _sendBudget;
     private readonly SnapshotBuilder _snapshots;
     private readonly ConstructStateSender _constructs;
+    private readonly FrameGraph _frames;
     private readonly Dictionary<PlayerId, PlayerState> _players = [];
     private readonly Dictionary<EntityId, int> _index = [];
     private readonly List<EntityId> _entered = [];
@@ -59,10 +67,14 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
     /// <param name="logger">Logger.</param>
     /// <param name="viewRange">Interest distance in metres, from the bounding sphere surface.</param>
     /// <param name="receivesConstructs">Whether a player gets construct data; false for the local player of a host, who shares the world.</param>
+    /// <param name="frames">
+    /// Frame graph of the simulation's world for region positions; by default one over the world state without planet placements (a
+    /// region position never needs them).
+    /// </param>
     public EntityReplication(
         ServerSession session, ServerSimulation simulation, IEntityReplicationSource source, ISnapshotBudget snapshotBudget,
         IReplicationSendBudget sendBudget, TimeProvider time, ILogger<EntityReplication> logger, float viewRange = 500f,
-        Func<PlayerId, bool>? receivesConstructs = null)
+        Func<PlayerId, bool>? receivesConstructs = null, FrameGraph? frames = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(simulation);
@@ -82,6 +94,7 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         _sendBudget = sendBudget;
         _snapshots = new SnapshotBuilder(snapshotBudget);
         _constructs = new ConstructStateSender(session, simulation.State, sendBudget, logger);
+        _frames = frames ?? new FrameGraph(new WorldStateFramePoses(simulation.State, NoPlanetPlacement.Instance));
         _simulation.Applied += OnApplied;
     }
 
@@ -253,7 +266,8 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         for (var i = 0; i < _entityCount; i++)
         {
             ref readonly var entity = ref _entities[i];
-            _subjects[i] = new InterestSubject(entity.Id, entity.Frame.Frame, entity.State.Position, entity.BoundsRadius, _viewRange);
+            ToRegion(entity.Frame.Frame, entity.State.Position, out var region, out var position);
+            _subjects[i] = new InterestSubject(entity.Id, region, position, entity.BoundsRadius, _viewRange);
         }
 
         var players = _session.PlayersInGame;
@@ -263,7 +277,8 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         {
             if (TryFindOwn(players[i], out var own))
             {
-                _viewers[viewerCount++] = new InterestViewer(players[i], own.Frame.Frame, own.State.Position);
+                ToRegion(own.Frame.Frame, own.State.Position, out var region, out var position);
+                _viewers[viewerCount++] = new InterestViewer(players[i], region, position);
             }
         }
 
@@ -294,6 +309,45 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
             }
         }
     }
+
+    /// <summary>
+    /// Position of a point in its frame's region. Planet and system frames are regions themselves (the point as it is); a construct
+    /// frame is composed up to its planet or system in double. A frame the graph cannot resolve keeps its own frame as the region, so
+    /// only entities in that same frame see it.
+    /// </summary>
+    private void ToRegion(FrameRef frame, Vector3 local, out FrameRef region, out Vector3 position)
+    {
+        if (frame.Kind == FrameKind.Construct
+            && _frames.TryExpressInRegion(frame, local, out region, out var point) && FrameMath.TryVectorToFloat(point, out position))
+        {
+            return;
+        }
+
+        region = frame;
+        position = local;
+    }
+
+    private static void AddMobile(PlayerState state, EntityId id)
+    {
+        var at = state.Mobile.BinarySearch(id, EntityIdComparer.Instance);
+        if (at < 0)
+        {
+            state.Mobile.Insert(~at, id);
+        }
+    }
+
+    private static void RemoveMobile(PlayerState state, EntityId id)
+    {
+        var at = state.Mobile.BinarySearch(id, EntityIdComparer.Instance);
+        if (at >= 0)
+        {
+            state.Mobile.RemoveAt(at);
+        }
+    }
+
+    private bool IsSnapshotCandidate(in ReplicationEntity entity) =>
+        entity.Kind != EntityKind.Construct
+        || (_simulation.State.Constructs.TryGet(entity.Id, out var construct) && construct.Mode == ConstructMode.Ship);
 
     private void ResetKnown(PlayerId player, PlayerState state)
     {
@@ -333,14 +387,14 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
 
             _session.Send(player, MakeSpawn(in entity));
             state.Known.Add(entity.Id, entity.Kind);
+            AddMobile(state, entity.Id);
             _constructs.Enqueue(player, entity.Id);
             return;
         }
 
         _session.Send(player, MakeSpawn(in entity));
         state.Known.Add(entity.Id, entity.Kind);
-        var at = state.Mobile.BinarySearch(entity.Id, EntityIdComparer.Instance);
-        state.Mobile.Insert(~at, entity.Id);
+        AddMobile(state, entity.Id);
     }
 
     private void Leave(PlayerId player, PlayerState state, EntityId id)
@@ -360,15 +414,8 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         {
             _constructs.Cancel(player, id);
         }
-        else
-        {
-            var at = state.Mobile.BinarySearch(id, EntityIdComparer.Instance);
-            if (at >= 0)
-            {
-                state.Mobile.RemoveAt(at);
-            }
-        }
 
+        RemoveMobile(state, id);
         _session.Send(player, new EntityDespawn(id));
     }
 
@@ -390,7 +437,8 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
             var count = 0;
             for (var j = 0; j < state.Mobile.Count; j++)
             {
-                if (_index.TryGetValue(state.Mobile[j], out var index))
+                // Constructs are known like players, but only ship-mode ones move outside the journal and go into snapshots (K5-20).
+                if (_index.TryGetValue(state.Mobile[j], out var index) && IsSnapshotCandidate(in _entities[index]))
                 {
                     _visible[count++] = _entities[index];
                 }
@@ -495,12 +543,14 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
             return;
         }
 
-        if (kind == EntityKind.Construct)
+        if (kind == EntityKind.Construct && !_constructs.IsLive(player, op.Entity))
         {
+            // No complete copy yet (a transfer in progress): the transfer restarts with the new header.
             _constructs.Enqueue(player, op.Entity);
         }
         else
         {
+            // A live copy follows the reparent as an operation (B1, Y8): never a whole construct state per ship reparent.
             _constructs.SendLive(player, message);
         }
     }
@@ -529,12 +579,24 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         {
             _constructs.Cancel(player, change.Construct);
             state.Known.Remove(change.Construct);
+            RemoveMobile(state, change.Construct);
             state.Removed.Add(change.Construct);
             _constructs.SendLive(player, new ConstructRemoved(change.Construct));
         }
         else
         {
             _constructs.Enqueue(player, change.Construct);
+        }
+    }
+
+    private sealed class NoPlanetPlacement : IPlanetPlacement
+    {
+        public static readonly NoPlanetPlacement Instance = new();
+
+        public bool TryGetPose(PlanetId planet, out PoseD pose)
+        {
+            pose = PoseD.Identity;
+            return false;
         }
     }
 
