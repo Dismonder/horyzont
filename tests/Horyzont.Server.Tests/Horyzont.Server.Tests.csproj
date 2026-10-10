@@ -20,5 +20,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../../game/src/Server/TerrainFailureCleanup.cs" Link="Game/TerrainFailureCleanup.cs" />
+    <Compile Include="../../game/src/Server/Characters/OwnStateSender.cs" Link="Game/OwnStateSender.cs" />
+    <Compile Include="../../game/src/Server/Characters/IServerCharacterSource.cs" Link="Game/IServerCharacterSource.cs" />
+    <Compile Include="../../game/src/Server/Characters/ServerCharacterState.cs" Link="Game/ServerCharacterState.cs" />
   </ItemGroup>
 </Project>

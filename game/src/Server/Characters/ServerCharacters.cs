@@ -26,7 +26,7 @@ namespace Horyzont.Game.Server.Characters;
 /// <c>_PhysicsProcess</c> calls must not matter on the server. Every body carries a <see cref="VoxelViewer"/> that builds the terrain
 /// collision around it without meshes.
 /// </summary>
-public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, IServerPlayerObserver
+public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, IServerPlayerObserver, IServerCharacterSource
 {
     /// <summary>Radius (metres) of the collision viewer of a body: reach of the tools (8 m) plus room for <c>IsAreaLoaded</c>.</summary>
     public const float ServerViewerDistance = 64f;

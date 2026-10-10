@@ -138,6 +138,34 @@ public sealed class ServerSession
         }
     }
 
+    /// <summary>Sends a complete frame encoded by trusted game code, without allocating a message object.</summary>
+    /// <remarks>
+    /// The caller owns the buffer and may reuse it after this call: the transport copies its bytes synchronously. This is a
+    /// game-thread API like <see cref="Send"/>; it checks routing and channel size, not the payload of a trusted encoder.
+    /// </remarks>
+    /// <param name="player">The recipient.</param>
+    /// <param name="type">The type of the encoded game message.</param>
+    /// <param name="frame">The complete canonical frame, including type and format version.</param>
+    /// <exception cref="ArgumentException">Invalid routing, type header or channel size.</exception>
+    public void SendEncoded(PlayerId player, MessageType type, ReadOnlySpan<byte> frame)
+    {
+        if (!MessageRouter.IsGameMessageFromServer(type) || frame.Length < 2 || frame[0] != (byte)type)
+        {
+            throw new ArgumentException("The frame must be a server-to-client game message of the specified type.", nameof(frame));
+        }
+
+        var channel = MessageChannels.For(type);
+        if (frame.Length > MessageChannels.MaxFrameBytes(channel))
+        {
+            throw new ArgumentException("The encoded frame exceeds its channel limit.", nameof(frame));
+        }
+
+        if (_byPlayer.TryGetValue(player, out var peer))
+        {
+            _transport.Send(peer.Connection, ToTransport(channel), frame);
+        }
+    }
+
     /// <summary>Sends a game message once encoded to every InGame player for whom <paramref name="subject"/> is visible.</summary>
     /// <param name="subject">The entity the message is about.</param>
     /// <param name="message">A server-to-client game message.</param>
