@@ -46,6 +46,33 @@ public sealed class ClientTerrainSyncStateTests
     }
 
     [Fact]
+    public void MarkPending_BlockAlreadySeenAtANewerVersion_IsNotAwaited()
+    {
+        var state = new ClientTerrainSyncState([_planet]);
+        Assert.Equal(TerrainDataVerdict.Accept, state.OnData(_a, 2, 7));
+
+        // The live block v2 overtook the manifest entry v1: nothing will be sent for v1.
+        Assert.False(state.MarkPending(new TerrainSyncEntry(_a, 1, 5)));
+        Assert.False(state.MarkPending(new TerrainSyncEntry(_a, 0, 5)));
+        Assert.False(state.MarkPending(new TerrainSyncEntry(_a, 2, 7)));
+        Assert.False(state.IsPending(_a));
+        Assert.True(state.MarkPending(new TerrainSyncEntry(_a, 3, 9)));
+        Assert.True(state.IsPending(_a));
+    }
+
+    [Fact]
+    public void IsReady_LiveBlockOvertookItsManifestEntry_DoesNotWaitForever()
+    {
+        var state = new ClientTerrainSyncState([_planet]);
+        Assert.Equal(TerrainDataVerdict.Accept, state.OnData(_a, 2, 7));
+        var entry = new TerrainSyncEntry(_a, 1, 5);
+        state.OnSync(Page(1, 0, true, 0, 0, entry));
+        state.MarkPending(entry);
+
+        Assert.True(state.IsReady);
+    }
+
+    [Fact]
     public void OnSync_ProtocolBreaks_AreReported()
     {
         var state = new ClientTerrainSyncState([_planet]);
@@ -104,13 +131,18 @@ public sealed class ClientTerrainSyncStateTests
     }
 
     [Fact]
-    public void OnData_ManifestMayDowngrade_ButTheSessionNeverGoesBackOutsideOne()
+    public void OnData_ManifestMayDowngrade_OnlyBeforeTheSessionSawTheBlock()
     {
         var state = new ClientTerrainSyncState([_planet]);
         Assert.Equal(TerrainDataVerdict.Accept, state.OnData(_a, 5, 1));
         Assert.Equal(TerrainDataVerdict.Stale, state.OnData(_a, 4, 1));
 
-        state.MarkPending(new TerrainSyncEntry(_a, 0, 7));
-        Assert.Equal(TerrainDataVerdict.Accept, state.OnData(_a, 0, 7));
+        // A manifest entry older than what the session already saw is a snapshot taken before a live edit: it is not awaited.
+        Assert.False(state.MarkPending(new TerrainSyncEntry(_a, 0, 7)));
+        Assert.Equal(TerrainDataVerdict.Stale, state.OnData(_a, 0, 7));
+
+        // Before any block of the session a manifest may name a lower version than the cache holds: the server state wins.
+        Assert.True(state.MarkPending(new TerrainSyncEntry(_b, 0, 7)));
+        Assert.Equal(TerrainDataVerdict.Accept, state.OnData(_b, 0, 7));
     }
 }

@@ -143,9 +143,23 @@ public sealed class ClientTerrainSyncState : IClientWorldReadiness
         return new TerrainSyncProgress(null, true, open.Purpose, open.Barrier);
     }
 
-    /// <summary>Notes that the manifest names a version of a block that the client does not hold; the block has to arrive.</summary>
+    /// <summary>
+    /// Notes that the manifest names a version of a block that the client does not hold; the block has to arrive. A block this session
+    /// already received at the same or a newer version (a live edit overtook the manifest entry) is not awaited: the server would
+    /// never send the older version again.
+    /// </summary>
     /// <param name="entry">The manifest entry.</param>
-    public void MarkPending(TerrainSyncEntry entry) => _pending[entry.Key] = (entry.Version, entry.Hash);
+    /// <returns>True when the block is awaited; false when a version at least this new was already seen.</returns>
+    public bool MarkPending(TerrainSyncEntry entry)
+    {
+        if (_latest.TryGetValue(entry.Key, out var latest) && latest >= entry.Version)
+        {
+            return false;
+        }
+
+        _pending[entry.Key] = (entry.Version, entry.Hash);
+        return true;
+    }
 
     /// <summary>Whether a block is still awaited.</summary>
     /// <param name="key">The block.</param>

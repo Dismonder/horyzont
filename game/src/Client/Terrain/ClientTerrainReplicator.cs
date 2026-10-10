@@ -290,7 +290,13 @@ public sealed class ClientTerrainReplicator : IClientSessionListener, IClientWor
                 continue;
             }
 
-            state.MarkPending(entry);
+            if (!state.MarkPending(entry))
+            {
+                // A live block of this session is at least as new (it overtook the manifest): neither wait for the old version nor
+                // let the expectation drop or hide the newer data.
+                continue;
+            }
+
             if (cache is null)
             {
                 continue;

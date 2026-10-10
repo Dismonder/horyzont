@@ -187,6 +187,8 @@ public sealed class ServerTerrainReplicatorTests
             _replicator.Handle(_alice, new TerrainCacheReport(_planet, phantoms.GetRange(offset, 1000)));
         }
 
+        // The block is edited before the startup: the manifest names it at version 1 while the live edit below makes version 2.
+        var before = Edit(_spot, 1f, _alice);
         _replicator.Handle(_alice, View(1, _spot));
         _replicator.OnPlayerReady(_alice);
         _replicator.Step();
@@ -198,6 +200,8 @@ public sealed class ServerTerrainReplicatorTests
 
         var data = _host.Messages<TerrainBlockData>(_alice);
         Assert.Equal(applied.TerrainVersions.Count, data.Count);
+        Assert.All(data, d => Assert.Equal(2u, d.Version));
+        Assert.Equal(before.TerrainVersions.Select(v => v.Key).Order(), data.Select(d => d.Key).Order());
         var sync = _host.Messages<TerrainSync>(_alice);
         Assert.Contains(sync, s => s.Purpose == 2 && s.IsLastPage && s.BarrierOpId == applied.Id);
         Assert.DoesNotContain(sync, s => s.Purpose == 0 && s.IsLastPage);
