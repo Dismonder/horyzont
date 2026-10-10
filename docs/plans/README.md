@@ -103,7 +103,7 @@ K2-08A to osobny mały PR z celem `editor-linux` w `engine/engine.json`; bez nie
 
 ### X1. Szwy przed startem pakietów
 
-Domyślnie mały PR [K3-00](K3-00-szwy.md), S1–S9, bez zmian Core i protokołu (`ProtocolVersion = 3`), prowadzi Opus 5.5, przegląd GPT-6.1 Sol. Pakiet rusza z wariantem domyślnym, gdy właściciel nie odpowie. Alternatywa po odrzuceniu K3-00: reguła X10 „integruje pakiet scalany później”; K3-16 krok 6 (zdalne narzędzia) i K3-14 krok 6 startują dopiero po scaleniu K3-15. Wydłuża to ścieżkę krytyczną.
+Domyślnie mały PR [K3-00](K3-00-szwy.md), S1–S10, bez zmian Core i protokołu (`ProtocolVersion = 3`), prowadzi Opus 5.5, przegląd GPT-6.1 Sol. Pakiet rusza z wariantem domyślnym, gdy właściciel nie odpowie. Alternatywa po odrzuceniu K3-00: reguła X10 „integruje pakiet scalany później”; K3-16 krok 6 (zdalne narzędzia) i K3-14 krok 6 startują dopiero po scaleniu K3-15. Wydłuża to ścieżkę krytyczną.
 
 ### X2. Jeden dispatch komunikatów klienta
 
@@ -175,7 +175,7 @@ Reguła ogólna: kolejność scalania nie jest warunkiem startu; **integrację w
 
 | Plik wspólny | Właściciel treści | Pozostali |
 | --- | --- | --- |
-| `GameComposition.cs` | K3-00 (podział na partial, S9); K3-18 wyłącznie publikacja `WorldStartResult` | 14/15/16/17 tylko w swoim `GameComposition.<Część>.cs` |
+| `GameComposition.cs` | K3-00 (partial S9 i neutralne punkty platformy S10); K3-18 wyłącznie publikacja `WorldStartResult` | 14/15/16/17 tylko w swoim `GameComposition.<Część>.cs` |
 | `LocalPlayer.cs` | K3-14 (korekta, replay, kamera) | po S5–S7 nikt inny go nie edytuje; K3-18 edytuje `LocalInputReader.cs` |
 | `OwnStateValidator.cs` | K3-15 | K3-14 nie edytuje |
 | `ToolNode.cs` | K3-00 (S8) | K3-15/16 tylko przez `GameComposition.<Część>.cs`; K3-18 tylko odczyt `Pending/LastReply/IntentAnswered` |
@@ -183,9 +183,11 @@ Reguła ogólna: kolejność scalania nie jest warunkiem startu; **integrację w
 | `MessageType/Channels/Codec/Router`, `ProtocolConstants` | każdy swój wiersz (X4–X6) | pakiet scalany później dopisuje i robi D4 |
 | `ServerSession.cs` | K3-15 `SendEncoded`; K3-18 `HandleHello` + `GetTransportStats` | rozłączne metody |
 | `HandshakeValidator.cs` | K3-17 (17.3) | — |
-| `LaunchOptions.cs`, `Boot.cs`, `GameEnvironment.cs` | K3-17 argumenty Steam, `Platform`, `ProcessCleanup`; K3-18 tryb menu w `Boot` | rebase 17 → 18 |
+| `LaunchOptions.cs`, `Boot.cs`, `GameEnvironment.cs` | K3-00 neutralne `CompositionPlatform`/`ProcessCleanup`; K3-17 argumenty Steam i typed `Platform`; K3-18 tryb menu w `Boot` | rebase 17 → 18 |
 | `LayeringTests.cs` | K3-15 | — |
 | CI/gdUnit4 | jeden runner `horyzont`, testy silnika szeregowo | bez zmian w planach |
+
+S10 usuwa blokadę K3-17: K3-00 posiada punkty w GameComposition.cs i neutralne kontrakty `Client/Platform`. K3-17 wybiera binder we wczesnym `static ConfigurePlatform(LaunchOptions, GameEnvironment, ref ICompositionPlatform)` i wiąże węzły w dotychczasowym instancyjnym `ConfigurePlatform()`, oba w swoim partial. Binder konsumuje ConfigureServerTransports/CreateClientTransport przed runtime, TryConnectClient dla joinu bez --connect, OnWorldStarted po udanym starcie hosta i OnShutdownRequested/OnTransportsReleased. Procesowy ProcessCleanup uruchamia się dopiero po potwierdzeniu pomyślnego Dispose; failure/timeout nie uruchamia SteamAPI.Shutdown. Wspólny GameComposition.cs pozostaje poza zakresem K3-17.
 
 ### X11. Pomiar 200 ms w testach z silnikiem
 

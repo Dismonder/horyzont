@@ -1,0 +1,50 @@
+  Trwa określanie projektów do przywrócenia...
+  Wszystkie projekty są aktualne na potrzeby przywrócenia.
+  Horyzont.Core -> F:\dev\horyzont-k3-00\src\Horyzont.Core\bin\Debug\net10.0\Horyzont.Core.dll
+  Horyzont.Net -> F:\dev\horyzont-k3-00\src\Horyzont.Net\bin\Debug\net10.0\Horyzont.Net.dll
+  Horyzont.Persistence -> F:\dev\horyzont-k3-00\src\Horyzont.Persistence\bin\Debug\net10.0\Horyzont.Persistence.dll
+  Horyzont.Constructs -> F:\dev\horyzont-k3-00\src\Horyzont.Constructs\bin\Debug\net10.0\Horyzont.Constructs.dll
+  Horyzont.Client -> F:\dev\horyzont-k3-00\src\Horyzont.Client\bin\Debug\net10.0\Horyzont.Client.dll
+  Horyzont.Server -> F:\dev\horyzont-k3-00\src\Horyzont.Server\bin\Debug\net10.0\Horyzont.Server.dll
+  Horyzont.Testing -> F:\dev\horyzont-k3-00\tests\Horyzont.Testing\bin\Debug\net10.0\Horyzont.Testing.dll
+  Horyzont.Architecture.Tests -> F:\dev\horyzont-k3-00\tests\Horyzont.Architecture.Tests\bin\Debug\net10.0\Horyzont.Architecture.Tests.dll
+Przebieg testu dla: F:\dev\horyzont-k3-00\tests\Horyzont.Architecture.Tests\bin\Debug\net10.0\Horyzont.Architecture.Tests.dll (.NETCoreApp,Version=v10.0)
+  Horyzont.Client.Tests -> F:\dev\horyzont-k3-00\tests\Horyzont.Client.Tests\bin\Debug\net10.0\Horyzont.Client.Tests.dll
+  Horyzont.Net.Tests -> F:\dev\horyzont-k3-00\tests\Horyzont.Net.Tests\bin\Debug\net10.0\Horyzont.Net.Tests.dll
+Przebieg testu dla: F:\dev\horyzont-k3-00\tests\Horyzont.Client.Tests\bin\Debug\net10.0\Horyzont.Client.Tests.dll (.NETCoreApp,Version=v10.0)
+  Horyzont.Persistence.CrashHost -> F:\dev\horyzont-k3-00\tests\Horyzont.Persistence.CrashHost\bin\Debug\net10.0\Horyzont.Persistence.CrashHost.dll
+Przebieg testu dla: F:\dev\horyzont-k3-00\tests\Horyzont.Net.Tests\bin\Debug\net10.0\Horyzont.Net.Tests.dll (.NETCoreApp,Version=v10.0)
+  Horyzont.Integration.Tests -> F:\dev\horyzont-k3-00\tests\Horyzont.Integration.Tests\bin\Debug\net10.0\Horyzont.Integration.Tests.dll
+Przebieg testu dla: F:\dev\horyzont-k3-00\tests\Horyzont.Integration.Tests\bin\Debug\net10.0\Horyzont.Integration.Tests.dll (.NETCoreApp,Version=v10.0)
+  Horyzont.Core.Tests -> F:\dev\horyzont-k3-00\tests\Horyzont.Core.Tests\bin\Debug\net10.0\Horyzont.Core.Tests.dll
+Przebieg testu dla: F:\dev\horyzont-k3-00\tests\Horyzont.Core.Tests\bin\Debug\net10.0\Horyzont.Core.Tests.dll (.NETCoreApp,Version=v10.0)
+  Horyzont.Server.Tests -> F:\dev\horyzont-k3-00\tests\Horyzont.Server.Tests\bin\Debug\net10.0\Horyzont.Server.Tests.dll
+Przebieg testu dla: F:\dev\horyzont-k3-00\tests\Horyzont.Server.Tests\bin\Debug\net10.0\Horyzont.Server.Tests.dll (.NETCoreApp,Version=v10.0)
+Łączna liczba plików testowych dopasowanych do określonego wzorca: 1.
+  Horyzont.Constructs.Tests -> F:\dev\horyzont-k3-00\tests\Horyzont.Constructs.Tests\bin\Debug\net10.0\Horyzont.Constructs.Tests.dll
+Przebieg testu dla: F:\dev\horyzont-k3-00\tests\Horyzont.Constructs.Tests\bin\Debug\net10.0\Horyzont.Constructs.Tests.dll (.NETCoreApp,Version=v10.0)
+  Horyzont.Persistence.Tests -> F:\dev\horyzont-k3-00\tests\Horyzont.Persistence.Tests\bin\Debug\net10.0\Horyzont.Persistence.Tests.dll
+Przebieg testu dla: F:\dev\horyzont-k3-00\tests\Horyzont.Persistence.Tests\bin\Debug\net10.0\Horyzont.Persistence.Tests.dll (.NETCoreApp,Version=v10.0)
+Łączna liczba plików testowych dopasowanych do określonego wzorca: 1.
+Łączna liczba plików testowych dopasowanych do określonego wzorca: 1.
+Łączna liczba plików testowych dopasowanych do określonego wzorca: 1.
+Łączna liczba plików testowych dopasowanych do określonego wzorca: 1.
+Łączna liczba plików testowych dopasowanych do określonego wzorca: 1.
+Łączna liczba plików testowych dopasowanych do określonego wzorca: 1.
+Łączna liczba plików testowych dopasowanych do określonego wzorca: 1.
+
+Powodzenie!    — niepowodzenie:     0, powodzenie:    12, pominięto:     0, łącznie:    12, czas trwania: 593 ms - Horyzont.Architecture.Tests.dll (net10.0)
+
+Powodzenie!    — niepowodzenie:     0, powodzenie:   165, pominięto:     0, łącznie:   165, czas trwania: 1 s - Horyzont.Client.Tests.dll (net10.0)
+
+Powodzenie!    — niepowodzenie:     0, powodzenie:    28, pominięto:     0, łącznie:    28, czas trwania: 4 s - Horyzont.Integration.Tests.dll (net10.0)
+
+Powodzenie!    — niepowodzenie:     0, powodzenie:   113, pominięto:     0, łącznie:   113, czas trwania: 9 s - Horyzont.Net.Tests.dll (net10.0)
+
+Powodzenie!    — niepowodzenie:     0, powodzenie:    95, pominięto:     0, łącznie:    95, czas trwania: 15 s - Horyzont.Constructs.Tests.dll (net10.0)
+
+Powodzenie!    — niepowodzenie:     0, powodzenie:   124, pominięto:     0, łącznie:   124, czas trwania: 15 s - Horyzont.Persistence.Tests.dll (net10.0)
+
+Powodzenie!    — niepowodzenie:     0, powodzenie:   117, pominięto:     0, łącznie:   117, czas trwania: 31 s - Horyzont.Server.Tests.dll (net10.0)
+
+Powodzenie!    — niepowodzenie:     0, powodzenie:  1120, pominięto:     0, łącznie:  1120, czas trwania: 52 s - Horyzont.Core.Tests.dll (net10.0)
