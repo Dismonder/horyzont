@@ -223,7 +223,7 @@ Każdy krok: test czerwony → kod → zielone testy → mały commit (Conventio
 
 **Faza A (od razu)**
 
-- [ ] 0. Warunki wejścia: `git status`, rebase na `main`; zapisać w „Odstępstwach”, które pakiety K3 są scalone (numery PR) i rzeczywiste nazwy API z tabeli „Kontekst”; utworzyć szkielet `docs/reports/K4-19-odbior.md` z mapą kryteriów (status `PENDING` w każdym wierszu). Commit `docs:`.
+- [x] 0. Warunki wejścia: `git status`, rebase na `main`; zapisać w „Odstępstwach”, które pakiety K3 są scalone (numery PR) i rzeczywiste nazwy API z tabeli „Kontekst”; utworzyć szkielet `docs/reports/K4-19-odbior.md` z mapą kryteriów (status `PENDING` w każdym wierszu). Commit `docs:`.
 - [ ] 1. `TickTimeRecorder` + `TickTimeWindow` (testy najpierw, w tym alokacja), `ServerRuntime.TickTimes`, komenda `stats`, linie logu z `last op` i checkpointem; `server_smoke.py` nadal zielony (wzorce dopasowane do dopisanych pól). Commity `test:`, `feat:`.
 - [ ] 2. Projekt `src/Horyzont.Bots` + `tests/Horyzont.Bots.Tests`, wiersz w `LayeringTests`, test „bez Godota”; `BotScript`, `BotRole`, `BotSchedule` (testy determinizmu i tempa najpierw).
 - [ ] 3. `BotClient` (poziom K2: `NoReplica`, `AlwaysReadyWorld`, `InputSequencer`, `ToolController` z `BotToolWorldView`, ponowne łączenie), `LatencyTransport`; `CoopRig` i testy `Coop_EightBots_OneMinuteVirtual_*`, `Coop_AbuserBot_*`.
@@ -321,3 +321,10 @@ Pakiet jest odebrany, gdy:
 ## Odstępstwa i decyzje wykonawcy
 
 (wypełnia wykonawca: stan K3 przy każdej fazie, rzeczywiste nazwy API, odpowiedzi właściciela, wyniki pomiarów, różnice od planu)
+
+### Faza A, krok 0 (2026-10-10)
+
+- Baza: `origin/main` = `97e4b83` (K3-00, PR #19). Scalone: K2 (PR #11, #12, #15, #16, #17, #18 bramka K2), K3-00 (#19). Niescalone: K3-14 … K3-18, więc fazy B–E czekają.
+- Nazwy API z tabeli „Kontekst” istnieją na `main` bez zmian (`ClientRuntime`, `InputSequencer`, `ToolController`, `ServerRuntime`, `InMemoryNetwork`, `LinkConditions`, `ServerRig`, `K1GateTests`, `server_smoke.py`). Brak BenchmarkDotNet, jak w planie.
+- `ServerLog`: istniejące wpisy `checkpoint committed op=` i `Stopped; state hash=` dopasowane do formatu z planu (`Checkpoint committed boundary=`, dopisek `last op=` na końcu); `server_smoke.py` i istniejące testy zaktualizowane.
+
