@@ -21,8 +21,8 @@ public enum BotAction
     /// <summary>Abuser: dig at a point far beyond the reach.</summary>
     AbuseOutOfReach = 5,
 
-    /// <summary>Abuser: dig towards the core of the planet.</summary>
-    AbuseUnderCore = 6,
+    /// <summary>Abuser: a dig with a radius far above the maximum.</summary>
+    AbuseBadRadius = 6,
 
     /// <summary>Abuser: an intent whose direction is not finite (the client must refuse to send it).</summary>
     AbuseNotFinite = 7,

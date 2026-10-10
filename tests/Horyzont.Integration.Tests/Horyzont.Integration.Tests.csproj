@@ -16,6 +16,14 @@
     <ProjectReference Include="../../src/Horyzont.Persistence/Horyzont.Persistence.csproj" />
     <ProjectReference Include="../../src/Horyzont.Net/Horyzont.Net.csproj" />
     <ProjectReference Include="../../src/Horyzont.Client/Horyzont.Client.csproj" />
+    <ProjectReference Include="../../src/Horyzont.Server/Horyzont.Server.csproj" />
+    <ProjectReference Include="../../src/Horyzont.Bots/Horyzont.Bots.csproj" />
     <ProjectReference Include="../Horyzont.Testing/Horyzont.Testing.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The server side of a character in miniature (CoopCharacters) feeds the same snapshot sender the game uses. -->
+    <Compile Include="../../game/src/Server/Characters/OwnStateSender.cs" Link="Game/OwnStateSender.cs" />
+    <Compile Include="../../game/src/Server/Characters/IServerCharacterSource.cs" Link="Game/IServerCharacterSource.cs" />
+    <Compile Include="../../game/src/Server/Characters/ServerCharacterState.cs" Link="Game/ServerCharacterState.cs" />
   </ItemGroup>
 </Project>
