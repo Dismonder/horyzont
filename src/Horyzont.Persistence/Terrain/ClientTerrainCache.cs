@@ -217,6 +217,28 @@ public sealed partial class ClientTerrainCache : ITerrainBlockSource
         return false;
     }
 
+    /// <summary>Version and hash of the held block, without reading its data.</summary>
+    /// <param name="key">Block key.</param>
+    /// <param name="version">The version when held; otherwise 0.</param>
+    /// <param name="hash">The hash when held; otherwise 0.</param>
+    /// <returns>Whether the block is held.</returns>
+    public bool TryGetHeld(TerrainBlockKey key, out uint version, out ulong hash)
+    {
+        lock (_lock)
+        {
+            if (_index.TryGetValue(key, out var entry))
+            {
+                version = entry.Version;
+                hash = entry.Hash;
+                return true;
+            }
+        }
+
+        version = 0;
+        hash = 0;
+        return false;
+    }
+
     /// <summary>
     /// Stores authoritative server data, replacing whatever is held for the key: also an older version or another hash (the server
     /// state wins after a lost partial save). Never call it with a block shaped by local prediction. Version 0 with data is a generator

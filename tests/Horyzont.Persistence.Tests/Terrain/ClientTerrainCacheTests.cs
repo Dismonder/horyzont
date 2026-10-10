@@ -70,6 +70,20 @@ public sealed class ClientTerrainCacheTests
     }
 
     [Fact]
+    public async Task TryGetHeld_ReportsVersionAndHashWithoutReadingData()
+    {
+        using var dir = new TempDirectory();
+        var cache = Open(dir);
+        cache.Put(Key(1), 3, 0xABCD, Blob(1));
+
+        Assert.True(cache.TryGetHeld(Key(1), out var version, out var hash));
+        Assert.Equal((3u, 0xABCDul), (version, hash));
+        Assert.False(cache.TryGetHeld(Key(2), out version, out hash));
+        Assert.Equal((0u, 0ul), (version, hash));
+        await CloseCleanly(cache);
+    }
+
+    [Fact]
     public async Task Put_VersionZeroWithData_IsFoundNotNotEdited()
     {
         using var dir = new TempDirectory();

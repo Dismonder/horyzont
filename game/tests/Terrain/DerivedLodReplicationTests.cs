@@ -53,7 +53,7 @@ public sealed class DerivedLodReplicationTests
         result.Create(16, 16, 16);
         result.SetChannelDepth((uint)TerrainChannels.Sdf, TerrainChannels.SdfDepth);
         result.SetChannelDepth((uint)TerrainChannels.Material, TerrainChannels.MaterialDepth);
-        result.Fill(value, (uint)TerrainChannels.Sdf);
+        result.Fill(value, (int)TerrainChannels.Sdf);
         return result;
     }
 

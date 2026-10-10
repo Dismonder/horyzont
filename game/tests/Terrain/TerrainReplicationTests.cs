@@ -4,7 +4,6 @@ using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Game.Client.Terrain;
 using Horyzont.Game.Tests.Support;
-using Horyzont.Testing;
 using static GdUnit4.Assertions;
 
 namespace Horyzont.Game.Tests.Terrain;
