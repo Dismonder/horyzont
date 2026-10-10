@@ -18,7 +18,7 @@
 
 ## Zakres
 
-S1–S9: interfejsy, neutralne implementacje domyślne, pojedynczy dispatch, jawna lista routera, uporządkowanie testu istniejącej wersji i podział kompozycji na partial. Bez zmian `src/Horyzont.Core/`, formatu protokołu i `ProtocolVersion` (pozostaje 3).
+S1–S10: interfejsy, neutralne implementacje domyślne, pojedynczy dispatch, jawna lista routera, uporządkowanie testu istniejącej wersji i podział kompozycji na partial. Bez zmian `src/Horyzont.Core/`, formatu protokołu i `ProtocolVersion` (pozostaje 3).
 
 ## Poza zakresem
 
@@ -39,6 +39,7 @@ Predykcja/interpolacja, delty i lustra, cache/replikacja terenu, Steam i UI; bez
 | S7 | Widzowie terenu | `src/Horyzont.Client/TerrainViewers.cs`, `ITerrainViewerSource.cs` (nowe); `LocalPlayer.cs` | `readonly record struct TerrainViewers(PlanetId Planet, Vector3 VisualPosition, uint VisualDistance, Vector3 CollisionPosition, uint CollisionDistance)`; `bool TryGetViewers(out TerrainViewers viewers)`; `LocalPlayer` implementuje z `_visualViewer`/`_collisionViewer` po konwersji `PlanetFrames` |
 | S8 | Narzędzia zdalne | `src/Horyzont.Client/Tools/IIntentReplyObserver.cs`, `IRemoteTerrainRaycast.cs`, `NoRemoteTerrain.cs` (nowe); `src/Horyzont.Client/Replication/RemoteToolWorldView.cs` (nowy szkielet); `game/src/Client/Tools/ToolNode.cs` | `IIntentReplyObserver { void NoteReply(IntentReply reply); }` — `ToolNode.OnIntentReply` woła je **przed** `Pending.OnReply`, gdy predykcja je implementuje. `IRemoteTerrainRaycast { bool RaycastTerrain(PlanetId, Vector3, Vector3, float, out TerrainHit); }`. `RemoteToolWorldView(ServerHello hello, IRemoteTerrainRaycast terrain)` implementuje `IToolWorldView`: planety z hello, teren delegowany, metody budowli/graczy zwracają false/0 (wypełnia K3-15). Nowe przeciążenie `ToolNode.Initialize(ClientRuntime client, Func<ServerHello, IToolWorldView> views, Func<IEditPrediction> prediction, ILocalPlayerView player, GameRules rules, ILoggerFactory loggers)`; istniejące `Initialize(..., ServerRuntime server, Func<ITerrainService> terrain, ...)` deleguje z `GodotToolWorldView`/`NoEditPrediction.Instance` |
 | S9 | Kompozycja w częściach | `game/src/Boot/GameComposition.Motion.cs`, `.Replication.cs`, `.TerrainReplication.cs`, `.Platform.cs` (nowe, `partial`) | każdy plik ma pustą metodę `partial`/prywatną wywoływaną w ustalonym miejscu `Create`: kolejno Replication (15) → TerrainReplication (16) → Motion (14) → Platform (17). UI (18) nie jest częścią kompozycji (X8). Pakiet edytuje wyłącznie swój plik |
+| S10 | Platforma | `src/Horyzont.Client/Platform/ICompositionPlatform.cs`, `NoCompositionPlatform.cs`, `PlatformSession.cs`, `ReleaseTrackedTransport.cs`; `game/src/Boot/GameComposition.cs`, `.Platform.cs`, `GameEnvironment.cs` | Wczesne `static partial ConfigurePlatform(LaunchOptions, GameEnvironment, ref ICompositionPlatform)` przed runtime; `ConfigureServerTransports` (host), `CreateClientTransport` (remote), `TryConnectClient`, `OnWorldStarted`, `OnShutdownRequested`, `OnTransportsReleased`; procesowe `GameEnvironment.ProcessCleanup` po pomyślnym release. Domyślnie NoCompositionPlatform. |
 
 ### Decyzje wykonawcze
 
@@ -50,6 +51,13 @@ Predykcja/interpolacja, delty i lustra, cache/replikacja terenu, Steam i UI; bez
 - S8: `RemoteToolWorldView` w Client deleguje teren, a budowle/graczy zwraca false/0 do K3-15. `NoRemoteTerrain` zwraca false. `ToolNode.OnIntentReply` wywołuje `IIntentReplyObserver.NoteReply` przed `Pending.OnReply`. Istniejące przeciążenie Initialize deleguje z `GodotToolWorldView`/`NoEditPrediction.Instance`; host nie dostaje drugiego terenu ani predykcji.
 - S9: `GameComposition` jest partial; w `Create` wywołania pustych partial/prywatnych metod w kolejności Replication (15) → TerrainReplication (16) → Motion (14) → Platform (17). UI (18) poza kompozycją. Każdy pakiet edytuje tylko swój partial, z wyjątkiem publikacji `WorldStartResult` przez 18. Własność i późniejszą integrację reguluje X10.
 
+- S10: `GameEnvironment.CompositionPlatform` domyślnie `NoCompositionPlatform.Instance`; wczesny overload `ConfigurePlatform` wybiera implementację, późny instancyjny S9 nadal wiąże węzły/eventy. Oba overloady należą do `GameComposition.Platform.cs`. Brak zależności Client→Server/Godot.
+- `ConfigureServerTransports(IList<ITransport>, IList<TransportEndpoint>)` działa wyłącznie w hoście przed zamknięciem list w CompositeTransport/ServerRuntime. Dodane transporty należą do composite; lokalny InMemory i UDP pozostają domyślnie bez zmian. `CreateClientTransport(Func<ITransport> fallback)` wybiera transport remote bez tworzenia nieużywanego UDP.
+- `TryConnectClient(ClientRuntime)` zwraca true także podczas asynchronicznego joinu lobby; binder później woła ClientRuntime.Connect z własnym endpointem/identity. False uruchamia dotychczasowy UDP --connect; lokalny klient hosta zawsze używa Dev/InMemory.
+- `OnWorldStarted(WorldId, int capacity, bool passwordRequired)` wyłącznie po Started hosta (Running/listenery otwarte); brak publikacji ready przy failed/cancelled/StartedReadOnly. `PlatformSession` zapewnia pojedyncze powiadomienia i ignoruje późny world-start po shutdown.
+- `OnShutdownRequested()` przed RequestShutdown runtime i także na ścieżce bezpośredniego Release; `OnTransportsReleased()` dopiero po pomyślnym Dispose obu transportów. `ReleaseTrackedTransport` przekazuje API ITransport bez zmiany semantyki, zapisuje wynik Dispose przez Volatile; failure/timeout nie potwierdza zwolnienia.
+- `ProcessCleanupStep` koordynatora: ReleaseStep, potem ProcessCleanup dopiero po pozytywnym potwierdzeniu Dispose. False powtarza callback; true jest pamiętane. Brak callbacka zachowuje K2, failure/timeout nigdy nie uruchamia SteamAPI.Shutdown. Menu używa wyłącznie ReleaseStep i własnego procesowego cleanupu X8.
+
 ## Testy akceptacyjne (napisz najpierw)
 
 | Test / sprawdzenie | Scenariusz → wynik |
@@ -58,6 +66,7 @@ Predykcja/interpolacja, delty i lustra, cache/replikacja terenu, Steam i UI; bez
 | Dispatch S1 | Wszystkie handlery wołane w kolejności, także po true; Debug tylko przy braku obsługi; rejestracja przed startem |
 | Budżet S4 | FakeTimeProvider, 27 000 B/s, pojemność 65 536 B, Live z długiem i próg Bulk, jeden stan zużycia dla 15/16 |
 | S5–S8 | Snapshot baseline 0 przekazany raz, delta nie trafia do sinka; AlwaysReady zachowuje K2, false zamyka nagrywanie/wysyłanie wejść; reply observer przed trackerem |
+| S10 | Neutralny fallback zachowuje transport/listenery; host ma wczesną listę, remote nie wymaga --connect dla platformowego joinu; world→shutdown→release→process, dokładnie raz; failed Dispose blokuje leave/cleanup; warstwy bez zmian |
 | K2 bez regresji | Host/solo/`--connect` jak w K2, istniejące testy ruchu/narzędzi/lifecycle zielone, bez drugiej korekty ani kopii terenu |
 | Pełna walidacja | Build/test/format/smoke zielone, `ProtocolVersion_MatchesDocumentedMergeValue` i `Constants_GoldenValues` nadal 3 |
 
@@ -68,13 +77,14 @@ Predykcja/interpolacja, delty i lustra, cache/replikacja terenu, Steam i UI; bez
 - [x] 2. S1–S4: dispatch, lista routera, nazwa testu i wspólny budżet, bez Core i bumpu protokołu. Wszystkie handlery bez short-circuit; budżet współdzielony per PlayerId, FakeTimeProvider i test braku alokacji.
 - [x] 3. S5–S8: pełny sink, readiness, viewers i neutralne narzędzia; zachować zachowanie K2. Pełny sink w kompozycji; false readiness zatrzymuje Record/Send; host bez drugiej kopii terenu. Testy gdUnit napisane, do wykonania w CI.
 - [x] 4. S9: partial i puste miejsca wywołań; sprawdzić zakres diffu i własność X10. Cztery wywołania w Create: 15 → 16 → 14 → 17; partial mają dostęp do zależności instancji.
+- [x] 4a. S10: decyzja właściciela po blokadzie K3-17; akceptacja przed kodem (`bc3e999`), wczesny overload i neutralny kontrakt/lifecycle, instrukcje konsumenta i X10 zaktualizowane.
 - [ ] 5. `dotnet build Horyzont.sln`, `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"`, `dotnet format Horyzont.sln --verify-no-changes`, `python tools/engine/build.py smoke`; gdUnit4 szeregowo na runnerze Windows `horyzont`. Wyniki do PR; przegląd Sol i odbiór Opus, zielone CI przed startem 14…18.
 
   Walidacja lokalna: rozwiązanie i `game/Horyzont.Game.csproj` zbudowane (0 ostrzeżeń/błędów), format OK, 1770/1770 testów .NET. Szczegóły w [opisie PR](K3-00-opis-pr.md). Krok 5 pozostaje otwarty do smoke/gdUnit i zielonego CI oraz przeglądu Opus 5.5.
 
 ## Odbiór
 
-S1–S9 gotowe, pełne build/test/format/smoke zielone, zero zmian zachowania host/solo/`--connect`, brak zmian Core/protokołu, wersja 3. Opus przegląda; pakiety mogą ruszyć równolegle.
+S1–S10 gotowe, pełne build/test/format/smoke zielone, zero zmian zachowania host/solo/`--connect`, brak zmian Core/protokołu, wersja 3. Opus przegląda; pakiety mogą ruszyć równolegle.
 
 ## Odstępstwa i decyzje wykonawcy
 
@@ -85,6 +95,9 @@ S1–S9 gotowe, pełne build/test/format/smoke zielone, zero zmian zachowania ho
 - Puste instancyjne metody partial S9 mają lokalne wyłączenie CA1822: przyszły właściciel komponuje zależności sesji przez `this`; metody pozostają neutralne.
 - S7: nieobecny viewer ma odległość 0; TryGetViewers zwraca false przed utworzeniem widzów i po zwolnieniu świata. Pozycje wyłącznie przez PlanetFrames.
 - Istniejący test SnapshotProgressTests przeniesiono z OnMessage do OnFullSnapshot, zgodnie z pojedynczą ścieżką S5; asercje regresji bez zmian.
+
+- Decyzja właściciela Opus 5.5: rozszerzenie o S10 usuwa blokadę opisaną w `F:/dev/horyzont-k3-17/docs/plans/K3-17-opis-pr.md`. Zachowano commit przeglądu `180673b`; nie zmieniono plików worktree K3-17. K3-17 implementuje Steam tylko we własnym partial/pliki, bez wyjątku od X10 na GameComposition.cs.
+- S10 dodaje neutralne `CompositionPlatform` i `ProcessCleanup` w GameEnvironment; typed `Platform: SteamPlatformServices?` i tworzenie usług procesowych pozostają K3-17. Jawne śledzenie Dispose potrzebne, ponieważ dotychczasowy ReleaseStep/IsFinished dopuszcza kończenie procesu także po błędzie lub timeoutcie.
 
 ## Pułapki
 
@@ -99,5 +112,5 @@ Wariant domyślny obowiązuje, jeśli właściciel nie odpowie przed startem.
 
 | ID | Pytanie | Domyślny wariant / alternatywa |
 | --- | --- | --- |
-| P1 | Czy przyjmujemy mały PR K3-00 na bramce K2? | Tak, S1–S9 bez Core/protokołu; alternatywa po odrzuceniu: X10 oraz K3-14 krok 6 i K3-16 krok 6 dopiero po scaleniu K3-15 |
+| P1 | Czy przyjmujemy mały PR K3-00 na bramce K2? | Tak, S1–S10 bez Core/protokołu; alternatywa po odrzuceniu: X10 oraz K3-14 krok 6 i K3-16 krok 6 dopiero po scaleniu K3-15 |
 | P2 | Czy przyjmujemy wspólny podział pasma X3? | Tak: migawki 20 480 B/s / 2 300 B, niezawodne 27 000 B/s / 65 536 B, sterowanie poza budżetem (~2,5 KB/s); alternatywa: strojenie podziału po raporcie actual bytes, wspólny limit ≤50 000 B/s, bez osobnego wiadra terenu |
