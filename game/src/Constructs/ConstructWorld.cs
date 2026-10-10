@@ -191,7 +191,7 @@ public sealed partial class ConstructWorld : Node3D
         UpdateRanges(RemeshPriority.Rebuild);
     }
 
-    /// <summary>Viewer positions in the planet frame (players, cameras). Empty = everything in range (tests, tools).</summary>
+    /// <summary>Viewer positions in the planet frame (players, cameras). No viewers means no interest unless the explicit tools mode is enabled.</summary>
     /// <param name="planetFramePositions">Positions.</param>
     public void SetViewers(ReadOnlySpan<System.Numerics.Vector3> planetFramePositions)
     {
@@ -504,7 +504,7 @@ public sealed partial class ConstructWorld : Node3D
     private void UpdateCollision(EntityId id, Entry entry, double distance)
     {
         var radius = _options.CollisionRadiusMeters + (entry.Collision ? _options.HysteresisMeters : 0f);
-        var wants = _viewers.Count == 0 || distance <= radius;
+        var wants = ConstructRange.Includes(_viewers.Count, _options.LoadAllWithoutViewers, distance, radius);
         if (wants == entry.Collision)
         {
             return;
@@ -524,7 +524,7 @@ public sealed partial class ConstructWorld : Node3D
     private bool TryEvaluate(EntityId id, out double distance, out bool collision)
     {
         distance = 0;
-        collision = true;
+        collision = _viewers.Count > 0 || _options.LoadAllWithoutViewers;
         if (!_source.TryGetPose(id, out var pose) || pose.Parent != _frame)
         {
             return false; // gone, or in a frame that is not the shown one
@@ -551,13 +551,8 @@ public sealed partial class ConstructWorld : Node3D
 
     private bool IsInLoadRange(double distance, Entry? loaded)
     {
-        if (_viewers.Count == 0)
-        {
-            return true;
-        }
-
         var radius = _options.Mode == ConstructWorldMode.CollisionOnly ? _options.CollisionRadiusMeters : _options.RenderRadiusMeters;
-        return distance <= radius + (loaded is null ? 0f : _options.HysteresisMeters);
+        return ConstructRange.Includes(_viewers.Count, _options.LoadAllWithoutViewers, distance, radius + (loaded is null ? 0f : _options.HysteresisMeters));
     }
 
     private void Load(EntityId id, double distance, bool collision, RemeshPriority priority)

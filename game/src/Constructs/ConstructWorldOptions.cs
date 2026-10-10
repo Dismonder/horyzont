@@ -24,6 +24,9 @@ public sealed record ConstructWorldOptions
     /// <summary>A loaded construct is unloaded only after it is this much farther than its radius.</summary>
     public float HysteresisMeters { get; init; } = 64;
 
+    /// <summary>Explicit tools mode: load all constructs when there are no viewers.</summary>
+    public bool LoadAllWithoutViewers { get; init; }
+
     /// <summary>Clock used for worker shutdown deadlines.</summary>
     public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 

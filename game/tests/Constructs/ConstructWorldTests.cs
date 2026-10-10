@@ -12,6 +12,35 @@ namespace Horyzont.Game.Tests.Constructs;
 public sealed class ConstructWorldTests : EngineTestBase
 {
     [EngineTest]
+    public async Task NoViewers_SavedConstructs_LoadsNothingUntilViewerArrives()
+    {
+        var options = new ConstructWorldOptions
+        {
+            Mode = ConstructWorldMode.CollisionOnly,
+            CollisionRadiusMeters = 128,
+            HysteresisMeters = 64,
+        };
+        using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(BlockContentLoader.Load()), options);
+        var near = w.Create(new CellPos(0, 0, 0));
+        w.Create(new CellPos(0, 0, 0), origin: new System.Numerics.Vector3(10000, 4000, 0));
+        w.World.RebuildAll(ConstructTestWorld.Planet);
+        EngineAssert.Equal(0, w.World.LoadedConstructCount, "no viewers: no saved constructs loaded");
+        EngineAssert.Equal(0, w.World.PendingJobs, "no viewers: no meshing work queued");
+        w.World.SetViewers([new System.Numerics.Vector3(0, 4000, 0)]);
+        await Idle(w);
+        EngineAssert.Equal(1, w.World.LoadedConstructCount, "only nearby construct loaded");
+        EngineAssert.True(w.World.TryGetConstructNode(near, out _), "near construct loaded");
+        w.World.SetViewers([new System.Numerics.Vector3(150, 4000, 0)]);
+        w.World.Pump(4);
+        EngineAssert.Equal(1, w.World.LoadedConstructCount, "loaded construct retained within hysteresis");
+        w.World.SetViewers([]);
+        w.World.Pump(4);
+        EngineAssert.Equal(0, w.World.LoadedConstructCount, "last viewer leaving unloads constructs");
+        await Idle(w);
+        EngineAssert.Equal(0, w.World.PendingJobs, "stale jobs drain without reloading");
+    }
+
+    [EngineTest]
     public async Task FaceEdit_MissingNeighbours_AreNotQueuedOrReported()
     {
         using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(BlockContentLoader.Load()));
@@ -265,7 +294,7 @@ public sealed class ConstructWorldTests : EngineTestBase
     public async Task CollisionOnly_NoMeshInstances()
     {
         var catalog = Horyzont.Game.Constructs.BlockContentLoader.Load();
-        var options = new ConstructWorldOptions { Mode = ConstructWorldMode.CollisionOnly };
+        var options = new ConstructWorldOptions { Mode = ConstructWorldMode.CollisionOnly, LoadAllWithoutViewers = true };
         using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(catalog), options);
         var id = w.Create(new CellPos(0, 0, 0));
         w.Set(id, new CellPos(1, 0, 0));
