@@ -102,7 +102,7 @@ public static class ShipFixtures
     public static WorldState CreateWorld(IReadOnlyList<ShipBlock>? blocks, Vector3 origin = default, ConstructMode mode = ConstructMode.Static)
     {
         var builder = new WorldStateBuilder(WorldFactory.DefaultWorldId, 42);
-        builder.SetProgress(default, default, 2, 1);
+        builder.SetProgress(default, default, blocks is null ? 1UL : 2UL, 1);
         builder.AddPlanet(WorldFactory.HomePlanetParams);
         for (var i = 0; i < BlockKeys.Length; i++)
         {
