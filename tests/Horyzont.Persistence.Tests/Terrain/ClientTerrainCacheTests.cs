@@ -337,6 +337,35 @@ public sealed class ClientTerrainCacheTests
     }
 
     [Fact]
+    public async Task DiskLimit_EvictedEditedBlock_IsQueuedOnceForARefetchUntilItIsStoredAgain()
+    {
+        using var dir = new TempDirectory();
+        var cache = Open(dir);
+        cache.MaxDiskBytes = 100;
+        for (var i = 1; i <= 4; i++)
+        {
+            cache.Put(Key(i), 1, (ulong)i, Blob(i, 40));
+            await cache.FlushAsync().WaitAsync(_wait, TestContext.Current.CancellationToken);
+        }
+
+        var wanted = new List<TerrainBlockKey>();
+        Assert.Equal(0, cache.TakeRefetch(wanted));
+        Assert.Equal(TerrainBlockLookup.Unavailable, cache.TryLoad(Key(1), out _, out _));
+        Assert.Equal(TerrainBlockLookup.Unavailable, cache.TryLoad(Key(1), out _, out _));
+
+        Assert.Equal(1, cache.TakeRefetch(wanted));
+        Assert.Equal([Key(1)], wanted);
+        Assert.Equal(TerrainBlockLookup.Unavailable, cache.TryLoad(Key(1), out _, out _));
+        wanted.Clear();
+        Assert.Equal(0, cache.TakeRefetch(wanted));
+
+        cache.Put(Key(1), 1, 1, Blob(1, 40));
+        Assert.Equal(TerrainBlockLookup.Found, cache.TryLoad(Key(1), out _, out _));
+        Assert.Equal(0, cache.TakeRefetch(wanted));
+        await CloseCleanly(cache);
+    }
+
+    [Fact]
     public async Task MemoryLimit_EvictedUnsavedEditedBlock_IsUnavailableNotPristine()
     {
         using var dir = new TempDirectory();

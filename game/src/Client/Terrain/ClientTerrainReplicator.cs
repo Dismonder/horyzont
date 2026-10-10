@@ -167,6 +167,7 @@ public sealed class ClientTerrainReplicator : IClientSessionListener, IClientWor
         ApplyAccepted();
         Recheck();
         SendChecksums();
+        RefetchEvicted();
         _prediction?.Expire(_resend, RequestBlocks);
         _terrain.StepDerived();
     }
@@ -244,6 +245,20 @@ public sealed class ClientTerrainReplicator : IClientSessionListener, IClientWor
             {
                 _runtime.Session.Send(report);
             }
+        }
+    }
+
+    private void RefetchEvicted()
+    {
+        if (_terrain.Cache is not { } cache)
+        {
+            return;
+        }
+
+        _resend.Clear();
+        if (cache.TakeRefetch(_resend) > 0)
+        {
+            RequestBlocks(_resend);
         }
     }
 

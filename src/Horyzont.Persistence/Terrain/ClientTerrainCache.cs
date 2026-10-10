@@ -31,6 +31,8 @@ public sealed partial class ClientTerrainCache : ITerrainBlockSource
     private readonly SortedDictionary<TerrainBlockKey, Entry> _index = [];
     private readonly Dictionary<TerrainBlockKey, (uint Version, ulong Hash)> _expected = [];
     private readonly Dictionary<TerrainBlockKey, int> _pins = [];
+    private readonly Dictionary<TerrainBlockKey, bool> _evictedEdited = [];
+    private readonly List<TerrainBlockKey> _refetch = [];
     private readonly Dictionary<TerrainBlockKey, WriteOp> _queue = [];
     private long _clock;
     private long _memoryBytes;
@@ -158,7 +160,19 @@ public sealed partial class ClientTerrainCache : ITerrainBlockSource
                 var expecting = _expected.TryGetValue(key, out var expected);
                 if (!_index.TryGetValue(key, out entry!))
                 {
-                    return expecting && expected.Version != 0 ? TerrainBlockLookup.Unavailable : TerrainBlockLookup.NotEdited;
+                    if (expecting && expected.Version != 0)
+                    {
+                        if (_evictedEdited.TryGetValue(key, out var requested) && !requested)
+                        {
+                            // The cache gave this edited block up itself: ask the server for it again instead of waiting forever.
+                            _evictedEdited[key] = true;
+                            _refetch.Add(key);
+                        }
+
+                        return TerrainBlockLookup.Unavailable;
+                    }
+
+                    return TerrainBlockLookup.NotEdited;
                 }
 
                 if (expecting && (entry.Version != expected.Version || entry.Hash != expected.Hash))
@@ -260,6 +274,7 @@ public sealed partial class ClientTerrainCache : ITerrainBlockSource
             }
 
             var entry = new Entry(version, hash, copy) { Stamp = ++_clock };
+            _evictedEdited.Remove(key);
             RemoveFromAccountingLocked(key);
             _index[key] = entry;
             _memoryBytes += copy.Length;
@@ -322,6 +337,24 @@ public sealed partial class ClientTerrainCache : ITerrainBlockSource
             {
                 _expected[key] = (version, hash);
             }
+        }
+    }
+
+    /// <summary>
+    /// Takes the keys of edited blocks the cache evicted that the voxel stream asked for since the last call (each once): the owner asks
+    /// the server for their data again, because nothing else would bring them back. Main thread or any thread.
+    /// </summary>
+    /// <param name="into">Receives the keys (appended).</param>
+    /// <returns>Number of keys appended.</returns>
+    public int TakeRefetch(List<TerrainBlockKey> into)
+    {
+        ArgumentNullException.ThrowIfNull(into);
+        lock (_lock)
+        {
+            var count = _refetch.Count;
+            into.AddRange(_refetch);
+            _refetch.Clear();
+            return count;
         }
     }
 
@@ -775,6 +808,7 @@ public sealed partial class ClientTerrainCache : ITerrainBlockSource
         if (entry.Version != 0 && !_expected.ContainsKey(key))
         {
             _expected[key] = (entry.Version, entry.Hash);
+            _evictedEdited[key] = false;
         }
     }
 
