@@ -225,7 +225,19 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
             return RejectReason.NotEnoughItems;
         }
 
-        var need = MiningYield.Amount(air, voxelVolume, fillYield.ItemsPerCubicMeter) - _ledger.Credit(player, edit.MaterialId);
+        // The material write repaints the whole sphere (TerrainEditSemantics.MaterialSphereRadiusOffset is 0): the empty voxels turn
+        // solid and the solid ones of another material change it, so both are paid at the fill rate. Only voxels already of the fill
+        // material are free; otherwise a fill inside solid terrain would turn stone into a richer material at no cost.
+        var changed = air;
+        for (var material = 1; material < MaterialCount; material++)
+        {
+            if (material != edit.MaterialId)
+            {
+                changed += _solidByMaterial[material];
+            }
+        }
+
+        var need = MiningYield.Amount(changed, voxelVolume, fillYield.ItemsPerCubicMeter) - _ledger.Credit(player, edit.MaterialId);
         var cost = MiningYield.Cost(need, out var credit);
         _ledger.StageCredit(edit.MaterialId, credit);
         if (cost > 0)

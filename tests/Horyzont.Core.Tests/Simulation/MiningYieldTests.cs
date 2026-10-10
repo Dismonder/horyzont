@@ -239,6 +239,45 @@ public sealed class MiningYieldTests
     }
 
     [Fact]
+    public void Fill_RepaintOfOtherSolidMaterial_WithoutSoil_NotEnoughItems_TerrainUntouched()
+    {
+        // The material write repaints every voxel of the sphere: stone turned into dirt is not free.
+        var f = Fixture();
+        f.Sim.Terrain.MeasureResult = MeasuredSphere.SolidOf(StoneMaterial, 2);
+        var hash = StateHasher.Hash(f.State);
+
+        Assert.Equal(RejectReason.NotEnoughItems, Fill(f, DirtMaterial).Reason);
+
+        Assert.Empty(f.Sim.Terrain.AppliedEdits);
+        Assert.Equal(hash, StateHasher.Hash(f.State));
+    }
+
+    [Fact]
+    public void Fill_RepaintOfOtherSolidMaterial_ChargedAtTheFillRate()
+    {
+        var f = Fixture();
+        f.Apply(Create(BagSlot(3), Soil, 10));
+        f.Sim.Terrain.MeasureResult = new MeasuredSphere(new Dictionary<byte, int> { [StoneMaterial] = 2, [DirtMaterial] = 4 }, 1);
+
+        var result = Fill(f, DirtMaterial);
+
+        // 1 air + 2 stone voxels become dirt (3 soil/m³); the 4 dirt voxels keep their material.
+        Assert.True(result.IsAccepted, $"{result.Reason}");
+        Assert.Equal(1, CountOf(f.State, Soil));
+    }
+
+    [Fact]
+    public void Fill_SolidOfTheSameMaterial_FreePlainEdit()
+    {
+        var f = Fixture();
+        f.Sim.Terrain.MeasureResult = MeasuredSphere.SolidOf(DirtMaterial, 5);
+
+        var result = Fill(f, DirtMaterial);
+
+        Assert.IsType<TerrainEditOp>(result.Applied!.Operation);
+    }
+
+    [Fact]
     public void Fill_NotMeasurable_AreaNotLoaded()
     {
         var f = Fixture();
