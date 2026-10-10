@@ -1,7 +1,7 @@
 {
   "regressionWarnPercent": 25,
   "benchmarks": [
-    { "name": "ServerTickBench.Tick", "maxAllocBytes": 256, "note": "target 0 B (K1-03); measured 120 B per tick on 2026-10-10, ceiling set above that until the allocation is found" },
+    { "name": "ServerTickBench.Tick", "maxAllocBytes": 256, "note": "target 0 B (K1-03); measured 120 B per tick on 2026-10-10, allocation is in the inbound message decode of ServerSession.Poll, see exception E2 in docs/reports/K4-19-odbior.md" },
     { "name": "CodecBench.EncodeIntentReply", "maxAllocBytes": 0 },
     { "name": "ConstructMesherBench.MeshChunk", "maxAllocBytes": 0 },
     { "name": "StateHasherBench.Hash", "maxAllocBytes": 8192 }

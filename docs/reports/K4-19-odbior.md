@@ -19,3 +19,11 @@ Stan: szkielet (faza A, krok 0). Status wiersza: `PENDING`, `PASS` (z dowodem), 
 ## Dowody
 
 (uzupełniane w fazie E)
+
+## Wyjątki i odstępstwa (do decyzji właściciela przy odbiorze)
+
+| Wyjątek | Opis | Stan |
+| --- | --- | --- |
+| E1 · wyjście silnika z naruszeniem dostępu | Serwer dedykowany kończy czasem proces kodem `0xC0000005` po własnej linii `Stopped` (zamknięcie silnika, nie logika serwera). `coop_soak.py` toleruje to tylko wtedy, gdy `Stopped` pochodzi z tego samego procesu, liczy takie wyjścia (`engine_exit_av` w `summary.json`) i oblewa przebieg przy więcej niż 1 na przebieg. Przyczyna: prawdopodobnie `GD.Print` z wątków pobocznych i zamykanie logów po `Quit()`; wprowadzono flagę zamknięcia w `GodotLoggerProvider`, zatrzymanie pompy konsoli i dołączanie wątku zapisu. CI zbiera zrzuty WER (`wer-dumps-*`). | otwarty do czasu zielonych nocnych przebiegów bez AV |
+| E2 · alokacja ticku serwera | `ServerTickBench.Tick` alokuje ok. 120 B na tick (budżet 256 B zamiast 0 B). Pomiar (2026-10-10, `GC.GetAllocatedBytesForCurrentThread` wokół fragmentów ticku): cała alokacja jest w `ServerSession.Poll` > `transport.Poll(sink)`, czyli w odbiorze i dekodowaniu przychodzących wiadomości (najpewniej obiekty komunikatów wejścia i zamiarów; nie rozbito dalej); `PumpWriterEvents`, uczestnicy ticku, `AdvanceTick` i `ScheduleCheckpoint` nie alokują. Usunięcie wymaga zmiany ścieżki dekodowania w `Horyzont.Net` (kontrakt chroniony), więc poza zakresem poprawek odbioru. | EXCEPTION, do decyzji właściciela |
+
