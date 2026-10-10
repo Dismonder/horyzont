@@ -10,6 +10,10 @@
 
 **Cel:** przy RTT 100 ms i 5% utraty wejść/migawek własna postać reaguje natychmiast, korekta małego błędu nie przeskakuje wizualnie, duży błąd przestawia postać od razu, a inni gracze są interpolowani z buforem 100 ms.
 
+## Wspólne ustalenia K3
+
+Domyślnie start po małym PR [K3-00 szwy](K3-00-szwy.md) na bramce K2. Obowiązują [README: X1–X11](README.md#x1-szwy-przed-startem-pakietów): jeden dispatch S1, budżety S4, pełne migawki S5, readiness S6, viewers S7, narzędzia S8 i własne partial S9. Rekomendowane scalanie 15 → 16 → 14 → 17 → 18; integrację wspólnego punktu wykonuje pakiet scalany później, kolejność nie warunkuje startu. Bez odpowiedzi właściciela pakiet rusza z wariantem domyślnym.
+
 ## Kontekst
 
 - `docs/ZASADY.md`: pkt 2 (autorytet serwera, tylko ruch własny przewidywany, lokalna rama i `PlanetFrames`), 3 (kontrakty chronione), 4 (czas i determinizm), 6 (gorące ścieżki), 8 (TDD i kontrolowany czas).
@@ -45,7 +49,7 @@ Stan tej gałęzi, nazwy i linie sprawdzone w kodzie; plany K2 opisują równie�
 
 - Zachowanie replay K2 i oddzielenie natychmiastowej korekty fizyki od wygładzania prezentacji postaci/kamery.
 - Interpolacja pełnych, zrekonstruowanych stanów innych graczy; ograniczone zachowanie przy brakujących próbkach, zmiana ramy i despawn.
-- Polityka budżetu/prioritetu odległości migawek, konsumowana przez K3-15; diagnostyka płynności dla K3-18.
+- Polityka budżetu/prioritetu odległości migawek, konsumowana przez K3-15; diagnostyka płynności dla testów i K4-19.
 - Deterministyczny test łącza oraz testy Godota dla kamery, fizyki i prezentacji.
 
 ## Poza zakresem
@@ -71,18 +75,21 @@ Nowe API w tej sekcji są projektowane, nie istnieją w K2.
 | `tests/Horyzont.Client.Tests/Movement/PresentationCorrectionTests.cs`, `RemoteMotionBufferTests.cs`, `MotionLinkTests.cs` (nowe) | Czyste testy |
 | `tests/Horyzont.Server.Tests/Replication/SnapshotSchedulingPolicyTests.cs` (nowy) | Budżet, priorytet i brak głodzenia |
 | `game/tests/Character/MotionPresentationTests.cs` (nowy) | Kamera, replay, niezależna prezentacja |
-| `game/src/Boot/GameComposition.cs` | Tylko rejestracja prezentacji i polityki; wspólny punkt integracji K3 |
+| `game/src/Boot/GameComposition.Motion.cs` | Rejestracja prezentacji i polityki w szwie S9 |
+| `src/Horyzont.Server/Replication/MotionSnapshotBudget.cs` (nowy) | `ISnapshotBudget` z S4: wiadro 20 480 B/s, pojemność 2 300 B, `TimeProvider`; `GetByteBudget` ≤ 1 024 B zwykle, 1 150 B dla wymuszonej pełnej |
+| `tests/Horyzont.Server.Tests/Replication/MotionSnapshotBudgetTests.cs` (nowy) | Rozliczenie rzeczywistych bajtów i czasu |
+| `src/Horyzont.Client/Movement/RemoteMotionSampleAdapter.cs` (nowy) | `int Extract(Snapshot full, EntityId own, Span<RemoteMotionSample> into)`; pomija własny byt i byty bez pełnych pól; rejestrowany jako `IFullSnapshotSink` |
 
 ### Kontrakty wystawiane i konsumowane
 
 1. Nowy `PresentationCorrection`: `void Reconcile(in PredictedState before, in PredictedState after, bool discontinuity)`, `void Advance(float deltaSeconds)`, `Vector3 PositionOffset { get; }`, `Quaternion RotationOffset { get; }`, `void Reset()`. `before/after` to bieżący stan przed i po **całym** replay, nie stary stan z potwierdzonego ticku. `Reconcile` zachowuje poprzednią widoczną pozę także przy kolejnej korekcie w czasie wygaszania.
 2. Nowy `RemoteMotionSample(EntityId Entity, FrameRef Frame, uint ParentSeq, Tick ServerTick, Vector3 Position, Quaternion Rotation, Vector3 Velocity, byte MotionFlags)`; `RemoteMotionBuffer.Push(in RemoteMotionSample) → bool`, `TrySample(double serverTick, out RemoteMotionSample) → bool`, `Clear()`. Bufor nie rozwiązuje delty protokołu. K3-15 przekazuje pełny stan po swojej rekonstrukcji; K3-14 nie interpretuje nieobecnych pól jako zera.
 3. Nowy `RemotePlayerPresentation.SetSample(in RemoteMotionSample)`; composition root K3-15 tworzy/usuwa go przy zdarzeniach bytu. W testach K3-14 pełne próbki mogą pochodzić z fixture. Żaden pakiet nie tworzy drugiej lokalnej postaci.
-4. Granica uzgodnienia z równoległym planem K3-15: jego **nowy, planowany** `SnapshotDecoder.TryReconstruct(Snapshot delta, out Snapshot full)` zwraca semantycznie pełny `Snapshot` z baseline 0. Ten sam wynik trafia pojedynczą ścieżką do istniejącego `OwnStateValidator.Validate(Snapshot, out OwnState)` i do adaptera `RemoteMotionSample`; nie dodawać drugiego dekodera ani przeciążenia walidatora dla surowych delt. Zachować kontrolę ramy, własnego bytu, sekwencji i skończoności; przy pominiętym własnym bycie nie generować korekty. Zmiany walidatora scala jeden integrator.
-5. Nowy `SnapshotCandidate(EntityId Entity, float DistanceSquared, int EncodedBytes, int OmittedRounds, bool IsOwnPlayer)` i `SnapshotSchedulingPolicy.Select(ReadOnlySpan<SnapshotCandidate> candidates, Span<int> selectedIndices, int byteBudget) → int`. `EncodedBytes` obejmuje rzeczywisty wkład pól i ewentualnej ramy po kodowaniu K3-15; nadawca odejmuje nagłówek i weryfikuje całą ramkę. Wyjściowe indeksy wskazują kolejność wyboru. Nie używać LINQ ani sortowania alokującego.
-6. Nowy `MotionStatistics` jako niemutowalny odczyt liczników korekt małych/dużych, maksimum przesunięcia prezentacji, liczby niedoborów próbek i bieżącego opóźnienia interpolacji. K3-18 czyta; render nie formatuje tekstu co tick. Zastąpić tworzenie `LastCorrection` przy każdym replay licznikami; tekst diagnostyczny budować na żądanie.
+4. Granica uzgodnienia z równoległym planem K3-15: jego **nowy, planowany** `SnapshotDecoder.TryReconstruct(Snapshot delta, out Snapshot full)` zwraca semantycznie pełny `Snapshot` z baseline 0. Ten sam wynik trafia pojedynczą ścieżką do istniejącego `OwnStateValidator.Validate(Snapshot, out OwnState)` i do adaptera `RemoteMotionSample`; nie dodawać drugiego dekodera ani przeciążenia walidatora dla surowych delt. Zachować kontrolę ramy, własnego bytu, sekwencji i skończoności; przy pominiętym własnym bycie nie generować korekty. `OwnStateValidator.cs` edytuje wyłącznie K3-15; K3-14 go nie zmienia. Pełne migawki docierają do `LocalPlayer` przez `IFullSnapshotSink` (S5).
+5. Nowy `SnapshotCandidate(EntityId Entity, float Distance, int EncodedBytes, int OmittedRounds, bool IsOwnPlayer)` i `SnapshotSchedulingPolicy.Select(ReadOnlySpan<SnapshotCandidate> candidates, Span<int> selectedIndices, int byteBudget) → int`. `EncodedBytes` obejmuje rzeczywisty wkład pól i ewentualnej ramy po kodowaniu K3-15; nadawca odejmuje nagłówek i weryfikuje całą ramkę. Wyjściowe indeksy wskazują kolejność wyboru. Nie używać LINQ ani sortowania alokującego.
+6. Nowy `MotionStatistics` jako niemutowalny odczyt liczników korekt małych/dużych, maksimum przesunięcia prezentacji, liczby niedoborów próbek i bieżącego opóźnienia interpolacji. `MotionStatistics` udostępnia `LocalPlayer.Motion`; K3-18 w K3 go nie wyświetla (`HudSample` nie ma pól ruchu), odczyt służy testom i K4-19. Render nie formatuje tekstu co tick. Zastąpić tworzenie `LastCorrection` przy każdym replay licznikami; tekst diagnostyczny budować na żądanie.
 
-Integracja z równoległym planem K3-15: jego planowany `ISnapshotBudget.GetByteBudget(PlayerId, Tick)` konsumuje token bucket K3-14 przez nowy adapter `MotionSnapshotBudget` w `src/Horyzont.Server/Replication/MotionSnapshotBudget.cs`; koszt faktycznie wysłanej ramki rozlicza nowa metoda adaptera `Debit(PlayerId player, int encodedBytes)`. `SnapshotBuilder` z K3-15 wywołuje politykę selekcji i adapter. Podstawowe 1150 B K3-15 jest fallbackiem przed integracją, nie konkurencyjnym finalnym limitem. Planowane kapsuły innych graczy z K3-15 mogą być proxy kolizji dla własnej predykcji; nie mogą symulować cudzych wejść ani przesuwać interpolowanej siatki dwukrotnie. K3-14 posiada wizualną pozę, K3-15 lifecycle i proxy kolizji.
+Integracja z równoległym planem K3-15: `ISnapshotBudget.GetByteBudget(PlayerId, Tick)` z K3-00 (S4) konsumuje token bucket K3-14 przez nowy adapter `MotionSnapshotBudget` w `src/Horyzont.Server/Replication/MotionSnapshotBudget.cs`; koszt faktycznie wysłanej ramki rozlicza nowa metoda adaptera `Debit(PlayerId player, int encodedBytes)`. `SnapshotBuilder` z K3-15 wywołuje politykę selekcji i adapter. Podstawowe 1150 B K3-15 jest fallbackiem przed integracją, nie konkurencyjnym finalnym limitem. Inni gracze nie mają u klienta ciał fizycznych: serwer nie koliduje graczy ze sobą (`PlayerBody.CollisionMask = TerrainMask | ConstructsMask`), więc proxy kolizji powodowałoby korekty. K3-14 posiada wizualną pozę (`RemotePlayerPresentation`), K3-15 wyłącznie lifecycle węzła przy `EntitySpawn`/`EntityDespawn`.
 
 ### Decyzje
 
@@ -93,8 +100,8 @@ Integracja z równoległym planem K3-15: jego planowany `ISnapshotBudget.GetByte
 - **Czas innych graczy:** próbka renderowana dla ticku serwera minus 6 ticków (100 ms przy 60 Hz). Zegar nowej sesji startuje z `ServerHello`, jest prowadzony przez wstrzyknięty `TimeProvider`; próbki korygują fazę bez cofania kursora renderu. Nie zakładać RTT = opóźnienie jednokierunkowe. Korektę fazy ograniczyć do 1 ticku/s; błąd > 30 ticków resetuje zegar i bufory.
 - **Interpolacja:** pozycja `Vector3.Lerp`, obrót najkrótszym łukiem `Quaternion.Slerp`, normalizacja; bez Hermite overshoot. W obrębie jednej ramy i `ParentSeq`. Starsze/duplikowane ticki odrzucać. Zmiana rodzica czy odległość > 3 m między sąsiednimi próbkami resetuje ring (dev lot > 3 m/50 ms dopuszczać według maksymalnej prędkości trybu, nie uznawać każdego szybkiego lotu za teleport).
 - **Brak próbek:** najwyżej 3 ticki (50 ms) ekstrapolacji ze znanej prędkości; potem trzymać ostatnią pozę i zwiększać licznik. Brak własnego bytu w częściowej migawce nie jest korektą ani despawn. Przy `EntityDespawn` K3-15 usuwa ring i widok; przy respawn ring jest nowy.
-- **Budżet:** normalny limit migawek 20 KiB/s/klienta, najwyżej 1024 B całej ramki przy 20 Hz, nigdy > 1150 B. Własna postać pierwsza; następnie inne według `distanceSquared / (1 + omittedRounds)^2`, remis po `EntityId`; pominięcie zwiększa wiek, wysłanie zeruje. Wymuszone pełne ramki mogą użyć 1150 B, ale rozliczane są w token bucket 20 KiB/s z pojemnością 2300 B. K3-15 odpowiada za selekcję, actual bytes i ACK; K3-14 za politykę oraz testy. Wspólny cel 50 KB/s jest mierzony na bramce z K3-16.
-- **Chronione:** domyślnie brak zmian Core i kodów. Jeśli integracja wymaga zmiany `Protocol/` lub `Serialization/`, zatrzymać ten krok do przeglądu Opus i podbić `ProtocolVersion = main w chwili scalenia + 1` (D4; K2 kończy z 3); aktualizować test i opis po rebase. Zmiana operacji/intencji wymaga ich formatu i replay starej wersji, nie samego protokołu. Nie zmieniać `SurfaceFrame`.
+- **Budżet:** normalny limit migawek 20 480 B/s/klienta (X3), najwyżej 1024 B całej ramki przy 20 Hz, nigdy > 1150 B. Własna postać pierwsza; następnie inne rosnąco według klucza `clamp(distance, 1 m, 550 m) / (1 + omittedRounds)` (mniejszy wcześniej), remis po `EntityId`; byt pominięty co najmniej 10 rund z rzędu jest wybierany bezwarunkowo zaraz po własnym, malejąco po `omittedRounds`, potem `EntityId`; pominięcie zwiększa wiek, wysłanie zeruje. Wymuszone pełne ramki mogą użyć 1150 B, ale rozliczane są w token bucket 20 480 B/s (X3) z pojemnością 2300 B. K3-15 odpowiada za selekcję, actual bytes i ACK; K3-14 za politykę oraz testy. Wspólny cel 50 KB/s jest mierzony na bramce z K3-16.
+- **Chronione:** domyślnie brak zmian Core i kodów. Jeśli integracja wymaga zmiany `Protocol/` lub `Serialization/`, zatrzymać ten krok do przeglądu Opus i podbić `ProtocolVersion = main w chwili scalenia + 1` (D4; K2 kończy z 3); aktualizować test i opis po rebase. Zmiana operacji/intencji wymaga ich formatu i replay starej wersji, nie samego protokołu. Nie zmieniać `SurfaceFrame`. Jeśli K3-14 jednak zmieni Protocol/Serialization, stosuje X4–X6 (istniejący test `ProtocolVersion_MatchesDocumentedMergeValue`, `Constants_GoldenValues`, fixture protokołu i routera).
 
 ### Odroczenia przejęte
 
@@ -107,14 +114,14 @@ Integracja z równoległym planem K3-15: jego planowany `ISnapshotBudget.GetByte
 
 ### Równoległość i mapa kolizji
 
-K3-14, K3-15, K3-16, K3-17 i K3-18 mogą rozpocząć się równolegle po swoich zależnościach K2. Zależność integracyjna nie zmienia grafu startu.
+Po K3-00 K3-14, K3-15, K3-16, K3-17 i K3-18 mogą rozpocząć się równolegle po swoich zależnościach K2. Zależność integracyjna nie zmienia grafu startu.
 
 | Pakiety / pliki wspólne | Reguła scalania |
 | --- | --- |
-| 14/15: `OwnStateValidator.cs`, `LocalPlayer.cs`, `GameComposition.cs` | 14 tworzy kontrakt pełnej próbki i prezentację; 15 ma dekoder, lifecycle i nadawcę. Integrator 15 scala adapter po 14; nie tworzyć dwóch listenerów korekty |
+| 14/15: ruch i kompozycja | `LocalPlayer.cs`: wyłącznie K3-14 (po S5–S7). `OwnStateValidator.cs`: wyłącznie K3-15. Kompozycja: K3-14 tylko `GameComposition.Motion.cs`. Integrację pakietu scalanego później wykonuje ten pakiet (X10); jedna ścieżka korekty |
 | 14/15: budżet nadawcy | 14 posiada `SnapshotSchedulingPolicy`; 15 posiada swoją implementację nadawcy. Test polityki samodzielny, test actual bytes po integracji |
-| 14/16: `LocalPlayer.cs` (widzowie), `GameComposition.cs` | 14 zmienia korektę/kamerę; 16 dodaje odczyt widzów i teren. Odseparowane metody, składanie composition root kolejno |
-| 14/17/18: `GameComposition.cs`, prezentacja statystyk | Rejestracje w osobnych helperach; 18 czyta statystyki, nie zmienia algorytmu. 17 nie dotyka ruchu |
+| 14/16: widzowie i gotowość | K3-16 czyta widzów przez `ITerrainViewerSource` (S7) i gotowość przez `IClientWorldReadiness` (S6); nie edytuje `LocalPlayer.cs` |
+| 14/17/18: kompozycja i statystyki | Własne pliki partial S9; 18 nie wyświetla `MotionStatistics` w K3, 17 nie dotyka ruchu |
 | Wszystkie: CI i gdUnit4 | Jeden self-hosted runner Windows; jedna stała pipe gdUnit4, bez równoległych testów silnika. Linux CI wyłączone decyzją 2026-10-09 |
 
 ## Testy akceptacyjne (napisz najpierw)
@@ -135,20 +142,20 @@ Fixture xUnit: `FakeTimeProvider`, `InMemoryTransport`, 60 Hz fizyki/20 Hz stan�
 | `Move_Rtt100msAndFivePercentLoss_ConvergesWithoutCorrectionJumps` | 60 s marszu/sprintu/skoku i zatrzymanie; po zatrzymaniu błąd fizyki < 1 cm w ≤ 2 dostarczone migawki; przy małych korektach skok prezentacji wynikający z korekty ≤ 2 cm/klatkę, zero nieuzasadnionych resetów |
 | `UpdateCamera_CorrectionNearWall_DoesNotCrossWallOrChangeAimEye` | FPP i TPP, ściana, biegun; kamera bez przenikania, `Eye` i intencja według fizyki |
 | `Disconnect_Reconnect_ClearsPredictionAndInterpolation` | Nowa sesja; brak dawnych ACK, offsetów, próbek i zegara |
-| `Select_TightBudget_PrioritizesOwnAndEventuallySendsFarEntities` | 8 graczy, pełne/różnicowe koszty; limit ramki, remis deterministyczny, najdalszy wybrany w ≤ 20 rundach przy pojemności co najmniej 2 bytów |
+| `Select_TightBudget_PrioritizesOwnAndEventuallySendsFarEntities` | własny + 7 innych, budżet mieszczący własny + 2 inne, odległości 1–500 m; każdy byt wysłany co najmniej raz w każdym oknie 20 rund; remis deterministyczny; ramka ≤ limitu |
 | `AdvanceAndSample_WarmedUp_AllocatesZeroBytes` | 10 000 wywołań wygaszania/próbkowania; 0 B `GC.GetAllocatedBytesForCurrentThread` |
 | `Select_WarmedUp_AllocatesZeroBytes` | 8 i 22 kandydatów; 0 B; adapter migawek rozlicza alokacje osobno w K3-15 |
 | `Host_PerfectLink_HasNoSpuriousCorrections` | Host jedna fizyka terenu; brak nowych korekt względem K2 |
 
 ## Kroki
 
-- [ ] 0. Rebase na scalone K2; potwierdzić nazwy i uzgodnić z K3-15 granicę pełnych stanów oraz własność plików wspólnych. Nie zmieniać cudzych testów akceptacyjnych bez zgody.
+- [ ] 0. Rebase na scalone K2 i K3-00; sprawdzić nazwy oraz zastosować szwy S4–S7 i własność plików według X10. Nie zmieniać cudzych testów akceptacyjnych bez zgody.
 - [ ] 1. Testy czyste prezentacji i ringów, następnie implementacja; mały commit Conventional Commits po zielonym kroku.
 - [ ] 2. Testy replay/pauzy/ACK; adapter pełnej migawki do próbek, bez regresji `Validate(Snapshot, ...)`.
 - [ ] 3. Testy polityki budżetu, implementacja bez alokacji i API dla K3-15.
 - [ ] 4. Testy Godota, odseparować siatkę/kamerę od kapsuły; zdalny widok tylko wizualny. Sprawdzić FPP/TPP, bieguny i ściany.
 - [ ] 5. Test łącza, pomiary płynności i alokacji; raport seedów, błędów i niedoborów próbek. Po dwóch nieudanych próbach tego samego testu eskalować z testem i logiem zgodnie z ZASADY pkt 12.
-- [ ] 6. Po integracji K3-15 powtórzyć scenariusz na prawdziwych migawkach delta/spawn/despawn i sprawdzić actual bytes. Bez tej integracji nie ogłaszać kompletnego odbioru co-op.
+- [ ] 6. Po scaleniu K3-15 (albo w K3-15, jeśli scala później — X10) powtórzyć scenariusz na prawdziwych migawkach delta/spawn/despawn i sprawdzić actual bytes. Bez tej integracji nie ogłaszać kompletnego odbioru co-op.
 - [ ] 7. Pełne `dotnet build Horyzont.sln`, `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"`, `dotnet format Horyzont.sln --verify-no-changes`, `python tools/engine/build.py smoke`; seryjne gdUnit4 na Windows. Wyniki i ograniczenia do PR; zielone CI po scaleniu.
 
 ## Odbiór
@@ -166,6 +173,7 @@ Fixture xUnit: `FakeTimeProvider`, `InMemoryTransport`, 60 Hz fizyki/20 Hz stan�
 - `LastCompared` dotyczy przeszłości; offset policzony z niego przeniesie klienta wstecz zamiast zachować dzisiejszą widoczną pozę.
 - Utrata niezawodnej informacji o spawn/despawn nie jest symulowana przez `LossRate` łącza; test osobno wstrzymuje kanał i kontroluje kolejność.
 - Przesunięcie całego `PlayerBody` dla wygładzania zmieni kolizje; zdalny widok z kapsułą uruchomi podwójną fizykę.
+- Inni gracze są wyłącznie wizualni; ciała fizyczne/proxy kolizji dawałyby rozjazd z serwerem (X9).
 - Dwie implementacje budżetu u 14 i 15 albo dwa kursory czasu dadzą różne wyniki mimo zielonych testów jednostkowych.
 
 ## Pytania do właściciela
@@ -176,3 +184,5 @@ Warianty domyślne obowiązują przy starcie bez odpowiedzi (README:42); sprzecz
 | --- | --- | --- |
 | P1 | Czy próg dużej korekty 1 m / 45° i wygaszanie 100 ms przyjmujemy na K3? | Tak; alternatywa: zmiana wartości po raporcie, bez zmiany tolerancji fizyki 2 cm |
 | P2 | Czy przy dłuższej luce preferujemy zatrzymanie cudzej postaci po 50 ms ekstrapolacji? | Tak; alternatywa: sam hold bez ekstrapolacji, nadal bufor 100 ms |
+| X1 | Czy przyjmujemy K3-00 przed równoległym startem pakietów? | Domyślnie tak: S1–S9 na bramce K2 bez Core/protokołu; alternatywa po odrzuceniu: X10 „integruje pakiet scalany później”, K3-14 krok 6 i K3-16 krok 6 dopiero po scaleniu K3-15 |
+| X3 | Czy przyjmujemy wspólny podział pasma? | Domyślnie migawki 20 480 B/s / 2 300 B, niezawodne wspólne 27 000 B/s / 65 536 B, sterowanie poza budżetem (~2,5 KB/s); alternatywa: strojenie podziału po raporcie actual bytes, limit ≤50 000 B/s, bez osobnego wiadra terenu |
