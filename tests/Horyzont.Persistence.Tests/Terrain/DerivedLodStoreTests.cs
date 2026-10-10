@@ -93,4 +93,28 @@ public sealed class DerivedLodStoreTests
         Assert.True(store.IsWriterFailed);
         File.Delete(path);
     }
+
+    // The call sites of the game (DerivedTerrainTicker, the server factory cleanup and the client provider) hand the close of the
+    // derived store and the release of its owner to TerrainFailureCleanup; this is the same pairing with the real store.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DisposeAfterCloseAsync_WithTheRealStore_DisposesOnlyAfterACleanClose(bool writerFails)
+    {
+        var path = TempPath();
+        var store = new DerivedLodStore(path, new FakeTimeProvider(), NullLogger<DerivedLodStore>.Instance);
+        if (writerFails)
+        {
+            store.BeforeWrite = static () => throw new InvalidOperationException("injected");
+        }
+
+        Assert.True(store.Put(Key(1), "f", [1]));
+        var disposed = false;
+
+        var result = await Horyzont.Game.Server.TerrainFailureCleanup.DisposeAfterCloseAsync(store.CloseAsync, () => disposed = true);
+
+        Assert.Equal(!writerFails, result);
+        Assert.Equal(!writerFails, disposed);
+        File.Delete(path);
+    }
 }
