@@ -92,6 +92,47 @@ public sealed class TerrainSendQueueTests
     }
 
     [Fact]
+    public void Queue_SustainedLive_StillSendsABulkBlockEveryFewTakes()
+    {
+        var time = new FakeTimeProvider();
+        var queue = new TerrainSendQueue(new TokenBucketReplicationBudget(time), time.TimestampFrequency);
+        queue.Enqueue(_player, _key with { X = 1000 }, 1, [1], 1, 1);
+        for (var i = 0; i < 40; i++)
+        {
+            queue.Enqueue(_player, _key with { X = i }, 1, [1], 0, i);
+        }
+
+        var order = new List<int>();
+        while (queue.TryTake(_player, time.GetTimestamp(), out var data))
+        {
+            order.Add(data!.Key.X);
+        }
+
+        var bulkAt = order.IndexOf(1000);
+        Assert.InRange(bulkAt, 0, TerrainSendQueue.LiveTakesPerBulk);
+        Assert.Equal(41, order.Count);
+    }
+
+    [Fact]
+    public void Queue_SustainedLiveWhileOnlyLiveIsWanted_NeverSendsBulk()
+    {
+        var time = new FakeTimeProvider();
+        var queue = new TerrainSendQueue(new TokenBucketReplicationBudget(time), time.TimestampFrequency);
+        queue.Enqueue(_player, _key with { X = 1000 }, 1, [1], 1, 1);
+        for (var i = 0; i < 20; i++)
+        {
+            queue.Enqueue(_player, _key with { X = i }, 1, [1], 0, i);
+        }
+
+        while (queue.TryTake(_player, time.GetTimestamp(), liveOnly: true, out var data))
+        {
+            Assert.NotEqual(1000, data!.Key.X);
+        }
+
+        Assert.Equal(1, queue.Count(_player));
+    }
+
+    [Fact]
     public void Queue_DistantFlood_BoundedAndMarksResync()
     {
         var time = new FakeTimeProvider();

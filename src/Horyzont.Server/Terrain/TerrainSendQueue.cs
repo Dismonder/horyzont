@@ -11,6 +11,12 @@ namespace Horyzont.Server.Terrain;
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1711", Justification = "Name required by K3-16 API contract.")]
 public sealed class TerrainSendQueue
 {
+    /// <summary>
+    /// After this many live blocks in a row, the next take is a waiting bulk block (when bulk is wanted): sustained digging near the
+    /// viewer cannot hold the bulk transfer back for ever, while live edits still get all the other takes.
+    /// </summary>
+    public const int LiveTakesPerBulk = 4;
+
     private readonly IReplicationSendBudget _budget;
     private readonly long _frequency;
     private readonly Dictionary<PlayerId, PlayerQueue> _players = [];
@@ -98,6 +104,8 @@ public sealed class TerrainSendQueue
         }
         queue.Timestamp = timestamp;
         Entry? best = null;
+        var bulkTurn = !liveOnly && queue.LiveStreak >= LiveTakesPerBulk;
+        Entry? bestBulk = null;
         foreach (var candidate in queue.Entries.Values)
         {
             if (liveOnly && candidate.Priority != 0)
@@ -108,12 +116,18 @@ public sealed class TerrainSendQueue
             {
                 best = candidate;
             }
+            if (bulkTurn && candidate.Priority != 0 && (bestBulk is null || Before(candidate, bestBulk, timestamp)))
+            {
+                bestBulk = candidate;
+            }
         }
+        best = bestBulk ?? best;
         if (best is null || !_budget.TryConsume(player, best.Priority == 0 ? ReplicationTraffic.Live : ReplicationTraffic.Bulk, best.Bytes))
         {
             return false;
         }
         queue.Entries.Remove(best.Data.Key);
+        queue.LiveStreak = best.Priority == 0 ? queue.LiveStreak + 1 : 0;
         data = best.Data;
         return true;
     }
@@ -167,5 +181,6 @@ public sealed class TerrainSendQueue
         internal Dictionary<TerrainBlockKey, Entry> Entries { get; } = [];
         internal long Timestamp { get; set; }
         internal bool Resync { get; set; }
+        internal int LiveStreak { get; set; }
     }
 }
