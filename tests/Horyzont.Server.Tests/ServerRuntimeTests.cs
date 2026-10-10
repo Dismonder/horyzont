@@ -17,6 +17,21 @@ namespace Horyzont.Server.Tests;
 public sealed class ServerRuntimeTests
 {
     [Fact]
+    public async Task AddClientMessageHandler_AfterStart_RejectsRegistration()
+    {
+        await using var rig = new ServerRig();
+        rig.Runtime.AddClientMessageHandler(new MessageHandler());
+        await rig.StartAsync();
+        Assert.Throws<InvalidOperationException>(() => rig.Runtime.AddClientMessageHandler(new MessageHandler()));
+        await rig.StopAsync();
+    }
+
+    private sealed class MessageHandler : IServerClientMessageHandler
+    {
+        public bool Handle(PlayerId player, Horyzont.Core.Protocol.Messages.Message message) => false;
+    }
+
+    [Fact]
     public async Task Start_NewWorld_CreatesDatabaseCheckpointAndStartupBackup()
     {
         await using var rig = new ServerRig();

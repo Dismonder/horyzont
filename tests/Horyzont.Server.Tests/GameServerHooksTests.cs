@@ -32,6 +32,25 @@ public sealed class GameServerHooksTests
     private GameServerHooks Hooks { get; }
 
     [Fact]
+    public void OnClientMessage_Handled_DoesNotShortCircuitRegistrationOrder()
+    {
+        var calls = new List<int>();
+        var hooks = new GameServerHooks(_sim, () => true, NullLogger<GameServerHooks>.Instance,
+            handlers: [new Handler(1, true, calls), new Handler(2, false, calls), new Handler(3, true, calls)]);
+        hooks.OnClientMessage(new PlayerId(7), new SnapshotAck(1));
+        Assert.Equal([1, 2, 3], calls);
+    }
+
+    private sealed class Handler(int id, bool handled, List<int> calls) : IServerClientMessageHandler
+    {
+        public bool Handle(PlayerId player, Horyzont.Core.Protocol.Messages.Message message)
+        {
+            calls.Add(id);
+            return handled;
+        }
+    }
+
+    [Fact]
     public void OnIntent_SubmitsAndRepliesWithClientSeq()
     {
         var player = Hooks.OnPlayerJoining(_alice, "alice");
