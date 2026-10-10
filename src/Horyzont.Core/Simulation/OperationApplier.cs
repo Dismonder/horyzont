@@ -256,27 +256,49 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         if (_touched.Count > 0)
         {
             _touched.Sort();
-            var list = new List<ContainerChange>();
+
+            // The result escapes to observers, so it is built from exact-size arrays: no growing lists, no scratch that outlives the call.
+            var groups = 0;
+            for (var i = 0; i < _touched.Count; i++)
+            {
+                if (i == 0 || _touched[i].Container != _touched[i - 1].Container)
+                {
+                    groups++;
+                }
+            }
+
+            var list = new ContainerChange[groups];
             var start = 0;
+            var group = 0;
             while (start < _touched.Count)
             {
                 var containerId = new ContainerId(_touched[start].Container);
-                var slots = new List<ushort>();
                 var end = start;
+                var distinct = 0;
                 while (end < _touched.Count && _touched[end].Container == containerId.Value)
                 {
-                    if (slots.Count == 0 || slots[^1] != _touched[end].Slot)
+                    if (end == start || _touched[end].Slot != _touched[end - 1].Slot)
                     {
-                        slots.Add(_touched[end].Slot);
+                        distinct++;
                     }
 
                     end++;
                 }
 
+                var slots = new ushort[distinct];
+                var written = 0;
+                for (var k = start; k < end; k++)
+                {
+                    if (k == start || _touched[k].Slot != _touched[k - 1].Slot)
+                    {
+                        slots[written++] = _touched[k].Slot;
+                    }
+                }
+
                 state.Containers.TryGet(containerId, out var container);
                 container!.BumpVersion();
                 state.Containers.MarkChanged(containerId);
-                list.Add(new ContainerChange(containerId, container.Version, slots));
+                list[group++] = new ContainerChange(containerId, container.Version, slots);
                 start = end;
             }
 
