@@ -1,5 +1,6 @@
 using Horyzont.Core.Ids;
 using Horyzont.Server.Replication;
+
 using Microsoft.Extensions.Time.Testing;
 
 namespace Horyzont.Server.Tests;
@@ -44,4 +45,23 @@ public sealed class ReplicationBudgetTests
         Assert.True(budget.TryConsume(player, ReplicationTraffic.Bulk, 65536));
         Assert.False(budget.TryConsume(player, ReplicationTraffic.Bulk, 1));
     }
+    [Fact]
+    public void TryConsume_WarmedPlayer_DoesNotAllocate()
+    {
+        var budget = new TokenBucketReplicationBudget(new FakeTimeProvider());
+        var player = new PlayerId(1);
+        for (var i = 0; i < 100; i++)
+        {
+            budget.TryConsume(player, ReplicationTraffic.Live, 1);
+        }
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 1000; i++)
+        {
+            budget.TryConsume(player, ReplicationTraffic.Live, 1);
+        }
+
+        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+    }
+
 }

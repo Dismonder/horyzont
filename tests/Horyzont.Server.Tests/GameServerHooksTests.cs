@@ -7,8 +7,10 @@ using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Serialization;
 using Horyzont.Core.Simulation;
+using Horyzont.Server.Tests.Support;
 using Horyzont.Testing;
 
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Horyzont.Server.Tests;
@@ -39,6 +41,18 @@ public sealed class GameServerHooksTests
             handlers: [new Handler(1, true, calls), new Handler(2, false, calls), new Handler(3, true, calls)]);
         hooks.OnClientMessage(new PlayerId(7), new SnapshotAck(1));
         Assert.Equal([1, 2, 3], calls);
+    }
+
+    [Theory]
+    [InlineData(false, 1)]
+    [InlineData(true, 0)]
+    public void OnClientMessage_LogsDebugOnlyWhenUnhandled(bool handled, int expected)
+    {
+        using var log = new RecordingLoggerFactory();
+        var hooks = new GameServerHooks(_sim, () => true, log.CreateLogger<GameServerHooks>(),
+            handlers: [new Handler(1, handled, [])]);
+        hooks.OnClientMessage(new PlayerId(7), new SnapshotAck(1));
+        Assert.Equal(expected, log.Entries.Count(entry => entry.Level == LogLevel.Debug && entry.Event.Id == 8104));
     }
 
     private sealed class Handler(int id, bool handled, List<int> calls) : IServerClientMessageHandler

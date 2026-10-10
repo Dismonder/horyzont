@@ -23,6 +23,7 @@ public sealed class GameServerHooks : IServerGameHooks
     private readonly ILogger<GameServerHooks> _logger;
     private readonly IReadOnlyList<IServerPlayerObserver> _observers;
     private readonly NewPlayerSpawn? _spawn;
+    private readonly IReadOnlyList<IServerClientMessageHandler> _handlers;
 
     /// <summary>Initializes a new instance of the <see cref="GameServerHooks"/> class.</summary>
     /// <param name="simulation">The simulation joins, intents and leaves are applied to.</param>
@@ -30,9 +31,10 @@ public sealed class GameServerHooks : IServerGameHooks
     /// <param name="logger">Logger.</param>
     /// <param name="observers">Systems told when a player is ready and before a player leaves; none when null.</param>
     /// <param name="spawn">Pose of a player who joins for the first time; the simulation's own spawn point when null.</param>
+    /// <param name="handlers">Client message handlers in registration order; none when null.</param>
     public GameServerHooks(
         ServerSimulation simulation, Func<bool> acceptsChanges, ILogger<GameServerHooks> logger,
-        IReadOnlyList<IServerPlayerObserver>? observers = null, NewPlayerSpawn? spawn = null)
+        IReadOnlyList<IServerPlayerObserver>? observers = null, NewPlayerSpawn? spawn = null, IReadOnlyList<IServerClientMessageHandler>? handlers = null)
     {
         ArgumentNullException.ThrowIfNull(simulation);
         ArgumentNullException.ThrowIfNull(acceptsChanges);
@@ -42,6 +44,7 @@ public sealed class GameServerHooks : IServerGameHooks
         _logger = logger;
         _observers = observers ?? [];
         _spawn = spawn;
+        _handlers = handlers ?? [];
     }
 
     /// <inheritdoc />
@@ -116,7 +119,16 @@ public sealed class GameServerHooks : IServerGameHooks
     public void OnClientMessage(PlayerId player, Message message)
     {
         ArgumentNullException.ThrowIfNull(message);
-        _logger.ClientMessage(player.Value, message.Type);
+        var handled = false;
+        foreach (var handler in _handlers)
+        {
+            handled |= handler.Handle(player, message);
+        }
+
+        if (!handled)
+        {
+            _logger.ClientMessage(player.Value, message.Type);
+        }
     }
 
     /// <inheritdoc />
