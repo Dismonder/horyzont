@@ -12,6 +12,11 @@ namespace Horyzont.Game.Terrain;
 /// <summary>Rebuilds derived blocks from eight current children with the native Voxel Tools edit filter.</summary>
 public sealed class DerivedLodRebuilder
 {
+    /// <summary>Most parents built per frame.</summary>
+    public const int MaxBlocksPerStep = 2;
+
+    private const int MaxAttemptsPerStep = 16;
+
     private readonly Lock _lock = new();
     private readonly ITerrainBlockSource _source;
     private readonly Func<TerrainBlockKey, byte[]> _generate;
@@ -21,6 +26,7 @@ public sealed class DerivedLodRebuilder
     private readonly byte _maxLod;
     private readonly SortedSet<TerrainBlockKey> _dirty = [];
     private readonly Dictionary<TerrainBlockKey, byte[]> _ready = [];
+    private readonly List<TerrainBlockKey> _attempts = [];
 
     /// <summary>Creates a main-thread rebuilder; stream reads only immutable published results.</summary>
     /// <param name="source">Authoritative LOD zero source.</param>
@@ -85,21 +91,45 @@ public sealed class DerivedLodRebuilder
             throw new InvalidOperationException("Derived terrain rebuilding requires the main thread.");
         }
         ArgumentOutOfRangeException.ThrowIfNegative(maxBlocks);
-        for (var built = 0; built < Math.Min(2, maxBlocks); built++)
+        _attempts.Clear();
+        lock (_lock)
         {
-            TerrainBlockKey key;
-            lock (_lock)
-            {
-                if (_dirty.Count == 0)
-                {
-                    return;
-                }
-                key = _dirty.Min;
-            }
-            if (!Build(key, out var fingerprint, out var blob) || !_store.Put(key, fingerprint, blob))
+            if (_dirty.Count == 0)
             {
                 return;
             }
+
+            // Lowest levels first, so a parent finds its children built. A parent whose children are not ready (data awaited, writer
+            // full) is skipped for this frame and must not hold back the others.
+            foreach (var candidate in _dirty)
+            {
+                _attempts.Add(candidate);
+                if (_attempts.Count >= MaxAttemptsPerStep)
+                {
+                    break;
+                }
+            }
+        }
+
+        var built = 0;
+        foreach (var key in _attempts)
+        {
+            if (built >= Math.Min(MaxBlocksPerStep, maxBlocks))
+            {
+                return;
+            }
+
+            if (!Build(key, out var fingerprint, out var blob))
+            {
+                continue;
+            }
+
+            if (!_store.Put(key, fingerprint, blob))
+            {
+                return;
+            }
+
+            built++;
             lock (_lock)
             {
                 if (_ready.Count >= DerivedLodCache.DefaultMaxBlocks)
@@ -114,6 +144,17 @@ public sealed class DerivedLodRebuilder
                 _ready[key] = blob;
                 _dirty.Remove(key);
             }
+        }
+    }
+
+    /// <summary>Whether the rebuilder owns the block: it is rebuilt after an edit, or waits for that.</summary>
+    /// <param name="key">Derived key.</param>
+    /// <returns>True when the block is dirty or ready.</returns>
+    public bool Tracks(TerrainBlockKey key)
+    {
+        lock (_lock)
+        {
+            return _dirty.Contains(key) || _ready.ContainsKey(key);
         }
     }
 

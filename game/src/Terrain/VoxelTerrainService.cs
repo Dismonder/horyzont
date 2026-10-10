@@ -84,10 +84,11 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
     /// </summary>
     /// <param name="planet">The planet.</param>
     /// <param name="configured">Its terrain node, outside the tree and without a stream.</param>
+    /// <param name="derived">Persistent mipmaps of the edited blocks of the planet; null for session mipmaps only.</param>
     /// <returns>The planet terrain node.</returns>
     /// <exception cref="NotSupportedException">Voxel size other than 1 m or data block size other than <see cref="TerrainMath.BlockSize"/>.</exception>
     /// <exception cref="InvalidOperationException">Full load mode, a stream already set, a node in the tree, a known planet or a shut down service.</exception>
-    public PlanetTerrain AddPlanet(PlanetParams planet, VoxelLodTerrain configured)
+    public PlanetTerrain AddPlanet(PlanetParams planet, VoxelLodTerrain configured, DerivedLodRebuilder? derived = null)
     {
         EnsureMainThread();
         ArgumentNullException.ThrowIfNull(planet);
@@ -117,7 +118,7 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
             throw new InvalidOperationException($"Planet {planet.Id} cannot be added (known planet or service shut down).");
         }
 
-        var stream = new TerrainStream(planet.Id, _blocks, _codec, new DerivedLodCache(), _logger);
+        var stream = new TerrainStream(planet.Id, _blocks, _codec, new DerivedLodCache(), _logger, derived);
         configured.Stream = stream;
         var node = new PlanetTerrain(planet.Id, configured, stream);
         _planets.Add(planet.Id.Value, new Entry(planet, node));
