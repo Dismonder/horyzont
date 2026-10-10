@@ -508,7 +508,7 @@ Na Linuksie uruchamia wyeksportowany build z presetu `server-linux` (`template-l
 - [x] 12. Testy Godota z tabeli (host jedna kopia terenu, solo zapis/odczyt, klient, wątki).
 - [x] 13. `export_presets.cfg` (dopisane `server-windows`, `server-linux`; `windows-release`/`linux-release` z K2-08 bez zmian), `tools/server_smoke.py`, krok w jobie `game` (Windows i Linux).
 - [x] 14. `ZASADY.md`: reguła wątków (pkt 2), kolejności zamykania (pkt 7), composition root i `QuitCoordinator` (część Godot).
-- [ ] 15. (lokalnie wykonane i zielone, zob. „Odstępstwa”; zostaje zielone CI na gałęzi i po scaleniu) Pełne `dotnet build Horyzont.sln`, `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"`, `dotnet format Horyzont.sln --verify-no-changes`, `python tools/engine/build.py smoke`; zielone CI na gałęzi i po scaleniu na `main` (lekcja 4). Każdy nieodhaczony krok ma wpis „odroczone do X” (lekcja 5).
+- [x] 15. (CI na `main` zielone 2026-10-10: przebieg 38011077413 na `bcef9df`, po scaleniu całego K2; Engine na `main` i przebieg nocny — w toku bramki K2) (lokalnie wykonane i zielone, zob. „Odstępstwa”; zostaje zielone CI na gałęzi i po scaleniu) Pełne `dotnet build Horyzont.sln`, `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"`, `dotnet format Horyzont.sln --verify-no-changes`, `python tools/engine/build.py smoke`; zielone CI na gałęzi i po scaleniu na `main` (lekcja 4). Każdy nieodhaczony krok ma wpis „odroczone do X” (lekcja 5).
 
 ## Odbiór
 
