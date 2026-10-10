@@ -43,7 +43,7 @@ public class SnapshotProgressTests
             [new SnapshotFrame(server.Frame, server.ParentSeq)],
             [new EntityState(hello.YourEntity, (EntityStateFields)15, 0, server.ParentSeq, position, server.BodyRotation, Vector3.UnitX, (byte)MovementMode.DevFlying)]);
 
-        player.OnMessage(SnapshotAt(1_000_000, feet));
+        player.OnFullSnapshot(SnapshotAt(1_000_000, feet));
         for (var i = 0; i < 130; i++)
         {
             player._PhysicsProcess(1d / hello.TickRate);
@@ -53,7 +53,7 @@ public class SnapshotProgressTests
         for (uint id = 1_000_001; id <= 1_000_003; id++)
         {
             feet += Vector3.UnitX;
-            player.OnMessage(SnapshotAt(id, feet));
+            player.OnFullSnapshot(SnapshotAt(id, feet));
             player._PhysicsProcess(1d / hello.TickRate);
             AssertThat(Vector3.Distance(player.PredictedFeet, feet)).IsLess(0.001f);
             AssertThat(player.PredictionPaused).IsTrue();

@@ -33,6 +33,7 @@ public sealed partial class ServerRuntime
     private readonly ILogger<ServerRuntime> _logger;
     private readonly List<IServerTickParticipant> _participants = [];
     private readonly List<IServerPlayerObserver> _playerObservers = [];
+    private readonly List<IServerClientMessageHandler> _clientMessageHandlers = [];
     private readonly List<Func<Task>> _afterTerrainShutdown = [];
 
     private WorldState? _worldState;
@@ -114,6 +115,20 @@ public sealed partial class ServerRuntime
     {
         ArgumentNullException.ThrowIfNull(participant);
         _participants.Add(participant);
+    }
+
+    /// <summary>Registers a client message handler on the main thread before start.</summary>
+    /// <param name="handler">Handler called in registration order, without short circuiting.</param>
+    /// <exception cref="InvalidOperationException">Start has already begun.</exception>
+    public void AddClientMessageHandler(IServerClientMessageHandler handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        if (RuntimeState != ServerRuntimeState.Created)
+        {
+            throw new InvalidOperationException("Client message handlers must be registered before start.");
+        }
+
+        _clientMessageHandlers.Add(handler);
     }
 
     /// <summary>Registers a system told when players are ready and before they leave; call before <see cref="StartAsync"/>.</summary>

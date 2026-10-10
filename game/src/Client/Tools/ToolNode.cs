@@ -30,13 +30,14 @@ public sealed partial class ToolNode : Node, IClientSessionListener
     public const int PhysicsPriority = 20;
 
     private ClientRuntime? _client;
-    private ServerRuntime? _server;
-    private Func<ITerrainService>? _terrain;
+    private Func<ServerHello, IToolWorldView>? _views;
+    private Func<IEditPrediction>? _predictionFactory;
+    private IEditPrediction? _prediction;
     private ILocalPlayerView? _player;
     private GameRules _rules = new();
     private ILoggerFactory? _loggers;
     private ILogger<ToolNode>? _logger;
-    private GodotToolWorldView? _view;
+    private IToolWorldView? _view;
     private long _tick;
     private int _accepted;
     private int _rejected;
@@ -93,15 +94,32 @@ public sealed partial class ToolNode : Node, IClientSessionListener
     public void Initialize(
         ClientRuntime client, ServerRuntime server, Func<ITerrainService> terrain, ILocalPlayerView player, GameRules rules, ILoggerFactory loggers)
     {
-        ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(server);
         ArgumentNullException.ThrowIfNull(terrain);
+        Initialize(client, hello => new GodotToolWorldView(server.State, terrain(), hello.YourPlayer),
+            () => NoEditPrediction.Instance, player, rules, loggers);
+    }
+
+    /// <summary>Gives remote or local tools their world and prediction factories before entering the tree.</summary>
+    /// <param name="client">Client runtime.</param>
+    /// <param name="views">World view resolved from each server hello.</param>
+    /// <param name="prediction">Prediction created for each session.</param>
+    /// <param name="player">Local player view.</param>
+    /// <param name="rules">Game rules.</param>
+    /// <param name="loggers">Loggers.</param>
+    public void Initialize(
+        ClientRuntime client, Func<ServerHello, IToolWorldView> views, Func<IEditPrediction> prediction,
+        ILocalPlayerView player, GameRules rules, ILoggerFactory loggers)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(views);
+        ArgumentNullException.ThrowIfNull(prediction);
         ArgumentNullException.ThrowIfNull(player);
         ArgumentNullException.ThrowIfNull(rules);
         ArgumentNullException.ThrowIfNull(loggers);
         _client = client;
-        _server = server;
-        _terrain = terrain;
+        _views = views;
+        _predictionFactory = prediction;
         _player = player;
         _rules = rules;
         _loggers = loggers;
@@ -132,8 +150,9 @@ public sealed partial class ToolNode : Node, IClientSessionListener
     public void OnServerHello(ServerHello hello)
     {
         ArgumentNullException.ThrowIfNull(hello);
-        _view = new GodotToolWorldView(_server!.State, _terrain!(), hello.YourPlayer);
-        Pending = new PendingIntentTracker(NoEditPrediction.Instance, _loggers!.CreateLogger<PendingIntentTracker>());
+        _view = _views!(hello);
+        _prediction = _predictionFactory!();
+        Pending = new PendingIntentTracker(_prediction, _loggers!.CreateLogger<PendingIntentTracker>());
         Blocks = BlockPalette.FromHello(hello);
         Materials = MaterialPalette.FromHello(hello);
         Controller = new ToolController(
@@ -146,6 +165,11 @@ public sealed partial class ToolNode : Node, IClientSessionListener
     /// <inheritdoc />
     public void OnIntentReply(IntentReply reply)
     {
+        if (_prediction is IIntentReplyObserver observer)
+        {
+            observer.NoteReply(reply);
+        }
+
         if (Pending is null || !Pending.OnReply(reply, out var outcome))
         {
             return;
@@ -172,6 +196,7 @@ public sealed partial class ToolNode : Node, IClientSessionListener
         Controller = null;
         Pending = null;
         _view = null;
+        _prediction = null;
     }
 
     /// <inheritdoc />

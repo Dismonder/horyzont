@@ -14,7 +14,7 @@ internal static class MessageRouter
     /// <returns>True when the frame starts with a defined message type.</returns>
     public static bool TryGetType(ReadOnlySpan<byte> frame, out MessageType type)
     {
-        if (frame.Length >= 1 && frame[0] >= (byte)MessageType.ClientHello && frame[0] <= (byte)MessageType.Disconnect)
+        if (frame.Length >= 1 && IsKnownType(frame[0]))
         {
             type = (MessageType)frame[0];
             return true;
@@ -23,6 +23,13 @@ internal static class MessageRouter
         type = default;
         return false;
     }
+
+    private static bool IsKnownType(byte type) => type switch
+    {
+        1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10
+            or 11 or 12 or 13 or 14 or 15 or 16 or 17 or 18 or 19 or 20 => true,
+        _ => false,
+    };
 
     /// <summary>Whether the server accepts <paramref name="type"/> from a client in <paramref name="state"/>.</summary>
     public static bool IsAllowedFromClient(PeerState state, MessageType type) => state switch

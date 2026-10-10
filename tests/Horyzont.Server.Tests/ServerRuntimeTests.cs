@@ -17,6 +17,43 @@ namespace Horyzont.Server.Tests;
 public sealed class ServerRuntimeTests
 {
     [Fact]
+    public async Task AddClientMessageHandler_AfterStart_RejectsRegistration()
+    {
+        await using var rig = new ServerRig();
+        rig.Runtime.AddClientMessageHandler(new MessageHandler());
+        await rig.StartAsync();
+        Assert.Throws<InvalidOperationException>(() => rig.Runtime.AddClientMessageHandler(new MessageHandler()));
+        await rig.StopAsync();
+    }
+
+    [Fact]
+    public async Task AddClientMessageHandler_BeforeStart_DispatchesSessionMessage()
+    {
+        await using var rig = new ServerRig();
+        var handler = new MessageHandler();
+        rig.Runtime.AddClientMessageHandler(handler);
+        await rig.StartAsync();
+        var client = await rig.JoinAsync("local", 1);
+        client.Session.Send(new Horyzont.Core.Protocol.Messages.SnapshotAck(42));
+        rig.StepMany(2);
+        Assert.Equal(client.Player, handler.Player);
+        Assert.Equal(42u, Assert.IsType<Horyzont.Core.Protocol.Messages.SnapshotAck>(handler.Message).SnapshotId);
+        await rig.StopAsync();
+    }
+
+    private sealed class MessageHandler : IServerClientMessageHandler
+    {
+        public PlayerId Player { get; private set; }
+        public Horyzont.Core.Protocol.Messages.Message? Message { get; private set; }
+        public bool Handle(PlayerId player, Horyzont.Core.Protocol.Messages.Message message)
+        {
+            Player = player;
+            Message = message;
+            return true;
+        }
+    }
+
+    [Fact]
     public async Task Start_NewWorld_CreatesDatabaseCheckpointAndStartupBackup()
     {
         await using var rig = new ServerRig();

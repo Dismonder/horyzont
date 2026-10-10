@@ -3,6 +3,7 @@ using Godot;
 using Horyzont.Client;
 using Horyzont.Client.Camera;
 using Horyzont.Client.Movement;
+using Horyzont.Client.Replication;
 using Horyzont.Client.Session;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Motion;
@@ -32,7 +33,7 @@ namespace Horyzont.Game.Client.Character;
 /// processed. It also places the camera and the terrain viewers and is the <see cref="ILocalPlayerView"/> for the tools of K2-13.
 /// Runs after <c>/Root/Client</c> polled the session (priority <see cref="PhysicsPriority"/>), so the snapshots of this frame are in.
 /// </summary>
-public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSessionListener
+public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSessionListener, IFullSnapshotSink, ITerrainViewerSource
 {
     /// <summary>Physics priority: after the client node (0) and the server node (-100), before the tools of K2-13.</summary>
     public const int PhysicsPriority = 10;
@@ -83,6 +84,27 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
 
     /// <summary>Gets or sets where the input of each tick comes from (the keyboard and mouse reader; tests script it).</summary>
     public ILocalInputSource InputSource { get; set; } = new NoInput();
+
+    /// <summary>Gets or sets world readiness; K2 is always ready.</summary>
+    public IClientWorldReadiness WorldReadiness { get; set; } = AlwaysReadyWorld.Instance;
+
+    /// <inheritdoc />
+    public bool TryGetViewers(out TerrainViewers viewers)
+    {
+        viewers = default;
+        if (_planet is not { } planet || (_visualViewer is null && _collisionViewer is null))
+        {
+            return false;
+        }
+
+        var visual = _visualViewer;
+        var collision = _collisionViewer;
+        viewers = new TerrainViewers(
+            planet.Id,
+            visual is null ? default : PlanetFrames.ToPlanetLocal(planet.Id, visual.GlobalPosition), visual?.ViewDistance ?? 0,
+            collision is null ? default : PlanetFrames.ToPlanetLocal(planet.Id, collision.GlobalPosition), collision?.ViewDistance ?? 0);
+        return true;
+    }
 
     /// <summary>Gets the number of corrections (a mismatch with the server) since the connection or the last <see cref="ResetStatistics"/>.</summary>
     public int Corrections { get; private set; }
@@ -269,13 +291,11 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     }
 
     /// <inheritdoc />
-    public void OnMessage(Message message)
+    public void OnFullSnapshot(Snapshot full)
     {
-        if (message is Snapshot snapshot)
-        {
-            // Only the newest matters: acknowledgements only grow, and a correction starts from the latest server state.
-            _pending = snapshot;
-        }
+        ArgumentNullException.ThrowIfNull(full);
+        // Only the newest matters: a correction starts from the latest reconstructed state.
+        _pending = full;
     }
 
     /// <inheritdoc />
@@ -341,6 +361,11 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
 
     private void StepCharacter(in LocalInputSample sample)
     {
+        if (!WorldReadiness.IsReady)
+        {
+            return;
+        }
+
         var body = _body!;
         var orientation = _orientation!;
         var feet = body.Feet;
@@ -404,7 +429,7 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         }
 
         var body = _body!;
-        var open = own.Mode == MovementMode.DevFlying || body.OnFloor || _probe!.TryFindGround(body.GetWorld3D(), own.Feet, GateDepthMeters, out _);
+        var open = WorldReadiness.IsReady && (own.Mode == MovementMode.DevFlying || body.OnFloor || _probe!.TryFindGround(body.GetWorld3D(), own.Feet, GateDepthMeters, out _));
         if (own.LastProcessedInputSeq == 0 || own.Mode == MovementMode.Frozen || !open)
         {
             // The server has not moved the body yet (or the terrain under it is not here yet): follow it, do not predict.
