@@ -72,6 +72,9 @@ public sealed class TerrainSendQueue
         queue.Resync = true;
     }
 
+    /// <summary>Gets the encoded frame size of the block last returned by <see cref="TryTake"/>.</summary>
+    public int LastTakenBytes { get; private set; }
+
     /// <summary>Selects one task and debits its complete encoded frame. No allocation after enqueue.</summary>
     /// <param name="player">Recipient.</param>
     /// <param name="timestamp">Current injected clock timestamp.</param>
