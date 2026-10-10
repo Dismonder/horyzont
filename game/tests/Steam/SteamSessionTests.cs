@@ -36,7 +36,8 @@ public class SteamSessionTests
         // Steam enabled but unavailable: the host stays on LAN, no lobby, and the identity the server registered is the Dev profile one.
         AssertThat(api.CreateRequests.Count).IsEqual(0);
         AssertThat(api.JoinRequests.Count).IsEqual(0);
-        var registered = composition.Server!.State.Players.Get(composition.Client!.Hello!.YourPlayer).Identity;
+        AssertThat(composition.Server!.State.Players.TryGet(composition.Client!.Hello!.YourPlayer, out var player)).IsTrue();
+        var registered = player!.Identity;
         AssertThat(registered.Platform).IsEqual(IdentityPlatform.Dev);
         AssertThat(registered).IsEqual(LocalProfile.LoadOrCreate(Path.Combine(dir, "profile.json")).Identity);
         composition.RequestShutdown();
