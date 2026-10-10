@@ -415,7 +415,7 @@ Fikstury `ConstructFixtures` (w `tests/Horyzont.Testing`, przez publiczny `World
 - [x] 13. Scena deweloperska `game/scenes/dev/ConstructsDemo.tscn` (budowla Building nad płaszczyzną, swobodna kamera z buildu deweloperskiego, jeśli jest; inaczej stała kamera) do oceny wzrokowej; zrzut ekranu w PR.
 - [x] 14. `docs/ZASADY.md`: pkt 3 — dopisz `BlockOrientation` do listy typów zapisywanych w `World/` z adnotacją „tabela orientacji jest formatem `BlockState`”; pkt 2 — „wątki robocze (meshing, strumień terenu) czytają wyłącznie migawki skopiowane na wątku głównym”.
 - [ ] 15. Pełne `dotnet build Horyzont.sln`, `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"`, `dotnet format Horyzont.sln --verify-no-changes`, `python tools/engine/build.py smoke`; PR z wynikami testów akceptacyjnych, czasami z kroków 8, 11, 12, Odstępstwami i pytaniami; przegląd Opus 5.5.
-- [ ] 16. Po scaleniu: CI na `main` zielone (lekcja 4); kroki nieodhaczone tylko z dopiskiem „odroczone do K…” (lekcja 5).
+- [x] 16. (CI na `main` zielone 2026-10-10: przebieg 38011077413 na `bcef9df`, po scaleniu całego K2; Engine na `main` i przebieg nocny — w toku bramki K2) Po scaleniu: CI na `main` zielone (lekcja 4); kroki nieodhaczone tylko z dopiskiem „odroczone do K…” (lekcja 5).
 
 ## Odbiór
 
