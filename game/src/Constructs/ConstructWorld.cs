@@ -107,7 +107,7 @@ public sealed partial class ConstructWorld : Node3D
         _options = options;
         _logger = logger;
         _queue = new ChunkRemeshQueue(options.MaxInFlightJobs) { Distance = DistanceOf };
-        _pool = new MeshWorkerPool(table, options.WorkerCount, options.MaxInFlightJobs, logger, BeforeBuild);
+        _pool = new MeshWorkerPool(table, options.WorkerCount, options.MaxInFlightJobs, logger, BeforeBuild, options.TimeProvider);
         _initialized = true;
         if (table.MissingKeyCount > 0)
         {

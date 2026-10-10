@@ -16,4 +16,7 @@
     <ProjectReference Include="../../src/Horyzont.Constructs/Horyzont.Constructs.csproj" />
     <ProjectReference Include="../Horyzont.Testing/Horyzont.Testing.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../game/src/Constructs/ShutdownBudget.cs" Link="Game/ShutdownBudget.cs" />
+  </ItemGroup>
 </Project>

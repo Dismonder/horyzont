@@ -24,6 +24,9 @@ public sealed record ConstructWorldOptions
     /// <summary>A loaded construct is unloaded only after it is this much farther than its radius.</summary>
     public float HysteresisMeters { get; init; } = 64;
 
+    /// <summary>Clock used for worker shutdown deadlines.</summary>
+    public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
+
     /// <summary>How long <see cref="ConstructWorld.ShutdownAsync"/> waits for the workers.</summary>
     public TimeSpan ShutdownTimeout { get; init; } = TimeSpan.FromSeconds(2);
 }

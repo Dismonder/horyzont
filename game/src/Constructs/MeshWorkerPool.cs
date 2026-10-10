@@ -44,6 +44,7 @@ internal sealed class MeshJobSlot : IDisposable
 /// </summary>
 internal sealed partial class MeshWorkerPool : IDisposable
 {
+    private readonly TimeProvider _time;
     private readonly BlockRenderTable _table;
     private readonly ILogger _logger;
     private readonly BlockingCollection<MeshJobSlot> _jobs;
@@ -60,10 +61,11 @@ internal sealed partial class MeshWorkerPool : IDisposable
     private readonly Action<MeshJobSlot>? _beforeBuild;
     internal int CleanupCount { get; private set; }
 
-    public MeshWorkerPool(BlockRenderTable table, int workerCount, int slotCount, ILogger logger, Action<MeshJobSlot>? beforeBuild = null)
+    public MeshWorkerPool(BlockRenderTable table, int workerCount, int slotCount, ILogger logger, Action<MeshJobSlot>? beforeBuild = null, TimeProvider? time = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(workerCount, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(slotCount, 1);
+        _time = time ?? TimeProvider.System;
         _table = table;
         _logger = logger;
         _beforeBuild = beforeBuild;
@@ -156,12 +158,11 @@ internal sealed partial class MeshWorkerPool : IDisposable
     public bool Shutdown(TimeSpan timeout)
     {
         Cancel();
-        var deadline = DateTime.UtcNow + timeout;
+        var budget = new ShutdownBudget(_time, timeout);
         var joined = true;
         foreach (var thread in _threads)
         {
-            var remaining = deadline - DateTime.UtcNow;
-            joined &= thread.Join(remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero);
+            joined &= thread.Join(budget.Remaining);
         }
 
         if (!joined)
