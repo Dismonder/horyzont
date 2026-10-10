@@ -168,6 +168,7 @@ public sealed class ClientTerrainReplicator : IClientSessionListener, IClientWor
         Recheck();
         SendChecksums();
         _prediction?.Expire(_resend, RequestBlocks);
+        _terrain.StepDerived();
     }
 
     /// <summary>Asks the server for the current data of blocks it must send again (reported as missing).</summary>
@@ -360,6 +361,7 @@ public sealed class ClientTerrainReplicator : IClientSessionListener, IClientWor
             }
 
             _terrain.Cache?.Put(block.Key, block.Version, block.Hash, block.Envelope);
+            _terrain.OnBlockStored(block.Key);
             if (!_terrain.TryGetNode(block.Key.Planet, out var node))
             {
                 continue;

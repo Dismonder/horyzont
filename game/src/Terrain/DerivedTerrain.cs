@@ -3,19 +3,18 @@ using Godot;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Terrain;
 using Horyzont.Game.Planet;
-using Horyzont.Game.Terrain;
 using Horyzont.Persistence.Terrain;
 
-namespace Horyzont.Game.Server;
+namespace Horyzont.Game.Terrain;
 
 /// <summary>
-/// The persistent mipmaps of the edited terrain of the server (K3-16, closing the deferral of K2-09): one <see cref="DerivedLodRebuilder"/>
-/// per planet over the block buffer, one disposable database <c>terrain-derived.db</c> next to the world file. Voxel Tools writes the
+/// The persistent mipmaps of the edited terrain of a server or a remote client (K3-16, closing the deferral of K2-09): one <see cref="DerivedLodRebuilder"/>
+/// per planet over the authoritative LOD 0 blocks (the server buffer, the client cache), one disposable database <c>terrain-derived.db</c> next to the world file or the cache. Voxel Tools writes the
 /// mipmaps of an edit only when it unloads a block, so a far excavation could be lost; these are rebuilt from the edited LOD 0 blocks
 /// after every edit and after a restart. The data is no checkpoint and no journal: it can be deleted at any time. Main thread, except
 /// the reads of the streams.
 /// </summary>
-public sealed class ServerDerivedTerrain : IDisposable
+public sealed class DerivedTerrain : IDisposable
 {
     private readonly DerivedLodStore _store;
     private readonly Dictionary<ulong, DerivedLodRebuilder> _rebuilders = [];
@@ -25,7 +24,7 @@ public sealed class ServerDerivedTerrain : IDisposable
 
     /// <summary>Creates the container over an opened store.</summary>
     /// <param name="store">The derived database.</param>
-    public ServerDerivedTerrain(DerivedLodStore store)
+    public DerivedTerrain(DerivedLodStore store)
     {
         ArgumentNullException.ThrowIfNull(store);
         _store = store;

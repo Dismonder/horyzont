@@ -80,7 +80,7 @@ public sealed partial class VoxelServerTerrainFactory : IServerTerrainFactory
         var nodes = new List<PlanetTerrain>();
         VoxelTerrainService? service = null;
         ServerTerrainBlocks? blocks = null;
-        ServerDerivedTerrain? derived = null;
+        DerivedTerrain? derived = null;
         try
         {
             StoreCreated?.Invoke(store);
@@ -88,7 +88,7 @@ public sealed partial class VoxelServerTerrainFactory : IServerTerrainFactory
             service = new VoxelTerrainService(
                 blocks, new TerrainBlockCodec(), TerrainMaterialMap.Build(state.Materials), _loggers.CreateLogger<VoxelTerrainService>());
             _material ??= _options.Render ? PlanetTerrainMaterial.Create() : null;
-            derived = new ServerDerivedTerrain(new DerivedLodStore(
+            derived = new DerivedTerrain(new DerivedLodStore(
                 Path.Combine(Path.GetDirectoryName(Path.GetFullPath(worldPath))!, DerivedDatabaseName), _time, _loggers.CreateLogger<DerivedLodStore>()));
             foreach (var planet in state.Planets.All)
             {
@@ -126,7 +126,7 @@ public sealed partial class VoxelServerTerrainFactory : IServerTerrainFactory
         }
     }
 
-    private async Task CleanupAsync(VoxelTerrainService? service, ServerTerrainBlocks? blocks, TerrainBlockStore store, ServerDerivedTerrain? derived)
+    private async Task CleanupAsync(VoxelTerrainService? service, ServerTerrainBlocks? blocks, TerrainBlockStore store, DerivedTerrain? derived)
     {
         try
         {

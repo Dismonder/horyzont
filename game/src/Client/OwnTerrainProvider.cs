@@ -3,7 +3,9 @@ using System.Diagnostics.CodeAnalysis;
 using Godot;
 
 using Horyzont.Core.Ids;
+using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
+using Horyzont.Core.World.Terrain;
 using Horyzont.Game.Client.Terrain;
 using Horyzont.Game.Planet;
 using Horyzont.Game.Terrain;
@@ -30,6 +32,8 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
     private readonly TerrainBlockCodec _codec = new();
     private readonly SortedDictionary<ulong, PlanetTerrain> _planets = [];
     private readonly ClientTerrainViews _views = new();
+    private string? _cacheDirectory;
+    private DerivedTerrain? _derived;
 
     /// <summary>Creates the provider.</summary>
     /// <param name="parent">Node the planet terrains are added to.</param>
@@ -62,6 +66,22 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
     /// <summary>Gets the persistent cache of the world; null without cache settings or before the first server hello.</summary>
     public ClientTerrainCache? Cache { get; private set; }
 
+    /// <summary>Gets the persistent mipmaps of the edited blocks (K3-16); null without cache.</summary>
+    public DerivedTerrain? Derived => _derived;
+
+    /// <summary>Tells the mipmaps that a block of the cache changed: the blocks above it are stale until rebuilt.</summary>
+    /// <param name="key">LOD zero key that was stored in the cache.</param>
+    public void OnBlockStored(TerrainBlockKey key)
+    {
+        if (_derived is not null && key.Lod == 0)
+        {
+            _derived.Invalidate([new TerrainBlockVersion(key, 0)]);
+        }
+    }
+
+    /// <summary>Rebuilds a few mipmaps (at most two per planet); call once per frame on the main thread.</summary>
+    public void StepDerived() => _derived?.Step();
+
     /// <summary>Gets the envelope codec of the terrain (its scratch buffers are per thread).</summary>
     public TerrainBlockCodec Codec => _codec;
 
@@ -87,14 +107,39 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
         Clear();
         Cache = OpenCache(hello);
         ITerrainBlockSource source = Cache is not null ? Cache : _generatorOnly;
+        if (Cache is not null && _cacheSettings is { } settings && _cacheDirectory is not null)
+        {
+            _derived = new DerivedTerrain(new DerivedLodStore(
+                Path.Combine(_cacheDirectory, "terrain-derived.db"), settings.Time, settings.Loggers.CreateLogger<DerivedLodStore>()));
+        }
+
         foreach (var planet in hello.Planets)
         {
             var terrain = PlanetTerrainFactory.Create(planet, _options, _material);
-            var stream = new TerrainStream(planet.Id, source, _codec, new DerivedLodCache(), _logger);
+            var rebuilder = _derived is not null && terrain.Generator is { } generator && Cache is not null ? _derived.Add(planet, Cache, generator) : null;
+            var stream = new TerrainStream(planet.Id, source, _codec, new DerivedLodCache(), _logger, rebuilder);
             terrain.Stream = stream;
             var node = new PlanetTerrain(planet.Id, terrain, stream);
             _planets.Add(planet.Id.Value, node);
             _parent.AddChild(node);
+        }
+
+        if (_derived is not null && Cache is not null)
+        {
+            // After a restart the mipmaps above every cached block are checked against their fingerprint and rebuilt where they differ.
+            var versions = new TerrainBlockVersion[ProtocolConstants.MaxTerrainCacheEntries];
+            foreach (var planet in hello.Planets)
+            {
+                int read;
+                var offset = 0;
+                do
+                {
+                    read = Cache.CopyVersions(planet.Id, versions, offset);
+                    _derived.Invalidate(versions.Take(read));
+                    offset += read;
+                }
+                while (read == versions.Length);
+            }
         }
     }
 
@@ -137,7 +182,8 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
         }
 
         var path = Path.Combine(settings.Root, hello.World.Value.ToString("D", System.Globalization.CultureInfo.InvariantCulture), "terrain.db");
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        _cacheDirectory = Path.GetDirectoryName(path)!;
+        Directory.CreateDirectory(_cacheDirectory);
         return new ClientTerrainCache(path, FingerprintOf(hello, settings.BuildHash), settings.Time, settings.Loggers.CreateLogger<ClientTerrainCache>());
     }
 
@@ -155,21 +201,34 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
 
         _planets.Clear();
         _views.Clear();
+        var derived = _derived;
+        _derived = null;
         if (Cache is { } cache)
         {
             // The writer saves what is queued and the file closes only when nothing reads it any more (five seconds at most).
             Cache = null;
-            _ = CloseCacheAsync(cache);
+            _ = CloseCacheAsync(cache, derived);
+        }
+        else if (derived is not null)
+        {
+            _ = CloseCacheAsync(null, derived);
         }
     }
 
-    private async Task CloseCacheAsync(ClientTerrainCache cache)
+    private async Task CloseCacheAsync(ClientTerrainCache? cache, DerivedTerrain? derived)
     {
         try
         {
-            if (!await cache.CloseAsync().ConfigureAwait(true))
+            if (cache is not null && !await cache.CloseAsync().ConfigureAwait(true))
             {
                 ClientTerrainLog.CacheCloseTimedOut(_logger);
+            }
+
+            if (derived is not null)
+            {
+                // Rebuildable data: a timeout leaves the writer to finish alone.
+                await derived.CloseAsync().ConfigureAwait(true);
+                derived.Dispose();
             }
         }
 #pragma warning disable CA1031 // The cache is advisory; a failure to close it is logged and does not stop the shutdown.

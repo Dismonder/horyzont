@@ -37,7 +37,7 @@ public sealed class VoxelServerTerrain : IServerTerrain, ITerrainReplicationSour
     /// <param name="derived">Persistent mipmaps of the planets; stepped by the game and closed in step 7a of the shutdown.</param>
     public VoxelServerTerrain(
         VoxelTerrainService service, ServerTerrainBlocks blocks, TerrainBlockStore store, IReadOnlyList<PlanetTerrain> nodes, TimeProvider time,
-        ServerDerivedTerrain? derived = null)
+        DerivedTerrain? derived = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(blocks);
@@ -53,7 +53,7 @@ public sealed class VoxelServerTerrain : IServerTerrain, ITerrainReplicationSour
     }
 
     /// <summary>Gets the persistent mipmaps of the edited terrain (K3-16); null when the terrain has none.</summary>
-    public ServerDerivedTerrain? Derived { get; }
+    public DerivedTerrain? Derived { get; }
 
     /// <summary>Gets the terrain service (the host's local client reads the same planets through it).</summary>
     public VoxelTerrainService Voxel { get; }
