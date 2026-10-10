@@ -81,7 +81,7 @@ public sealed class ClientFrameGraphTests
         // Ship: interpolated between the snapshot ticks.
         Assert.True(rig.Graph.TryGetWorldPose(FrameRef.Of(_ship), 31.5, out var ship));
         Assert.InRange(Vector3D.Distance(new Vector3D(1.5, 4010, 0), ship.Position), 0, 1e-6);
-        var halfTurn = QuaternionD.FromFloat(Quaternion.CreateFromAxisAngle(Vector3.UnitY, 0.15f));
+        var halfTurn = QuaternionD.Normalize(QuaternionD.FromFloat(Quaternion.CreateFromAxisAngle(Vector3.UnitY, 0.15f)));
         Assert.InRange(Math.Abs(QuaternionD.Dot(halfTurn, ship.Rotation)), 1 - 1e-9, 1 + 1e-9);
 
         // Static construct: its header, whatever the render tick.
