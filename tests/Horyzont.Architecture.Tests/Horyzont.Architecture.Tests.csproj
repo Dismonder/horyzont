@@ -17,5 +17,6 @@
     <ProjectReference Include="../../src/Horyzont.Constructs/Horyzont.Constructs.csproj" />
     <ProjectReference Include="../../src/Horyzont.Server/Horyzont.Server.csproj" />
     <ProjectReference Include="../../src/Horyzont.Client/Horyzont.Client.csproj" />
+    <ProjectReference Include="../../src/Horyzont.Bots/Horyzont.Bots.csproj" />
   </ItemGroup>
 </Project>

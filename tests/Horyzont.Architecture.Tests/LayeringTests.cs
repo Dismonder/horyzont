@@ -12,6 +12,7 @@ public sealed class LayeringTests
         typeof(Horyzont.Constructs.AssemblyMarker),
         typeof(Horyzont.Server.AssemblyMarker),
         typeof(Horyzont.Client.AssemblyMarker),
+        typeof(Horyzont.Bots.AssemblyMarker),
     };
 
     [Theory]
@@ -29,6 +30,7 @@ public sealed class LayeringTests
     [InlineData("src/Horyzont.Constructs/Horyzont.Constructs.csproj", "Horyzont.Core")]
     [InlineData("src/Horyzont.Server/Horyzont.Server.csproj", "Horyzont.Core,Horyzont.Persistence,Horyzont.Net")]
     [InlineData("src/Horyzont.Client/Horyzont.Client.csproj", "Horyzont.Core,Horyzont.Net")]
+    [InlineData("src/Horyzont.Bots/Horyzont.Bots.csproj", "Horyzont.Core,Horyzont.Net,Horyzont.Client")]
     public void ProjectFile_HasOnlyAllowedReferences(string path, string allowedCsv)
     {
         var allowedProjects = allowedCsv.Split(',', StringSplitOptions.RemoveEmptyEntries);
@@ -40,6 +42,13 @@ public sealed class LayeringTests
 
         Assert.All(projectRefs, r => Assert.Contains(r, allowedProjects));
         Assert.DoesNotContain(packageRefs, p => p.StartsWith("Godot", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Client_DoesNotReferenceBots()
+    {
+        var references = typeof(Horyzont.Client.AssemblyMarker).Assembly.GetReferencedAssemblies().Select(a => a.Name ?? "");
+        Assert.DoesNotContain(references, n => n == "Horyzont.Bots");
     }
 
     private static string RepoRoot()
