@@ -197,7 +197,7 @@ Kolejność K3: planowana K3-15 → 4, K3-16 → 5, K3-14 bez zmiany, K3-17 bez 
 
 ## Pakiety K5
 
-Źródło reguł: [przegląd K5](K5-przeglad.md) (Opus 5.5, 2026-10-10; blokery B1–B5 wprowadzone do planów, B6 = ta sekcja). Plany K5-25 i K5-28 jeszcze nie istnieją — muszą przyjąć reguły Y1–Y15 i listę „Pokrycie K5-25 i K5-28” z przeglądu.
+Źródło reguł: [przegląd K5](K5-przeglad.md) (Opus 5.5, 2026-10-10; blokery B1–B5 wprowadzone do planów, B6 = ta sekcja). Plany K5-25 i K5-28 napisane 2026-10-10 według reguł Y1–Y15 i listy „Pokrycie K5-25 i K5-28” z przeglądu; czekają na przegląd Opus (fala 3a).
 
 | Pakiet | Plan | Prowadzi | Przegląd | Zależy od (start) | Warunek scalenia |
 | --- | --- | --- | --- | --- | --- |
@@ -206,10 +206,10 @@ Kolejność K3: planowana K3-15 → 4, K3-16 → 5, K3-14 bez zmiany, K3-17 bez 
 | K5-22 | [Wiele terenów](K5-22-wiele-terenow.md) | Opus 5.5 | GPT-6.1 Sol | K5-21; kroki 5–6 K3-16, krok 10 K4-19 | K5-21 scalony; kontrakt Y11 zatwierdzony |
 | K5-23 | [Bloki statku](K5-23-bloki-statku.md) | Sonnet 5.5 | Opus 5.5 (kontrakty Core) | `main` | brak krawędzi |
 | K5-24 | [Model lotu](K5-24-model-lotu.md) | Sonnet 5.5 | Opus 5.5 (kontrakty Core) | K5-21, K5-23 | oba scalone; kontrakt Y11 zatwierdzony |
-| K5-25 | (plan do napisania) | GPT-6.1 Sol | Opus 5.5 | K5-24 | plan przejrzany przez Opus przed scaleniem K5-24 |
+| K5-25 | [Fotele i sterowanie](K5-25-fotele-i-sterowanie.md) | GPT-6.1 Sol | Opus 5.5 | K5-24 | plan przejrzany przez Opus przed scaleniem K5-24 |
 | K5-26 | [Replikacja statków](K5-26-replikacja-statkow.md) | Opus 5.5 | GPT-6.1 Sol; Core — Opus | K5-24 | K5-24 scalony |
 | K5-27 | [Mapa i nawigacja](K5-27-mapa-i-nawigacja.md) | Gemini 3.8 Flash | Sonnet 5.5; Core — Opus | K5-21; krok 12 K3-18 | K5-21 scalony |
-| K5-28 | (plan do napisania) | Sonnet 5.5 | Opus 5.5 | K5-22, K5-25, K5-26, K5-27 | wszystkie scalone |
+| K5-28 | [Testy Kosmosu](K5-28-testy-kosmosu.md) | Sonnet 5.5 | Opus 5.5 | K5-22, K5-25, K5-26, K5-27 | wszystkie scalone |
 
 ### Kolejność startu K5
 
