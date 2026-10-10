@@ -11,6 +11,20 @@ namespace Horyzont.Core.Tests.Items;
 public sealed class ItemOpsApplierTests
 {
     [Fact]
+    public void ContainerCreate_PlayerHostWithExtraHostFields_Fails()
+    {
+        var f = new ItemFixture();
+        var id = f.State.ContainerIds.PeekNext();
+        var player = ContainerHost.Player(Player1);
+
+        // The codec writes only the player id, so live state and replay would hash different hosts.
+        f.AssertFails(new ContainerCreateOp(id, ContainerKind.Chest, player with { Cell = new CellPos(1, 2, 3) }, Player1, ContainerAccess.Private, 5));
+        f.AssertFails(new ContainerCreateOp(id, ContainerKind.Chest, player with { Site = 4 }, Player1, ContainerAccess.Private, 5));
+        f.AssertFails(new ContainerCreateOp(id, ContainerKind.Chest, player with { Number = 4 }, Player1, ContainerAccess.Private, 5));
+        f.Apply(new ContainerCreateOp(id, ContainerKind.Chest, player, Player1, ContainerAccess.Private, 5));
+    }
+
+    [Fact]
     public void Create_EmptySlot_SetsStack_VersionPlusOne()
     {
         var f = new ItemFixture();

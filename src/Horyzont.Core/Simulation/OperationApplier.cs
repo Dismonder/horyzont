@@ -456,6 +456,12 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             return "host kind not supported";
         }
 
+        // The codec writes only the player id of a player host: any other host field would make the live hash differ from the replay hash.
+        if (op.Host != ContainerHost.Player(op.Host.PlayerId))
+        {
+            return "player host with extra fields";
+        }
+
         var player = op.Host.PlayerId;
         if (!state.Players.TryGet(player, out _))
         {
