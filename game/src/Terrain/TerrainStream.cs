@@ -25,6 +25,7 @@ public sealed partial class TerrainStream : VoxelStreamScript
     private readonly ITerrainBlockSource? _source;
     private readonly TerrainBlockCodec? _codec;
     private readonly DerivedLodCache? _lodCache;
+    private readonly DerivedLodRebuilder? _derived;
     private readonly ILogger? _logger;
 #if DEBUG
     private readonly ThreadLocal<VoxelBuffer> _verifyBuffer = new(static () => new VoxelBuffer());
@@ -42,7 +43,13 @@ public sealed partial class TerrainStream : VoxelStreamScript
     /// <param name="codec">Block codec.</param>
     /// <param name="lodCache">Derived LOD &gt; 0 blocks of this session.</param>
     /// <param name="logger">Logger (thread-safe).</param>
-    public TerrainStream(PlanetId planet, ITerrainBlockSource source, TerrainBlockCodec codec, DerivedLodCache lodCache, ILogger logger)
+    /// <param name="derived">
+    /// Persistent mipmaps of the edited blocks (K3-16): LOD &gt; 0 blocks it owns come from it, a known stale one is never replaced by
+    /// the unedited planet; null keeps the session cache only.
+    /// </param>
+    public TerrainStream(
+        PlanetId planet, ITerrainBlockSource source, TerrainBlockCodec codec, DerivedLodCache lodCache, ILogger logger,
+        DerivedLodRebuilder? derived = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(codec);
@@ -53,6 +60,7 @@ public sealed partial class TerrainStream : VoxelStreamScript
         _codec = codec;
         _lodCache = lodCache;
         _logger = logger;
+        _derived = derived;
     }
 
     /// <summary>Godot needs a parameterless constructor; such a stream is closed and answers every call with an error.</summary>
@@ -104,6 +112,24 @@ public sealed partial class TerrainStream : VoxelStreamScript
         {
             if (lod > 0)
             {
+                if (_derived is not null)
+                {
+                    if (_derived.TryLoad(key, out var derivedBlob))
+                    {
+                        _codec.Decode(derivedBlob, outBuffer);
+                        return (int)VoxelStream.ResultCode.BlockFound;
+                    }
+
+                    if (_derived.IsDirty(key))
+                    {
+                        // Changed by an edit and not rebuilt yet: wait for the rebuild instead of showing the unedited planet.
+                        // Not a fault of the terrain (no error is recorded). The engine keeps a placeholder for the block, so the
+                        // rebuilder asks for a reload once everything is rebuilt.
+                        _derived.NoteMissed(key);
+                        return (int)VoxelStream.ResultCode.Error;
+                    }
+                }
+
                 if (!_lodCache.TryGet(key, out var voxels))
                 {
                     return (int)VoxelStream.ResultCode.BlockNotFound;
@@ -160,7 +186,11 @@ public sealed partial class TerrainStream : VoxelStreamScript
         {
             if (lod > 0)
             {
-                _lodCache.Put(key, VoxelBlockSerializer.SerializeToByteArray(buffer, TerrainEditSemantics.BlobCompression));
+                if (_derived is null || !_derived.Tracks(key))
+                {
+                    _lodCache.Put(key, VoxelBlockSerializer.SerializeToByteArray(buffer, TerrainEditSemantics.BlobCompression));
+                }
+
                 return;
             }
 
