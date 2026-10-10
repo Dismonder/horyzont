@@ -1,5 +1,6 @@
 using System.Numerics;
 
+using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
 using Horyzont.Core.World.Constructs;
 
@@ -168,6 +169,8 @@ public static class BlockOverlap
         return TryGetPose(store, construct, frame, MaxNestingDepth, out origin, out rotation);
     }
 
+    // Depth 1 (the construct lies directly in the frame) keeps its float pose bit for bit; deeper nesting composes in double through
+    // FrameGraph (K5-20, debt of K2-13) and narrows once. maxLinks counts the link to the frame itself, hence depth + 1.
     private static bool TryGetPose(
         ConstructStore store, Construct construct, FrameRef frame, int depth, out Vector3 origin, out Quaternion rotation)
     {
@@ -178,13 +181,10 @@ public static class BlockOverlap
             return true;
         }
 
-        if (depth > 0
-            && construct.Parent.Kind == FrameKind.Construct
-            && store.TryGet(new EntityId(construct.Parent.Id), out var parent)
-            && TryGetPose(store, parent, frame, depth - 1, out var parentOrigin, out var parentRotation))
+        if (construct.Parent.Kind == FrameKind.Construct
+            && FrameGraph.TryGetPoseIn(new ConstructStoreFramePoses(store), FrameRef.Of(construct.Id), frame, depth + 1, out var pose)
+            && FrameMath.TryToFloat(pose, frame.Kind, out origin, out rotation))
         {
-            origin = parentOrigin + Vector3.Transform(construct.Origin, parentRotation);
-            rotation = parentRotation * construct.Rotation;
             return true;
         }
 

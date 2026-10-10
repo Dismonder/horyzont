@@ -64,11 +64,12 @@ public static class FrameMath
     /// <returns>The local direction.</returns>
     public static Vector3D InverseTransformDirection(in PoseD pose, Vector3D direction) => QuaternionD.Conjugate(pose.Rotation).Rotate(direction);
 
-    /// <summary>Widens a float pose (exact).</summary>
+    /// <summary>Widens a float pose: the position exactly, the rotation normalized in double (float rotations are unit only to ~1e-7).</summary>
     /// <param name="position">Position.</param>
     /// <param name="rotation">Rotation.</param>
     /// <returns>The pose.</returns>
-    public static PoseD FromFloat(Vector3 position, Quaternion rotation) => new(Vector3D.FromFloat(position), QuaternionD.FromFloat(rotation));
+    public static PoseD FromFloat(Vector3 position, Quaternion rotation) =>
+        new(Vector3D.FromFloat(position), QuaternionD.Normalize(QuaternionD.FromFloat(rotation)));
 
     /// <summary>
     /// Narrows a pose to the float values a frame of <paramref name="kind"/> stores: every value finite, every coordinate within

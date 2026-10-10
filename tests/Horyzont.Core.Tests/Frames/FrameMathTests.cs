@@ -72,7 +72,7 @@ public class FrameMathTests
     }
 
     [Fact]
-    public void FrameMath_FromFloat_IsExact()
+    public void FrameMath_FromFloat_ExactPositionNormalizedRotation()
     {
         var position = new Vector3(1.1f, -99_999.5f, 0.3f);
         var rotation = Quaternion.Normalize(new Quaternion(0.1f, 0.2f, 0.3f, 0.9f));
@@ -81,7 +81,8 @@ public class FrameMathTests
 
         Assert.Equal((double)position.X, pose.Position.X);
         Assert.Equal((double)position.Y, pose.Position.Y);
-        Assert.Equal((double)rotation.W, pose.Rotation.W);
+        Assert.Equal(rotation.W, pose.Rotation.W, 1e-7);
+        Assert.Equal(1, pose.Rotation.Length(), 1e-15);
         Assert.True(FrameMath.TryToFloat(pose, FrameKind.Planet, out var p, out var r));
         Assert.Equal(position, p);
         Assert.Equal(rotation.X, r.X, 1e-7f);
