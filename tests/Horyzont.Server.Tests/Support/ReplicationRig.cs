@@ -7,6 +7,7 @@ using Horyzont.Core.World;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Game.Server.Characters;
 using Horyzont.Game.Server.Replication;
+using Horyzont.Net.Transport.InMemory;
 using Horyzont.Server.Replication;
 using Horyzont.Testing;
 
@@ -75,9 +76,9 @@ internal sealed class ReplicationRig : IAsyncDisposable
 
     public static async Task<ReplicationRig> StartAsync(
         Func<WorldState>? createWorld = null, ISnapshotBudget? snapshotBudget = null, FakeTimeProvider? time = null,
-        IReplicationSendBudget? sendBudget = null)
+        IReplicationSendBudget? sendBudget = null, LinkConditions? conditions = null)
     {
-        var rig = new ServerRig(time: time, createWorld: createWorld);
+        var rig = new ServerRig(time: time, createWorld: createWorld, conditions: conditions);
         var characters = new FakeCharacters();
         var binder = new EntityReplicationBinder(
             runtime => new ServerReplicationSource(runtime.State, characters), rig.Time, rig.Log, snapshotBudget, 500f, sendBudget);
