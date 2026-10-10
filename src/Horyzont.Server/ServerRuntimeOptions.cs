@@ -1,3 +1,4 @@
+using Horyzont.Core.Content;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Net.Session;
@@ -66,6 +67,12 @@ public sealed record ServerRuntimeOptions
 
     /// <summary>Gets the material keys of the game content; missing keys are appended to the world registries.</summary>
     public IReadOnlyList<string> MaterialKeys { get; init; } = [];
+
+    /// <summary>Gets the item type keys of the game content; missing keys are appended to the world registry <c>item_types</c>.</summary>
+    public IReadOnlyList<string> ItemTypeKeys { get; init; } = [];
+
+    /// <summary>Gets the survival content (items, terrain yields, start kit); null keeps the rules of K2 (K6-29W D8).</summary>
+    public SurvivalContent? Content { get; init; }
 
     /// <summary>
     /// Gets a value indicating whether a journal tail written with other terrain semantics is dropped (after a <c>pre-recover</c> backup)

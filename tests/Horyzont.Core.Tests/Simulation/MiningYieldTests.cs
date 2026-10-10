@@ -300,7 +300,7 @@ public sealed class MiningYieldTests
         Assert.IsType<TerrainEditOp>(fill.Applied!.Operation);
         Assert.Equal(0, f.Sim.Terrain.MeasureCalls);
         Assert.Equal(0, CountOf(f.State, Stone));
-        Assert.Null(f.Sim.Sim.Content);
+        Assert.Null(f.Sim.Sim.Survival);
     }
 
     [Fact]
