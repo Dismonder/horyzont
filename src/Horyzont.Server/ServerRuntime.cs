@@ -109,12 +109,21 @@ public sealed partial class ServerRuntime
     /// <summary>Gets a value indicating whether the world runs in safe mode without a writer (a journal tail that was not replayed).</summary>
     public bool IsReadOnlyStart => _readOnlyStart;
 
-    /// <summary>Registers a system that takes part in every tick, in registration order.</summary>
+    /// <summary>Registers a system that takes part in every tick: by <see cref="IServerTickParticipant.Phase"/>, in registration order within a phase.</summary>
     /// <param name="participant">The participant.</param>
     public void AddTickParticipant(IServerTickParticipant participant)
     {
         ArgumentNullException.ThrowIfNull(participant);
-        _participants.Add(participant);
+
+        // Stable insertion: after every participant of the same or an earlier phase.
+        var phase = participant.Phase;
+        var at = _participants.Count;
+        while (at > 0 && _participants[at - 1].Phase > phase)
+        {
+            at--;
+        }
+
+        _participants.Insert(at, participant);
     }
 
     /// <summary>Registers a client message handler on the main thread before start.</summary>
