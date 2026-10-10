@@ -2,6 +2,7 @@ using System.Globalization;
 
 using Godot;
 
+using Horyzont.Client.Replication;
 using Horyzont.Client.Session;
 using Horyzont.Core;
 using Horyzont.Core.Hashing;
@@ -38,8 +39,9 @@ namespace Horyzont.Game.Boot;
 /// state, so tests compose several instances in one process. Further services (K2-13 constructs, K2-11 characters) are added to the
 /// nodes and the runtimes after <see cref="Create"/> and before <see cref="StartAsync"/>, without changing the start and shutdown order.
 /// </summary>
-public sealed class GameComposition
+public sealed partial class GameComposition
 {
+    private PassThroughFullSnapshots? _fullSnapshots;
     private const string RootScene = "res://scenes/Root.tscn";
     private const string ToolsScene = "res://scenes/client/tools/Tools.tscn";
 
@@ -346,6 +348,18 @@ public sealed class GameComposition
         {
             Movement = movement,
         };
+        if (client is not null && localPlayer is not null)
+        {
+            composition._fullSnapshots = new PassThroughFullSnapshots();
+            composition._fullSnapshots.AddSink(localPlayer);
+            client.AddListener(composition._fullSnapshots);
+        }
+
+        composition.ConfigureReplication();
+        composition.ConfigureTerrainReplication();
+        composition.ConfigureMotion();
+        composition.ConfigurePlatform();
+
         if (env.Characters && env.Render && launch.ScreenshotPath is { } screenshot && clientNode is not null)
         {
             root.AddChild(new ScreenshotHook(screenshot, launch.ScreenshotAfterSeconds, env.Print));
@@ -369,6 +383,11 @@ public sealed class GameComposition
 
         return composition;
     }
+
+    partial void ConfigureReplication();
+    partial void ConfigureTerrainReplication();
+    partial void ConfigureMotion();
+    partial void ConfigurePlatform();
 
     /// <summary>Walking and sprinting speed scaled by <c>--dev-speed</c> (the accelerations scale with it so the character reaches the speed as fast as before).</summary>
     private static MovementRules ScaledMovement(float factor)

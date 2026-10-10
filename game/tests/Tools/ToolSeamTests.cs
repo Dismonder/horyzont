@@ -1,4 +1,5 @@
 using GdUnit4;
+
 using Horyzont.Client.Replication;
 using Horyzont.Client.Tools;
 using Horyzont.Core.Ids;
@@ -8,7 +9,9 @@ using Horyzont.Core.Simulation;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Game.Client.Tools;
 using Horyzont.Game.Tests.Support;
+
 using Microsoft.Extensions.Logging.Abstractions;
+
 using static GdUnit4.Assertions;
 
 namespace Horyzont.Game.Tests.Tools;
@@ -43,7 +46,9 @@ public class ToolSeamTests
         public PendingIntentTracker Pending { get; set; } = null!;
         public List<string> Calls { get; } = [];
         public void NoteReply(IntentReply reply) => Calls.Add($"reply:{Pending.Count}");
-        public void Begin(uint clientSeq, Intent intent, in ToolPreview preview) { }
+        public void Begin(uint clientSeq, Intent intent, in ToolPreview preview)
+        {
+        }
         public void Commit(uint clientSeq) => Calls.Add("commit");
         public void Revert(uint clientSeq) => Calls.Add("revert");
     }

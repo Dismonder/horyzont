@@ -1,10 +1,13 @@
 using System.Numerics;
+
 using GdUnit4;
+
 using Horyzont.Client;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Motion;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Game.Tests.Support;
+
 using static GdUnit4.Assertions;
 
 namespace Horyzont.Game.Tests.Character;
@@ -30,6 +33,13 @@ public class CoopSeamTests
         composition.ClientNode!.SetPhysicsProcess(false);
         player.SetPhysicsProcess(false);
         player.WorldReadiness = new ClosedWorld();
+        // Drain inputs already sent during settling before closing readiness.
+        for (var i = 0; i < 20; i++)
+        {
+            composition.Server!.Tick();
+        }
+
+        AssertThat(composition.ServerCharacters.TryGetState(hello.YourPlayer, out server)).IsTrue();
         var sent = server.LastProcessedInputSeq;
         var feet = server.Feet + Vector3.Normalize(server.Feet) * 50f;
         for (uint id = 1000000; id < 1000010; id++)
@@ -44,7 +54,7 @@ public class CoopSeamTests
 
         for (var i = 0; i < 20; i++)
         {
-            composition.Server.Tick();
+            composition.Server!.Tick();
         }
 
         AssertThat(composition.ServerCharacters.TryGetState(hello.YourPlayer, out var after)).IsTrue();
