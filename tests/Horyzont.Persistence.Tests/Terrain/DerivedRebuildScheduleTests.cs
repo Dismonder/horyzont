@@ -56,6 +56,35 @@ public sealed class DerivedRebuildScheduleTests
     }
 
     [Fact]
+    public void NextAttempts_CursorBelowEveryDirtyBlock_ListsThemAll()
+    {
+        // The cursor block was published (no longer dirty) and lies below the rest: the wrap-around view must not throw.
+        var queue = new DerivedRebuildSchedule(100);
+        queue.MarkDirty(Key(1, 5));
+        queue.MarkDirty(Key(1, 6));
+        queue.Attempted(Key(1, 0));
+
+        var attempts = new List<TerrainBlockKey>();
+        queue.NextAttempts(attempts, 16);
+
+        Assert.Equal([Key(1, 5), Key(1, 6)], attempts);
+    }
+
+    [Fact]
+    public void NextAttempts_CursorAboveEveryDirtyBlock_WrapsAround()
+    {
+        var queue = new DerivedRebuildSchedule(100);
+        queue.MarkDirty(Key(1, 1));
+        queue.MarkDirty(Key(1, 2));
+        queue.Attempted(Key(2, 0));
+
+        var attempts = new List<TerrainBlockKey>();
+        queue.NextAttempts(attempts, 16);
+
+        Assert.Equal([Key(1, 1), Key(1, 2)], attempts);
+    }
+
+    [Fact]
     public void NextAttempts_RespectsTheLimit_AndStartsAfterTheCursor()
     {
         var queue = new DerivedRebuildSchedule(100);

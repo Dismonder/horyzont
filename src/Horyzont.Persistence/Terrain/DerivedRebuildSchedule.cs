@@ -116,7 +116,8 @@ public sealed class DerivedRebuildSchedule
             return;
         }
 
-        if (_cursor is { } cursor)
+        // The cursor block may have left the dirty set meanwhile and lie outside it: a view with bounds out of order throws.
+        if (_cursor is { } cursor && cursor.CompareTo(_dirty.Min) >= 0 && cursor.CompareTo(_dirty.Max) < 0)
         {
             foreach (var key in _dirty.GetViewBetween(cursor, _dirty.Max))
             {

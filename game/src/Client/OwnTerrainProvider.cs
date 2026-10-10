@@ -86,11 +86,11 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
     /// <summary>Gets the envelope codec of the terrain (its scratch buffers are per thread).</summary>
     public TerrainBlockCodec Codec => _codec;
 
-    /// <summary>Gets the terrain node of a planet.</summary>
+    /// <summary>Gets the terrain node of a planet (internal: the client-facing API never hands out mutable terrain).</summary>
     /// <param name="planet">The planet.</param>
     /// <param name="node">The node when the planet has a terrain.</param>
     /// <returns>Whether the planet has a terrain.</returns>
-    public bool TryGetNode(PlanetId planet, [NotNullWhen(true)] out PlanetTerrain? node)
+    internal bool TryGetNode(PlanetId planet, [NotNullWhen(true)] out PlanetTerrain? node)
     {
         if (_planets.TryGetValue(planet.Value, out node) && GodotObject.IsInstanceValid(node))
         {
