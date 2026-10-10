@@ -122,6 +122,11 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
         configured.Stream = stream;
         var node = new PlanetTerrain(planet.Id, configured, stream);
         _planets.Add(planet.Id.Value, new Entry(planet, node));
+        if (derived is not null)
+        {
+            derived.ReloadRequested += node.ReloadFromStream;
+        }
+
         return node;
     }
 

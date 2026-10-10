@@ -39,6 +39,18 @@ public sealed partial class PlanetTerrain : Node3D
     /// <summary>The stream of the terrain.</summary>
     public TerrainStream Stream => _stream ?? throw new InvalidOperationException("This planet terrain node has no terrain.");
 
+    /// <summary>
+    /// Makes the engine load the whole terrain from the stream again (main thread), e.g. after mipmaps were rebuilt that it had
+    /// requested while they were stale. Reassigning the same stream is ignored by Voxel Tools, so it is detached for a moment.
+    /// </summary>
+    internal void ReloadFromStream()
+    {
+        var terrain = Terrain;
+        var stream = Stream;
+        terrain.Stream = null;
+        terrain.Stream = stream;
+    }
+
     /// <summary>The voxel tool used for edits, copies and reads (main thread).</summary>
     internal VoxelTool Tool => _tool ?? throw new InvalidOperationException("This planet terrain node has no terrain.");
 }

@@ -24,8 +24,7 @@ public sealed class DerivedLodRebuilder
     private readonly DerivedLodStore _store;
     private readonly string _profile;
     private readonly byte _maxLod;
-    private readonly SortedSet<TerrainBlockKey> _dirty = [];
-    private readonly Dictionary<TerrainBlockKey, byte[]> _ready = [];
+    private readonly DerivedRebuildSchedule _schedule = new(DerivedLodCache.DefaultMaxBlocks);
     private readonly List<TerrainBlockKey> _attempts = [];
 
     /// <summary>Creates a main-thread rebuilder; stream reads only immutable published results.</summary>
@@ -52,6 +51,18 @@ public sealed class DerivedLodRebuilder
         _maxLod = maxLod;
     }
 
+    /// <summary>Raised on the main thread when the engine holds placeholders for blocks that were dirty and everything is rebuilt: reload the area.</summary>
+    public event Action? ReloadRequested;
+
+    /// <summary>Records that the stream turned away a request for a dirty block, so the engine needs a reload once it is rebuilt. Any thread.</summary>
+    public void NoteMissed()
+    {
+        lock (_lock)
+        {
+            _schedule.NoteMissed();
+        }
+    }
+
     /// <summary>Invalidates every ancestor; shifting signed coordinates implements floor division for negative blocks.</summary>
     /// <param name="lod0Key">New authoritative base.</param>
     public void Invalidate(TerrainBlockKey lod0Key)
@@ -65,8 +76,7 @@ public sealed class DerivedLodRebuilder
             for (byte lod = 1; lod <= _maxLod; lod++)
             {
                 var ancestor = lod0Key with { Lod = lod, X = lod0Key.X >> lod, Y = lod0Key.Y >> lod, Z = lod0Key.Z >> lod };
-                _ready.Remove(ancestor);
-                _dirty.Add(ancestor);
+                _schedule.MarkDirty(ancestor);
             }
         }
     }
@@ -78,7 +88,7 @@ public sealed class DerivedLodRebuilder
     {
         lock (_lock)
         {
-            return _dirty.Contains(key);
+            return _schedule.IsDirty(key);
         }
     }
 
@@ -91,24 +101,27 @@ public sealed class DerivedLodRebuilder
             throw new InvalidOperationException("Derived terrain rebuilding requires the main thread.");
         }
         ArgumentOutOfRangeException.ThrowIfNegative(maxBlocks);
+        BuildStep(maxBlocks);
+        bool reload;
+        lock (_lock)
+        {
+            reload = _schedule.TakeReloadDue();
+        }
+
+        if (reload)
+        {
+            ReloadRequested?.Invoke();
+        }
+    }
+
+    private void BuildStep(int maxBlocks)
+    {
         _attempts.Clear();
         lock (_lock)
         {
-            if (_dirty.Count == 0)
-            {
-                return;
-            }
-
-            // Lowest levels first, so a parent finds its children built. A parent whose children are not ready (data awaited, writer
-            // full) is skipped for this frame and must not hold back the others.
-            foreach (var candidate in _dirty)
-            {
-                _attempts.Add(candidate);
-                if (_attempts.Count >= MaxAttemptsPerStep)
-                {
-                    break;
-                }
-            }
+            // Lowest levels first from a rotating cursor, so a parent finds its children built, and a parent whose children are not
+            // ready (data awaited, writer full) is skipped for this frame and neither holds back nor starves the others.
+            _schedule.NextAttempts(_attempts, MaxAttemptsPerStep);
         }
 
         var built = 0;
@@ -121,6 +134,11 @@ public sealed class DerivedLodRebuilder
 
             if (!Build(key, out var fingerprint, out var blob))
             {
+                lock (_lock)
+                {
+                    _schedule.Attempted(key);
+                }
+
                 continue;
             }
 
@@ -132,17 +150,8 @@ public sealed class DerivedLodRebuilder
             built++;
             lock (_lock)
             {
-                if (_ready.Count >= DerivedLodCache.DefaultMaxBlocks)
-                {
-                    // Eviction is conservative: an evicted changed block stays dirty until rebuilt again.
-                    using var enumerator = _ready.Keys.GetEnumerator();
-                    enumerator.MoveNext();
-                    var evicted = enumerator.Current;
-                    _ready.Remove(evicted);
-                    _dirty.Add(evicted);
-                }
-                _ready[key] = blob;
-                _dirty.Remove(key);
+                _schedule.Publish(key, blob);
+                _schedule.Attempted(key);
             }
         }
     }
@@ -154,7 +163,7 @@ public sealed class DerivedLodRebuilder
     {
         lock (_lock)
         {
-            return _dirty.Contains(key) || _ready.ContainsKey(key);
+            return _schedule.Tracks(key);
         }
     }
 
@@ -166,14 +175,8 @@ public sealed class DerivedLodRebuilder
     {
         lock (_lock)
         {
-            if (!_dirty.Contains(key) && _ready.TryGetValue(key, out var ready))
-            {
-                blob = ready;
-                return true;
-            }
+            return _schedule.TryGetReady(key, out blob);
         }
-        blob = [];
-        return false;
     }
 
     private bool Build(TerrainBlockKey parent, out string fingerprint, out byte[] blob)
