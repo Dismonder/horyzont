@@ -12,6 +12,96 @@ namespace Horyzont.Game.Tests.Constructs;
 public sealed class ConstructWorldTests : EngineTestBase
 {
     [EngineTest]
+    public void SpawnCollision_UnmanagedPlanet_DoesNotWaitForThisWorld()
+    {
+        using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewStateWithTwoPlanets(BlockContentLoader.Load()));
+        w.World.RebuildAll(ConstructTestWorld.Planet);
+        EngineAssert.True(w.World.AreCollisionsReady(ConstructTestWorld.OtherPlanet, new System.Numerics.Vector3(0, 4000, 0), 9),
+            "this world cannot build collision in another planet frame");
+    }
+
+    [EngineTest]
+    public async Task SpawnCollision_MeshingFailsTwice_CompletesReadinessUntilNextEdit()
+    {
+        var attempts = 0;
+        using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(BlockContentLoader.Load()), beforeBuild: _ =>
+        {
+            Interlocked.Increment(ref attempts);
+            throw new InvalidOperationException("Injected meshing failure");
+        });
+        var id = w.Create(new CellPos(0, 0, 0));
+        var feet = new System.Numerics.Vector3(0.5f, 4001.01f, 0.5f);
+        await Idle(w);
+        EngineAssert.Equal(2, attempts, "the retry budget is exhausted");
+        EngineAssert.True(w.World.AreCollisionsReady(ConstructTestWorld.Planet, feet, 9), "failed build must not freeze a spawn forever");
+        w.Set(id, new CellPos(1, 0, 0));
+        EngineAssert.True(!w.World.AreCollisionsReady(ConstructTestWorld.Planet, feet, 9), "a later edit has a fresh wait and retry budget");
+    }
+
+    [EngineTest]
+    public async Task SpawnCollision_StalledMesherAndPendingShape_RemainsNotReady()
+    {
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(BlockContentLoader.Load()), beforeBuild: _ =>
+        {
+            entered.Set();
+            release.Wait();
+        });
+        var id = w.Create(new CellPos(0, 0, 0), origin: new System.Numerics.Vector3(0, 4004, 0));
+        var saved = new System.Numerics.Vector3(0.5f, 4005.01f, 0.5f);
+        w.World.SetProcess(false);
+        try
+        {
+            await WaitUntil(() => { w.World.Pump(0); return entered.IsSet; }, 600, "roof mesher to stall");
+            EngineAssert.True(!w.World.AreCollisionsReady(ConstructTestWorld.Planet, saved, 9), "saved roof pose waits for meshing");
+            release.Set();
+            await WaitUntil(() =>
+            {
+                w.World.Pump(0);
+                return w.World.TryGetConstruct(id, out var node) && node.TryGetChunk(new ChunkPos(0, 0, 0), out var chunk) && chunk.MeshInstance is not null;
+            }, 600, "mesh upload before its collision upload");
+            EngineAssert.True(!w.World.AreCollisionsReady(ConstructTestWorld.Planet, saved, 9), "mesh alone does not make roof collision ready");
+            await WaitUntil(() => { w.World.Pump(0); return w.World.AreCollisionsReady(ConstructTestWorld.Planet, saved, 9); }, 600, "roof collision upload");
+            w.Set(id, new CellPos(1, 0, 0));
+            EngineAssert.True(!w.World.AreCollisionsReady(ConstructTestWorld.Planet, saved, 9), "edit invalidates readiness of old collision");
+        }
+        finally
+        {
+            release.Set();
+        }
+    }
+
+    [EngineTest]
+    public async Task NoViewers_SavedConstructs_LoadsNothingUntilViewerArrives()
+    {
+        var options = new ConstructWorldOptions
+        {
+            Mode = ConstructWorldMode.CollisionOnly,
+            CollisionRadiusMeters = 128,
+            HysteresisMeters = 64,
+        };
+        using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(BlockContentLoader.Load()), options);
+        var near = w.Create(new CellPos(0, 0, 0));
+        w.Create(new CellPos(0, 0, 0), origin: new System.Numerics.Vector3(10000, 4000, 0));
+        w.World.RebuildAll(ConstructTestWorld.Planet);
+        EngineAssert.Equal(0, w.World.LoadedConstructCount, "no viewers: no saved constructs loaded");
+        EngineAssert.Equal(0, w.World.PendingJobs, "no viewers: no meshing work queued");
+        w.World.SetViewers([new System.Numerics.Vector3(0, 4000, 0)]);
+        await Idle(w);
+        EngineAssert.Equal(1, w.World.LoadedConstructCount, "only nearby construct loaded");
+        EngineAssert.True(w.World.TryGetConstructNode(near, out _), "near construct loaded");
+        w.World.SetViewers([new System.Numerics.Vector3(150, 4000, 0)]);
+        w.World.Pump(4);
+        EngineAssert.Equal(1, w.World.LoadedConstructCount, "loaded construct retained within hysteresis");
+        w.World.SetViewers([]);
+        w.World.Pump(4);
+        EngineAssert.Equal(0, w.World.LoadedConstructCount, "last viewer leaving unloads constructs");
+        await Idle(w);
+        EngineAssert.Equal(0, w.World.PendingJobs, "stale jobs drain without reloading");
+    }
+
+    [EngineTest]
     public async Task FaceEdit_MissingNeighbours_AreNotQueuedOrReported()
     {
         using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(BlockContentLoader.Load()));
@@ -265,7 +355,7 @@ public sealed class ConstructWorldTests : EngineTestBase
     public async Task CollisionOnly_NoMeshInstances()
     {
         var catalog = Horyzont.Game.Constructs.BlockContentLoader.Load();
-        var options = new ConstructWorldOptions { Mode = ConstructWorldMode.CollisionOnly };
+        var options = new ConstructWorldOptions { Mode = ConstructWorldMode.CollisionOnly, LoadAllWithoutViewers = true };
         using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(catalog), options);
         var id = w.Create(new CellPos(0, 0, 0));
         w.Set(id, new CellPos(1, 0, 0));

@@ -26,7 +26,7 @@ namespace Horyzont.Game.Server.Characters;
 /// <c>_PhysicsProcess</c> calls must not matter on the server. Every body carries a <see cref="VoxelViewer"/> that builds the terrain
 /// collision around it without meshes.
 /// </summary>
-public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, IServerPlayerObserver
+public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, IServerPlayerObserver, IServerCharacterSource
 {
     /// <summary>Radius (metres) of the collision viewer of a body: reach of the tools (8 m) plus room for <c>IsAreaLoaded</c>.</summary>
     public const float ServerViewerDistance = 64f;
@@ -46,6 +46,7 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
     private readonly MovementRules _movement;
     private readonly bool _devFlightAllowed;
     private readonly Func<PlanetParams, NumVector3, NumVector3> _rescue;
+    private readonly Func<PlanetId, NumVector3, bool> _constructsReady;
     private readonly ILogger<ServerCharacters> _logger;
     private readonly List<Slot> _ordered = [];
     private readonly Dictionary<PlayerId, Slot> _byPlayer = [];
@@ -60,9 +61,11 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
     /// <param name="devFlightAllowed">Whether the dev flight button is honoured.</param>
     /// <param name="logger">Logger.</param>
     /// <param name="rescue">Feet position above the surface for a direction from the planet centre (the rescue from below the core); the generator of the planet by default.</param>
+    /// <param name="constructsReady">Whether collision at the saved pose is installed, including asynchronous construct meshing.</param>
     public ServerCharacters(
         ServerSimulation simulation, IInputSource inputs, VoxelTerrainService terrain, GameRules rules, MovementRules movement,
-        bool devFlightAllowed, ILogger<ServerCharacters> logger, Func<PlanetParams, NumVector3, NumVector3>? rescue = null)
+        bool devFlightAllowed, ILogger<ServerCharacters> logger, Func<PlanetParams, NumVector3, NumVector3>? rescue = null,
+        Func<PlanetId, NumVector3, bool>? constructsReady = null)
     {
         ArgumentNullException.ThrowIfNull(simulation);
         ArgumentNullException.ThrowIfNull(inputs);
@@ -77,6 +80,7 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
         _movement = movement;
         _devFlightAllowed = devFlightAllowed;
         _rescue = rescue ?? SpawnLocator.AboveSurface;
+        _constructsReady = constructsReady ?? ((_, _) => true);
         _logger = logger;
         _tickSeconds = 1f / rules.TickRate;
         Name = "Characters";
@@ -144,7 +148,7 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
         var viewer = new VoxelViewer { ViewDistance = (uint)ServerViewerDistance, RequiresVisuals = false, RequiresCollisions = true };
         body.AddChild(viewer);
 
-        var character = new Slot(player, planet, body, new GroundProbe(planet.Id)) { LastPitch = state.Pitch };
+        var character = new Slot(player, planet, body, new GroundProbe(planet.Id, SpawnSupport.CollisionMask)) { LastPitch = state.Pitch };
         var index = _ordered.FindIndex(other => other.Player.Value > player.Value);
         _ordered.Insert(index < 0 ? _ordered.Count : index, character);
         _byPlayer.Add(player, character);
@@ -278,16 +282,22 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
     {
         var body = c.Body;
         c.FrozenTicks++;
-        if (c.Probe.TryFindGround(body.GetWorld3D(), body.Feet, GroundSearchMeters, out var ground))
+        var constructsReady = _constructsReady(c.Planet.Id, body.Feet);
+        var terrainReady = _terrain.IsAreaLoaded(c.Planet.Id, body.Feet, GroundSearchMeters);
+        var terrainCollisionReady = terrainReady
+            && c.TerrainProbe.TryFindGround(body.GetWorld3D(), body.Feet, GroundSearchMeters, out _);
+        if (SpawnSupport.CanSettle(terrainReady, terrainCollisionReady, constructsReady)
+            && c.Probe.TryFindGround(body.GetWorld3D(), body.Feet, GroundSearchMeters, out var ground, GroundClearance))
         {
             var up = TerrainMath.UpAt(ground);
-            body.Place(ground + (up * GroundClearance), NumVector3.Zero, SurfaceFrame.FromYaw(up, c.LastYaw), MovementMode.Walking, false);
+            body.Place(SpawnSupport.FeetOnSupport(body.Feet, ground, up, GroundClearance), NumVector3.Zero,
+                SurfaceFrame.FromYaw(up, c.LastYaw), MovementMode.Walking, false);
             _logger.Grounded(c.Player.Value, c.FrozenTicks, MovementMode.Walking);
             c.FrozenTicks = 0;
             return;
         }
 
-        if (c.FrozenTicks >= _movement.GroundWaitDeadlineTicks)
+        if (SpawnSupport.CanExpire(c.FrozenTicks, _movement.GroundWaitDeadlineTicks))
         {
             _logger.GroundWaitExpired(c.Player.Value, c.FrozenTicks);
             body.SetMode(MovementMode.Falling);
@@ -355,6 +365,8 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
         public PlayerBody Body { get; } = body;
 
         public GroundProbe Probe { get; } = probe;
+
+        public GroundProbe TerrainProbe { get; } = new(planet.Id);
 
         public int Starved { get; set; }
 

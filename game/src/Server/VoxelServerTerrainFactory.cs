@@ -16,7 +16,7 @@ namespace Horyzont.Game.Server;
 /// blocks with the versions of the last checkpoint, the terrain service with the material map of the world and one planet node per
 /// planet, added under <c>parent</c> (the scene tree, so Voxel Tools starts streaming).
 /// </summary>
-public sealed class VoxelServerTerrainFactory : IServerTerrainFactory
+public sealed partial class VoxelServerTerrainFactory : IServerTerrainFactory
 {
     private readonly Node _parent;
     private readonly PlanetTerrainOptions _options;
@@ -24,6 +24,7 @@ public sealed class VoxelServerTerrainFactory : IServerTerrainFactory
     private readonly ILoggerFactory _loggers;
     private readonly TerrainBufferOptions _buffer;
     private Material? _material;
+    private readonly List<TerrainBlockStore> _failedStores = [];
 
     /// <summary>Creates the factory.</summary>
     /// <param name="parent">Node the planet terrains are added to (<c>/Root/Server/Terrain</c>); in the scene tree.</param>
@@ -52,6 +53,21 @@ public sealed class VoxelServerTerrainFactory : IServerTerrainFactory
     /// <summary>Gets the terrain this factory made last (null before the first call).</summary>
     public VoxelServerTerrain? Terrain { get; private set; }
 
+    /// <summary>Observed cleanup of the last failed construction; never blocks the scene thread.</summary>
+    internal Task FailureCleanup { get; private set; } = Task.CompletedTask;
+
+    /// <summary>Retained stores whose failure cleanup has not drained successfully.</summary>
+    internal int FailedStoreCount => _failedStores.Count;
+
+    /// <summary>Test seam for failure during a later planet's construction.</summary>
+    internal Func<PlanetParams, PlanetTerrainOptions, Material?, VoxelLodTerrain> CreatePlanet { get; init; } = PlanetTerrainFactory.Create;
+
+    /// <summary>Test seam for stopping an actual store read before construction fails.</summary>
+    internal Action<TerrainBlockStore>? StoreCreated { get; init; }
+
+    /// <summary>Test seam for issuing a read of an already built planet.</summary>
+    internal Action<PlanetTerrain>? PlanetCreated { get; init; }
+
     /// <inheritdoc />
     public IServerTerrain Create(string worldPath, WorldState state)
     {
@@ -60,16 +76,24 @@ public sealed class VoxelServerTerrainFactory : IServerTerrainFactory
         var store = new TerrainBlockStore(worldPath);
         var nodes = new List<PlanetTerrain>();
         VoxelTerrainService? service = null;
+        ServerTerrainBlocks? blocks = null;
         try
         {
-            var blocks = new ServerTerrainBlocks(store, state.TerrainVersions.All, _buffer, _time, _loggers.CreateLogger<ServerTerrainBlocks>());
+            StoreCreated?.Invoke(store);
+            blocks = new ServerTerrainBlocks(store, state.TerrainVersions.All, _buffer, _time, _loggers.CreateLogger<ServerTerrainBlocks>());
             service = new VoxelTerrainService(
                 blocks, new TerrainBlockCodec(), TerrainMaterialMap.Build(state.Materials), _loggers.CreateLogger<VoxelTerrainService>());
             _material ??= _options.Render ? PlanetTerrainMaterial.Create() : null;
             foreach (var planet in state.Planets.All)
             {
-                var node = service.AddPlanet(planet, PlanetTerrainFactory.Create(planet, _options, _material));
+                var node = service.AddPlanet(planet, CreatePlanet(planet, _options, _material));
                 nodes.Add(node);
+                PlanetCreated?.Invoke(node);
+            }
+
+            // Build every planet before any stream can enter the scene tree.
+            foreach (var node in nodes)
+            {
                 _parent.AddChild(node);
             }
 
@@ -78,7 +102,6 @@ public sealed class VoxelServerTerrainFactory : IServerTerrainFactory
         }
         catch
         {
-            // Nothing streamed yet from a terrain that failed to build: free what exists so the world file is not left locked, then rethrow.
             foreach (var node in nodes)
             {
                 node.GetParent()?.RemoveChild(node);
@@ -86,9 +109,32 @@ public sealed class VoxelServerTerrainFactory : IServerTerrainFactory
                 node.QueueFree();
             }
 
-            service?.Dispose();
-            store.Close();
+            _failedStores.Add(store);
+            FailureCleanup = CleanupAsync(service, blocks, store);
             throw;
         }
     }
+
+    private async Task CleanupAsync(VoxelTerrainService? service, ServerTerrainBlocks? blocks, TerrainBlockStore store)
+    {
+        try
+        {
+            await TerrainFailureCleanup.RunAsync(
+                service is not null ? service.ShutdownAsync : blocks is not null ? blocks.CloseAsync : () => Task.FromResult(true),
+                () =>
+                {
+                    store.Close();
+                    _failedStores.Remove(store);
+                },
+                () => service?.Dispose()).ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            // Preserve the original startup failure and keep the store open if draining failed.
+            LogCleanupFailure(_loggers.CreateLogger<VoxelServerTerrainFactory>(), exception);
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to drain terrain after construction failed; the block store remains open.")]
+    private static partial void LogCleanupFailure(ILogger logger, Exception exception);
 }
