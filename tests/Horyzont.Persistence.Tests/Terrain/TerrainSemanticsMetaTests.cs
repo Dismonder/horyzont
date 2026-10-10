@@ -1,6 +1,7 @@
 using System.Numerics;
 
 using Horyzont.Core.Ids;
+using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Persistence.Terrain;
 using Horyzont.Persistence.Tests.Support;
@@ -104,5 +105,17 @@ public sealed class TerrainSemanticsMetaTests
     {
         Assert.True(TerrainSemanticsMeta.CheckTail("1|voxel=a", "2|voxel=b", []).ReplayAllowed);
         Assert.True(TerrainSemanticsMeta.CheckTail("2|voxel=b", "2|voxel=b", [Entry(1, Dig)]).ReplayAllowed);
+    }
+
+    [Fact]
+    public void CheckTail_CompoundWithTerrain_CountsEdit()
+    {
+        var compound = new CompoundOp([new ItemDestroyOp(new SlotRef(new ContainerId(1), 0), new ItemTypeId(1), 1, ItemSink.BuildCost), Dig]);
+        var tail = new[] { Entry(10, Leave), Entry(11, compound), Entry(12, new CompoundOp([new ItemDestroyOp(new SlotRef(new ContainerId(1), 0), new ItemTypeId(1), 1, ItemSink.Despawn)])) };
+
+        var check = TerrainSemanticsMeta.CheckTail("1|voxel=v1.7", "2|voxel=v1.7", tail);
+
+        Assert.True(check.IsMismatch);
+        Assert.Equal((1, new OpId(11)), (check.TerrainEditCount, check.FirstTerrainEditOpId));
     }
 }

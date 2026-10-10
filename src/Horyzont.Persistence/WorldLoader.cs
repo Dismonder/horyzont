@@ -69,6 +69,7 @@ public static class WorldLoader
 
             GrowRegistries(connection, "block_types", options.BlockTypeKeys, ProtocolConstants.MaxBlockTypes, logger);
             GrowRegistries(connection, "materials", options.MaterialKeys, ProtocolConstants.MaxMaterials, logger);
+            GrowRegistries(connection, "item_types", options.ItemTypeKeys, ProtocolConstants.MaxItemTypes, logger);
             var orphans = new List<ulong>();
             var loaded = ReadWorld(connection, orphans);
             foreach (var orphan in orphans)
@@ -145,6 +146,8 @@ public static class WorldLoader
                 Sql.FromDb(MetaInteger(meta, Sql.MetaNextPlayerId)));
             ReadRegistry(connection, "block_types", entry => builder.AddBlockType(entry));
             ReadRegistry(connection, "materials", entry => builder.AddMaterial(entry));
+            ReadRegistry(connection, "item_types", entry => builder.AddItemType(entry));
+            builder.SetNextContainerId(meta.ContainsKey(Sql.MetaNextContainerId) ? Sql.FromDb(MetaInteger(meta, Sql.MetaNextContainerId)) : 1UL);
             ReadPlanets(connection, builder);
             ReadStarSystem(connection, builder);
             ReadConstructs(connection, builder);
@@ -154,6 +157,7 @@ public static class WorldLoader
                 ? Sql.FromDb(markerNumber)
                 : 1);
             ReadMarkers(connection, builder);
+            ReadContainers(connection, builder);
             ReadTerrainVersions(connection, builder);
             ReadShipStates(connection, builder, orphanShipStates);
             var state = builder.Build();
@@ -354,6 +358,23 @@ public static class WorldLoader
             }
 
             builder.AddShipState(record);
+        }
+    }
+
+    private static void ReadContainers(SqliteConnection connection, WorldStateBuilder builder)
+    {
+        using var command = Sql.Command(connection, null, "SELECT container_id, data FROM containers ORDER BY container_id;");
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var id = Sql.FromDb(reader.GetInt64(0));
+            var record = StateCodec.DecodeContainerBlob((byte[])reader.GetValue(1));
+            if (record.Id.Value != id)
+            {
+                throw new InvalidDataException($"Container row {id} holds container {record.Id.Value}.");
+            }
+
+            builder.AddContainer(record);
         }
     }
 

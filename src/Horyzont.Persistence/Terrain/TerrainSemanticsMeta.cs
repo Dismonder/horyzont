@@ -83,7 +83,7 @@ public static class TerrainSemanticsMeta
         var firstEdit = OpId.None;
         foreach (var entry in tail)
         {
-            if (entry.Operation is TerrainEditOp)
+            if (OperationTerrain.TryGetTerrainEdit(entry.Operation, out _))
             {
                 if (edits == 0)
                 {
