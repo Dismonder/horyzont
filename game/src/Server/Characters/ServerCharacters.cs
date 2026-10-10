@@ -295,7 +295,7 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
             return;
         }
 
-        if (c.FrozenTicks >= _movement.GroundWaitDeadlineTicks && SpawnSupport.CanExpire(constructsReady))
+        if (SpawnSupport.CanExpire(c.FrozenTicks, _movement.GroundWaitDeadlineTicks))
         {
             _logger.GroundWaitExpired(c.Player.Value, c.FrozenTicks);
             body.SetMode(MovementMode.Falling);

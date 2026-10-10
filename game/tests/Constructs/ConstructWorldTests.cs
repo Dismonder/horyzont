@@ -12,6 +12,33 @@ namespace Horyzont.Game.Tests.Constructs;
 public sealed class ConstructWorldTests : EngineTestBase
 {
     [EngineTest]
+    public void SpawnCollision_UnmanagedPlanet_DoesNotWaitForThisWorld()
+    {
+        using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewStateWithTwoPlanets(BlockContentLoader.Load()));
+        w.World.RebuildAll(ConstructTestWorld.Planet);
+        EngineAssert.True(w.World.AreCollisionsReady(ConstructTestWorld.OtherPlanet, new System.Numerics.Vector3(0, 4000, 0), 9),
+            "this world cannot build collision in another planet frame");
+    }
+
+    [EngineTest]
+    public async Task SpawnCollision_MeshingFailsTwice_CompletesReadinessUntilNextEdit()
+    {
+        var attempts = 0;
+        using var w = new ConstructTestWorld(Host, ConstructTestWorld.NewState(BlockContentLoader.Load()), beforeBuild: _ =>
+        {
+            Interlocked.Increment(ref attempts);
+            throw new InvalidOperationException("Injected meshing failure");
+        });
+        var id = w.Create(new CellPos(0, 0, 0));
+        var feet = new System.Numerics.Vector3(0.5f, 4001.01f, 0.5f);
+        await Idle(w);
+        EngineAssert.Equal(2, attempts, "the retry budget is exhausted");
+        EngineAssert.True(w.World.AreCollisionsReady(ConstructTestWorld.Planet, feet, 9), "failed build must not freeze a spawn forever");
+        w.Set(id, new CellPos(1, 0, 0));
+        EngineAssert.True(!w.World.AreCollisionsReady(ConstructTestWorld.Planet, feet, 9), "a later edit has a fresh wait and retry budget");
+    }
+
+    [EngineTest]
     public async Task SpawnCollision_StalledMesherAndPendingShape_RemainsNotReady()
     {
         using var entered = new ManualResetEventSlim();

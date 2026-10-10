@@ -11,7 +11,7 @@ internal static class SpawnSupport
 
     internal static bool CanSettle(bool terrainReady, bool constructsReady) => terrainReady && constructsReady;
 
-    internal static bool CanExpire(bool constructsReady) => constructsReady;
+    internal static bool CanExpire(int waitedTicks, int deadlineTicks) => waitedTicks >= deadlineTicks;
 
     internal static Vector3 FeetOnSupport(Vector3 savedFeet, Vector3 support, Vector3 up, float clearance)
     {

@@ -83,10 +83,20 @@ public sealed partial class ConstructWorld : Node3D
     /// <param name="frame">The saved planet frame.</param>
     /// <param name="position">Saved feet position in that frame.</param>
     /// <param name="radius">Radius enclosing the support search.</param>
-    /// <returns>False during loading, edits, failed builds or pending collision uploads.</returns>
+    /// <returns>False while managed chunks are loading or uploading collision; exhausted retries keep the old result and finish the wait.</returns>
     public bool AreCollisionsReady(FrameRef frame, System.Numerics.Vector3 position, float radius)
     {
-        if (!_initialized || IsShutdown || frame != _frame || _rangeDirty)
+        if (!_initialized || IsShutdown)
+        {
+            return false;
+        }
+
+        if (frame != _frame)
+        {
+            return true; // this world cannot produce collision in an unmanaged frame
+        }
+
+        if (_rangeDirty)
         {
             return false;
         }
@@ -393,6 +403,11 @@ public sealed partial class ConstructWorld : Node3D
                         _retryChunks.Remove(slot.Job.Key);
                         var key = slot.Job.Key;
                         LogMeshingRetryFailed(slot.Failure, key.Construct.Value, key.Chunk.X, key.Chunk.Y, key.Chunk.Z);
+                        if (_entries.TryGetValue(key.Construct, out var entry))
+                        {
+                            entry.CollisionReadyChunks.Add(key.Chunk); // the bounded rebuild ended; use the old collision, if any
+                        }
+
                         ChunkMeshApplied?.Invoke(key.Construct, key.Chunk);
                     }
                 }

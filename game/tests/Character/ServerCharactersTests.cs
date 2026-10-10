@@ -50,11 +50,11 @@ public class ServerCharactersTests
 
     [TestCase(Timeout = 240000)]
     [RequireGodotRuntime]
-    public async Task ServerCharacters_TerrainReadyBeforeRoof_StaysAtSavedFeetPastDeadline()
+    public async Task ServerCharacters_TerrainReadyBeforeRoof_StaysAtSavedFeetBeforeDeadline()
     {
         await using var scene = EngineTestScene.Create();
         var collisionReady = false;
-        await using var rig = await CharacterRig.CreateAsync(scene, movement: new MovementRules { GroundWaitDeadlineTicks = 5 },
+        await using var rig = await CharacterRig.CreateAsync(scene, movement: new MovementRules { GroundWaitDeadlineTicks = 300 },
             constructsReady: (_, _) => collisionReady);
         var roofTop = TerrainTestWorld.Surface + 5f;
         var feet = new Vector3(0, roofTop + 0.01f, 0);
@@ -74,6 +74,22 @@ public class ServerCharactersTests
         collisionReady = true;
         AssertThat(await rig.WaitUnfrozenAsync(player)).IsTrue();
         AssertThat(Vector3.Distance(rig.BodyOf(player).Feet, feet)).IsLess(0.1f);
+    }
+
+    [TestCase(Timeout = 240000)]
+    [RequireGodotRuntime]
+    public async Task ServerCharacters_ConstructCollisionNeverReady_ExpiresWithoutTeleporting()
+    {
+        await using var scene = EngineTestScene.Create();
+        await using var rig = await CharacterRig.CreateAsync(scene, movement: new MovementRules { GroundWaitDeadlineTicks = 5 },
+            constructsReady: (_, _) => false);
+        var feet = new Vector3(0, TerrainTestWorld.Surface + 5, 0);
+        var player = rig.Join(1, feet);
+        AssertThat(await rig.WaitUnfrozenAsync(player)).IsTrue();
+        AssertThat(rig.Characters.TryGetState(player, out var released)).IsTrue();
+        AssertThat(released.Mode).IsEqual(MovementMode.Falling);
+        AssertThat(released.Feet).IsEqual(feet);
+        AssertThat(rig.Log.Count(9306)).IsEqual(1);
     }
 
     private static readonly Vector3 _start = new(0f, TerrainTestWorld.Surface + 1.5f, 0f);

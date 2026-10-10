@@ -15,9 +15,12 @@ public sealed class SpawnSupportTests
     public void CanSettle_TerrainArrivesBeforeRoof_WaitsForBoth(bool terrain, bool constructs, bool expected) =>
         Assert.Equal(expected, SpawnSupport.CanSettle(terrain, constructs));
 
-    [Fact]
-    public void CanExpire_RoofCollisionStillPending_DoesNotReleaseBodyThroughFloor() =>
-        Assert.False(SpawnSupport.CanExpire(false));
+    [Theory]
+    [InlineData(4, 5, false)]
+    [InlineData(5, 5, true)]
+    [InlineData(90, 5, true)]
+    public void CanExpire_ConstructCollisionNeverCompletes_WaitStillExpires(int waited, int deadline, bool expected) =>
+        Assert.Equal(expected, SpawnSupport.CanExpire(waited, deadline));
 
     [Fact]
     public void CollisionMask_SavedRoofPose_SearchesTerrainAndConstructs() =>
