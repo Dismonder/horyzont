@@ -521,7 +521,7 @@ public sealed partial class ClientTerrainCache : ITerrainBlockSource
                 else
                 {
                     // The row is gone or differs: the index no longer describes the file, so forget the block.
-                    RemoveEntryLocked(key, queueDelete: false);
+                    ForgetEditedLocked(key, entry, queueDelete: false);
                     outcome = ReadOutcome.Missing;
                 }
             }
@@ -762,8 +762,19 @@ public sealed partial class ClientTerrainCache : ITerrainBlockSource
             }
             else
             {
-                RemoveEntryLocked(key, queueDelete: false);
+                ForgetEditedLocked(key, entry, queueDelete: false);
             }
+        }
+    }
+
+    // Removes a block the cache gave up (eviction, vanished row) while keeping the knowledge that an edited block exists: the key
+    // becomes Unavailable until the server data arrives again, instead of NotEdited, which would serve the pristine generator block.
+    private void ForgetEditedLocked(TerrainBlockKey key, Entry entry, bool queueDelete)
+    {
+        RemoveEntryLocked(key, queueDelete);
+        if (entry.Version != 0 && !_expected.ContainsKey(key))
+        {
+            _expected[key] = (entry.Version, entry.Hash);
         }
     }
 
@@ -785,14 +796,14 @@ public sealed partial class ClientTerrainCache : ITerrainBlockSource
         }
 
         candidates.Sort(static (a, b) => a.Value.Stamp.CompareTo(b.Value.Stamp));
-        foreach (var (key, _) in candidates)
+        foreach (var (key, entry) in candidates)
         {
             if (_diskBytes <= MaxDiskBytes)
             {
                 break;
             }
 
-            RemoveEntryLocked(key, queueDelete: true);
+            ForgetEditedLocked(key, entry, queueDelete: true);
         }
     }
 

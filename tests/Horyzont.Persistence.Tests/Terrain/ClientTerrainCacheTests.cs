@@ -316,6 +316,53 @@ public sealed class ClientTerrainCacheTests
     }
 
     [Fact]
+    public async Task DiskLimit_EvictedEditedBlock_IsUnavailableNotPristine()
+    {
+        using var dir = new TempDirectory();
+        var cache = Open(dir);
+        cache.MaxDiskBytes = 100;
+        for (var i = 1; i <= 4; i++)
+        {
+            cache.Put(Key(i), 1, (ulong)i, Blob(i, 40));
+            await cache.FlushAsync().WaitAsync(_wait, TestContext.Current.CancellationToken);
+        }
+
+        await cache.FlushAsync().WaitAsync(_wait, TestContext.Current.CancellationToken);
+        Assert.False(cache.TryGetHeld(Key(1), out _, out _));
+        Assert.Equal(TerrainBlockLookup.Unavailable, cache.TryLoad(Key(1), out _, out _));
+
+        cache.Put(Key(1), 1, 1, Blob(1, 40));
+        Assert.Equal(TerrainBlockLookup.Found, cache.TryLoad(Key(1), out _, out _));
+        await CloseCleanly(cache);
+    }
+
+    [Fact]
+    public async Task MemoryLimit_EvictedUnsavedEditedBlock_IsUnavailableNotPristine()
+    {
+        using var dir = new TempDirectory();
+        var cache = Open(dir);
+        cache.MaxMemoryBytes = 100;
+        using var release = new ManualResetEventSlim();
+        cache.BeforeBatch = () => release.Wait(_wait, TestContext.Current.CancellationToken);
+
+        // 300 puts overflow the 256-entry write queue, so the overflow blocks stay memory-only and are forgotten by eviction.
+        for (var i = 0; i < 300; i++)
+        {
+            cache.Put(Key(i), 1, (ulong)i, Blob(i, 8));
+        }
+
+        var forgotten = Enumerable.Range(0, 300).Where(i => !cache.TryGetHeld(Key(i), out _, out _)).ToList();
+        Assert.NotEmpty(forgotten);
+        foreach (var i in forgotten)
+        {
+            Assert.Equal(TerrainBlockLookup.Unavailable, cache.TryLoad(Key(i), out _, out _));
+        }
+
+        release.Set();
+        await CloseCleanly(cache);
+    }
+
+    [Fact]
     public async Task WriteQueue_IsBoundedTo256ButMemoryServesEverything()
     {
         using var dir = new TempDirectory();
