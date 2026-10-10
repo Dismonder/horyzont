@@ -66,6 +66,7 @@ public sealed class ConsoleCommandProcessor
             "save" => Save(),
             "stop" => Stop(),
             "players" => Players(),
+            "stats" => Stats(),
             "kick" => Kick(parts),
             "dev-op" when _devCommands => DevOp(),
             _ => Help,
@@ -132,6 +133,21 @@ public sealed class ConsoleCommandProcessor
         }
 
         return text.ToString();
+    }
+
+    private string Stats()
+    {
+        if (_runtime.RuntimeState is not (ServerRuntimeState.Running or ServerRuntimeState.SafeMode))
+        {
+            return "the server is not running";
+        }
+
+        // One stable line: tools/coop/coop_soak.py parses it.
+        var window = _runtime.TickTimes.TakeWindow();
+        var checkpoint = _runtime.State.IsCheckpointInFlight ? "running" : "idle";
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"STATS tick_ms mean={window.MeanMs:0.000} p95={window.P95Ms:0.000} p99={window.P99Ms:0.000} max={window.MaxMs:0.000} n={window.Count} players={_runtime.Session.PlayersInGame.Count} last_op={_runtime.State.LastOpId.Value} checkpoint={checkpoint}");
     }
 
     private string Kick(string[] parts)

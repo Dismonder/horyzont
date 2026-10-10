@@ -8,7 +8,7 @@ Usage:
 Steps (real time, one limit for the whole run, default 180 s):
  1. write a default configuration, start the server, wait for "SERVER READY world=<id> state hash=<hash>";
  2. console: "players" -> "0 players", "dev-op" (a journaled change of the world, enabled by --dev) -> "dev-op applied", "save" ->
-    "checkpoint committed", "stop" -> exit code 0; the state hash at the stop differs from the initial one; world.db and a startup
+    "Checkpoint committed", "stop" -> exit code 0; the state hash at the stop differs from the initial one; world.db and a startup
     backup exist;
  3. second start with the world id from saves/last-world.txt: same world, same state hash as the first shutdown (so not the initial one);
  4. third start: another "dev-op", then SIGTERM (Linux) or CTRL_BREAK (Windows): exit code 0; a checkpoint written after the signal
@@ -33,8 +33,8 @@ import threading
 import time
 from pathlib import Path
 
-READY = re.compile(r"SERVER READY world=(\S+) state hash=([0-9A-F]{16})")
-STOPPED = re.compile(r"Stopped; state hash=([0-9A-F]{16})")
+READY = re.compile(r"SERVER READY world=(\S+) state hash=([0-9A-F]{16})(?: last op=(\d+))?")
+STOPPED = re.compile(r"Stopped; state hash=([0-9A-F]{16})(?: last op=(\d+))?")
 
 
 class SmokeFailure(Exception):
@@ -182,7 +182,7 @@ def main() -> int:
         s1.send("dev-op")
         s1.wait_line(r"dev-op applied", 30)
         s1.send("save")
-        s1.wait_line(r"checkpoint committed", 60)
+        s1.wait_line(r"Checkpoint committed boundary=", 60)
         s1.send("stop")
         if (code := s1.wait_exit(90)) != 0:
             raise SmokeFailure(f"run1: exit code {code}, expected 0")
@@ -226,7 +226,7 @@ def main() -> int:
             raise SmokeFailure(f"run3: exit code {code} after the signal, expected 0")
         after = s3.lines[mark:]
         stopped3 = [m.group(1) for line in after if (m := STOPPED.search(line))]
-        if not stopped3 or not any("checkpoint committed" in line for line in after):
+        if not stopped3 or not any("Checkpoint committed" in line for line in after):
             raise SmokeFailure("run3: no checkpoint and 'Stopped' line after the signal")
         if stopped3[-1] == ready3.group(2):
             raise SmokeFailure("run3: the state hash at the stop equals the one at the start, the change was not saved")

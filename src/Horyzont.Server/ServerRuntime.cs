@@ -8,6 +8,7 @@ using Horyzont.Core.World;
 using Horyzont.Net.Session;
 using Horyzont.Net.Transport;
 using Horyzont.Persistence.Writing;
+using Horyzont.Server.Diagnostics;
 
 using Microsoft.Extensions.Logging;
 
@@ -80,7 +81,11 @@ public sealed partial class ServerRuntime
         _time = time;
         _loggers = loggers;
         _logger = loggers.CreateLogger<ServerRuntime>();
+        TickTimes = new TickTimeRecorder(time);
     }
+
+    /// <summary>Gets the recorder of the duration of every running tick (K4-19: console <c>stats</c>, soak and benchmarks).</summary>
+    public TickTimeRecorder TickTimes { get; }
 
     /// <summary>Gets the life cycle state.</summary>
     public ServerRuntimeState RuntimeState { get; private set; }
@@ -200,7 +205,9 @@ public sealed partial class ServerRuntime
         switch (RuntimeState)
         {
             case ServerRuntimeState.Running or ServerRuntimeState.SafeMode:
+                var started = TickTimes.Begin();
                 TickRunning();
+                TickTimes.End(started);
                 break;
             case ServerRuntimeState.ShuttingDown or ServerRuntimeState.Faulted:
                 TickStopping();
@@ -289,6 +296,7 @@ public sealed partial class ServerRuntime
     private Task<bool> StartCheckpoint()
     {
         var core = _worldState!.CaptureCheckpoint();
+        _logger.CheckpointStarted(core.BarrierOpId.Value);
         try
         {
             return _writer!.CheckpointAsync(_terrain!.CreateCheckpointRequest(core));
@@ -379,7 +387,7 @@ public sealed partial class ServerRuntime
 
         if (_logger.IsEnabled(LogLevel.Information))
         {
-            _logger.Stopped(StateHasher.Hash(_worldState!).ToString("X16", CultureInfo.InvariantCulture));
+            _logger.Stopped(StateHasher.Hash(_worldState!).ToString("X16", CultureInfo.InvariantCulture), _worldState!.LastOpId.Value);
         }
     }
 }

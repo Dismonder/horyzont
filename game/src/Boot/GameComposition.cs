@@ -704,7 +704,7 @@ public sealed partial class GameComposition
                 {
                     _platformSession.OnWorldStarted(Server.State.Id, _serverCapacity, _launch.Password.Length != 0);
                 }
-                _env.Print($"SERVER READY world={world} state hash={StateHasher.Hash(Server.State).ToString("X16", CultureInfo.InvariantCulture)}");
+                _env.Print($"SERVER READY world={world} state hash={StateHasher.Hash(Server.State).ToString("X16", CultureInfo.InvariantCulture)} last op={Server.State.LastOpId.Value.ToString(CultureInfo.InvariantCulture)}");
                 return null;
             case WorldStartResult.StartedReadOnly readOnly:
                 _serverRan = true;

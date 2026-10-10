@@ -43,8 +43,11 @@ internal static partial class ServerLog
     [LoggerMessage(EventId = 8012, Level = LogLevel.Information, Message = "The writer recovered; leaving safe mode")]
     public static partial void WriterRecovered(this ILogger logger);
 
-    [LoggerMessage(EventId = 8013, Level = LogLevel.Information, Message = "checkpoint committed op={Operation}")]
+    [LoggerMessage(EventId = 8013, Level = LogLevel.Information, Message = "Checkpoint committed boundary={Operation}")]
     public static partial void CheckpointCommitted(this ILogger logger, ulong operation);
+
+    [LoggerMessage(EventId = 8026, Level = LogLevel.Information, Message = "Checkpoint started boundary={Operation}")]
+    public static partial void CheckpointStarted(this ILogger logger, ulong operation);
 
     [LoggerMessage(EventId = 8014, Level = LogLevel.Error, Message = "checkpoint failed op={Operation}; it is retried")]
     public static partial void CheckpointFailed(this ILogger logger, ulong operation);
@@ -76,8 +79,8 @@ internal static partial class ServerLog
     [LoggerMessage(EventId = 8025, Level = LogLevel.Error, Message = "A game system failed to shut down; the remaining systems are shut down regardless")]
     public static partial void AfterTerrainShutdownTaskFailed(this ILogger logger, Exception exception);
 
-    [LoggerMessage(EventId = 8021, Level = LogLevel.Information, Message = "Stopped; state hash={Hash}")]
-    public static partial void Stopped(this ILogger logger, string hash);
+    [LoggerMessage(EventId = 8021, Level = LogLevel.Information, Message = "Stopped; state hash={Hash} last op={LastOp}")]
+    public static partial void Stopped(this ILogger logger, string hash, ulong lastOp);
 
     [LoggerMessage(EventId = 8022, Level = LogLevel.Information, Message = "Shutdown requested ({Code})")]
     public static partial void ShutdownRequested(this ILogger logger, DisconnectCode code);
