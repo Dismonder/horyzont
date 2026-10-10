@@ -52,7 +52,7 @@ public static class MessageCodec
         }
 
         byte typeByte = frame[0];
-        if (typeByte < (byte)MessageType.ClientHello || typeByte > (byte)MessageType.Disconnect)
+        if (typeByte < (byte)MessageType.ClientHello || typeByte > (byte)MessageType.ResyncRequest)
         {
             throw new ProtocolViolationException($"Unknown message type {typeByte}.");
         }
@@ -353,6 +353,15 @@ public static class MessageCodec
                     WriteEntityState(w, s.Entities[i], s.Frames.Count);
                 }
 
+                break;
+
+            case ResyncRequest request:
+                if (request.Entity.IsNone)
+                {
+                    throw new ArgumentException("Resync entity must be nonzero.", nameof(message));
+                }
+
+                w.WriteVarUInt(request.Entity.Value);
                 break;
 
             case SnapshotAck sa:
@@ -680,6 +689,15 @@ public static class MessageCodec
                 }
 
                 return new Snapshot(snapId, sTick, baseline, lastInput, frames, entities);
+
+            case MessageType.ResyncRequest:
+                var requested = new EntityId(r.ReadVarUInt());
+                if (requested.IsNone)
+                {
+                    throw new ProtocolViolationException("Resync entity must be nonzero.");
+                }
+
+                return new ResyncRequest(requested);
 
             case MessageType.SnapshotAck:
                 uint saSnapId = r.ReadVarUInt32();

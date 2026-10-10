@@ -64,4 +64,7 @@ public enum MessageType : byte
 
     /// <summary>Both directions, reliable.</summary>
     Disconnect = 20,
+
+    /// <summary>Client to server, reliable; visible entity state repair.</summary>
+    ResyncRequest = 21,
 }

@@ -403,7 +403,7 @@ public static class CodecGen
         from motion in Gen.Choose(0, 255)
         select MakeState(entity, (EntityStateFields)fields, (byte)frameIndex, parentSeq, position, rotation, velocity, (byte)motion);
 
-    /// <summary>Messages of all twenty types.</summary>
+    /// <summary>Messages of all assigned types.</summary>
     public static Gen<Message> Message => Gen.OneOf(
         ClientHello.Select(m => (Message)m),
         ServerHello.Select(m => (Message)m),
@@ -424,7 +424,8 @@ public static class CodecGen
         EntityDespawn.Select(m => (Message)m),
         Ping.Select(m => (Message)m),
         Pong.Select(m => (Message)m),
-        Disconnect.Select(m => (Message)m));
+        Disconnect.Select(m => (Message)m),
+        Full64.Select(v => (Message)new ResyncRequest(new EntityId(v == 0 ? 1 : v))));
 
     /// <summary>Client hello messages.</summary>
     public static Gen<ClientHello> ClientHello { get; } =
