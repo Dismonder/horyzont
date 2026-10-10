@@ -1,15 +1,33 @@
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "materials": [
     { "key": "stone", "color": "#8A8D91" },
     { "key": "wood", "color": "#A67B4B" },
-    { "key": "metal", "color": "#B8C4D0" }
+    { "key": "metal", "color": "#B8C4D0" },
+    { "key": "ship_glass", "color": "#7FB8D8CC" },
+    { "key": "ship_fabric", "color": "#B04A3C" },
+    { "key": "ship_console", "color": "#3C6E8F" },
+    { "key": "ship_engine", "color": "#D9822B" },
+    { "key": "ship_tank", "color": "#C9D24A" },
+    { "key": "ship_dark", "color": "#3A3F47" }
   ],
   "blocks": [
-    { "key": "core:stone_block", "shape": "cube", "material": "stone" },
-    { "key": "core:wood_planks", "shape": "cube", "material": "wood" },
-    { "key": "core:metal_plate", "shape": "cube", "material": "metal" },
-    { "key": "core:stone_slab", "shape": "mesh", "mesh": "builtin:slab", "material": "stone" },
-    { "key": "core:stone_slope", "shape": "mesh", "mesh": "builtin:slope", "material": "stone" }
+    { "key": "core:stone_block", "shape": "cube", "mass": 2400, "material": "stone" },
+    { "key": "core:wood_planks", "shape": "cube", "mass": 500, "material": "wood" },
+    { "key": "core:metal_plate", "shape": "cube", "mass": 200, "material": "metal" },
+    { "key": "core:stone_slab", "shape": "mesh", "mesh": "builtin:slab", "mass": 1200, "material": "stone" },
+    { "key": "core:stone_slope", "shape": "mesh", "mesh": "builtin:slope", "mass": 1200, "material": "stone" },
+    { "key": "core:ship_cockpit", "shape": "cube", "mass": 400, "material": "ship_glass", "function": { "kind": "cockpit" } },
+    { "key": "core:ship_seat", "shape": "mesh", "mesh": "builtin:slab", "mass": 80, "material": "ship_fabric", "function": { "kind": "seat", "role": "passenger" } },
+    { "key": "core:ship_nav_station", "shape": "cube", "mass": 250, "material": "ship_console", "function": { "kind": "seat", "role": "navigator" } },
+    { "key": "core:ship_engine_t1", "shape": "cube", "mass": 600, "material": "ship_engine", "function": { "kind": "engine", "thrust": 60000, "tier": 1 } },
+    { "key": "core:ship_stabilizer", "shape": "cube", "mass": 300, "material": "ship_engine", "function": { "kind": "stabilizer", "torque": 40000 } },
+    { "key": "core:ship_fuel_tank", "shape": "cube", "mass": 250, "material": "ship_tank", "function": { "kind": "fuel_tank", "capacity": 1000 } },
+    { "key": "core:ship_cargo", "shape": "cube", "mass": 200, "material": "metal", "function": { "kind": "cargo", "tier": 1 } },
+    { "key": "core:ship_landing_gear", "shape": "cube", "mass": 150, "material": "ship_dark", "function": { "kind": "landing_gear" } },
+    { "key": "core:ship_pulse_drive", "shape": "cube", "mass": 800, "material": "ship_engine", "function": { "kind": "pulse_drive", "speedCap": 2000 } },
+    { "key": "core:ship_hull", "shape": "cube", "mass": 200, "material": "metal" },
+    { "key": "core:ship_window", "shape": "cube", "mass": 150, "material": "ship_glass" },
+    { "key": "core:ship_door", "shape": "cube", "mass": 200, "material": "ship_dark", "function": { "kind": "door" } }
   ]
 }

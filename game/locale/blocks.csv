@@ -4,4 +4,16 @@ BLOCK_WOOD_PLANKS,Wood planks,Deski drewniane
 BLOCK_METAL_PLATE,Metal plate,Płyta metalowa
 BLOCK_STONE_SLAB,Stone slab,Płyta kamienna
 BLOCK_STONE_SLOPE,Stone slope,Skos kamienny
+BLOCK_SHIP_COCKPIT,Cockpit,Kokpit
+BLOCK_SHIP_SEAT,Passenger seat,Fotel pasażera
+BLOCK_SHIP_NAV_STATION,Navigator station,Stanowisko nawigatora
+BLOCK_SHIP_ENGINE_T1,Engine (tier 1),Silnik (klasa 1)
+BLOCK_SHIP_STABILIZER,Stabilizer,Stabilizator
+BLOCK_SHIP_FUEL_TANK,Fuel tank,Zbiornik paliwa
+BLOCK_SHIP_CARGO,Cargo bay,Ładownia
+BLOCK_SHIP_LANDING_GEAR,Landing gear,Podwozie
+BLOCK_SHIP_PULSE_DRIVE,Pulse drive,Napęd pulsacyjny
+BLOCK_SHIP_HULL,Ship hull,Kadłub statku
+BLOCK_SHIP_WINDOW,Ship window,Okno statku
+BLOCK_SHIP_DOOR,Ship door,Drzwi statku
 BLOCK_MISSING,Missing block,Brakujący blok
