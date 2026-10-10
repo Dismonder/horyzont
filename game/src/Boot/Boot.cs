@@ -142,6 +142,7 @@ public partial class Boot : Node
         catch (ArgumentException ex)
         {
             GD.PrintErr($"ARGUMENT ERROR: {ex.Message}");
+            env.Platform?.TryShutdown();
             GetTree().Quit(DevModes.ExitBadArguments);
             return;
         }
@@ -151,6 +152,8 @@ public partial class Boot : Node
         {
             if (await composition.StartAsync(CancellationToken.None) is { } exit)
             {
+                // StartAsync released the transports of a world that did not start, so the lobby is left and the SDK may stop.
+                env.Platform?.TryShutdown();
                 GetTree().Quit(exit);
             }
         }
@@ -160,6 +163,9 @@ public partial class Boot : Node
         {
             GD.PrintErr($"START FAILED: {ex}");
             composition.Release();
+
+            // Release disposed the transports and left the lobby (it throws otherwise, and the SDK then stays up).
+            env.Platform?.TryShutdown();
             GetTree().Quit(ExitFaulted);
         }
     }
