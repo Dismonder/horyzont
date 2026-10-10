@@ -29,6 +29,101 @@ public sealed class TerrainSyncCodecTests
         Assert.Equal(view, MessageCodec.Read(Encode(view)));
     }
 
+    private static readonly byte[] _goldenColdCache =
+    [
+        0x18, 0x01, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x01, 0x00, 0x03, 0x06, 0x08, 0x09,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    ];
+
+    private static readonly byte[] _goldenInterest =
+    [
+        0x18, 0x01, 0x82, 0x01, 0x01, 0x01, 0x00, 0x02, 0x00, 0x01,
+        0x01, 0x00, 0x00, 0x00, 0x00, 0xAC, 0x02,
+        0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01,
+    ];
+
+    private static readonly byte[] _goldenBarrier = [0x18, 0x01, 0x05, 0x02, 0x01, 0xAC, 0x02, 0x00, 0x01, 0x00];
+
+    private static readonly byte[] _goldenView =
+    [
+        0x19, 0x01, 0x01, 0x03,
+        0x00, 0x00, 0x80, 0x3F, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x40, 0x40,
+        0x00, 0x00, 0x00, 0x45,
+        0x00, 0x00, 0x80, 0x40, 0x00, 0x00, 0xA0, 0x40, 0x00, 0x00, 0xC0, 0x40,
+        0x00, 0x00, 0x80, 0x42,
+    ];
+
+    private static TerrainSync ColdCache() => new(1, 0, _planet, default, 0, false,
+        [new TerrainSyncEntry(new TerrainBlockKey(_planet, 0, -2, 3, 4), 9, ulong.MaxValue)]);
+
+    private static TerrainSync Interest() => new(130, 1, _planet, default, 2, false,
+        [new TerrainSyncEntry(new TerrainBlockKey(_planet, 0, 0, 0, 0), 300, 0x0102030405060708UL)]);
+
+    private static TerrainSync Barrier() => new(5, 2, _planet, new OpId(300), 0, true, []);
+
+    private static TerrainView View() => new(_planet, 3, new Vector3(1, 2, 3), 2048, new Vector3(4, 5, 6), 64);
+
+    [Fact]
+    public void Encode_TerrainSyncAndView_MatchesGoldenBytes()
+    {
+        Assert.Equal(_goldenColdCache, Encode(ColdCache()));
+        Assert.Equal(_goldenInterest, Encode(Interest()));
+        Assert.Equal(_goldenBarrier, Encode(Barrier()));
+        Assert.Equal(_goldenView, Encode(View()));
+    }
+
+    [Fact]
+    public void Decode_GoldenBytes_ProducesExpectedMessages()
+    {
+        AssertSync(ColdCache(), MessageCodec.Read(_goldenColdCache));
+        AssertSync(Interest(), MessageCodec.Read(_goldenInterest));
+        AssertSync(Barrier(), MessageCodec.Read(_goldenBarrier));
+        Assert.Equal(View(), MessageCodec.Read(_goldenView));
+    }
+
+    private static void AssertSync(TerrainSync expected, Message actual)
+    {
+        var decoded = Assert.IsType<TerrainSync>(actual);
+        Assert.Equal(expected.Entries, decoded.Entries);
+        Assert.Equal(expected with { Entries = decoded.Entries }, decoded);
+    }
+
+    private static byte[] Patched(byte[] golden, int index, params byte[] bytes)
+    {
+        var copy = (byte[])golden.Clone();
+        bytes.CopyTo(copy, index);
+        return copy;
+    }
+
+    public static TheoryData<string, byte[]> InvalidFrames() => new()
+    {
+        { "purpose 3", Patched(_goldenColdCache, 3, 0x03) },
+        { "zero transfer", Patched(_goldenColdCache, 2, 0x00) },
+        { "zero planet", Patched(_goldenColdCache, 4, 0x00) },
+        { "barrier with purpose 0", Patched(_goldenColdCache, 5, 0x07) },
+        { "purpose 2 without barrier", Patched(_goldenBarrier, 5, 0x00, 0x00) },
+        { "last page with entries", Patched(_goldenColdCache, 7, 0x01) },
+        { "wrong planet key", Patched(_goldenColdCache, 9, 0x02) },
+        { "lod above zero key", Patched(_goldenColdCache, 10, 0x01) },
+        { "view NaN visual distance", Patched(_goldenView, 16, 0x00, 0x00, 0xC0, 0x7F) },
+        { "view NaN collision distance", Patched(_goldenView, 32, 0x00, 0x00, 0xC0, 0x7F) },
+        { "view infinite position", Patched(_goldenView, 4, 0x00, 0x00, 0x80, 0x7F) },
+        { "view visual distance above 16384", Patched(_goldenView, 16, 0x00, 0x20, 0x80, 0x46) },
+        { "view collision distance above 16384", Patched(_goldenView, 32, 0x00, 0x20, 0x80, 0x46) },
+        { "view negative distance", Patched(_goldenView, 16, 0x00, 0x00, 0x80, 0xBF) },
+        { "view zero planet", Patched(_goldenView, 2, 0x00) },
+        { "view zero sequence", Patched(_goldenView, 3, 0x00) },
+    };
+
+    [Theory]
+    [MemberData(nameof(InvalidFrames))]
+    public void Decode_TerrainSyncAndView_InvalidLimitsFailBeforeAllocation(string name, byte[] frame)
+    {
+        Assert.NotEmpty(name);
+        Assert.Throws<ProtocolViolationException>(() => MessageCodec.Read(frame));
+    }
+
     [Theory]
     [InlineData(3, 0)]
     [InlineData(0, 1)]
