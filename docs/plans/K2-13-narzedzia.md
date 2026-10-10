@@ -420,7 +420,7 @@ Ręczny (`Manual`, wynik i zrzuty w PR): 5 minut gry solo i 5 minut u hosta z dr
 - [x] 10. Godot: `Tools.tscn`, węzły z listy plików, akcje InputMap, `tools.csv`, rejestracja w composition root (`game/src/Boot/`), przekazanie `IntentReply` i `OnDisconnected` do trackera, wybór `NoEditPrediction` dla wszystkich trybów K2.
 - [x] 11. (test ręczny odroczony do bramki K2, patrz Odstępstwa „Etap 2”) Scenariusze Godota bez grafiki zielone w jobie `game`; test ręczny opisany w PR.
 - [x] 12. (lokalnie zielone 2026-10-09: sln 1720 testów, format, `--smoke`, `--engine-tests` 18, gdUnit 127, `server_smoke`; `build.py smoke` zastąpiony `--smoke` na gotowym silniku; CI po scaleniu: krok 13) Komentarze XML, `dotnet build`, `dotnet test --filter "Category!=Soak&Category!=Manual"`, `dotnet format --verify-no-changes`, `python tools/engine/build.py smoke` z wynikami w PR; nowe zasady dopisane do `docs/ZASADY.md` (kierunki z Godota normalizowane po konwersji do float; promień narzędzi zawsze od oka); każdy nieodhaczony krok ma wpis „odroczone do X”.
-- [ ] 13. Po scaleniu: zielone CI na `main` (pełny przebieg, nie tylko na gałęzi).
+- [x] 13. (CI na `main` zielone 2026-10-10: przebieg 38011077413 na `bcef9df`, po scaleniu całego K2; Engine na `main` i przebieg nocny — w toku bramki K2) Po scaleniu: zielone CI na `main` (pełny przebieg, nie tylko na gałęzi).
 
 ## Odstępstwa i decyzje wykonawcy
 

@@ -413,7 +413,7 @@ Testy silnika (Godot bez grafiki, Windows i Linux, job `game`):
 - [x] 11. E1 i E2 (pomiar, ewentualne przeniesienie kopii z wątku zapisu).
 - [x] 12. Test złoty semantyki edycji z `SemanticsVersion`, test wydajności; dopisanie wierszy do ZASADY pkt 3 (semantyka terenu, korpus złoty) i reguły „ITerrainService tylko na wątku głównym Godota” do ZASADY pkt 2.
 - [ ] 13. Komentarze XML w Core i Persistence; lokalnie `dotnet build`, `dotnet test --filter "Category!=Soak&Category!=Manual"`, `dotnet format --verify-no-changes`, `python tools/engine/build.py smoke`; CI zielone na gałęzi (Windows i Linux, z jobem `game`).
-- [ ] 14. Po scaleniu: CI zielone na `main` (nie tylko na gałęzi; lekcja 4) i jeden zielony przebieg nocny (`Soak`) przed bramką K2. Krok niezrobiony przed scaleniem dostaje wpis „odroczone do X” (lekcja 5).
+- [ ] 14. (CI na `main` zielone 2026-10-10: przebieg 38011077413 na `bcef9df`, po scaleniu całego K2; Engine na `main` i przebieg nocny — w toku bramki K2) Po scaleniu: CI zielone na `main` (nie tylko na gałęzi; lekcja 4) i jeden zielony przebieg nocny (`Soak`) przed bramką K2. Krok niezrobiony przed scaleniem dostaje wpis „odroczone do X” (lekcja 5).
 
 ## Odbiór
 

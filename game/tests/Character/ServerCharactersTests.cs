@@ -116,7 +116,9 @@ public class ServerCharactersTests
         AssertThat(await rig.WaitUnfrozenAsync(player)).IsTrue();
         AssertThat(rig.Characters.TryGetState(player, out var released)).IsTrue();
         AssertThat(released.Mode).IsEqual(MovementMode.Falling);
-        AssertThat(released.Feet).IsEqual(feet);
+        // Released into Falling, the body may already have stepped a few ticks of gravity (millimetres) before this read;
+        // a teleport to the ground would move it by about 5 m.
+        AssertThat(Vector3.Distance(released.Feet, feet)).IsLess(0.05f);
         AssertThat(rig.Log.Count(9306)).IsEqual(1);
     }
 
