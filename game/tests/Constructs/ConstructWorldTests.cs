@@ -88,6 +88,7 @@ public sealed class ConstructWorldTests : EngineTestBase
         EngineAssert.Equal(0, w.World.LoadedConstructCount, "no viewers: no saved constructs loaded");
         EngineAssert.Equal(0, w.World.PendingJobs, "no viewers: no meshing work queued");
         w.World.SetViewers([new System.Numerics.Vector3(0, 4000, 0)]);
+        w.World.Pump(4); // SetViewers only marks the ranges dirty; the next pump loads
         await Idle(w);
         EngineAssert.Equal(1, w.World.LoadedConstructCount, "only nearby construct loaded");
         EngineAssert.True(w.World.TryGetConstructNode(near, out _), "near construct loaded");
@@ -560,7 +561,7 @@ public sealed class ConstructWorldTests : EngineTestBase
         w.World.SetViewers([]);
         await NextFrame();
         await Idle(w);
-        EngineAssert.True(w.World.TryGetConstructNode(id, out _), "no viewers: everything is in range");
+        EngineAssert.True(!w.World.TryGetConstructNode(id, out _), "no viewers: nothing is in range (production mode)");
     }
 
     private static int CountMeshInstances(Node root)
