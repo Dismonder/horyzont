@@ -77,10 +77,13 @@ public class ReplicationScenarioTests
         var script = new ToolRig.ScriptedTools();
         tools.InputSource = script;
 
-        // The server builds a one-block construct that the aim ray of the player passes through, 3 m ahead of the camera.
+        // The server builds a one-block construct that the aim ray of the player passes through, 3 m ahead of the eye.
         var runtime = server.Composition.Server!;
         runtime.State.BlockTypes.TryGetId("core:stone_block", out var stone);
-        var target = player.CameraOrigin + (player.CameraDirection * 3f);
+        // Measured from the eye, not the third person camera: a construct between the camera and the character is hit by the camera arm
+        // as soon as it replicates, which moves the camera in front of the construct, facing away from it.
+        var eye = Horyzont.Client.Tools.AimRayBuilder.EyeFromFeet(player.PredictedFeet, new Horyzont.Core.Simulation.GameRules());
+        var target = eye + (player.CameraDirection * 3f);
         var id = runtime.State.EntityIds.PeekNext();
         var frame = Horyzont.Core.Ids.FrameRef.Of(player.Planet);
         runtime.Simulation.ApplyServerOperation(new ConstructCreateOp(
