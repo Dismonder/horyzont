@@ -5,7 +5,7 @@
 | Prowadzi | Gemini 3.8 Flash (High) |
 | Testy akceptacyjne | Sonnet 5.5, przed kodem; wykonawca nie zmienia testów bez zgody |
 | Przegląd | Sonnet 5.5; Opus 5.5 dla nowych komunikatów Core i sesji, przegląd planu na bramce K2 |
-| Zależy od | K2-10; pozostałe K3 niezależne, integracja Steam i metryk replikacji przez opcjonalne adaptery |
+| Zależy od | K3-00 (szwy); K2-10; pozostałe K3 niezależne, integracja Steam i metryk replikacji przez opcjonalne adaptery |
 | Gałąź | `pakiet/k3-18-interfejs` |
 
 **Cel:** gracz wybiera solo, hosta albo dołączenie, uruchamia istniejący/nowy świat i otrzymuje czytelny błąd lub ostrzeżenie; HUD pokazuje FPS, tick, pasmo oraz stan narzędzi bez ingerencji w symulację.

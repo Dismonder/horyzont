@@ -5,7 +5,7 @@
 | Prowadzi | GPT-6.1 Sol (Codex), wysiłek `high` |
 | Testy akceptacyjne | GPT-6.1 Sol, przed implementacją; przegląd scenariuszy protokołu przez Opus 5.5 |
 | Przegląd | Opus 5.5; osobno kontrakty Core i integracja K3-14/K3-16 |
-| Zależy od | K2-10, K2-12; kod K2-11/K2-13 konsumowany po scaleniu bramki K2, bez nowej krawędzi między pakietami K3 |
+| Zależy od | K3-00 (szwy); K2-10, K2-12; kod K2-11/K2-13 konsumowany po scaleniu bramki K2, bez nowej krawędzi między pakietami K3 |
 | Gałąź | `pakiet/k3-15-replikacja-bytow` |
 
 **Cel:** dwóch zdalnych klientów widzi te same byty i budowle po 10 minutach losowych edycji, a wejście w zasięg, utrata migawek i luka wersji nie pozostawiają niepełnej kopii świata.

@@ -5,7 +5,7 @@
 | Prowadzi | Gemini 3.8 Flash (High) |
 | Testy akceptacyjne | Sonnet 5.5, przed kodem; wykonawca nie zmienia ich bez zgody |
 | Przegląd | Sonnet 5.5; Opus 5.5 przy zmianie kontraktu Core, drugi przegląd planu przez Opus na bramce K2; Opus 5.5 dla reguły tożsamości w `HandshakeValidator` (17.3) |
-| Zależy od | K1-06, K2-10; niezależny od pozostałych K3, integracja menu przez K3-18 |
+| Zależy od | K3-00 (szwy); K1-06, K2-10; niezależny od pozostałych K3, integracja menu przez K3-18 |
 | Gałąź | `pakiet/k3-17-steam-lobby` |
 
 **Cel:** host publikuje lobby Steam, a zaproszony znajomy przechodzi z nakładki lub listy znajomych do istniejącej sesji P2P bez przekierowywania portów.

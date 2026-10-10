@@ -5,7 +5,7 @@
 | Prowadzi | Opus 5.5 |
 | Testy akceptacyjne | Opus 5.5, przed implementacją; podzadania mechaniczne Gemini 3.8 Flash |
 | Przegląd | GPT-6.1 Sol; każda ewentualna zmiana Core także Opus 5.5 |
-| Zależy od | K1-07, K2-11 (graf z planu projektu); integracja pełnych migawek i zdalnych widoków z K3-15 na bramce K3, bez dodatkowej zależności startu |
+| Zależy od | K3-00 (szwy); K1-07, K2-11 (graf z planu projektu); integracja pełnych migawek i zdalnych widoków z K3-15 na bramce K3, bez dodatkowej zależności startu |
 | Gałąź | `pakiet/k3-14-predykcja-ruchu` |
 
 **Cel:** przy RTT 100 ms i 5% utraty wejść/migawek własna postać reaguje natychmiast, korekta małego błędu nie przeskakuje wizualnie, duży błąd przestawia postać od razu, a inni gracze są interpolowani z buforem 100 ms.

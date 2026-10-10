@@ -5,7 +5,7 @@
 | Prowadzi | Opus 5.5 |
 | Testy akceptacyjne | Opus 5.5, przed implementacją; podzadania mechaniczne Gemini 3.8 Flash |
 | Przegląd | GPT-6.1 Sol; nowe kontrakty protokołu i kodek także Opus 5.5 |
-| Zależy od | K2-09, K2-10 (graf projektu). Konsumuje istniejące narzędzia K2-13 z bramki K2; połączenie widoku budowli K3-15 na bramce K3, bez dodatkowej zależności startu |
+| Zależy od | K3-00 (szwy); K2-09, K2-10 (graf projektu). Konsumuje istniejące narzędzia K2-13 z bramki K2; połączenie widoku budowli K3-15 na bramce K3, bez dodatkowej zależności startu |
 | Gałąź | `pakiet/k3-16-replikacja-terenu` |
 
 **Cel:** zdalny klient ma własny teren i trwały cache; edycje serwera podmieniają bloki 16³ u pozostałych klientów w najwyżej 200 ms przy RTT 100 ms, a wersje i xxHash64 pozwalają wykryć i naprawić rozjazd bez podwójnego stosowania edycji u hosta.
@@ -135,7 +135,7 @@ Nowy `TerrainSendQueue.Enqueue(PlayerId player, TerrainBlockKey key, uint versio
 | K2-08:61,339,444 | Checksum, licznik częstości rozjazdów, artefakt build/profile; mechanizm naprawy testowany przez sztuczny błąd. Rzeczywiste porównanie Windows–Linux niewykonane przy wyłączonym Linux CI, nie zastępuje go sztuczny test |
 | K2-09:62,176,280,331–334,402,439,522–523 | Cache/source, koperta K2, digest, export live, paste S6 oraz trwała odbudowa LOD i wizualny odbiór |
 | K2-10:65,184,322,335,359–364,587 | Dispatch komunikatów, raport przed ready, źródło klienta, `IsLocalPlayer` i brak danych/cache u hosta |
-| K2-13:59,178–182,302,433/P5,469,499 | `IEditPrediction`, tracker, raycast terenowy i realny `ToolNode` na `--connect`; K3-15 składa planowane `RemoteToolWorldView` i `CompositeEditPrediction`, którym K3-16 wstrzykuje teren oraz predykcję; `ToolNode` przyjmuje widok i predykcję przez przeciążenie `Initialize` z K3-00 (S8); nie tworzyć drugiego facade ani drugiego `ToolNode` |
+| K2-13:59,178–182,302,433/P5,469,499 | `IEditPrediction`, tracker, raycast terenowy i realny `ToolNode` na `--connect`; szkielet `RemoteToolWorldView` i `CompositeEditPrediction` daje K3-00 (S8), K3-15 wypełnia w nim metody budowli i graczy, którym K3-16 wstrzykuje teren oraz predykcję; `ToolNode` przyjmuje widok i predykcję przez przeciążenie `Initialize` z K3-00 (S8); nie tworzyć drugiego facade ani drugiego `ToolNode` |
 | K2-13:483 | Test ręczny kopania/zasypywania na zdalnym kliencie przejmuje K3-16; budowlana część 5×5×3 wymaga K3-15 i odbywa się na bramce K3, bez rozszerzania tego pakietu o replikację budowli |
 
 ### Równoległość i mapa kolizji
