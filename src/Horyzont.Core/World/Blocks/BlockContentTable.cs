@@ -30,9 +30,18 @@ public sealed class BlockContentTable
     public static BlockContentTable Create(BlockTypeRegistry registry, IReadOnlyDictionary<string, BlockTypeDef> definitions)
     {
         ArgumentNullException.ThrowIfNull(registry);
+        return Create(registry.Entries, definitions);
+    }
+
+    /// <summary>Builds the table from registry entries (a client has the list from the server hello, not a registry object).</summary>
+    /// <param name="entries">Registry entries: id and key.</param>
+    /// <param name="definitions">Content definitions by key; a registered key absent here gets the placeholder.</param>
+    /// <returns>The table.</returns>
+    public static BlockContentTable Create(IReadOnlyList<RegistryEntry> entries, IReadOnlyDictionary<string, BlockTypeDef> definitions)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
         ArgumentNullException.ThrowIfNull(definitions);
         var missing = definitions.TryGetValue(BlockTypeRegistry.MissingKey, out var content) ? content : CreateMissing();
-        var entries = registry.Entries;
         var maxId = 0;
         foreach (var entry in entries)
         {

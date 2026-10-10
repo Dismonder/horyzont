@@ -468,6 +468,7 @@ public sealed partial class GameComposition
         var scene = GD.Load<PackedScene>(ToolsScene) ?? throw new InvalidOperationException($"Scene {ToolsScene} not found.");
         var tools = scene.Instantiate<ToolNode>();
         tools.Initialize(client, server, () => factory.Terrain!.Service, player, rules, env.Loggers);
+        tools.BlockDefinitions = ShipBlockDefinitions(BlockContentLoader.Load());
         if (env.Render)
         {
             tools.AddChild(new TerrainToolPreview(tools));
