@@ -64,4 +64,10 @@ public enum MessageType : byte
 
     /// <summary>Both directions, reliable.</summary>
     Disconnect = 20,
+
+    /// <summary>Server availability, reliable.</summary>
+    ServerStatus = 22,
+
+    /// <summary>Pre-hello availability refusal, reliable.</summary>
+    JoinUnavailable = 23,
 }

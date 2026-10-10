@@ -154,6 +154,8 @@ public static class MaxMessages
             new Ping(ulong.MaxValue),
             new Pong(ulong.MaxValue, new Tick(ulong.MaxValue)),
             new Disconnect(DisconnectCode.HandshakeTimeout),
+            new ServerStatus(true, 2, Text(ProtocolConstants.MaxRejectDetailBytes)),
+            new JoinUnavailable(1, Text(ProtocolConstants.MaxRejectDetailBytes)),
         ];
     }
 }

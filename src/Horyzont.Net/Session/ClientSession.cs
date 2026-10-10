@@ -326,6 +326,10 @@ public sealed class ClientSession
                 _nextPing = Now();
                 _hooks.OnServerHello(hello);
                 break;
+            case JoinUnavailable unavailable:
+                _hooks.OnMessage(unavailable);
+                Close(DisconnectCode.Normal, sendMessage: false);
+                break;
             case HandshakeReject reject:
                 _hooks.OnRejected(reject.Code, reject.Detail);
                 Close(DisconnectCode.Normal, sendMessage: false);

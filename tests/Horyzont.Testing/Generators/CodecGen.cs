@@ -424,7 +424,9 @@ public static class CodecGen
         EntityDespawn.Select(m => (Message)m),
         Ping.Select(m => (Message)m),
         Pong.Select(m => (Message)m),
-        Disconnect.Select(m => (Message)m));
+        Disconnect.Select(m => (Message)m),
+        Gen.Elements<Message>(new ServerStatus(false, 0, "Running"), new ServerStatus(true, 2, "Writer unavailable"),
+            new JoinUnavailable(1, "Terrain mismatch"), new JoinUnavailable(255, "Unknown")));
 
     /// <summary>Client hello messages.</summary>
     public static Gen<ClientHello> ClientHello { get; } =

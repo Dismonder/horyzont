@@ -527,7 +527,20 @@ public sealed class ServerSession
             return;
         }
 
-        var player = _hooks.OnPlayerJoining(hello.Identity, hello.DisplayName);
+        PlayerId player;
+        try
+        {
+            player = _hooks.OnPlayerJoining(hello.Identity, hello.DisplayName);
+        }
+        catch (JoinUnavailableException unavailable)
+        {
+            // A controlled refusal has no player, operations or leave callback to unwind.
+            SendMessage(peer, new JoinUnavailable(unavailable.Reason, unavailable.Detail));
+            peer.State = PeerState.Closing;
+            peer.LocalCode = DisconnectCode.Normal;
+            peer.CloseAt = _now + _options.CloseDelay.Ticks;
+            return;
+        }
         if (player.IsNone || _byPlayer.ContainsKey(player))
         {
             throw new InvalidOperationException($"OnPlayerJoining returned an unusable player id {player.Value}.");
