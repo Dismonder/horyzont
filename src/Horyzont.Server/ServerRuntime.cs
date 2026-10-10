@@ -92,9 +92,12 @@ public sealed partial class ServerRuntime
     /// <summary>Gets the public availability status, without private diagnostic data.</summary>
     public ServerStatusInfo CurrentStatus => _readOnlyStart
         ? new(true, 1, "Terrain semantics mismatch")
-        : RuntimeState == ServerRuntimeState.SafeMode
-            ? new(true, 2, "Writer unavailable")
-            : new(false, 0, "Running");
+        : RuntimeState switch
+        {
+            ServerRuntimeState.Running => new(false, 0, "Running"),
+            ServerRuntimeState.SafeMode => new(true, 2, "Writer unavailable"),
+            _ => new(true, 3, "Not running"),
+        };
 
     /// <summary>Gets the process exit code: 0, or 70 after a fault or a failed shutdown step (3 and 4 come from <see cref="WorldStartResult.ExitCode"/>).</summary>
     public int ExitCode { get; private set; }

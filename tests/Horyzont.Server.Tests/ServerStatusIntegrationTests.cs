@@ -2,6 +2,7 @@ using Horyzont.Core.Protocol.Messages;
 using Horyzont.Net.Session;
 using Horyzont.Persistence.Faults;
 using Horyzont.Server.Tests.Support;
+using Horyzont.Server.UI;
 using Horyzont.Testing;
 
 using Microsoft.Extensions.Time.Testing;
@@ -61,6 +62,20 @@ public sealed class ServerStatusIntegrationTests
         Assert.Null(client.Hello);
         Assert.Equal(1, Assert.IsType<JoinUnavailable>(Assert.Single(client.Messages)).Reason);
         await rig.StopAsync();
+    }
+
+    [Fact]
+    public async Task CurrentStatus_OutsideRunning_ReportsNotRunningReasonThree()
+    {
+        await using var rig = new ServerRig();
+        Assert.Equal(new ServerStatusInfo(true, 3, "Not running"), rig.Runtime.CurrentStatus);
+
+        Assert.IsType<WorldStartResult.Started>(await rig.StartAsync());
+        Assert.Equal(new ServerStatusInfo(false, 0, "Running"), rig.Runtime.CurrentStatus);
+
+        await rig.StopAsync();
+        Assert.Equal(ServerRuntimeState.Stopped, rig.Runtime.RuntimeState);
+        Assert.Equal(new ServerStatusInfo(true, 3, "Not running"), rig.Runtime.CurrentStatus);
     }
 
     private static List<ServerStatus> Statuses(RigClient client) => [.. client.Messages.OfType<ServerStatus>()];
