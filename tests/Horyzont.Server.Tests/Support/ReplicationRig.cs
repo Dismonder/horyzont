@@ -23,9 +23,27 @@ internal sealed class FakeCharacters : IServerCharacterSource
     public bool TryGetState(PlayerId player, out ServerCharacterState state) => States.TryGetValue(player, out state);
 }
 
+/// <summary>Snapshot budget that records which players were forgotten.</summary>
+internal sealed class RecordingSnapshotBudget : ISnapshotBudget
+{
+    public List<PlayerId> Forgotten { get; } = [];
+
+    public int GetByteBudget(PlayerId player, Tick tick) => 1150;
+
+    public void Debit(PlayerId player, int encodedBytes)
+    {
+    }
+
+    public void Forget(PlayerId player) => Forgotten.Add(player);
+}
+
 /// <summary>Reliable budget the test opens and closes: Live traffic always passes, Bulk only while <see cref="Open"/>.</summary>
 internal sealed class GatedSendBudget : IReplicationSendBudget
 {
+    public List<PlayerId> Forgotten { get; } = [];
+
+    public void Forget(PlayerId player) => Forgotten.Add(player);
+
     public bool Open { get; set; } = true;
 
     public long BulkBytes { get; private set; }

@@ -164,4 +164,35 @@ public sealed class ChunkRemeshQueueTests
 
     [Fact]
     public void Constructor_RejectsNonPositiveBound() => Assert.Throws<ArgumentOutOfRangeException>(() => new ChunkRemeshQueue(0));
+
+    [Fact]
+    public void TryStartNext_ReplicatedLargeConstruct_ReportsSelectionCost()
+    {
+        // K3-15 observation: a remote client marks every chunk of a 300-chunk construct dirty at once; the pick must stay far below a frame.
+        var queue = new ChunkRemeshQueue(8);
+        for (var i = 0; i < 300; i++)
+        {
+            queue.MarkDirty(Key(1, i % 20, i / 20), RemeshPriority.Edit);
+        }
+
+        var slowest = TimeSpan.Zero;
+        var started = 0;
+        while (true)
+        {
+            var at = System.Diagnostics.Stopwatch.GetTimestamp();
+            var ok = queue.TryStartNext(out var job);
+            var took = System.Diagnostics.Stopwatch.GetElapsedTime(at);
+            slowest = took > slowest ? took : slowest;
+            if (!ok)
+            {
+                break;
+            }
+
+            started++;
+            queue.Complete(job);
+        }
+
+        Assert.Equal(300, started);
+        Assert.InRange(slowest.TotalMilliseconds, 0, 5);
+    }
 }

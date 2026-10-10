@@ -205,4 +205,37 @@ public sealed class ReplicationConvergenceTests
         Assert.InRange(p99, 0, 130);
         Assert.Equal(0, alice.Resyncs);
     }
+
+    [Fact]
+    [Trait("Category", "Slow")]
+    public async Task Replicate_LargeConstruct_DoesNotBlockTicksAndArrivesComplete()
+    {
+        var gate = new GatedSendBudget();
+        await using var rig = await ReplicationRig.StartAsync(sendBudget: gate);
+        var alice = new Mirrored(await rig.JoinAsync("alice", 1), rig.Time);
+        var cells = new CellPos[300];
+        for (var i = 0; i < cells.Length; i++)
+        {
+            cells[i] = new CellPos((16 * (i % 20)) + 1, 16 * (i / 20), 0);
+        }
+
+        var id = rig.AddConstruct(new Vector3(10, 4000, 10), cells);
+        var slowest = TimeSpan.Zero;
+        var ticks = 0;
+        while (ticks < 1200 && !alice.Constructs.TryGetConstruct(id, out _))
+        {
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
+            rig.Step();
+            var took = System.Diagnostics.Stopwatch.GetElapsedTime(started);
+            slowest = took > slowest ? took : slowest;
+            ticks++;
+        }
+
+        rig.Step(10);
+        Assert.True(alice.Constructs.TryGetConstruct(id, out var copy));
+        Assert.Equal(Digest(rig.Runtime.State.Constructs.All.Single(c => c.Id == id)), Digest(copy!));
+        Assert.Equal(0, alice.Resyncs);
+        Assert.InRange(slowest.TotalMilliseconds, 0, 100);
+        Assert.True(gate.BulkBytes > 0);
+    }
 }

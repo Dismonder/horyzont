@@ -84,6 +84,20 @@ public sealed class EntityReplicationLifecycleTests
     }
 
     [Fact]
+    public async Task Replicate_PlayerLeaves_BudgetsForgetThePlayer()
+    {
+        var send = new GatedSendBudget();
+        var snapshots = new RecordingSnapshotBudget();
+        await using var rig = await ReplicationRig.StartAsync(snapshotBudget: snapshots, sendBudget: send);
+        var bob = await rig.JoinAsync("bob", 2);
+        rig.Step(9);
+        bob.Session.Disconnect();
+        rig.Step(120);
+        Assert.Equal([bob.Player], send.Forgotten);
+        Assert.Equal([bob.Player], snapshots.Forgotten);
+    }
+
+    [Fact]
     public void Step_SteadyStateEightPlayers_AllocatesNothing()
     {
         using var transport = new CopyingTransport();

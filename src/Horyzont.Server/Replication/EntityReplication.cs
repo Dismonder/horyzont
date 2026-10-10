@@ -32,6 +32,8 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
     private readonly ILogger _logger;
     private readonly float _viewRange;
     private readonly Func<PlayerId, bool> _receivesConstructs;
+    private readonly ISnapshotBudget _snapshotBudget;
+    private readonly IReplicationSendBudget _sendBudget;
     private readonly SnapshotBuilder _snapshots;
     private readonly ConstructStateSender _constructs;
     private readonly Dictionary<PlayerId, PlayerState> _players = [];
@@ -76,6 +78,8 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         _logger = logger;
         _viewRange = viewRange;
         _receivesConstructs = receivesConstructs ?? (static _ => true);
+        _snapshotBudget = snapshotBudget;
+        _sendBudget = sendBudget;
         _snapshots = new SnapshotBuilder(snapshotBudget);
         _constructs = new ConstructStateSender(session, simulation.State, sendBudget, logger);
         _simulation.Applied += OnApplied;
@@ -162,6 +166,8 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         _players.Remove(player);
         _snapshots.Forget(player);
         _constructs.ForgetPlayer(player);
+        _snapshotBudget.Forget(player);
+        _sendBudget.Forget(player);
     }
 
     /// <inheritdoc />
