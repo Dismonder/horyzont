@@ -1,3 +1,4 @@
+using Horyzont.Core.Content;
 using Horyzont.Core.Hashing;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
@@ -42,6 +43,35 @@ public sealed class ReplayCompoundTests
         fresh.Sim.Sim.Replay(live.Sim.Journal.Entries[^1]);
 
         Assert.Empty(fresh.Sim.Terrain.BlockingLoads);
+        Assert.Equal(StateHasher.Hash(live.State), StateHasher.Hash(fresh.State));
+    }
+
+    [Fact]
+    public void Replay_AfterTheItemCatalogChanged_GivesTheSameHash()
+    {
+        var live = new ItemFixture(content: SurvivalContentFactory.CreateTest());
+        live.Apply(Create(BagSlot(0), Stone, 30));
+        live.Apply(Create(BagSlot(1), Stone, 20));
+        Assert.True(live.Sim.Sim.Submit(Player1, new Horyzont.Core.Intents.ItemMoveIntent(BagSlot(1), Horyzont.Core.Intents.ItemMoveTarget.ToSlot(BagSlot(0)), 20, Stone, 20)).IsAccepted);
+        Assert.True(live.Sim.Sim.Submit(Player1, new Horyzont.Core.Intents.ItemMoveIntent(BagSlot(0), Horyzont.Core.Intents.ItemMoveTarget.AnyIn(Hotbar), 45, Stone, 50)).IsAccepted);
+        Assert.True(live.Sim.Sim.Submit(Player1, new Horyzont.Core.Intents.ItemDropIntent(BagSlot(0), 1, Stone, 5)).IsAccepted);
+
+        // The catalog now limits stone to 10 per stack; the journal operations carry their own limits.
+        var lowered = ContentLoader.Parse(
+            SurvivalContentFactory.ItemsJson.Replace(
+                "\"key\": \"test:stone\", \"category\": \"resource\", \"flags\": [\"bulk\"]",
+                "\"key\": \"test:stone\", \"category\": \"resource\", \"flags\": [\"bulk\"], \"maxStack\": 10, \"maxStackOverride\": true",
+                StringComparison.Ordinal),
+            SurvivalContentFactory.YieldsJson,
+            SurvivalContentFactory.StartJson);
+        Assert.Equal(10, lowered.Items.TryGet(SurvivalContentFactory.StoneKey, out var def) ? def.MaxStack : -1);
+        var fresh = new ItemFixture(content: lowered);
+
+        foreach (var entry in live.Sim.Journal.Entries)
+        {
+            fresh.Sim.Sim.Replay(entry);
+        }
+
         Assert.Equal(StateHasher.Hash(live.State), StateHasher.Hash(fresh.State));
     }
 

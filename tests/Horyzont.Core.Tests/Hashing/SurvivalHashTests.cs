@@ -1,6 +1,8 @@
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Hashing;
 using Horyzont.Core.Ids;
+using Horyzont.Core.Items;
+using Horyzont.Core.Operations;
 using Horyzont.Core.Tests.Items;
 using Horyzont.Core.World;
 using Horyzont.Testing;
@@ -54,6 +56,49 @@ public sealed class SurvivalHashTests
         Assert.Equal(DefaultWorldHashBeforeItems, StateHasher.Hash(first));
         Assert.Equal(2UL, moved.ContainerIds.NextValue);
         Assert.NotEqual(StateHasher.Hash(first), StateHasher.Hash(moved));
+    }
+
+    [Fact]
+    public void ContainerProperties_EachChangeTheHash()
+    {
+        // Variants differ from the baseline (chest of player 1, owner 1, shared, 4 slots, version 1) in exactly one property.
+        var variants = new Func<WorldState>[]
+        {
+            () => Chest(),
+            () => Chest(version: 3),
+            () => Chest(access: ContainerAccess.Private),
+            () => Chest(owner: new PlayerId(2)),
+            () => Chest(kind: ContainerKind.Equipment),
+            () => Chest(size: 5),
+            () => Chest(host: new PlayerId(2)),
+        };
+
+        var hashes = variants.Select(v => StateHasher.Hash(v())).ToList();
+
+        Assert.Equal(variants.Length, hashes.Distinct().Count());
+    }
+
+    private static WorldState Chest(
+        uint version = 1, ContainerAccess access = ContainerAccess.Shared, PlayerId? owner = null, ContainerKind kind = ContainerKind.Chest,
+        ushort size = 4, PlayerId? host = null)
+    {
+        var world = WorldState.CreateNew(
+            WorldFactory.DefaultWorldId, 42, [WorldFactory.HomePlanetParams], [WorldFactory.StoneBlockKey], ["stone", "dirt"], SurvivalContentFactory.ItemKeys);
+        var sim = new SimFixture(state: world);
+        var first = sim.Join(1);
+        var second = sim.Join(2);
+        var hostPlayer = host ?? first;
+        var id = world.ContainerIds.PeekNext();
+        sim.Sim.ApplyServerOperation(new ContainerCreateOp(id, kind, ContainerHost.Player(hostPlayer), owner ?? first, access, size));
+        for (var v = 1U; v < version; v += 2)
+        {
+            sim.Sim.ApplyServerOperation(ItemFixture.Create(new SlotRef(id, 0), ItemFixture.Stone, 1, source: ItemSource.Admin));
+            sim.Sim.ApplyServerOperation(ItemFixture.Destroy(new SlotRef(id, 0), ItemFixture.Stone, 1));
+        }
+
+        Assert.Equal(version, world.Containers.TryGet(id, out var created) ? created.Version : 0U);
+        Assert.NotEqual(first, second);
+        return world;
     }
 
     private static WorldStateBuilder Builder(ulong nextContainerId)
