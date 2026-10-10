@@ -114,6 +114,7 @@ public sealed partial class RemoteConstructs : Node, IClientSessionListener
         _mirror.StatePublished += OnPublished;
         _mirror.StateWithdrawn += OnWithdrawn;
         _mirror.EditApplied += OnEdit;
+        UpdateViewers(); // without a viewer a production world loads nothing, so interest must not wait for the first physics tick
         if (hello.Planets.Count > 0)
         {
             _world.RebuildAll(FrameRef.Of(hello.Planets[0].Id));
@@ -132,7 +133,15 @@ public sealed partial class RemoteConstructs : Node, IClientSessionListener
         }
 
         _mirror.ExpireTransfers();
-        if (_tick++ % ViewerIntervalTicks == 0 && _player is { IsActive: true } player)
+        if (_tick++ % ViewerIntervalTicks == 0)
+        {
+            UpdateViewers();
+        }
+    }
+
+    private void UpdateViewers()
+    {
+        if (_world is not null && _player is { IsActive: true } player)
         {
             _world.SetViewers([player.PredictedFeet]);
         }

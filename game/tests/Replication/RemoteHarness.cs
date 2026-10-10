@@ -39,6 +39,7 @@ internal sealed class RemoteHarness : IDisposable
 
     public RemoteHarness(Node host, Action<MeshJobSlot>? beforeBuild = null, bool render = false)
     {
+        Render = render;
         Catalog = BlockContentLoader.Load();
         State = ConstructTestWorld.NewState(Catalog);
         _transport = _network.CreateTransport("client", TransportOptions.Default);
@@ -55,6 +56,9 @@ internal sealed class RemoteHarness : IDisposable
         State.BlockTypes.TryGetId("core:stone_block", out var stone);
         Stone = BlockState.Create(stone, 0);
     }
+
+    /// <summary>Gets whether the world draws meshes (false: collision only, no render surfaces).</summary>
+    public bool Render { get; }
 
     public BlockTypeCatalog Catalog { get; }
 

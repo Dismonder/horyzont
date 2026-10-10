@@ -28,7 +28,7 @@ public sealed class RemoteConstructsTests : EngineTestBase
         EngineAssert.True(hasNode, $"chunk {chunk} has geometry but no node");
         h.Constructs.World.TryGetConstruct(RemoteHarness.Construct, out construct);
         construct!.TryGetChunk(chunk, out var node);
-        var surfaces = (expected.Cubes.IsEmpty ? 0 : 1) + (expected.Shapes.IsEmpty ? 0 : 1);
+        var surfaces = !h.Render ? 0 : (expected.Cubes.IsEmpty ? 0 : 1) + (expected.Shapes.IsEmpty ? 0 : 1);
         EngineAssert.Equal(surfaces, node!.SurfaceCount, $"render surfaces of chunk {chunk}");
         EngineAssert.Equal(expected.CollisionFaces.Length / 3, node.CollisionTriangleCount, $"collision triangles of chunk {chunk}");
     }

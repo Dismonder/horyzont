@@ -175,25 +175,28 @@ public sealed class ChunkRemeshQueueTests
             queue.MarkDirty(Key(1, i % 20, i / 20), RemeshPriority.Edit);
         }
 
-        var slowest = TimeSpan.Zero;
+        var samples = new List<double>();
         var started = 0;
         while (true)
         {
             var at = System.Diagnostics.Stopwatch.GetTimestamp();
             var ok = queue.TryStartNext(out var job);
-            var took = System.Diagnostics.Stopwatch.GetElapsedTime(at);
-            // The very first call pays the JIT; the per-frame cost is what the pick must keep small.
-            slowest = started > 0 && took > slowest ? took : slowest;
+            var took = System.Diagnostics.Stopwatch.GetElapsedTime(at).TotalMilliseconds;
             if (!ok)
             {
                 break;
             }
 
+            samples.Add(took);
             started++;
             queue.Complete(job);
         }
 
         Assert.Equal(300, started);
-        Assert.InRange(slowest.TotalMilliseconds, 0, 5);
+
+        // The median is the per-frame cost of the pick; the first call (JIT) and a pause of a loaded CI machine hit single samples only,
+        // so they cannot fail this check. A pick that scans the whole queue would push the median past 1 ms.
+        samples.Sort();
+        Assert.InRange(samples[samples.Count / 2], 0, 1);
     }
 }
