@@ -1,6 +1,6 @@
 using Horyzont.Client.Inventory;
-using Horyzont.Core.Intents;
 using Horyzont.Core.Ids;
+using Horyzont.Core.Intents;
 using Horyzont.Core.Protocol.Messages;
 
 namespace Horyzont.Client.Tests.Inventory;
