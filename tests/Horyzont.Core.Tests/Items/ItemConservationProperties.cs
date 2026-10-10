@@ -82,7 +82,8 @@ public sealed class ItemConservationProperties
     {
         var accepted = new Dictionary<OperationKind, int>();
         var refused = new Dictionary<OperationKind, int>();
-        foreach (var sequence in Sequence.Sample(100, 20))
+        // 400 unseeded sequences: with 100 the swap count hovered around the threshold of 10 and the test failed now and then.
+        foreach (var sequence in Sequence.Sample(400, 20))
         {
             var f = new ItemFixture(players: 2);
             var applier = new OperationApplier(f.State, f.Sim.Terrain);
