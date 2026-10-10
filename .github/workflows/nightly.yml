@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "0 2 * * *"
   workflow_dispatch:
+    inputs:
+      minutes:
+        description: "Length of the co-op soak and of the tick profile in minutes (the nightly default is 120 / 10)"
+        required: false
+        default: ""
 
 env:
   DOTNET_NOLOGO: true
@@ -222,3 +227,135 @@ jobs:
           ls reports
           python -I tools/generator/compare_reports.py reports/generator-windows-editor.json reports/generator-windows-template_release.json reports/generator-linux-editor.json reports/generator-linux-template_release.json --out release-consistency.md
           cat release-consistency.md >> "$GITHUB_STEP_SUMMARY"
+
+  # K4-19 criterion 1 and 7: 8 .NET bots against a dedicated server for two hours, a graceful restart in the 40th minute and a
+  # kill in the 80th (the defaults of coop_soak.py at a third and two thirds of the run). Phase C raises --engine-bots to 2.
+  coop-soak:
+    name: coop soak
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 200
+    permissions:
+      actions: read
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MSBUILDDISABLENODEREUSE: 1
+      DOTNET_CLI_USE_MSBUILD_SERVER: 0
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        if: runner.environment == 'github-hosted'
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-python@v5
+        if: runner.environment == 'github-hosted'
+        with:
+          python-version: "3.12"
+
+      - name: Download engine from the last successful engine.yml run on main
+        run: |
+          run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow engine.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          if [ -z "$run_id" ]; then
+            echo "::error::No successful engine.yml run on main."
+            exit 1
+          fi
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-windows-editor -D engine-ci/editor
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-nupkgs -D engine-ci/nupkgs
+
+      - name: Activate engine packages
+        run: python tools/engine/build.py activate --from engine-ci/nupkgs
+
+      - name: Build game
+        run: dotnet build game/Horyzont.Game.csproj -nologo
+
+      - name: Co-op soak
+        run: |
+          python tools/coop/coop_soak.py --self-test
+          python tools/coop/coop_soak.py --godot engine-ci/editor/godot.windows.editor.double.x86_64.mono.console.exe             --minutes "${{ inputs.minutes || '120' }}" --bots 8 --engine-bots 0 --out coop-soak
+
+      - name: Upload co-op soak results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coop-soak
+          path: coop-soak/**
+          retention-days: 30
+          if-no-files-found: ignore
+
+  # K4-19 criterion 8 and the budgets: BenchmarkDotNet (short job), the engine report and the server tick of 8 bots on 6 cores.
+  bench:
+    name: bench
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      MSBUILDDISABLENODEREUSE: 1
+      DOTNET_CLI_USE_MSBUILD_SERVER: 0
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        if: runner.environment == 'github-hosted'
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-python@v5
+        if: runner.environment == 'github-hosted'
+        with:
+          python-version: "3.12"
+
+      - name: Download engine from the last successful engine.yml run on main
+        run: |
+          run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow engine.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          if [ -z "$run_id" ]; then
+            echo "::error::No successful engine.yml run on main."
+            exit 1
+          fi
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-windows-editor -D engine-ci/editor
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-nupkgs -D engine-ci/nupkgs
+
+      - name: Activate engine packages
+        run: python tools/engine/build.py activate --from engine-ci/nupkgs
+
+      - name: Build game
+        run: dotnet build game/Horyzont.Game.csproj -nologo
+
+      - name: BenchmarkDotNet
+        run: dotnet run -c Release --project tests/Horyzont.Benchmarks -- --filter "*" --job short --exporters json markdown
+
+      - name: Engine benchmark report
+        run: |
+          mkdir -p engine-bench
+          engine-ci/editor/godot.windows.editor.double.x86_64.mono.console.exe --headless --path game -- --benchmark-report "$PWD/engine-bench"
+
+      - name: Server tick profile (8 bots, 6 cores)
+        run: |
+          python tools/coop/coop_soak.py --godot engine-ci/editor/godot.windows.editor.double.x86_64.mono.console.exe             --profile tick --affinity 0x3F --minutes "${{ inputs.minutes || '10' }}" --bots 8 --engine-bots 0 --out coop-tick
+
+      - name: Check budgets
+        run: |
+          python tools/bench/check_budgets.py --self-test
+          python tools/bench/check_budgets.py --bench-dir tests/Horyzont.Benchmarks/BenchmarkDotNet.Artifacts/results             --baseline docs/reports/K4-19/bench-baseline.json --engine-report engine-bench/benchmark-report.json             --coop-summary coop-tick/summary.json --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench
+          path: |
+            tests/Horyzont.Benchmarks/BenchmarkDotNet.Artifacts/results/**
+            engine-bench/**
+            coop-tick/summary.*
+          retention-days: 30
+          if-no-files-found: ignore

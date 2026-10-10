@@ -66,7 +66,8 @@ jobs:
           #   editor-artifact: engine-linux-editor
           #   editor: godot.linuxbsd.editor.double.x86_64.mono
     runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 45
+    # 45 -> 60 (K4-19): modes smoke, 3 minute co-op smoke and the benchmark report.
+    timeout-minutes: 60
     permissions:
       actions: read
       contents: read
@@ -188,6 +189,38 @@ jobs:
       #     mkdir -p build/server-linux
       #     engine-ci/editor/${{ matrix.editor }} --headless --path game --export-release server-linux ../build/server-linux/HoryzontServer.x86_64
       #     python tools/server_smoke.py --export build/server-linux/HoryzontServer.x86_64
+
+      # K4-19 criterion 2: solo, host + client and dedicated server + client each reach "CLIENT IN GAME".
+      - name: Modes smoke
+        run: |
+          python tools/modes_smoke.py --self-test
+          python tools/modes_smoke.py --godot engine-ci/editor/${{ matrix.editor }}
+
+      # K4-19 criteria 1, 5 and 7 in miniature: 8 bots of the .NET runner, a graceful restart and a kill, 3 minutes.
+      # Phase C raises --engine-bots to 1 once the bot mode of the game exists.
+      - name: Co-op smoke
+        run: |
+          python tools/coop/coop_soak.py --self-test
+          python tools/coop/coop_soak.py --godot engine-ci/editor/${{ matrix.editor }} --minutes 3 --bots 8 --engine-bots 0 --out coop-smoke
+
+      - name: Upload co-op smoke summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coop-smoke-${{ runner.os }}
+          path: |
+            coop-smoke/summary.*
+            coop-smoke/**/bots.json
+          if-no-files-found: ignore
+
+      # Reports, does not block: the generation rate per LOD of the engine (budgets are checked in nightly.yml / bench).
+      - name: Benchmark report
+        continue-on-error: true
+        run: |
+          mkdir -p bench-report
+          python tools/bench/check_budgets.py --self-test
+          engine-ci/editor/${{ matrix.editor }} --headless --path game -- --benchmark-report "$PWD/bench-report"
+          cat bench-report/benchmark-report.json
 
       - name: Generator report
         env:
