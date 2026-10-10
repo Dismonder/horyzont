@@ -31,4 +31,13 @@ internal static partial class SteamLog
 
     [LoggerMessage(EventId = 9109, Level = LogLevel.Information, Message = "Steam services shut down")]
     public static partial void ServicesShutDown(this ILogger logger);
+
+    [LoggerMessage(EventId = 9110, Level = LogLevel.Warning, Message = "Lobby of host {HostSteamId} requires a password and none was given; the server will refuse")]
+    public static partial void PasswordMissing(this ILogger logger, ulong hostSteamId);
+
+    [LoggerMessage(EventId = 9111, Level = LogLevel.Warning, Message = "Ending the client session: {Error}")]
+    public static partial void ClientSessionEnded(this ILogger logger, LobbyError error);
+
+    [LoggerMessage(EventId = 9112, Level = LogLevel.Information, Message = "Lobby {LobbyId}: {Operation} ignored while {State}")]
+    public static partial void OperationIgnored(this ILogger logger, ulong lobbyId, string operation, LobbyState state);
 }
