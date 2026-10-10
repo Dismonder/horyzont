@@ -26,8 +26,17 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
     /// <summary>Raised for every operation message, applied or not, after it was handled (edit predictions wait for their operation).</summary>
     public event Action<OpId>? OperationObserved;
 
-    /// <summary>Raised when a copy changes or is withdrawn. Consumers discard old mesh generations.</summary>
+    /// <summary>Raised when a copy changes or is withdrawn (any reason).</summary>
     public event Action<EntityId>? Changed;
+
+    /// <summary>Raised when a complete full state was published. The view builds the whole construct.</summary>
+    public event Action<EntityId>? StatePublished;
+
+    /// <summary>Raised when a published copy is withdrawn: a new state starts, the construct was removed or repaired. The view unloads it.</summary>
+    public event Action<EntityId>? StateWithdrawn;
+
+    /// <summary>Raised after an operation changed a published copy (never for a removal, which raises <see cref="StateWithdrawn"/>).</summary>
+    public event Action<Operation, IReadOnlyList<ConstructChange>>? EditApplied;
 
     /// <summary>Gets the read-only store of the published copies, for ray, overlap and pose queries.</summary>
     public ConstructStore Store => _set.Store;
@@ -51,8 +60,7 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
         if (part.PartIndex == 0)
         {
             DropTransfer(id);
-            _set.Remove(id);
-            Changed?.Invoke(id);
+            Withdraw(id);
             _transfers[id] = new Transfer(part.Header, part.PartCount, time.GetTimestamp());
         }
 
@@ -93,6 +101,7 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
 
         DropTransfer(id);
         _resync.Remove(id);
+        StatePublished?.Invoke(id);
         Changed?.Invoke(id);
         return true;
     }
@@ -115,6 +124,7 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
             if (_set.TryGet(reparent.Entity, out var target)
                 && target.TryReparent(reparent.NewParent, reparent.NewParentSeq, reparent.LocalPosition, reparent.LocalRotation))
             {
+                EditApplied?.Invoke(message.Operation, message.ConstructChanges);
                 Changed?.Invoke(reparent.Entity);
                 return true;
             }
@@ -187,6 +197,7 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
             }
         }
 
+        EditApplied?.Invoke(message.Operation, message.ConstructChanges);
         Changed?.Invoke(id);
         return true;
     }
@@ -197,10 +208,7 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
     {
         DropTransfer(id);
         _resync.Remove(id);
-        if (_set.Remove(id))
-        {
-            Changed?.Invoke(id);
-        }
+        Withdraw(id);
     }
 
     /// <summary>Releases all session data.</summary>
@@ -297,6 +305,15 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
 
     /// <inheritdoc />
     public BlockState GetBlock(EntityId id, CellPos cell) => TryGetConstruct(id, out var value) ? value.GetBlock(cell) : default;
+
+    private void Withdraw(EntityId id)
+    {
+        if (_set.Remove(id))
+        {
+            StateWithdrawn?.Invoke(id);
+            Changed?.Invoke(id);
+        }
+    }
 
     private static bool IsNewer(uint value, uint previous) => unchecked((int)(value - previous)) > 0;
 

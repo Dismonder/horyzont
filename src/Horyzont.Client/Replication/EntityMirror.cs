@@ -24,8 +24,17 @@ public sealed class EntityMirror : IFullSnapshotSink
     /// <summary>Raised once per entity when parked samples overflow; the owner sends a resynchronisation request.</summary>
     public event Action<EntityId>? ResyncNeeded;
 
+    /// <summary>Raised after an entity was spawned or its spawn repeated (respawn, resync); views create or refresh their node.</summary>
+    public event Action<EntitySpawn>? Spawned;
+
+    /// <summary>Raised after an entity left the mirror; views free their node.</summary>
+    public event Action<EntityId>? Despawned;
+
     /// <summary>Gets the number of known entities.</summary>
     public int Count => _ids.Count;
+
+    /// <summary>Gets the known entities in identifier order.</summary>
+    public IReadOnlyList<EntityId> Ids => _ids;
 
     /// <summary>Gets the number of samples parked for entities (bounded by <see cref="MaxParkedSamples"/> each).</summary>
     public int ParkedSamples
@@ -58,6 +67,7 @@ public sealed class EntityMirror : IFullSnapshotSink
                 _entities[spawn.Entity] = spawn;
                 _resync.Remove(spawn.Entity);
                 Replay(spawn.Entity);
+                Spawned?.Invoke(_entities[spawn.Entity]);
                 break;
             case EntityDespawn despawn:
                 Remove(despawn.Entity);
@@ -135,10 +145,15 @@ public sealed class EntityMirror : IFullSnapshotSink
     /// <summary>Clears a disconnected session.</summary>
     public void Clear()
     {
+        var ids = _ids.ToArray();
         _entities.Clear();
         _ids.Clear();
         _parked.Clear();
         _resync.Clear();
+        foreach (var id in ids)
+        {
+            Despawned?.Invoke(id);
+        }
     }
 
     private static bool IsOlder(uint value, uint known) => unchecked((int)(value - known)) < 0;
@@ -148,6 +163,7 @@ public sealed class EntityMirror : IFullSnapshotSink
         if (_entities.Remove(id))
         {
             _ids.Remove(id);
+            Despawned?.Invoke(id);
         }
 
         _parked.Remove(id);

@@ -61,7 +61,10 @@ public sealed class ServerCharactersBinder : IServerTickParticipant, IServerPlay
     /// <summary>Gets the characters once the world has started; null before.</summary>
     public ServerCharacters? Characters => _characters;
 
-    /// <summary>Gets the sender of the own-state snapshots once the world has started; null before.</summary>
+    /// <summary>
+    /// Gets the retired K2 own-state sender once the world has started; null before. It is no longer called (K3-15 replaced it with
+    /// <c>EntityReplication</c>, so there is exactly one snapshot per recipient and tick); the type stays for its unit tests.
+    /// </summary>
     public OwnStateSender? Sender => _sender;
 
     /// <summary>Registers the binder as the tick participant and the player observer of a server runtime.</summary>
@@ -79,8 +82,8 @@ public sealed class ServerCharactersBinder : IServerTickParticipant, IServerPlay
     {
         ArgumentNullException.ThrowIfNull(runtime);
         var characters = Ensure(runtime);
+        // K3-15: the movement step runs first; EntityReplication (registered after this binder) sends the snapshots.
         characters.Step(runtime.State.CurrentTick);
-        _sender!.Send(runtime.State.CurrentTick);
     }
 
     /// <inheritdoc />
