@@ -669,6 +669,7 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         if (_dev is { IsActive: true })
         {
             rig.Apply(planet.Id, _dev.Position, _dev.Direction, _dev.Up, teleport);
+            FollowViewers(planet, _dev.Position, body.Feet);
             return;
         }
 
