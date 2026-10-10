@@ -153,7 +153,7 @@ Fixture xUnit: `FakeTimeProvider`, `InMemoryTransport`, 60 Hz fizyki/20 Hz stan�
 - [x] 1. RED: brak API; GREEN: Client 173/173, interpolacja/ring/clock i 0 B w gorących ścieżkach. Testy czyste prezentacji i ringów, następnie implementacja; mały commit Conventional Commits po zielonym kroku.
 - [x] 2. GREEN: Client 177/177; replay 1..128, pauza/ACK i pełny sink z resetem sesji. Testy replay/pauzy/ACK; adapter pełnej migawki do próbek, bez regresji `Validate(Snapshot, ...)`.
 - [x] 3. RED: brak API; GREEN: Server 124/124; budżet per klient, forced full i 0 B. Testy polityki budżetu, implementacja bez alokacji i API dla K3-15.
-- [ ] 4. Testy Godota, odseparować siatkę/kamerę od kapsuły; zdalny widok tylko wizualny. Sprawdzić FPP/TPP, bieguny i ściany.
+- [x] 4. Testy zapisane przed API, RED kompilacji; build game GREEN 0 ostrzeżeń/błędów, gdUnit NOT RUN. Testy Godota, odseparować siatkę/kamerę od kapsuły; zdalny widok tylko wizualny. Sprawdzić FPP/TPP, bieguny i ściany.
 - [ ] 5. Test łącza, pomiary płynności i alokacji; raport seedów, błędów i niedoborów próbek. Po dwóch nieudanych próbach tego samego testu eskalować z testem i logiem zgodnie z ZASADY pkt 12.
 - [ ] 6. Po scaleniu K3-15 (albo w K3-15, jeśli scala później — X10) powtórzyć scenariusz na prawdziwych migawkach delta/spawn/despawn i sprawdzić actual bytes. Bez tej integracji nie ogłaszać kompletnego odbioru co-op.
 - [ ] 7. Pełne `dotnet build Horyzont.sln`, `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"`, `dotnet format Horyzont.sln --verify-no-changes`, `python tools/engine/build.py smoke`; seryjne gdUnit4 na Windows. Wyniki i ograniczenia do PR; zielone CI po scaleniu.
@@ -170,6 +170,7 @@ Fixture xUnit: `FakeTimeProvider`, `InMemoryTransport`, 60 Hz fizyki/20 Hz stan�
 - wykonawca: GPT-6.1 Sol, przegląd Opus 5.5.
 - Polecenie użytkownika: bez Godota, gdUnit i smoke; testy silnika tylko pisane i kompilowane, wykonanie NOT RUN. Testy .NET per projekt, bez push.
 - K3-15 nie jest w tej bazie; krok 6 integruje pakiet scalany później (X10). Bez zmian Core/protokołu.
+- Cache SDK forka skopiowano z F:/dev/horyzont-k3-00/engine/nuget-local do ignorowanego engine/nuget-local; bez zmian konfiguracji i bez silnika.
 - Zegar zdalny umieszczono w RemoteMotionPolicy; TrySample przyjmuje już opóźniony kursor, 100 ms odejmowane raz.
 
 ## Pułapki
@@ -191,3 +192,4 @@ Warianty domyślne obowiązują przy starcie bez odpowiedzi (README:42); sprzecz
 | P2 | Czy przy dłuższej luce preferujemy zatrzymanie cudzej postaci po 50 ms ekstrapolacji? | Tak; alternatywa: sam hold bez ekstrapolacji, nadal bufor 100 ms |
 | X1 | Czy przyjmujemy K3-00 przed równoległym startem pakietów? | Domyślnie tak: S1–S9 na bramce K2 bez Core/protokołu; alternatywa po odrzuceniu: X10 „integruje pakiet scalany później”, K3-14 krok 6 i K3-16 krok 6 dopiero po scaleniu K3-15 |
 | X3 | Czy przyjmujemy wspólny podział pasma? | Domyślnie migawki 20 480 B/s / 2 300 B, niezawodne wspólne 27 000 B/s / 65 536 B, sterowanie poza budżetem (~2,5 KB/s); alternatywa: strojenie podziału po raporcie actual bytes, limit ≤50 000 B/s, bez osobnego wiadra terenu |
+

@@ -36,6 +36,7 @@ public sealed partial class PlayerBody : CharacterBody3D
     private bool _devFlightAllowed;
     private float _tickSeconds = 1f / 60f;
     private MovementMode _mode = MovementMode.Frozen;
+    private float _visualHeight;
 
     /// <summary>Gets the planet whose frame the body lives in.</summary>
     public PlanetId Planet => _planet;
@@ -77,6 +78,7 @@ public sealed partial class PlayerBody : CharacterBody3D
         _movement = movement;
         _devFlightAllowed = devFlightAllowed;
         _tickSeconds = tickSeconds;
+        _visualHeight = rules.PlayerCapsuleHeight * 0.5f;
         CollisionLayer = 1u << (layer - 1);
         CollisionMask = CollisionLayers.TerrainMask | CollisionLayers.ConstructsMask;
 
@@ -109,13 +111,29 @@ public sealed partial class PlayerBody : CharacterBody3D
         }
     }
 
+    /// <summary>Applies a world-frame correction to the mesh only, leaving capsule, velocity and aim untouched.</summary>
+    /// <param name="positionOffset">Planet-local visual displacement.</param>
+    /// <param name="rotationOffset">Correction multiplied on the left of the body rotation.</param>
+    public void ApplyPresentation(NumVector3 positionOffset, NumQuaternion rotationOffset)
+    {
+        if (GetNodeOrNull<MeshInstance3D>("Visual") is not { } visual)
+        {
+            return;
+        }
+
+        var rotation = NumQuaternion.Normalize(rotationOffset * BodyRotation);
+        var centre = Feet + positionOffset + NumVector3.Transform(NumVector3.UnitY * _visualHeight, rotation);
+        visual.GlobalTransform = new Transform3D(PlanetFrames.ToGodotBasis(_planet, rotation), PlanetFrames.ToGodot(_planet, centre));
+    }
+
     /// <summary>Puts the body at a state without moving through the world: spawn, teleport, a correction by the server.</summary>
     /// <param name="feet">Feet position in the planet frame.</param>
     /// <param name="velocity">Velocity in the planet frame.</param>
     /// <param name="rotation">Normalized body rotation.</param>
     /// <param name="mode">The mode to continue from.</param>
     /// <param name="onFloor">Whether the body stands on the floor.</param>
-    public void Place(NumVector3 feet, NumVector3 velocity, NumQuaternion rotation, MovementMode mode, bool onFloor)
+    /// <param name="resetInterpolation">Whether this is a visible discontinuity rather than a replay placement.</param>
+    public void Place(NumVector3 feet, NumVector3 velocity, NumQuaternion rotation, MovementMode mode, bool onFloor, bool resetInterpolation = true)
     {
         GlobalPosition = PlanetFrames.ToGodot(_planet, feet);
         GlobalBasis = PlanetFrames.ToGodotBasis(_planet, rotation);
@@ -123,7 +141,10 @@ public sealed partial class PlayerBody : CharacterBody3D
         UpDirection = GlobalBasis.Y;
         _mode = mode;
         OnFloor = onFloor;
-        ResetPhysicsInterpolation();
+        if (resetInterpolation)
+        {
+            ResetPhysicsInterpolation();
+        }
     }
 
     /// <summary>Sets the mode without moving the body (the server unfreezes a body this way).</summary>

@@ -45,6 +45,15 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     private readonly PredictionEntry[] _replay = new PredictionEntry[PredictionBuffer.Capacity];
     private readonly PredictedState[] _replayStates = new PredictedState[PredictionBuffer.Capacity];
     private readonly CameraUpSmoother _smoother = new();
+    private readonly PresentationCorrection _presentation = new();
+    private uint _parentSeq;
+    private bool _hasParent;
+    private long _smallCorrections;
+    private long _largeCorrections;
+    private float _maxPresentationOffset;
+    private OwnState _lastCorrection;
+    private float _lastCorrectionPositionError;
+    private float _lastCorrectionVelocityError;
 
     private ClientRuntime? _runtime;
     private ClientNode? _clientNode;
@@ -113,7 +122,16 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     public int Compared { get; private set; }
 
     /// <summary>Gets a description of the latest correction (diagnostics and tests); empty when there was none.</summary>
-    public string LastCorrection { get; private set; } = string.Empty;
+    public string LastCorrection => Corrections == 0 ? string.Empty : string.Create(
+        System.Globalization.CultureInfo.InvariantCulture,
+        $"seq {_lastCorrection.LastProcessedInputSeq}: position error {_lastCorrectionPositionError * 1000f:F2} mm, velocity error {_lastCorrectionVelocityError:F3} m/s, server feet {_lastCorrection.Feet} velocity {_lastCorrection.Velocity}");
+
+    /// <summary>Gets immutable motion counters for tests and the K4 performance gate.</summary>
+    public MotionStatistics Motion => new(_smallCorrections, _largeCorrections, _maxPresentationOffset,
+        RemoteMotion?.SampleUnderruns ?? 0, 0.1);
+
+    /// <summary>Gets or sets the session's remote full-snapshot sink, supplied by composition.</summary>
+    public RemoteMotionSampleAdapter? RemoteMotion { get; set; }
 
     /// <summary>Gets the largest position error (metres) of an acknowledgement that matched.</summary>
     public float MaxAckPositionError { get; private set; }
@@ -273,6 +291,8 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         Corrections = 0;
         Compared = 0;
         MaxAckPositionError = 0f;
+        _smallCorrections = _largeCorrections = 0;
+        _maxPresentationOffset = 0;
     }
 
     /// <inheritdoc />
@@ -357,6 +377,18 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         return MotorInput.Neutral(lastYaw, lastPitch);
     }
 
+    /// <inheritdoc />
+    public override void _Process(double delta)
+    {
+        if (!_connected || _body is null)
+        {
+            return;
+        }
+
+        _presentation.Advance((float)delta);
+        ApplyVisualPresentation(false);
+    }
+
     private static bool OnFloorOf(MovementMode mode) => mode is MovementMode.Walking or MovementMode.Sprinting;
 
     private void StepCharacter(in LocalInputSample sample)
@@ -422,6 +454,19 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
             return;
         }
 
+        var parentChanged = _hasParent && (_planet?.Id != own.Planet || _parentSeq != own.ParentSeq);
+        if (parentChanged)
+        {
+            _buffer!.Clear();
+            _presentation.Reset();
+            if (_planet?.Id != own.Planet)
+            {
+                ReleaseWorld();
+            }
+        }
+
+        _parentSeq = own.ParentSeq;
+        _hasParent = true;
         _serverMode = own.Mode;
         if (_body is null && !CreateBody(own))
         {
@@ -430,13 +475,21 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
 
         var body = _body!;
         var open = WorldReadiness.IsReady && (own.Mode == MovementMode.DevFlying || body.OnFloor || _probe!.TryFindGround(body.GetWorld3D(), own.Feet, GateDepthMeters, out _));
-        if (own.LastProcessedInputSeq == 0 || own.Mode == MovementMode.Frozen || !open)
+        if (own.LastProcessedInputSeq == 0 || own.Mode == MovementMode.Frozen || !open || parentChanged)
         {
             // The server has not moved the body yet (or the terrain under it is not here yet): follow it, do not predict.
             _buffer!.Reconcile(own, _orientation!.Pitch, false);
             body.Place(own.Feet, own.Velocity, own.Rotation, own.Mode, OnFloorOf(own.Mode));
+            _presentation.Reset();
             _snapCamera = true;
             return;
+        }
+
+        var historyCount = _buffer!.CopyUnacknowledged(_replay);
+        var hasHistory = false;
+        for (var i = 0; i < historyCount; i++)
+        {
+            hasHistory |= _replay[i].Seq == own.LastProcessedInputSeq;
         }
 
         var outcome = _buffer!.Reconcile(own, _orientation!.Pitch, OnFloorOf(own.Mode));
@@ -450,10 +503,10 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
             case AckOutcome.Correct:
                 Corrections++;
                 NoteCorrectionWhileFlying();
-                LastCorrection = string.Create(
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    $"seq {own.LastProcessedInputSeq}: position error {_buffer.LastPositionError * 1000f:F2} mm, velocity error {_buffer.LastVelocityError:F3} m/s, client mode {_body!.Mode}, server mode {own.Mode}, unacknowledged {_buffer.Count}, predicted feet {_buffer.LastCompared.Feet} velocity {_buffer.LastCompared.Velocity} floor {_buffer.LastCompared.OnFloor}, server feet {own.Feet} velocity {own.Velocity}");
-                Replay(own);
+                _lastCorrection = own;
+                _lastCorrectionPositionError = _buffer.LastPositionError;
+                _lastCorrectionVelocityError = _buffer.LastVelocityError;
+                Replay(own, !hasHistory);
                 break;
             default:
                 break;
@@ -473,16 +526,19 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         Notice = "serwer nie pozwala na lot";
     }
 
-    private void Replay(OwnState own)
+    private void Replay(OwnState own, bool discontinuity)
     {
         var body = _body!;
+        var before = Capture(body, _orientation!.Pitch);
         var count = _buffer!.CopyUnacknowledged(_replay);
-        body.Place(own.Feet, own.Velocity, own.Rotation, own.Mode, OnFloorOf(own.Mode));
+        body.Place(own.Feet, own.Velocity, own.Rotation, own.Mode, OnFloorOf(own.Mode), false);
         if (_buffer.IsPaused)
         {
             // With no input progress, follow the latest server tick, including its neutral steps.
             // Keep the history for recovery, but do not advance a paused body by replaying it.
+            _presentation.Reset();
             _snapCamera = true;
+            _largeCorrections++;
             return;
         }
 
@@ -497,7 +553,18 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         }
 
         _buffer.ReplaceUnacknowledgedStates(_replayStates.AsSpan(0, count));
-        _snapCamera = true;
+        _presentation.Reconcile(before, Capture(body, _orientation.Pitch), discontinuity);
+        _snapCamera |= _presentation.Snapped;
+        if (_presentation.Snapped)
+        {
+            body.ResetPhysicsInterpolation();
+            _largeCorrections++;
+        }
+        else
+        {
+            _smallCorrections++;
+            _maxPresentationOffset = MathF.Max(_maxPresentationOffset, _presentation.PositionOffset.Length());
+        }
     }
 
     private bool CreateBody(OwnState own)
@@ -514,6 +581,7 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         var body = PlayerBody.Instantiate();
         body.Configure(_planet, _rules, _movement, _devAllowed, CollisionLayers.ClientBodies, _tickSeconds);
         body.Name = "OwnBody";
+        body.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off;
         AddChild(body);
         body.Place(own.Feet, own.Velocity, own.Rotation, own.Mode, OnFloorOf(own.Mode));
         _body = body;
@@ -561,13 +629,11 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
 
         NumVector3 origin;
         NumVector3 direction;
-        NumVector3 cameraUp;
         if (devCameraActive)
         {
             _cameraMode = CameraMode.DevFree;
             origin = _dev!.Position;
             direction = _dev.Direction;
-            cameraUp = _dev.Up;
         }
         else
         {
@@ -575,12 +641,11 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
             var pose = CameraRigMath.Compute(feet, orientation.BodyRotation, orientation.Pitch, _smoother.Up, _cameraMode, TppOffsets.Default, _rules);
             origin = _cameraMode == CameraMode.ThirdPerson ? rig.ResolveArm(planet.Id, Eye, pose.Origin) : pose.Origin;
             direction = pose.Direction;
-            cameraUp = _smoother.Up;
         }
 
         _cameraOrigin = origin;
         _cameraDirection = direction;
-        rig.Apply(planet.Id, origin, direction, cameraUp, _snapCamera);
+        ApplyVisualPresentation(_snapCamera);
         body.SetVisualVisible(_cameraMode == CameraMode.ThirdPerson);
         if (_snapCamera)
         {
@@ -592,7 +657,27 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
             _monitor!.Observe(origin, direction, MathF.Abs(sample.MouseYaw) + MathF.Abs(sample.MousePitch));
         }
 
-        FollowViewers(planet, origin, feet);
+    }
+
+    private void ApplyVisualPresentation(bool teleport)
+    {
+        var body = _body!;
+        var rig = _rig!;
+        var planet = _planet!;
+        body.ApplyPresentation(_presentation.PositionOffset, _presentation.RotationOffset);
+        rig.Camera.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off;
+        if (_dev is { IsActive: true })
+        {
+            rig.Apply(planet.Id, _dev.Position, _dev.Direction, _dev.Up, teleport);
+            return;
+        }
+
+        var rotation = NumQuaternion.Normalize(_presentation.RotationOffset * _orientation!.BodyRotation);
+        var pose = CameraRigMath.Compute(body.Feet + _presentation.PositionOffset, rotation, _orientation.Pitch,
+            _smoother.Up, _cameraMode, TppOffsets.Default, _rules);
+        var origin = rig.ResolvePresentation(planet.Id, Eye, pose.Origin);
+        rig.Apply(planet.Id, origin, pose.Direction, _smoother.Up, teleport);
+        FollowViewers(planet, origin, body.Feet);
     }
 
     private void FollowViewers(PlanetParams planet, NumVector3 cameraOrigin, NumVector3 feet)
@@ -649,6 +734,8 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
 
     private void ReleaseWorld()
     {
+        _presentation.Reset();
+        _hasParent = false;
         foreach (var viewer in new[] { _visualViewer, _collisionViewer })
         {
             if (viewer is not null && IsInstanceValid(viewer))
