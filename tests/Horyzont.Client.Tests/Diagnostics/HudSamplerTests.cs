@@ -1,4 +1,5 @@
 using Horyzont.Client.Diagnostics;
+
 using Microsoft.Extensions.Time.Testing;
 
 namespace Horyzont.Client.Tests.Diagnostics;

@@ -29,6 +29,8 @@ internal sealed class RigClient : IClientGameHooks
 
     public List<IntentReply> Replies { get; } = [];
 
+    public List<Message> Messages { get; } = [];
+
     public List<DisconnectCode> Disconnections { get; } = [];
 
     public List<HandshakeRejectCode> Rejections { get; } = [];
@@ -44,7 +46,10 @@ internal sealed class RigClient : IClientGameHooks
         if (message is IntentReply reply)
         {
             Replies.Add(reply);
+            return;
         }
+
+        Messages.Add(message);
     }
 
     public void OnDisconnected(DisconnectCode code) => Disconnections.Add(code);

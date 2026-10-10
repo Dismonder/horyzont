@@ -38,6 +38,6 @@ public sealed class ServerStatusCodecTests
         byte[] frame = writer.WrittenSpan.ToArray();
         frame[2] = 2;
         Assert.Throws<ProtocolViolationException>(() => MessageCodec.Read(frame));
-        Assert.Throws<ProtocolViolationException>(() => MessageCodec.Read(new byte[] {21, 1}));
+        Assert.Throws<ProtocolViolationException>(() => MessageCodec.Read(new byte[] { 21, 1 }));
     }
 }
