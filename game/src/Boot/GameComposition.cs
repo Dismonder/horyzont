@@ -156,9 +156,6 @@ public sealed partial class GameComposition
     /// <summary>Gets the result of the latest world start of the server; null in client mode and before the start has completed.</summary>
     public WorldStartResult? LastWorldStartResult { get; private set; }
 
-    /// <summary>Raised on the main thread when <c>Server.StartAsync</c> has returned, before the result is acted on (the menu shows it).</summary>
-    public event Action<WorldStartResult>? WorldStartCompleted;
-
     /// <summary>Gets the exit code of the process; valid once <see cref="IsFinished"/>.</summary>
     public int ExitCode => Server is null ? _clientExitCode : Server.ExitCode != 0 ? Server.ExitCode : _failureExitCode;
 
@@ -669,7 +666,6 @@ public sealed partial class GameComposition
 
         var result = await Server!.StartAsync(ct).ConfigureAwait(true);
         LastWorldStartResult = result;
-        WorldStartCompleted?.Invoke(result);
         var world = _worldId.ToString("D");
         switch (result)
         {
