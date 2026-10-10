@@ -40,6 +40,12 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
     /// <summary>Gets the known entities in identifier order.</summary>
     public IReadOnlyList<EntityId> Ids => _ids;
 
+    /// <summary>
+    /// Gets the number of samples applied although their frame differs from the known frame of the same parent counter (K5-20
+    /// diagnostic; the acceptance tests require zero: a parent counter names exactly one frame).
+    /// </summary>
+    public int WrongFrameApplied { get; private set; }
+
     /// <summary>Gets the number of samples parked for entities (bounded by <see cref="MaxParkedSamples"/> each).</summary>
     public int ParkedSamples
     {
@@ -147,6 +153,22 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
 
         frame = default;
         state = default;
+        return false;
+    }
+
+    /// <summary>Looks up the kind of a spawned entity, without allocating.</summary>
+    /// <param name="id">Entity.</param>
+    /// <param name="kind">Receives the kind.</param>
+    /// <returns>Whether known.</returns>
+    public bool TryGetKind(EntityId id, out EntityKind kind)
+    {
+        if (_entities.TryGetValue(id, out var spawn))
+        {
+            kind = spawn.Kind;
+            return true;
+        }
+
+        kind = default;
         return false;
     }
 
@@ -265,6 +287,7 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
         {
             if (known.State.ParentSeq == sample.State.ParentSeq)
             {
+                CountWrongFrame(known.Frame, sample.Frame);
                 _poses[id] = new Pose(sample.Frame, sample.State with { FrameIndex = 0 });
                 return;
             }
@@ -329,7 +352,16 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
 
         if (latest is { } sampleToApply)
         {
+            CountWrongFrame(known.Frame, sampleToApply.Frame);
             _poses[id] = new Pose(sampleToApply.Frame, sampleToApply.State with { FrameIndex = 0 });
+        }
+    }
+
+    private void CountWrongFrame(SnapshotFrame known, SnapshotFrame sample)
+    {
+        if (known.Frame != sample.Frame)
+        {
+            WrongFrameApplied++;
         }
     }
 
