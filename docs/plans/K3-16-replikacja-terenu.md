@@ -183,7 +183,7 @@ Po K3-00 wszystkie K3-14…18 startują równolegle po swoich zależnościach K2
 
 ## Kroki
 
-- [ ] 0. Rebase na scalone K2 i K3-00; przydziały X4, dispatch S1, szwy S6–S9 i własność X10 są ustalone; sprawdzić kontrakty tej gałęzi.
+- [x] 0. Baza K2 + K3-00 zweryfikowana, czysta w�a�ciwa ga���; rebase niepotrzebny. Rebase na scalone K2 i K3-00; przydziały X4, dispatch S1, szwy S6–S9 i własność X10 są ustalone; sprawdzić kontrakty tej gałęzi.
 - [ ] 1. Pierwszy test serwer + dwa tereny klientów (wymóg spec:352), potem testy cache/manifestu i kodeka. Czerwone testy przed implementacją.
 - [ ] 2. Rozpoznanie adaptera mipmap/reload i pomiar paste/kolizji/render mesh; konkretne API oraz wyniki S5/S6 wpisać do „Odstępstw”. Nie zmieniać zamrożonego korpusu K2.
 - [ ] 3. Nowe komunikaty, walidacja stanów, numeracja i D4; przegląd Core przez Opus przed integracją. Golden roundtrip/fuzzing zielone; fixture X6 i test routera (X5: 24 S→K Loading/InGame; 25 K→S Loading i InGame, `IsGameMessageFromClient`).
