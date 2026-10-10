@@ -43,6 +43,10 @@ public sealed class SteamTransport : ITransport
     }
 
     /// <inheritdoc />
+    /// <remarks>Always true: Steam lingers a closed connection itself and delivers what was queued before the close.</remarks>
+    public bool IsDrained => true;
+
+    /// <inheritdoc />
     public int MaxReliablePayload => ReliableLimit;
 
     /// <inheritdoc />

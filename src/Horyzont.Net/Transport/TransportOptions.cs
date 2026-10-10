@@ -31,4 +31,21 @@ public sealed record TransportOptions
 
     /// <summary>Gets the interval of keep-alive messages.</summary>
     public TimeSpan KeepAlive { get; }
+
+    /// <summary>
+    /// Gets how long a connection closed by <see cref="ITransport.Disconnect"/> may wait for its reliable data to be
+    /// acknowledged before the transport drops it (<see cref="ITransport.IsDrained"/> stays false until then).
+    /// </summary>
+    public TimeSpan CloseTimeout
+    {
+        get;
+        init => field = value > TimeSpan.Zero ? value : throw new ArgumentOutOfRangeException(nameof(value), "CloseTimeout must be positive.");
+    } = TimeSpan.FromSeconds(5);
+
+    /// <summary>Gets how many connections may be closing at once; beyond it the oldest is dropped without waiting.</summary>
+    public int MaxClosingConnections
+    {
+        get;
+        init => field = value > 0 ? value : throw new ArgumentOutOfRangeException(nameof(value), "MaxClosingConnections must be positive.");
+    } = 64;
 }

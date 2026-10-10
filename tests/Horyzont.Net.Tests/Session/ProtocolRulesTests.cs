@@ -318,7 +318,9 @@ public sealed class ProtocolRulesTests
         Assert.True(h.RunUntil(() => client.Session.State == ClientState.Disconnected, TimeSpan.FromSeconds(5)));
         Assert.Equal(DisconnectCode.ProtocolViolation, Assert.Single(client.Hooks.Disconnections).Code);
         Assert.Equal(decodedBefore, client.Session.FramesDecoded);
-        Assert.Equal((player, DisconnectCode.ProtocolViolation), Assert.Single(h.ServerHooks.Left));
+
+        // The server hears Normal for any code a client puts in its Disconnect (E9).
+        Assert.Equal((player, DisconnectCode.Normal), Assert.Single(h.ServerHooks.Left));
     }
 
     [Fact]
@@ -333,7 +335,7 @@ public sealed class ProtocolRulesTests
 
         Assert.Equal(DisconnectCode.ProtocolViolation, Assert.Single(client.Hooks.Disconnections).Code);
         Assert.True(h.RunUntil(() => h.ServerHooks.Left.Count == 1, TimeSpan.FromSeconds(2)));
-        Assert.Equal(DisconnectCode.ProtocolViolation, h.ServerHooks.Left[0].Reason);
+        Assert.Equal(DisconnectCode.Normal, h.ServerHooks.Left[0].Reason);
     }
 
     [Fact]

@@ -41,6 +41,24 @@ public sealed class CompositeTransport : ITransport
     }
 
     /// <inheritdoc />
+    /// <remarks>True when every inner transport is drained.</remarks>
+    public bool IsDrained
+    {
+        get
+        {
+            foreach (var transport in _inner)
+            {
+                if (!transport.IsDrained)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+    }
+
+    /// <inheritdoc />
     /// <remarks>The smallest limit of the inner transports.</remarks>
     public int MaxReliablePayload
     {

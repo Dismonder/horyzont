@@ -195,6 +195,12 @@ public sealed class ServerSession
         return false;
     }
 
+    /// <summary>Returns the transport endpoint of a connected player (a host tells its local player from remote ones with it).</summary>
+    /// <param name="player">The player.</param>
+    /// <returns>The remote endpoint, or null for a player that is not connected.</returns>
+    public TransportEndpoint? GetEndpoint(PlayerId player) =>
+        _byPlayer.TryGetValue(player, out var peer) ? _transport.GetRemoteEndpoint(peer.Connection) : null;
+
     /// <summary>Returns the round-trip time of a player's connection reported by the transport.</summary>
     /// <param name="player">The player.</param>
     /// <returns>The round-trip time, or zero for an unknown player.</returns>
@@ -292,6 +298,14 @@ public sealed class ServerSession
             return;
         }
 
+        // A shutting-down server refuses every newcomer with the shutdown code, whatever the admission bound says (E8).
+        if (_shuttingDown)
+        {
+            _transport.Send(connection, TransportChannel.ReliableOrdered, EncodeFrame(new Disconnect(_shutdownCode)));
+            _refused.Add(connection);
+            return;
+        }
+
         // Admission before any per-connection state: joined peers are bounded by MaxPlayers, the rest by
         // MaxPendingConnections (K1-07 review F2).
         if (_peers.Count - _byPlayer.Count >= _options.MaxPendingConnections)
@@ -304,10 +318,6 @@ public sealed class ServerSession
         var peer = new Peer(connection, _options, _now);
         _byConnection.Add(connection.Value, peer);
         _peers.Add(peer);
-        if (_shuttingDown)
-        {
-            BeginClose(peer, _shutdownCode, sendMessage: true);
-        }
     }
 
     private void OnDisconnected(ConnectionId connection, TransportDisconnectReason reason)
@@ -320,12 +330,9 @@ public sealed class ServerSession
         Remove(peer);
         if (peer.IsJoined)
         {
-            var code = reason switch
-            {
-                TransportDisconnectReason.Local => peer.LocalCode,
-                TransportDisconnectReason.Remote => peer.RemoteCode ?? DisconnectCode.Normal,
-                _ => DisconnectCode.Timeout,
-            };
+            // A joined peer is never Closing here, so this side did not close it: either the other side did (Normal, its own
+            // code arrives only in a Disconnect message, handled in Dispatch) or the link died.
+            var code = reason == TransportDisconnectReason.Remote ? DisconnectCode.Normal : DisconnectCode.Timeout;
             peer.State = PeerState.Closing;
             LeaveGame(peer, code);
         }
@@ -466,8 +473,13 @@ public sealed class ServerSession
                 SendMessage(peer, new Pong(ping.ClientTimeMicros, _currentTick));
                 break;
             case Disconnect disconnect:
-                peer.RemoteCode = disconnect.Code;
-                BeginClose(peer, disconnect.Code, sendMessage: false);
+                // The game hears Normal whatever the client claims: Kicked, HostLeft and ServerShutdown are codes of this side (E9).
+                if (disconnect.Code != DisconnectCode.Normal)
+                {
+                    _logger.ForeignDisconnectCode(peer.Player.Value, peer.Connection.Value, disconnect.Code);
+                }
+
+                BeginClose(peer, DisconnectCode.Normal, sendMessage: false);
                 break;
             default:
                 // TerrainCacheReport, TerrainChecksums, SnapshotAck: MessageRouter admitted nothing else.
@@ -500,7 +512,15 @@ public sealed class ServerSession
         _byPlayer.Add(player, peer);
         _joinedIdentities.Add(hello.Identity);
         _logger.PlayerJoined(player.Value, peer.Connection.Value);
-        SendMessage(peer, _hooks.CreateHello(player));
+
+        // The peer already owns the player, so a throw below closes it through OnPlayerLeft instead of leaving a ghost (E4).
+        var serverHello = _hooks.CreateHello(player);
+        if (serverHello.YourPlayer != player)
+        {
+            throw new InvalidOperationException($"CreateHello returned a hello for player {serverHello.YourPlayer.Value}, not {player.Value}.");
+        }
+
+        SendMessage(peer, serverHello);
     }
 
     private void Reject(Peer peer, HandshakeRejectCode code)

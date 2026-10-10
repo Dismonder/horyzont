@@ -67,4 +67,7 @@ public enum RejectReason : byte
 
     /// <summary>The target is not on the player's planet.</summary>
     WrongPlanet = 20,
+
+    /// <summary>The server is in safe mode (a write error or an unreplayable journal tail) and changes nothing; K2-10.</summary>
+    ServerReadOnly = 21,
 }

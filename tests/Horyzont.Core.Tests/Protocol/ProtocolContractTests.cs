@@ -35,7 +35,7 @@ public sealed class ProtocolContractTests
             (RejectReason.AreaNotLoaded, 8), (RejectReason.BelowCore, 9), (RejectReason.OutsideAtmosphere, 10), (RejectReason.UnknownPlanet, 11),
             (RejectReason.UnknownConstruct, 12), (RejectReason.CellOutOfBounds, 13), (RejectReason.CellOccupied, 14), (RejectReason.CellEmpty, 15),
             (RejectReason.UnknownBlockType, 16), (RejectReason.UnknownMaterial, 17), (RejectReason.IntersectsPlayer, 18),
-            (RejectReason.NoLineOfSight, 19), (RejectReason.WrongPlanet, 20));
+            (RejectReason.NoLineOfSight, 19), (RejectReason.WrongPlanet, 20), (RejectReason.ServerReadOnly, 21));
         AssertValues((MessageType.ClientHello, 1), (MessageType.ServerHello, 2), (MessageType.HandshakeReject, 3), (MessageType.ClientReady, 4),
             (MessageType.TerrainCacheReport, 5), (MessageType.TerrainBlockData, 6), (MessageType.TerrainChecksums, 7), (MessageType.ConstructState, 8),
             (MessageType.ConstructRemoved, 9), (MessageType.OperationApplied, 10), (MessageType.IntentSubmit, 11), (MessageType.IntentReply, 12),
@@ -63,10 +63,31 @@ public sealed class ProtocolContractTests
             (InputButtons.Secondary, 16));
     }
 
+    /// <summary>
+    /// K2-10 adds reject reason 21 and raises the protocol version from 1 to 2 (gate decision D4: the value on main plus one; K2-11
+    /// raises it to 3). A rebase onto a newer main updates this value, the constant and the K2-10 plan together.
+    /// </summary>
+    [Fact]
+    public void RejectReason_ServerReadOnly_RoundTripsAndProtocolVersionIsTwo()
+    {
+        var reply = new IntentReply(7, RejectReason.ServerReadOnly, OpId.None);
+        var writer = new ByteWriter();
+
+        MessageCodec.Write(writer, reply);
+        var decoded = MessageCodec.Read(writer.WrittenSpan);
+
+        Assert.Equal(reply, decoded);
+        Assert.Equal(21, (byte)RejectReason.ServerReadOnly);
+        Assert.Equal(2, ProtocolConstants.ProtocolVersion);
+        var beyond = writer.WrittenSpan.ToArray();
+        beyond[^2] = 22;
+        Assert.Throws<ProtocolViolationException>(() => MessageCodec.Read(beyond));
+    }
+
     [Fact]
     public void Constants_GoldenValues()
     {
-        Assert.Equal(1, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(2, ProtocolConstants.ProtocolVersion);
         Assert.Equal(262144, ProtocolConstants.MaxReliableMessageBytes);
         Assert.Equal(1150, ProtocolConstants.MaxUnreliableMessageBytes);
         Assert.Equal(32, ProtocolConstants.MaxDisplayNameBytes);

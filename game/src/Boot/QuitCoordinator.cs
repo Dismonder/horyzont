@@ -1,0 +1,213 @@
+using System.Runtime.InteropServices;
+
+using Godot;
+
+using Microsoft.Extensions.Logging;
+
+namespace Horyzont.Game.Boot;
+
+/// <summary>
+/// The single way out of the game: a closed window, SIGINT/SIGTERM/SIGQUIT, the console command <c>stop</c> and the host leaving
+/// all end in the same canonical shutdown (ZASADY, point 7), after which the tree quits with the exit code of the process.
+/// A signal only sets a flag (signals run on a thread pool thread); the shutdown starts on the main thread in the next frame.
+/// Further requests during the shutdown are ignored with a log line. Only the third SIGINT (Ctrl+C) ends the process at once
+/// (exit code 130; the journal is durable every 100 ms): SIGTERM, SIGQUIT (CTRL_BREAK) and a closed window never force the exit,
+/// so a service manager or a console closing cannot cut the canonical shutdown short.
+/// </summary>
+public sealed partial class QuitCoordinator : Node
+{
+    private readonly List<PosixSignalRegistration> _registrations = [];
+    private Action? _requestShutdown;
+    private Func<bool>? _isFinished;
+    private Func<int>? _exitCode;
+    private Func<bool>? _cleanup;
+    private TimeProvider _time = TimeProvider.System;
+    private TimeSpan _cleanupTimeout = TimeSpan.FromSeconds(5);
+    private long _cleanupStarted;
+    private bool _cleanupBegun;
+    private ILogger<QuitCoordinator>? _logger;
+    private bool _registerSignals;
+    private int _stopRequested;
+    private int _requests;
+    private int _interrupts;
+    private Action<int> _forceExit = System.Environment.Exit;
+    private bool _shutdownStarted;
+    private bool _quitting;
+
+    /// <summary>Gives the node its dependencies.</summary>
+    /// <param name="requestShutdown">Starts the canonical shutdown of the process (server: <c>RequestShutdown</c>; client: disconnect).</param>
+    /// <param name="isFinished">True when the shutdown is complete and the process may exit.</param>
+    /// <param name="exitCode">Exit code of the process, read when the shutdown is complete.</param>
+    /// <param name="cleanup">
+    /// Last cleanup before the tree quits (local client of a host, client transport); may be null. Called once per frame until it
+    /// returns true, so slow work can run on a worker thread; the coordinator quits anyway after <paramref name="cleanupTimeout"/>.
+    /// </param>
+    /// <param name="registerSignals">Whether to react to process signals.</param>
+    /// <param name="logger">Logger.</param>
+    /// <param name="time">Clock of the cleanup deadline; the system clock when null.</param>
+    /// <param name="cleanupTimeout">Longest wait for the cleanup; five seconds when null.</param>
+    public void Initialize(
+        Action requestShutdown, Func<bool> isFinished, Func<int> exitCode, Func<bool>? cleanup, bool registerSignals, ILogger<QuitCoordinator> logger,
+        TimeProvider? time = null, TimeSpan? cleanupTimeout = null)
+    {
+        ArgumentNullException.ThrowIfNull(requestShutdown);
+        ArgumentNullException.ThrowIfNull(isFinished);
+        ArgumentNullException.ThrowIfNull(exitCode);
+        ArgumentNullException.ThrowIfNull(logger);
+        _requestShutdown = requestShutdown;
+        _isFinished = isFinished;
+        _exitCode = exitCode;
+        _cleanup = cleanup;
+        _time = time ?? TimeProvider.System;
+        _cleanupTimeout = cleanupTimeout ?? TimeSpan.FromSeconds(5);
+        _registerSignals = registerSignals;
+        _logger = logger;
+    }
+
+    /// <summary>Asks for the shutdown; safe to call from any thread (it only sets a flag).</summary>
+    public void RequestStop() => Volatile.Write(ref _stopRequested, 1);
+
+    /// <inheritdoc />
+    public override void _Ready()
+    {
+        if (_requestShutdown is null)
+        {
+            throw new InvalidOperationException("QuitCoordinator.Initialize was not called before the node entered the tree.");
+        }
+
+        GetTree().AutoAcceptQuit = false;
+        if (_registerSignals)
+        {
+            foreach (var signal in new[] { PosixSignal.SIGINT, PosixSignal.SIGTERM, PosixSignal.SIGQUIT })
+            {
+                _registrations.Add(PosixSignalRegistration.Create(signal, OnSignal));
+            }
+
+            QuitLog.SignalsRegistered(_logger!, _registrations.Count);
+        }
+    }
+
+    /// <inheritdoc />
+    public override void _ExitTree()
+    {
+        foreach (var registration in _registrations)
+        {
+            registration.Dispose();
+        }
+
+        _registrations.Clear();
+    }
+
+    /// <inheritdoc />
+    public override void _Notification(int what)
+    {
+        if (what == NotificationWMCloseRequest)
+        {
+            RequestStop();
+        }
+    }
+
+    /// <inheritdoc />
+    public override void _Process(double delta)
+    {
+        if (_quitting)
+        {
+            return;
+        }
+
+        if (Advance())
+        {
+            _quitting = true;
+            GetTree().Quit(_exitCode!());
+        }
+    }
+
+    /// <summary>One frame of the coordinator: starts the shutdown when asked and runs the cleanup once the shutdown is complete.</summary>
+    /// <returns>True when the process may quit now.</returns>
+    internal bool Advance()
+    {
+        if (Volatile.Read(ref _stopRequested) == 1 && !_shutdownStarted)
+        {
+            _shutdownStarted = true;
+            QuitLog.StopRequested(_logger!);
+            _requestShutdown!();
+        }
+
+        if (!_isFinished!())
+        {
+            return false;
+        }
+
+        if (_cleanup is null)
+        {
+            return true;
+        }
+
+        if (!_cleanupBegun)
+        {
+            _cleanupBegun = true;
+            _cleanupStarted = _time.GetTimestamp();
+        }
+
+        if (_cleanup())
+        {
+            return true;
+        }
+
+        if (_time.GetElapsedTime(_cleanupStarted) < _cleanupTimeout)
+        {
+            return false;
+        }
+
+        QuitLog.CleanupTimedOut(_logger!);
+        return true;
+    }
+
+    /// <summary>Replaces the hard exit of the third SIGINT (tests).</summary>
+    /// <param name="forceExit">Called with the exit code instead of ending the process.</param>
+    internal void UseForceExit(Action<int> forceExit) => _forceExit = forceExit;
+
+    /// <summary>Handles one process signal; runs on a thread pool thread: only flags, the log and the hard exit of the third SIGINT.</summary>
+    /// <param name="signal">The signal.</param>
+    internal void HandleSignal(PosixSignal signal)
+    {
+        var interrupts = signal == PosixSignal.SIGINT ? Interlocked.Increment(ref _interrupts) : 0;
+        if (Interlocked.Increment(ref _requests) == 1)
+        {
+            QuitLog.SignalReceived(_logger!, signal);
+            RequestStop();
+        }
+        else if (interrupts >= 3)
+        {
+            _forceExit(130);
+        }
+        else
+        {
+            QuitLog.SecondRequestIgnored(_logger!, signal);
+        }
+    }
+
+    private void OnSignal(PosixSignalContext context)
+    {
+        context.Cancel = true;
+        HandleSignal(context.Signal);
+    }
+}
+
+internal static partial class QuitLog
+{
+    [LoggerMessage(EventId = 9001, Level = LogLevel.Information, Message = "stop requested; starting the shutdown")]
+    internal static partial void StopRequested(ILogger logger);
+
+    [LoggerMessage(EventId = 9004, Level = LogLevel.Information, Message = "listening for {Count} process signals")]
+    internal static partial void SignalsRegistered(ILogger logger, int count);
+
+    [LoggerMessage(EventId = 9002, Level = LogLevel.Information, Message = "received {Signal}; stopping")]
+    internal static partial void SignalReceived(ILogger logger, PosixSignal signal);
+
+    [LoggerMessage(EventId = 9005, Level = LogLevel.Warning, Message = "the final cleanup did not finish in time; quitting anyway")]
+    internal static partial void CleanupTimedOut(ILogger logger);
+
+    [LoggerMessage(EventId = 9003, Level = LogLevel.Warning, Message = "received {Signal} while stopping; ignored (a third Ctrl+C ends the process at once)")]
+    internal static partial void SecondRequestIgnored(ILogger logger, PosixSignal signal);
+}

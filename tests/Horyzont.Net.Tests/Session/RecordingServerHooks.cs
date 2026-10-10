@@ -25,6 +25,9 @@ public sealed class RecordingServerHooks : IServerGameHooks
     /// <summary>When true, <see cref="OnPlayerLeft"/> records the call and then throws.</summary>
     public bool ThrowOnLeft { get; set; }
 
+    /// <summary>When set, <see cref="CreateHello"/> builds the hello for the returned player instead (a hook breaking its contract).</summary>
+    public Func<PlayerId, PlayerId>? HelloPlayer { get; set; }
+
     public PlayerId OnPlayerJoining(PlatformIdentity identity, string displayName)
     {
         var player = new PlayerId(_nextPlayer++);
@@ -36,7 +39,7 @@ public sealed class RecordingServerHooks : IServerGameHooks
     public ServerHello CreateHello(PlayerId player)
     {
         Calls.Add("CreateHello");
-        return SessionHarness.HelloFor(player);
+        return SessionHarness.HelloFor(HelloPlayer?.Invoke(player) ?? player);
     }
 
     public void OnPlayerReady(PlayerId player)

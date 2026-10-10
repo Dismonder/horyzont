@@ -277,7 +277,7 @@ public static class MessageCodec
 
             case IntentReply ir:
                 w.WriteVarUInt(ir.ClientSeq);
-                if (ir.Reason < RejectReason.None || ir.Reason > RejectReason.WrongPlanet)
+                if (ir.Reason < RejectReason.None || ir.Reason > RejectReason.ServerReadOnly)
                 {
                     throw new ArgumentException($"Invalid RejectReason {(byte)ir.Reason}.", nameof(message));
                 }
@@ -598,7 +598,7 @@ public static class MessageCodec
             case MessageType.IntentReply:
                 uint irSeq = r.ReadVarUInt32();
                 byte reasonByte = r.ReadByte();
-                if (reasonByte > (byte)RejectReason.WrongPlanet)
+                if (reasonByte > (byte)RejectReason.ServerReadOnly)
                 {
                     throw new ProtocolViolationException($"Unknown reject reason {reasonByte}.");
                 }

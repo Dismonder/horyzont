@@ -492,22 +492,22 @@ Na Linuksie uruchamia wyeksportowany build z presetu `server-linux` (`template-l
 
 ## Kroki
 
-- [ ] 0. Warunki wejścia sprawdzone; rzeczywiste nazwy z K2-08/K2-09 i nazwa kolekcji B1 wpisane do „Odstępstw”; E1/E2 zamknięte w K2-09.
-- [ ] 1. E3 (writer) i E9, E8, E4 (sesja): testy z tabeli E3–E9 czerwone → poprawki → zielone.
-- [ ] 2. E6 (`ITransport.IsDrained` we wszystkich implementacjach) i E7 (termin i limit zamykania UDP): testy → kod → zielone.
-- [ ] 3. Projekty `Horyzont.Server`, `Horyzont.Client`, `Horyzont.Server.Tests`, `Horyzont.Client.Tests` w `Horyzont.sln`; `LayeringTests`; `FakeServerTerrain`.
-- [ ] 4. `RejectReason.ServerReadOnly`, `ProtocolVersion` 1 → 2 według reguły D4, test kodeka (przegląd Opus 5.5 w świeżej sesji).
-- [ ] 5. `GameServerHooks` (E5, lekcja 3c, tryb bezpieczny) z testami.
-- [ ] 6. `IServerTerrainFactory`, `ServerRuntime`: start (teren z wczytanego stanu, wersja semantyki, tryb bezpieczny bez zapisu, `DiscardJournalTail`), `Tick`, checkpointy, zdarzenia writera, `SafeMode`, `Faulted`; testy restartu i awarii (lekcja 2).
-- [ ] 7. `ShutdownSequence` z terminami i krokiem 3a (`OnShutdown`); `CloseAsync() == false` → bez `Close()`; testy kolejności, terminów i hosta (`HostLeft`).
-- [ ] 8. `ServerConfig`/`ServerConfigLoader`, `ConsoleCommandProcessor`, `ConsoleInputPump`, `WorldBackups.RestoreLatest`; testy.
-- [ ] 9. `ClientRuntime`, `IClientSessionListener`; testy.
-- [ ] 10. Rozpoznanie R1–R4; wyniki w „Odstępstwach”.
-- [ ] 11. Godot: `LaunchOptions`, `GameComposition`, `Root.tscn`, `ServerNode`, `ClientNode`, `VoxelServerTerrain`, `VoxelServerTerrainFactory`, `SharedTerrainProvider`, `OwnTerrainProvider`, `GeneratorOnlyBlockSource`, `LocalProfile`, `GodotLoggerProvider`, `QuitCoordinator`, `DedicatedConsole`; `Boot.cs` zachowuje `--smoke`.
-- [ ] 12. Testy Godota z tabeli (host jedna kopia terenu, solo zapis/odczyt, klient, wątki).
-- [ ] 13. `export_presets.cfg` (dopisane `server-windows`, `server-linux`; `windows-release`/`linux-release` z K2-08 bez zmian), `tools/server_smoke.py`, krok w jobie `game` (Windows i Linux).
-- [ ] 14. `ZASADY.md`: reguła wątków (pkt 2) i kolejności zamykania (pkt 7).
-- [ ] 15. Pełne `dotnet build Horyzont.sln`, `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"`, `dotnet format Horyzont.sln --verify-no-changes`, `python tools/engine/build.py smoke`; zielone CI na gałęzi i po scaleniu na `main` (lekcja 4). Każdy nieodhaczony krok ma wpis „odroczone do X” (lekcja 5).
+- [x] 0. Warunki wejścia sprawdzone; rzeczywiste nazwy z K2-08/K2-09 i nazwa kolekcji B1 wpisane do „Odstępstw”; E1/E2 zamknięte w K2-09.
+- [x] 1. E3 (writer) i E9, E8, E4 (sesja): testy z tabeli E3–E9 czerwone → poprawki → zielone.
+- [x] 2. E6 (`ITransport.IsDrained` we wszystkich implementacjach) i E7 (termin i limit zamykania UDP): testy → kod → zielone.
+- [x] 3. Projekty `Horyzont.Server`, `Horyzont.Client`, `Horyzont.Server.Tests`, `Horyzont.Client.Tests` w `Horyzont.sln`; `LayeringTests`; `FakeServerTerrain`.
+- [x] 4. `RejectReason.ServerReadOnly`, `ProtocolVersion` 1 → 2 według reguły D4, test kodeka (przegląd Opus 5.5 w świeżej sesji).
+- [x] 5. `GameServerHooks` (E5, lekcja 3c, tryb bezpieczny) z testami.
+- [x] 6. `IServerTerrainFactory`, `ServerRuntime`: start (teren z wczytanego stanu, wersja semantyki, tryb bezpieczny bez zapisu, `DiscardJournalTail`), `Tick`, checkpointy, zdarzenia writera, `SafeMode`, `Faulted`; testy restartu i awarii (lekcja 2).
+- [x] 7. `ShutdownSequence` z terminami i krokiem 3a (`OnShutdown`); `CloseAsync() == false` → bez `Close()`; testy kolejności, terminów i hosta (`HostLeft`).
+- [x] 8. `ServerConfig`/`ServerConfigLoader`, `ConsoleCommandProcessor`, `ConsoleInputPump`, `WorldBackups.RestoreLatest`; testy.
+- [x] 9. `ClientRuntime`, `IClientSessionListener`; testy.
+- [x] 10. Rozpoznanie R1–R4; wyniki w „Odstępstwach”.
+- [x] 11. Godot: `LaunchOptions`, `GameComposition`, `Root.tscn`, `ServerNode`, `ClientNode`, `VoxelServerTerrain`, `VoxelServerTerrainFactory`, `SharedTerrainProvider`, `OwnTerrainProvider`, `GeneratorOnlyBlockSource`, `LocalProfile`, `GodotLoggerProvider`, `QuitCoordinator`, `DedicatedConsole`; `Boot.cs` zachowuje `--smoke`.
+- [x] 12. Testy Godota z tabeli (host jedna kopia terenu, solo zapis/odczyt, klient, wątki).
+- [x] 13. `export_presets.cfg` (dopisane `server-windows`, `server-linux`; `windows-release`/`linux-release` z K2-08 bez zmian), `tools/server_smoke.py`, krok w jobie `game` (Windows i Linux).
+- [x] 14. `ZASADY.md`: reguła wątków (pkt 2), kolejności zamykania (pkt 7), composition root i `QuitCoordinator` (część Godot).
+- [ ] 15. (lokalnie wykonane i zielone, zob. „Odstępstwa”; zostaje zielone CI na gałęzi i po scaleniu) Pełne `dotnet build Horyzont.sln`, `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"`, `dotnet format Horyzont.sln --verify-no-changes`, `python tools/engine/build.py smoke`; zielone CI na gałęzi i po scaleniu na `main` (lekcja 4). Każdy nieodhaczony krok ma wpis „odroczone do X” (lekcja 5).
 
 ## Odbiór
 
@@ -520,7 +520,60 @@ Na Linuksie uruchamia wyeksportowany build z presetu `server-linux` (`template-l
 
 ## Odstępstwa i decyzje wykonawcy
 
-(wypełnia wykonawca: nazwy z K2-08/K2-09, wyniki R1–R4, wybór Windows: edytor czy eksport w teście dymnym)
+
+### Wykonanie bez Godota (kroki 1–9, 14 częściowo)
+
+Nazwy rzeczywiste z K2-08/K2-09: kolekcja B1 to `SqlitePools` (`tests/Horyzont.Persistence.Tests/Support/SqlitePools.cs`); `TerrainSemanticsMeta` (`Format`, `Read`, `Write`, `CheckTail` -> `TerrainTailCheck`); `ServerTerrainBlocks` (`CreateCheckpointRequest`, `OnCheckpointCommitted/Failed`, `NeedsEarlyCheckpoint`, `CloseAsync`). `TerrainReplay` i `VoxelTerrainService` jeszcze nie istnieją (baza to K2-09 etap 1; K2-08 nie jest na `main`), więc `IServerTerrainFactory` ukrywa teren za `IServerTerrain`.
+
+Odstępstwa:
+- `IServerTerrainFactory` ma dodatkowo `SemanticsVersion` i `VoxelRef`, a `Create(worldPath, state)`.
+- `WorldStartResult` ma dodatkowy wariant `StartFailed(Message)`; kody wyjścia 0/3/4/70.
+- `ServerRuntimeOptions.Listen` to lista `TransportEndpoint`; dodatkowe pola `LocalClientEndpoint`, `TerrainShutdownTimeout`, `RecoverFromCheckpoint`, `Rules`, `Faults`, `JournalSinkDecorator`.
+- `IsStopped` oznacza zakończoną sekwencję zamykania; `Faulted` pozostaje `Faulted`.
+- `WorldBackups.RestoreLatest` zwraca `null`, gdy brak kopii.
+- `ServerConfig` ma settery (nie `init`): deserializator ze źródeł zeruje brakujące składowe `init`.
+- Dodane `ServerSession.GetEndpoint(PlayerId)` (do `IsLocalPlayer`).
+- E9: `OnPlayerLeft` zawsze słyszy `Normal` przy kodzie `Disconnect` od klienta; dwa istniejące testy `ProtocolRulesTests` zmienione; `HandshakeTests` używają `ProtocolVersion + 1`.
+- `InMemoryTransport.IsDrained` nie liczy keep-alive ani pakietów wstrzymanych partycją.
+- Test E3 wymaga haka `PersistenceWriter.CompleteChannelForTest`.
+- Pierwszy commit testów E3-E9 zawiera zalążki API tylko do kompilacji; testy `ShutdownSequenceTests` i `ServerRuntimeTests` zatwierdzono razem z implementacją.
+- Błąd IO checkpointu psuje writer, więc test `CheckpointFailed` idzie przez tryb bezpieczny i `save`.
+- `HostTests` używają jednego serwerowego `InMemoryTransport` i różnie nazwanych klientów zamiast `CompositeTransport`.
+- Krok 4 (kontrakt chroniony) czeka na przegląd Opus.
+- Poprawki po przeglądzie (1) Krok 8 zamykania (`Dispose` transportu) działa w `Task.Run` i ma termin `TransportDisposeTimeout` (5 s) liczony `TimeProvider`em co klatkę; po terminie ostrzeżenie i zostawienie procesowi (LiteNetLib `Stop(true)` łączy wątek bez limitu). Test: `Shutdown_TransportDisposeBlocks_MainThreadNeverBlocksAndStopCompletesAfterDeadline`.
+- (2) Sprzątanie po nieudanym starcie ma termin `StartCleanupTimeout` (10 s) na każde oczekiwanie (writer, teren); kopia startowa ma termin jak checkpoint startowy. `RequestShutdown` w stanie `Starting` anuluje start (`CancellationTokenSource` powiązany z `ct`), a `StartAsync` zwraca nowy wariant `WorldStartResult.Aborted` (kod 0) po ograniczonym sprzątaniu; wybrano sprzątanie startu zamiast kanonicznej sekwencji, bo nie ma jeszcze sesji ani wpisów do opróżnienia. Testy: `StartAbortTests.*`.
+- (3) Krok 3a (`OnShutdown` uczestników) jest pomijany w trybie bezpiecznym bez writera, zgodnie z planem; poprzedni wyjątek wykonawcy usunięty, oczekiwanie w `Shutdown_ReadOnlyStart_SkipsLeaveCheckpointAndWriter` poprawione.
+- (4) Kod 70 tylko dla kroków zapisu: nowa flaga `ShutdownStep.FailureIsError` (ustawiona dla 3a, 3b, 4, 5, 6; 3a, bo jego wyjątek pomija leave i checkpoint). Wyjątek w kroku 7 (teren) i 8 jest logowany (Error), a kod wyjścia zostaje 0 (plan nie definiuje innego). Test: `Shutdown_TerrainShutdownThrows_IsLoggedButExitCodeStaysZero`.
+- (5) `Shutdown_NoJournalEnqueueAfterFlush` wysyła intencje po kroku 1 i w trakcie opróżniania (łącze 200 ms) i sprawdza, że po zatrzymaniu do dziennika trafiły wyłącznie `PlayerLeaveOp`, a odpowiedzi to `ServerReadOnly`.
+
+### Wykonanie części Godot (kroki 10–14, lokalnie)
+
+Rozpoznanie:
+- R1: w `--headless` `VoxelLodTerrain` z `PlanetTerrainOptions.Server` generuje kolizje (raycast fizyki trafia w teren) i `IsAreaEditable` działa bez renderera (`ModeTests.HeadlessServerTerrain_GeneratesCollisionsWithoutRenderer`). Eksport presetu `server-windows` (`dedicated_server=true`, `export_filter="all_resources"`, `template_release`) uruchamia się i przechodzi `server_smoke.py --export`; zasoby terenu nie wymagają wpisu „keep” (generator jest w kodzie, shader tylko przy renderze).
+- R2: stdin jest wolny dla `Console.In` w Godocie 4.7.2 `--headless` (Windows, edytor i eksport). Godot nie obsługuje SIGTERM/Ctrl+C sam (jego `HandlerRoutine` zwraca FALSE poza debuggerem), więc `PosixSignalRegistration` działa; CTRL_BREAK trafia jako SIGQUIT. Uwaga: `*.console.exe` edytora to nakładka, która ginie od sygnału z kodem 0xC000013A, a kod wyjścia dziecka jest zgubiony, więc test dymny używa binarki bez `.console` (sam podmienia). Linux: VALIDATION_NOT_PERFORMED (brak Linuksa; CI Linux wyłączone decyzją właściciela 2026-10-09).
+- R3: kontynuacje `await` po zadaniu w tle wracają na wątek główny (`ModeTests.Await_AfterWorkerTask_ContinuesOnMainThread`); `ShutdownSequence` i tak sprawdza `IsCompleted` co klatkę.
+- R4: Linux `template-linux-release` bez serwera X: VALIDATION_NOT_PERFORMED (brak Linuksa/runnera; Linux CI wyłączone).
+
+Decyzje i odstępstwa:
+- `Root.tscn` jest dzieckiem sceny `Boot` (nie zastępuje jej): ścieżki to `/root/Boot/Root/Server` i `/root/Boot/Root/Client`; w trybie klienta węzeł `Server` jest zwalniany, w dedykowanym `Client`.
+- `GameEnvironment` (nowy rekord) odcina od `GameComposition` wszystko, co dotyka maszyny (czas, logi, katalogi, stdin, `Print`, `QuitCoordinator`); testy składają tryby tym samym kodem co wiersz poleceń (`LaunchOptions.Parse` + `GameComposition.Create`). `StartAsync(ct, connectClient)` ma parametr dla testów restartu.
+- Dodane opcje wiersza poleceń: `--bind` (host), `--profile`, `--seed`, `--write-default-config`; nieznana opcja kończy proces kodem 2. `ServerConfig.CheckpointInterval` dostał `[JsonIgnore]` (domyślny plik zawierał pole wyliczane).
+- Linia gotowości to `SERVER READY world=<id> state hash=<hex>` (hash stanu po wczytaniu, porównywany ze `Stopped; state hash=` poprzedniego zamknięcia). Stan tylko do odczytu drukuje `SERVER READ-ONLY …`, nie `READY`.
+- `VoxelServerTerrain.ReplayAsync` woła `TerrainReplay` z bieżącą semantyką, bo niezgodność ogona wykrywa wcześniej `ServerRuntime`; wynik niezgodności tam to błąd w kodzie.
+- Test Solo ustawia kinematykę gracza przez `UpdatePlayerKinematics` i dodaje `VoxelViewer` w teście (postać i widzowie dopiero w K2-11); intencja `TerrainToolIntent` idzie przez lokalnego klienta. Testy czekają realnym czasem (limit na oczekiwanie), bo tick węzłów pochodzi z zegara silnika.
+- Test dymny na Windows używa edytora (`--godot`), a także eksportu (`--export`, sprawdzone lokalnie); krok CI uruchamia wariant z edytorem, linia Linux (eksport `server-linux`) jest zakomentowana jak reszta CI Linux. Krok 4 testu (zamknięcie konsoli) na Windows to CTRL_BREAK zamiast CTRL_CLOSE.
+- Katalog `build/` z lokalnego eksportu pozostał (ignorowany przez git; usunięcie czeka na zgodę).
+- Nie ma jeszcze obrazu ani kamery dla solo/host: uruchomienie `--solo` tworzy świat i łączy klienta, ale bez postaci i HUD (K2-11, K3-18).
+
+
+### Poprawki po przeglądzie GPT-6.1 Sol (Godot)
+
+- P1 widok terenu klienta: `IClientTerrainProvider.TryGetPlanet` zwraca teraz `IClientTerrainView` (`Planet`, `Anchor` jako `Node3D` pod węzłem planety, `CollisionLayer`, `AddViewer`/`RemoveViewer`), a nie `PlanetTerrain`; ani `VoxelLodTerrain`, ani `VoxelTool` nie wychodzą poza serwer. `SharedTerrainProvider` i `OwnTerrainProvider` oddają ten sam typ widoku (`ClientTerrainView`, jeden na planetę). Konstruktor `SharedTerrainProvider` jest wewnętrzny. Test: `ClientTerrainApiTests.ClientFacingTerrainApi_ExposesNoMutableTerrain` (refleksja po publicznym API typów klienta). Raycast przez `ITerrainService` pominięty: żaden konsument go jeszcze nie potrzebuje (dodać w K2-11, gdy będzie potrzebny).
+- P1 błąd po starcie serwera: `GameComposition.StartAsync` łapie każdy wyjątek, gdy serwer jest już `Running`/`SafeMode`, loguje go i uruchamia kanoniczne zamknięcie (przez `QuitCoordinator`, a bez niego wprost); proces kończy się kodem 70 po zamknięciu, a `Release()` nie zastępuje już zamknięcia. Zapis `last-world.txt` nie jest krytyczny: błąd IO jest logowany, serwer działa dalej. Testy: `LifecycleTests.FailureAfterRunning_GoesThroughCanonicalShutdown_WorldReloadsWithSameHash`, `LastWorldNotWritable_ServerKeepsRunning_AndStopsCleanly`.
+- P1 sygnały: wymuszone wyjście (`Environment.Exit(130)`) tylko przy trzecim `SIGINT` (Ctrl+C); `SIGTERM`, `SIGQUIT` (CTRL_BREAK) i zamknięcie okna nigdy nie wymuszają wyjścia, kolejne takie żądania są logowane i ignorowane. Logika siedzi w `QuitCoordinator.HandleSignal` (wyjście wstrzykiwalne w testach). Testy: `QuitCoordinatorTests` (trzy testy sygnałów).
+- P2 wyjście hosta: koniec sesji lokalnego klienta (solo i host) przy działającym serwerze prosi o kanoniczne zamknięcie z `HostLeft`; w trakcie zamykania żądanie jest pomijane, bo to serwer kończy tę sesję. Test: `LifecycleTests.LocalClientLeaves_ServerShutsDownWithCheckpoint` (solo i host).
+- P2 zamykanie transportu zdalnego klienta: `QuitCoordinator` wywołuje `GameComposition.ReleaseStep()` co klatkę; transport UDP jest zwalniany w `Task.Run`, a koordynator czeka według `TimeProvider` do terminu 5 s i wychodzi mimo wiszącego transportu (log). `Release()` (synchroniczne) zostaje dla ścieżek błędu i testów. Test: `QuitCoordinatorTests.SlowCleanup_IsWaitedForPerFrameUntilTheDeadline_ThenQuits` (atrapa czyszczenia + `FakeTimeProvider`); `GameComposition` nie przyjmuje atrapy transportu, więc ścieżkę UDP pokrywa `ClientModeTests` (fixture czeka na `ReleaseStep`).
+- P2 test dymny: wybrano polecenie konsoli `dev-op` włączane flagą `--dev` (tylko serwer dedykowany; bez flagi polecenie nie istnieje). Dodaje gracza offline przez `ServerSimulation.ApplyServerOperation` (join i leave wymyślonej tożsamości), więc zmiana idzie przez operację i dziennik. `tools/server_smoke.py` zmienia stan przed zapisem, wymaga, by skrót stanu po zatrzymaniu różnił się od początkowego, a po restarcie był równy skrótowi z zatrzymania; sprawdzenie sygnału liczy tylko wiersze po sygnale i wymaga zmiany skrótu względem startu. Testy: `ConsoleCommandProcessorTests.DevOp_*`, `LaunchOptionsTests.Parse_Dev_OnlyForTheDedicatedServer`.
 
 ## Pułapki
 
