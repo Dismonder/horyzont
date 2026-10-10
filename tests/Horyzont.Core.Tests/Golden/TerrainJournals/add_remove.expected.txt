@@ -1,0 +1,18 @@
+applied 1 state=946c4a3e529f3986
+applied 2 state=3e854db43761e7bc
+applied 3 state=466240a642026ad1
+applied 4 state=ba9fcfc87b8d8c06
+applied 5 state=d9d4724059812238
+applied 6 state=e088889471e4ba21
+last_op=6 tick=2
+state=e088889471e4ba21
+edits=6 blocks=8
+terrain_data=ffdf629c52ea1a7b
+version 1 0 -1 249 -1 = 6
+version 1 0 -1 249 0 = 6
+version 1 0 -1 250 -1 = 6
+version 1 0 -1 250 0 = 6
+version 1 0 0 249 -1 = 6
+version 1 0 0 249 0 = 6
+version 1 0 0 250 -1 = 6
+version 1 0 0 250 0 = 6

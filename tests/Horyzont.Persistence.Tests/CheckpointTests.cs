@@ -159,7 +159,7 @@ public sealed class CheckpointTests
 
         var versions = h.State.TerrainVersions.All.ToList();
         Assert.NotEmpty(versions);
-        var store = new Terrain.TerrainBlockStore(dir.WorldPath);
+        var store = new Persistence.Terrain.TerrainBlockStore(dir.WorldPath);
         foreach (var version in versions)
         {
             Assert.True(store.TryLoad(version.Key, out var stored, out var data));

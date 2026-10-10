@@ -1,3 +1,5 @@
+using System.Buffers.Binary;
+
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Protocol;
@@ -12,6 +14,7 @@ public static class StateCodec
 {
     private const byte CurrentFormatVersion = 1;
     private const int ChunkCellCount = 4096;
+    private const int TerrainBlockHeaderBytes = 7;
 
     /// <summary>Writes a construct header record without a prefix.</summary>
     /// <param name="w">Target writer.</param>
@@ -398,6 +401,73 @@ public static class StateCodec
         var result = ReadPlanet(ref r);
         r.EnsureEnd();
         return result;
+    }
+
+    /// <summary>
+    /// Encodes a terrain block envelope: [kind][format version][voxel format][u32 length][voxels]. The whole blob is also the
+    /// payload of <c>TerrainBlockData</c>, so it never exceeds <see cref="ProtocolConstants.MaxTerrainBlockDataBytes"/>.
+    /// </summary>
+    /// <param name="voxelFormat">Voxel payload format; 0 is reserved.</param>
+    /// <param name="voxels">The serialized voxels.</param>
+    /// <returns>The blob.</returns>
+    /// <exception cref="ArgumentException">The voxel format is 0 or the blob would exceed the size limit.</exception>
+    public static byte[] EncodeTerrainBlockBlob(byte voxelFormat, ReadOnlySpan<byte> voxels)
+    {
+        if (voxelFormat == 0)
+        {
+            throw new ArgumentException("Voxel format 0 is reserved.", nameof(voxelFormat));
+        }
+
+        if (voxels.Length > ProtocolConstants.MaxTerrainBlockDataBytes - TerrainBlockHeaderBytes)
+        {
+            throw new ArgumentException(
+                $"Terrain block blob of {voxels.Length + TerrainBlockHeaderBytes} bytes exceeds {ProtocolConstants.MaxTerrainBlockDataBytes}.",
+                nameof(voxels));
+        }
+
+        var blob = new byte[TerrainBlockHeaderBytes + voxels.Length];
+        blob[0] = (byte)BlobKind.TerrainBlock;
+        blob[1] = CurrentFormatVersion;
+        blob[2] = voxelFormat;
+        BinaryPrimitives.WriteUInt32LittleEndian(blob.AsSpan(3), (uint)voxels.Length);
+        voxels.CopyTo(blob.AsSpan(TerrainBlockHeaderBytes));
+        return blob;
+    }
+
+    /// <summary>Decodes a terrain block envelope; the voxels are copied.</summary>
+    /// <param name="blob">Blob bytes.</param>
+    /// <returns>The envelope.</returns>
+    /// <exception cref="ProtocolViolationException">
+    /// Wrong kind or format version, voxel format 0, a length that does not match the blob, or a blob above the size limit.
+    /// </exception>
+    public static TerrainBlockBlob DecodeTerrainBlockBlob(ReadOnlySpan<byte> blob)
+    {
+        if (blob.Length > ProtocolConstants.MaxTerrainBlockDataBytes)
+        {
+            throw new ProtocolViolationException(
+                $"Terrain block blob of {blob.Length} bytes exceeds {ProtocolConstants.MaxTerrainBlockDataBytes}.");
+        }
+
+        ValidateBlobHeader(blob, BlobKind.TerrainBlock);
+        if (blob.Length < TerrainBlockHeaderBytes)
+        {
+            throw new ProtocolViolationException($"Terrain block blob too short ({blob.Length} bytes).");
+        }
+
+        var voxelFormat = blob[2];
+        if (voxelFormat == 0)
+        {
+            throw new ProtocolViolationException("Terrain block voxel format 0 is reserved.");
+        }
+
+        var length = BinaryPrimitives.ReadUInt32LittleEndian(blob[3..]);
+        if (length != (uint)(blob.Length - TerrainBlockHeaderBytes))
+        {
+            throw new ProtocolViolationException(
+                $"Terrain block length {length} does not match the {blob.Length - TerrainBlockHeaderBytes} payload bytes.");
+        }
+
+        return new TerrainBlockBlob(voxelFormat, blob[TerrainBlockHeaderBytes..].ToArray());
     }
 
     private static void ValidateBlobHeader(ReadOnlySpan<byte> blob, BlobKind expectedKind)

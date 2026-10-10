@@ -29,3 +29,6 @@ third_party/steamworks/** filter=lfs diff=lfs merge=lfs -text
 
 # Małe bazy testowe trzymamy w zwykłym gicie, żeby CI nie potrzebowało LFS.
 tests/**/Fixtures/** -filter -diff -merge binary
+
+# Zamrożony korpus złoty dzienników terenu (K2-09): bajty dzienników i raportów bez zmian końców linii.
+tests/**/Golden/** -text -diff -merge binary

@@ -6,6 +6,7 @@ using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
+using Horyzont.Core.Serialization;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Terrain;
@@ -51,6 +52,8 @@ public sealed class ProtocolContractTests
         AssertValues((Face.PosX, 0), (Face.NegX, 1), (Face.PosY, 2), (Face.NegY, 3), (Face.PosZ, 4), (Face.NegZ, 5));
         AssertValues((ConstructMode.Static, 0), (ConstructMode.Ship, 1));
         AssertValues((BlockShape.Cube, 1), (BlockShape.Mesh, 2));
+        AssertValues((BlobKind.ConstructHeader, 1), (BlobKind.Player, 2), (BlobKind.ConstructChunk, 3), (BlobKind.PlanetParams, 4),
+            (BlobKind.TerrainBlock, 5));
         AssertValues((TerrainShape.Sphere, 1));
         AssertValues((TerrainEditMode.Remove, 1), (TerrainEditMode.Add, 2));
         AssertValues((EntityKind.Player, 1), (EntityKind.Construct, 2));

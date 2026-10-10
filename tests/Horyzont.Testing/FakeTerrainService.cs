@@ -15,12 +15,13 @@ namespace Horyzont.Testing;
 /// Every edited block has deterministic "voxel data": XxHash64 of its previous data and the edit, so two services that applied the
 /// same edits to the same starting data agree byte for byte. Blocks absent from memory come from <see cref="BlockSource"/>
 /// (persistence tests point it at the saved blocks) or start empty, like generator output.
+/// The block-data hashing (XxHash64 over the previous data and the edit fields) is pinned by the frozen golden terrain journal
+/// corpus: changing it breaks the corpus for reasons unrelated to Core.
 /// </summary>
-public sealed class FakeTerrainService(float surfaceRadius = 4000f, float voxelSizeMeters = 1f, int? marginVoxels = null) : ITerrainService
+public sealed class FakeTerrainService(float surfaceRadius = 4000f, float voxelSizeMeters = 1f) : ITerrainService
 {
     private readonly Dictionary<TerrainBlockKey, byte[]> _blocks = [];
     private readonly List<TerrainBlockKey> _keys = [];
-    private readonly int _marginVoxels = marginVoxels ?? TerrainRules.EditMarginVoxels;
 
     public float SurfaceRadius { get; set; } = surfaceRadius;
 
@@ -38,6 +39,15 @@ public sealed class FakeTerrainService(float surfaceRadius = 4000f, float voxelS
     public List<LoadedArea> BlockingLoads { get; } = [];
 
     public List<TerrainEditOp> AppliedEdits { get; } = [];
+
+    /// <summary>The versions passed with every applied edit, in call order.</summary>
+    public List<IReadOnlyList<TerrainBlockVersion>> AppliedVersions { get; } = [];
+
+    /// <summary>Called at the start of <see cref="ApplyEdit"/> (tests inspect the state at call time).</summary>
+    public Action<TerrainEditOp, IReadOnlyList<TerrainBlockVersion>>? OnApplyEdit { get; set; }
+
+    /// <summary>Called at the end of <see cref="ApplyEdit"/>, when every block of the versions has its new data.</summary>
+    public Action<TerrainEditOp, IReadOnlyList<TerrainBlockVersion>>? AfterApplyEdit { get; set; }
 
     /// <summary>When set, <see cref="LoadAreaBlocking"/> throws it (a failing disk read).</summary>
     public Exception? ThrowOnLoad { get; set; }
@@ -117,15 +127,36 @@ public sealed class FakeTerrainService(float surfaceRadius = 4000f, float voxelS
         return true;
     }
 
-    public void ApplyEdit(TerrainEditOp edit)
+    /// <summary>
+    /// Applies the edit; throws <see cref="InvalidOperationException"/> before any change when the keys of
+    /// <paramref name="versions"/> differ from <see cref="TerrainMath.AffectedBlocks"/> with the margin constant.
+    /// </summary>
+    public void ApplyEdit(TerrainEditOp edit, IReadOnlyList<TerrainBlockVersion> versions)
     {
+        ArgumentNullException.ThrowIfNull(edit);
+        ArgumentNullException.ThrowIfNull(versions);
+        OnApplyEdit?.Invoke(edit, versions);
         if (ThrowOnApply is { } exception)
         {
             throw exception;
         }
 
+        TerrainMath.AffectedBlocks(edit.Planet, edit.Center, edit.Radius, voxelSizeMeters, TerrainRules.EditMarginVoxels, _keys);
+        if (versions.Count != _keys.Count)
+        {
+            throw new InvalidOperationException($"ApplyEdit got {versions.Count} versions for {_keys.Count} affected blocks.");
+        }
+
+        for (var i = 0; i < _keys.Count; i++)
+        {
+            if (versions[i].Key != _keys[i])
+            {
+                throw new InvalidOperationException($"ApplyEdit version {i} is for {versions[i].Key}, expected {_keys[i]}.");
+            }
+        }
+
         AppliedEdits.Add(edit);
-        TerrainMath.AffectedBlocks(edit.Planet, edit.Center, edit.Radius, voxelSizeMeters, _marginVoxels, _keys);
+        AppliedVersions.Add(versions);
         Span<byte> fields = stackalloc byte[27];
         BinaryPrimitives.WriteUInt64LittleEndian(fields, edit.Planet.Value);
         fields[8] = (byte)edit.Shape;
@@ -142,5 +173,7 @@ public sealed class FakeTerrainService(float surfaceRadius = 4000f, float voxelS
             hash.Append(fields);
             _blocks[key] = hash.GetCurrentHash();
         }
+
+        AfterApplyEdit?.Invoke(edit, versions);
     }
 }

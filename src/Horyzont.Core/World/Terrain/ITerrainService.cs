@@ -30,7 +30,14 @@ public interface ITerrainService
     /// <returns>True when the terrain was hit.</returns>
     bool Raycast(PlanetId planet, Vector3 origin, Vector3 direction, float maxDistance, out TerrainHit hit);
 
-    /// <summary>Applies an edit; deterministic for the same inputs.</summary>
+    /// <summary>
+    /// Applies an edit; deterministic for the same inputs. Called after the block versions were bumped, so an implementation
+    /// that stores block data can pair every block it changes with its new version.
+    /// </summary>
     /// <param name="edit">The edit.</param>
-    void ApplyEdit(TerrainEditOp edit);
+    /// <param name="versions">
+    /// New versions of every LOD 0 block the edit may change, sorted by key (exactly <see cref="TerrainMath.AffectedBlocks"/> with
+    /// <c>TerrainRules.EditMarginVoxels</c>).
+    /// </param>
+    void ApplyEdit(TerrainEditOp edit, IReadOnlyList<TerrainBlockVersion> versions);
 }

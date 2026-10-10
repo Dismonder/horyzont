@@ -35,6 +35,9 @@ public sealed partial class BackupService
         _time = time;
     }
 
+    /// <summary>Test hook: called on the copying thread once the source connection is open, immediately before the copy starts.</summary>
+    internal Action? BeforeCopy { get; set; }
+
     /// <summary>Test hook: called with the temporary path after the copy is closed and before it is published.</summary>
     internal Action<string>? BeforePublish { get; set; }
 
@@ -45,15 +48,7 @@ public sealed partial class BackupService
     public string CreateBackup(SqliteConnection source, string reason)
     {
         ArgumentNullException.ThrowIfNull(source);
-        ArgumentException.ThrowIfNullOrEmpty(reason);
-        foreach (var c in reason)
-        {
-            if (!char.IsAsciiLetterOrDigit(c) && c != '-')
-            {
-                throw new ArgumentException("The reason may contain only ASCII letters, digits and '-'.", nameof(reason));
-            }
-        }
-
+        ValidateReason(reason);
         Directory.CreateDirectory(_directory);
         RemoveTemporaryCopies();
         var published = Published();
@@ -77,6 +72,7 @@ public sealed partial class BackupService
             using (var destination = new SqliteConnection(WorldDatabase.ConnectionString(temporary, SqliteOpenMode.ReadWriteCreate, pooling: false)))
             {
                 destination.Open();
+                BeforeCopy?.Invoke();
                 source.BackupDatabase(destination);
                 WorldDatabase.Execute(destination, "PRAGMA journal_mode = DELETE;");
             }
@@ -95,6 +91,21 @@ public sealed partial class BackupService
 
         Rotate(path);
         return path;
+    }
+
+    /// <summary>Checks a backup reason: not empty, only ASCII letters, digits and '-'.</summary>
+    /// <param name="reason">The reason.</param>
+    /// <exception cref="ArgumentException">The reason is empty or has another character.</exception>
+    internal static void ValidateReason(string reason)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(reason);
+        foreach (var c in reason)
+        {
+            if (!char.IsAsciiLetterOrDigit(c) && c != '-')
+            {
+                throw new ArgumentException("The reason may contain only ASCII letters, digits and '-'.", nameof(reason));
+            }
+        }
     }
 
     /// <summary>Published copies of the directory, oldest first (by creation sequence).</summary>

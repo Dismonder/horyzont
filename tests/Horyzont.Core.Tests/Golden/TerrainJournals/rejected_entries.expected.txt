@@ -1,0 +1,87 @@
+applied 1 state=946c4a3e529f3986
+rejected 2 Replay of operation 2 (TerrainEdit) failed: unknown planet
+rejected 2 Replay of operation 2 (TerrainEdit) failed: invalid centre or radius
+rejected 2 Replay of operation 2 (TerrainEdit) failed: invalid centre or radius
+rejected 2 Replay of operation 2 (TerrainEdit) failed: radius too large
+applied 2 state=dbd1f9679d1e1d94
+rejected 3 Replay of operation 3 (TerrainEdit) failed: centre out of range
+applied 3 state=1ccb287624e44d74
+rejected 4 Replay of operation 4 (TerrainEdit) failed: invalid material
+rejected 4 Replay of operation 4 (TerrainEdit) failed: invalid material
+rejected 4 Replay of operation 4 (TerrainEdit) failed: invalid material
+applied 4 state=d2b04c54a56f7ab7
+rejected 5 Replay of operation 5 (TerrainEdit) failed: tick 2 is before the current tick 3
+rejected 6 Replay of operation 6 (TerrainEdit) failed: expected operation 5
+applied 5 state=514c725d60269b40
+last_op=5 tick=4
+state=514c725d60269b40
+edits=5 blocks=68
+terrain_data=636046b4514f591a
+version 1 0 -2 248 -2 = 1
+version 1 0 -2 248 -1 = 1
+version 1 0 -2 248 0 = 1
+version 1 0 -2 248 1 = 1
+version 1 0 -2 249 -2 = 1
+version 1 0 -2 249 -1 = 1
+version 1 0 -2 249 0 = 1
+version 1 0 -2 249 1 = 1
+version 1 0 -2 250 -2 = 1
+version 1 0 -2 250 -1 = 1
+version 1 0 -2 250 0 = 1
+version 1 0 -2 250 1 = 1
+version 1 0 -2 251 -2 = 1
+version 1 0 -2 251 -1 = 1
+version 1 0 -2 251 0 = 1
+version 1 0 -2 251 1 = 1
+version 1 0 -1 248 -2 = 1
+version 1 0 -1 248 -1 = 1
+version 1 0 -1 248 0 = 1
+version 1 0 -1 248 1 = 1
+version 1 0 -1 249 -2 = 1
+version 1 0 -1 249 -1 = 4
+version 1 0 -1 249 0 = 4
+version 1 0 -1 249 1 = 1
+version 1 0 -1 250 -2 = 1
+version 1 0 -1 250 -1 = 4
+version 1 0 -1 250 0 = 4
+version 1 0 -1 250 1 = 1
+version 1 0 -1 251 -2 = 1
+version 1 0 -1 251 -1 = 1
+version 1 0 -1 251 0 = 1
+version 1 0 -1 251 1 = 1
+version 1 0 -1 313 -1 = 1
+version 1 0 -1 313 0 = 1
+version 1 0 0 248 -2 = 1
+version 1 0 0 248 -1 = 1
+version 1 0 0 248 0 = 1
+version 1 0 0 248 1 = 1
+version 1 0 0 249 -2 = 1
+version 1 0 0 249 -1 = 4
+version 1 0 0 249 0 = 4
+version 1 0 0 249 1 = 1
+version 1 0 0 250 -2 = 1
+version 1 0 0 250 -1 = 4
+version 1 0 0 250 0 = 4
+version 1 0 0 250 1 = 1
+version 1 0 0 251 -2 = 1
+version 1 0 0 251 -1 = 1
+version 1 0 0 251 0 = 1
+version 1 0 0 251 1 = 1
+version 1 0 0 313 -1 = 1
+version 1 0 0 313 0 = 1
+version 1 0 1 248 -2 = 1
+version 1 0 1 248 -1 = 1
+version 1 0 1 248 0 = 1
+version 1 0 1 248 1 = 1
+version 1 0 1 249 -2 = 1
+version 1 0 1 249 -1 = 1
+version 1 0 1 249 0 = 1
+version 1 0 1 249 1 = 1
+version 1 0 1 250 -2 = 1
+version 1 0 1 250 -1 = 1
+version 1 0 1 250 0 = 1
+version 1 0 1 250 1 = 1
+version 1 0 1 251 -2 = 1
+version 1 0 1 251 -1 = 1
+version 1 0 1 251 0 = 1
+version 1 0 1 251 1 = 1
