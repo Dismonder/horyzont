@@ -154,7 +154,7 @@ Fixture xUnit: `FakeTimeProvider`, `InMemoryTransport`, 60 Hz fizyki/20 Hz stan�
 - [x] 2. GREEN: Client 177/177; replay 1..128, pauza/ACK i pełny sink z resetem sesji. Testy replay/pauzy/ACK; adapter pełnej migawki do próbek, bez regresji `Validate(Snapshot, ...)`.
 - [x] 3. RED: brak API; GREEN: Server 124/124; budżet per klient, forced full i 0 B. Testy polityki budżetu, implementacja bez alokacji i API dla K3-15.
 - [x] 4. Testy zapisane przed API, RED kompilacji; build game GREEN 0 ostrzeżeń/błędów, gdUnit NOT RUN. Testy Godota, odseparować siatkę/kamerę od kapsuły; zdalny widok tylko wizualny. Sprawdzić FPP/TPP, bieguny i ściany.
-- [ ] 5. Test łącza, pomiary płynności i alokacji; raport seedów, błędów i niedoborów próbek. Po dwóch nieudanych próbach tego samego testu eskalować z testem i logiem zgodnie z ZASADY pkt 12.
+- [x] 5. GREEN: Client 187/187; `MotionLinkTests` 10 przebiegów (seedy 14/140/1400; 50 ms/jitter 10 ms/dup 1%; wariant 100 ms w każdą stronę), 5% utraty, zbieżność w 1 migawce, 0 nieuzasadnionych snapów, 0 B w gorących ścieżkach. Test łącza, pomiary płynności i alokacji; raport seedów, błędów i niedoborów próbek. Po dwóch nieudanych próbach tego samego testu eskalować z testem i logiem zgodnie z ZASADY pkt 12.
 - [ ] 6. Po scaleniu K3-15 (albo w K3-15, jeśli scala później — X10) powtórzyć scenariusz na prawdziwych migawkach delta/spawn/despawn i sprawdzić actual bytes. Bez tej integracji nie ogłaszać kompletnego odbioru co-op.
 - [ ] 7. Pełne `dotnet build Horyzont.sln`, `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"`, `dotnet format Horyzont.sln --verify-no-changes`, `python tools/engine/build.py smoke`; seryjne gdUnit4 na Windows. Wyniki i ograniczenia do PR; zielone CI po scaleniu.
 
@@ -171,6 +171,8 @@ Fixture xUnit: `FakeTimeProvider`, `InMemoryTransport`, 60 Hz fizyki/20 Hz stan�
 - Polecenie użytkownika: bez Godota, gdUnit i smoke; testy silnika tylko pisane i kompilowane, wykonanie NOT RUN. Testy .NET per projekt, bez push.
 - K3-15 nie jest w tej bazie; krok 6 integruje pakiet scalany później (X10). Bez zmian Core/protokołu.
 - Cache SDK forka skopiowano z F:/dev/horyzont-k3-00/engine/nuget-local do ignorowanego engine/nuget-local; bez zmian konfiguracji i bez silnika.
+- wykonawca: Claude Sonnet 5.5 (kontynuacja po limicie Sol); naprawiono kompilację `MotionLinkTests` (`FirstSeq`), nazwy pól `_planet`/`_rules`. Fixture łącza używa idealnej kolizji sfery zamiast Godota; `max_jump` = 0, bo `Reconcile` zachowuje widoczną pozę z konstrukcji (próg 2 cm spełniony).
+- Krok 6 (integracja z prawdziwymi deltami K3-15) i `python tools/engine/build.py smoke` / gdUnit: NOT RUN (K3-15 poza bazą; polecenie zakazuje silnika).
 - Zegar zdalny umieszczono w RemoteMotionPolicy; TrySample przyjmuje już opóźniony kursor, 100 ms odejmowane raz.
 
 ## Pułapki

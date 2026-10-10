@@ -54,8 +54,8 @@ public sealed class MotionLinkTests(ITestOutputHelper output)
 
     private sealed class Fixture : IDisposable
     {
-        private static readonly PlanetParams Planet = new(new PlanetId(1), new SystemId(1), 14, "core:planet/1");
-        private static readonly MovementRules Rules = new();
+        private static readonly PlanetParams _planet = new(new PlanetId(1), new SystemId(1), 14, "core:planet/1");
+        private static readonly MovementRules _rules = new();
         private readonly FakeTimeProvider _time = new();
         private readonly InMemoryTransport _serverTransport;
         private readonly InMemoryTransport _clientTransport;
@@ -92,9 +92,9 @@ public sealed class MotionLinkTests(ITestOutputHelper output)
             }
 
             Assert.True(_clientReceiver.Connected);
-            var initial = new Vector3(0, Planet.RadiusMeters, 0);
+            var initial = new Vector3(0, _planet.RadiusMeters, 0);
             Client = Server = new PredictedState(initial, Vector3.Zero, Quaternion.Identity, 0, MovementMode.Walking, true);
-            var hello = new ServerHello(default, new Tick(0), 60, new PlayerId(1), new EntityId(1), [Planet], [], []);
+            var hello = new ServerHello(default, new Tick(0), 60, new PlayerId(1), new EntityId(1), [_planet], [], []);
             _validator = OwnStateValidator.FromHello(hello, NullLogger<OwnStateValidator>.Instance);
         }
 
@@ -122,11 +122,11 @@ public sealed class MotionLinkTests(ITestOutputHelper output)
                 var entry = entries.Current;
                 _lastSeq = entry.Key;
                 _queued.Remove(entry.Key);
-                Assert.True(MotorInput.TryFrom(entry.Value, Rules, out input));
+                Assert.True(MotorInput.TryFrom(entry.Value, _rules, out input));
                 _starved = 0;
                 Server = Integrate(Server, input);
             }
-            else if (++_starved > Rules.MaxStarvedTicks)
+            else if (++_starved > _rules.MaxStarvedTicks)
             {
                 Server = Integrate(Server, input);
             }
@@ -134,7 +134,7 @@ public sealed class MotionLinkTests(ITestOutputHelper output)
             if (tick % 3 == 0)
             {
                 Send(_serverTransport, _serverReceiver.Connection, new Snapshot(++_snapshotId, new Tick(tick), 0, _lastSeq,
-                    [new SnapshotFrame(FrameRef.Of(Planet.Id), 0)],
+                    [new SnapshotFrame(FrameRef.Of(_planet.Id), 0)],
                     [new EntityState(new EntityId(1), (EntityStateFields)15, 0, 0, Server.Feet, Server.BodyRotation, Server.Velocity, (byte)Server.Mode)]));
             }
 
@@ -142,7 +142,7 @@ public sealed class MotionLinkTests(ITestOutputHelper output)
             var buttons = moving && tick % 600 >= 300 ? InputButtons.Sprint : InputButtons.None;
             if (moving && tick % 240 == 0) { buttons |= InputButtons.Jump; }
             var wire = new PlayerInput(tick, 0, moving ? 1 : 0, 0, 0, buttons);
-            Assert.True(MotorInput.TryFrom(wire, Rules, out var local));
+            Assert.True(MotorInput.TryFrom(wire, _rules, out var local));
             var seq = _sequencer.Record(tick, local);
             _validator.NoteSent(seq);
             if (!_history.IsPaused)
@@ -166,7 +166,7 @@ public sealed class MotionLinkTests(ITestOutputHelper output)
             var batch = Assert.IsType<InputBatch>(message);
             for (var i = 0; i < batch.Inputs.Count; i++)
             {
-                var seq = batch.FirstInputSeq + (uint)i;
+                var seq = batch.FirstSeq + (uint)i;
                 if (seq > _lastSeq) { _queued.TryAdd(seq, batch.Inputs[i]); }
             }
         }
@@ -177,7 +177,7 @@ public sealed class MotionLinkTests(ITestOutputHelper output)
             if (_validator.Validate(snapshot, out var own) != OwnStateVerdict.Accepted) { return; }
             Delivered++;
             var server = own.ToPredicted(0, own.Mode is MovementMode.Walking or MovementMode.Sprinting);
-            Remote.Push(new RemoteMotionSample(new EntityId(2), FrameRef.Of(Planet.Id), 0, snapshot.ServerTick,
+            Remote.Push(new RemoteMotionSample(new EntityId(2), FrameRef.Of(_planet.Id), 0, snapshot.ServerTick,
                 server.Feet, server.BodyRotation, server.Velocity, (byte)server.Mode));
             var before = Client;
             var visible = before.Feet + _presentation.PositionOffset;
@@ -225,14 +225,14 @@ public sealed class MotionLinkTests(ITestOutputHelper output)
 
         private static PredictedState Integrate(in PredictedState state, in MotorInput input)
         {
-            var result = CharacterMotor.Step(input, new MotorContext(state.Feet, state.Velocity, state.OnFloor, state.Mode, Planet, false), Rules, 1f / 60);
+            var result = CharacterMotor.Step(input, new MotorContext(state.Feet, state.Velocity, state.OnFloor, state.Mode, _planet, false), _rules, 1f / 60);
             var feet = state.Feet + result.DesiredVelocity / 60f;
             var velocity = result.DesiredVelocity;
-            var floor = feet.Length() <= Planet.RadiusMeters;
+            var floor = feet.Length() <= _planet.RadiusMeters;
             if (floor)
             {
                 var up = Vector3.Normalize(feet);
-                feet = up * Planet.RadiusMeters;
+                feet = up * _planet.RadiusMeters;
                 velocity -= up * Vector3.Dot(velocity, up);
             }
             return new PredictedState(feet, velocity, result.BodyRotation, 0, result.Mode, floor);
