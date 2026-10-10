@@ -1,6 +1,7 @@
 using Godot;
 
 using Horyzont.Game.Logging;
+using Horyzont.Game.UI;
 using Horyzont.Server;
 
 using Microsoft.Extensions.Logging;
@@ -16,7 +17,7 @@ public partial class Boot : Node
     public const int ExitFaulted = 70;
 
     private const string Usage =
-        "Horyzont modes (after --): --solo [--world <id>] [--dev-speed <1-64>] [--screenshot <png> [--screenshot-after <s>]] | --host [--world <id>] [--port 27015] [--bind <ipv4>] [--password <text>] | --connect <host:port> [--password <text>] [--dev]"
+        "Horyzont modes (after --; without a mode the menu opens): --solo [--world <id>] [--dev-speed <1-64>] [--screenshot <png> [--screenshot-after <s>]] | --host [--world <id>] [--port 27015] [--bind <ipv4>] [--password <text>] | --connect <host:port> [--password <text>] [--dev]"
         + " | --server --config <server.json> [--data-dir <dir>] [--restore-latest-backup] [--dev] | --write-default-config <path>";
 
     private ILoggerFactory? _loggers;
@@ -47,6 +48,13 @@ public partial class Boot : Node
             return;
         }
 
+        if (DisplayServer.GetName() != "headless")
+        {
+            StartMenu();
+            return;
+        }
+
+        // Headless and dedicated processes never create controls: without a mode there is nothing to do.
         GD.Print(Usage);
         GetTree().Quit(0);
     }
@@ -75,6 +83,26 @@ public partial class Boot : Node
         }
 
         return LoggerFactory.Create(builder => builder.SetMinimumLevel(LogLevel.Information).AddProvider(new GodotLoggerProvider(file, LogLevel.Information, TimeProvider.System)));
+    }
+
+    /// <summary>No mode on the command line: the menu decides. No world, transport or runtime exists until the player asks for one.</summary>
+    private void StartMenu()
+    {
+        var userDir = ProjectSettings.GlobalizePath("user://");
+        var executableDir = Path.GetDirectoryName(OS.GetExecutablePath()) ?? ".";
+        _loggers = CreateLoggers(new LaunchOptions { Mode = ServerProcessMode.Solo }, userDir, executableDir);
+        var env = new GameEnvironment
+        {
+            Time = TimeProvider.System,
+            Loggers = _loggers,
+            UserDataDir = userDir,
+            ExecutableDir = executableDir,
+            Render = true,
+            DevBuild = OS.IsDebugBuild(),
+        };
+        var ui = new GameUiCoordinator { Name = "Ui" };
+        ui.Initialize(env, lobby: null, platformShutdown: null);
+        AddChild(ui);
     }
 
     private async Task RunGameAsync(string[] args)
