@@ -33,6 +33,9 @@ public sealed class FrameTransitions
         _tickSeconds = 1.0 / simulation.Rules.TickRate;
     }
 
+    /// <summary>Gets the frame graph of the world.</summary>
+    public FrameGraph Graph => _history.Graph;
+
     /// <summary>Reparents an entity at rest in its frame (players carry no velocity in Core; a ship moves with its own frame).</summary>
     /// <param name="entity">The entity (a player's entity or a construct).</param>
     /// <param name="newParent">The new frame.</param>
