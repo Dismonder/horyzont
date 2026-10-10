@@ -195,4 +195,29 @@ public sealed class ConstructMirrorTests
         Assert.False(mirror.Apply(new ConstructState(Header, 2, 3, [Chunk(2)])));
         Assert.Equal(2, requests.Count);
     }
+
+    [Fact]
+    public void ConstructMirror_OperationApplied_ShipMode_RefreshesHeader()
+    {
+        var mirror = new ConstructMirror(new FakeTimeProvider());
+        var requests = new List<EntityId>();
+        mirror.ResyncNeeded += requests.Add;
+        var changed = new List<EntityId>();
+        mirror.Changed += changed.Add;
+        Assert.True(mirror.Apply(new ConstructState(Header, 0, 1, [])));
+        Assert.True(mirror.TryGetConstruct(Header.Id, out var value));
+        var origin = new Vector3(4, 5, 6);
+        var toShip = new ShipModeSetOp(Header.Id, ConstructMode.Ship, Header.Parent, 0, origin, Quaternion.Identity);
+        Assert.True(mirror.Apply(new OperationApplied(new OpId(60), default, toShip, [new(Header.Id, 2, false)])));
+        Assert.Equal(ConstructMode.Ship, value.Mode);
+        Assert.Equal(origin, value.Origin);
+        Assert.Equal(2u, value.Version);
+        Assert.Contains(Header.Id, changed);
+
+        // A stale parent counter does not match: the copy is left alone and repaired.
+        var bad = new ShipModeSetOp(Header.Id, ConstructMode.Static, Header.Parent, 5, origin, Quaternion.Identity);
+        Assert.False(mirror.Apply(new OperationApplied(new OpId(61), default, bad, [new(Header.Id, 3, false)])));
+        Assert.Equal(ConstructMode.Ship, value.Mode);
+        Assert.Single(requests);
+    }
 }

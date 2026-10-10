@@ -1,5 +1,6 @@
 using System.Numerics;
 
+using Horyzont.Client.Replication;
 using Horyzont.Core.Hashing;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
@@ -12,6 +13,7 @@ using Horyzont.Testing;
 using Horyzont.Testing.Ships;
 
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Horyzont.Server.Tests.Ships;
 
@@ -138,5 +140,43 @@ public sealed class ShipModeIntegrationTests
         Assert.Equal(RejectReason.NoCockpit, reply.Reason);
         Assert.Equal(hash, StateHasher.Hash(rig.Runtime.State));
         Assert.Equal(last, rig.Runtime.State.LastOpId);
+    }
+
+    /// <summary>
+    /// Stand-in for the in-game procedure: a remote client mirror follows the host's mode switches (HUD dev line reads the mirror).
+    /// Run by hand with the host and the real client; this variant covers the replication path only.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "Manual")]
+    public async Task Manual_ShipMode_ThirtyBlocks_InGame()
+    {
+        var (rig, host, ship) = await StartWithShipAsync();
+        await using var owner = rig;
+        var bob = await rig.JoinAsync("bob", 2, _origin + new Vector3(10, 0, 10));
+        var mirror = new ConstructMirror(new FakeTimeProvider());
+        bob.Observer = message =>
+        {
+            switch (message)
+            {
+                case ConstructState state:
+                    mirror.Apply(state);
+                    break;
+                case OperationApplied applied:
+                    mirror.Apply(applied);
+                    break;
+            }
+        };
+        rig.Step(12);
+        Assert.True(mirror.TryGetConstruct(ship, out var copy));
+        Assert.Equal(ConstructMode.Static, copy.Mode);
+
+        Assert.Equal(RejectReason.None, (await SubmitAsync(rig, host, Aim(rig, host, ship, ConstructMode.Ship))).Reason);
+        rig.Step(6);
+        Assert.Equal(ConstructMode.Ship, copy.Mode);
+
+        Assert.Equal(RejectReason.None, (await SubmitAsync(rig, host, Aim(rig, host, ship, ConstructMode.Static))).Reason);
+        rig.Step(6);
+        Assert.Equal(ConstructMode.Static, copy.Mode);
+        Assert.Equal(rig.Runtime.State.Constructs.All.Single().Version, copy.Version);
     }
 }
