@@ -24,6 +24,9 @@ public sealed partial class ClientNode : Node, IClientSessionListener
     /// <summary>Raised on the main thread when the server refused the connection.</summary>
     public event Action<HandshakeRejectCode, string>? ConnectionRejected;
 
+    /// <summary>Gets or sets the sink of the line <c>CLIENT IN GAME</c> that the smoke tests (<c>tools/modes_smoke.py</c>) wait for; set by the composition root.</summary>
+    public Action<string>? Announce { get; set; }
+
     /// <summary>Gets the client runtime.</summary>
     public ClientRuntime Runtime => _runtime ?? throw new InvalidOperationException("ClientNode.Initialize was not called.");
 
@@ -76,6 +79,7 @@ public sealed partial class ClientNode : Node, IClientSessionListener
         }
 
         runtime.Session.SendReady();
+        Announce?.Invoke(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"CLIENT IN GAME player={hello.YourPlayer.Value}"));
     }
 
     /// <inheritdoc />

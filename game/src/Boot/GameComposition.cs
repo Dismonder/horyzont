@@ -342,6 +342,7 @@ public sealed partial class GameComposition
             clientTransport = new ReleaseTrackedTransport(clientTransport!);
             client = new ClientRuntime(clientTransport, new ClientOptions { BuildHash = buildHash }, isHostLocal, env.Time, loggers);
             clientNode!.Initialize(client, loggers.CreateLogger<ClientNode>());
+            clientNode.Announce = env.Print;
             if (env.Characters)
             {
                 (localPlayer, dayNight) = CreateClientCharacter(clientNode, client, server, env, rules, movement, devFlight);
