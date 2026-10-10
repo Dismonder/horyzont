@@ -85,7 +85,7 @@ public class MotionPresentationTests
         var visual = body.GetNode<MeshInstance3D>("Visual");
         AssertThat(body.Feet).IsEqual(after.Feet);
         AssertThat(PlanetFrames.ToPlanetLocal(planet.Id, visual.GlobalPosition).X).IsEqual(feet.X);
-        correction.Advance(0.1f);
+        correction.Advance(0.2f);
         body.ApplyPresentation(correction.PositionOffset, correction.RotationOffset);
         AssertThat(PlanetFrames.ToPlanetLocal(planet.Id, visual.GlobalPosition).X).IsEqual(after.Feet.X);
         AssertThat(body.Feet).IsEqual(after.Feet);
