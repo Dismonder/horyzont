@@ -45,6 +45,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horyzont.Bots", "src\Horyzo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horyzont.Bots.Tests", "tests\Horyzont.Bots.Tests\Horyzont.Bots.Tests.csproj", "{5834868B-62A7-4F50-AA65-7789EDE7D48E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Horyzont.BotRunner", "tests\Horyzont.BotRunner\Horyzont.BotRunner.csproj", "{4E9226CD-EFCF-4B0E-92B9-A56242751FAC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -283,6 +285,18 @@ Global
 		{5834868B-62A7-4F50-AA65-7789EDE7D48E}.Release|x64.Build.0 = Release|Any CPU
 		{5834868B-62A7-4F50-AA65-7789EDE7D48E}.Release|x86.ActiveCfg = Release|Any CPU
 		{5834868B-62A7-4F50-AA65-7789EDE7D48E}.Release|x86.Build.0 = Release|Any CPU
+		{4E9226CD-EFCF-4B0E-92B9-A56242751FAC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4E9226CD-EFCF-4B0E-92B9-A56242751FAC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4E9226CD-EFCF-4B0E-92B9-A56242751FAC}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{4E9226CD-EFCF-4B0E-92B9-A56242751FAC}.Debug|x64.Build.0 = Debug|Any CPU
+		{4E9226CD-EFCF-4B0E-92B9-A56242751FAC}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{4E9226CD-EFCF-4B0E-92B9-A56242751FAC}.Debug|x86.Build.0 = Debug|Any CPU
+		{4E9226CD-EFCF-4B0E-92B9-A56242751FAC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4E9226CD-EFCF-4B0E-92B9-A56242751FAC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4E9226CD-EFCF-4B0E-92B9-A56242751FAC}.Release|x64.ActiveCfg = Release|Any CPU
+		{4E9226CD-EFCF-4B0E-92B9-A56242751FAC}.Release|x64.Build.0 = Release|Any CPU
+		{4E9226CD-EFCF-4B0E-92B9-A56242751FAC}.Release|x86.ActiveCfg = Release|Any CPU
+		{4E9226CD-EFCF-4B0E-92B9-A56242751FAC}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -307,5 +321,6 @@ Global
 		{12553667-D4D2-48BB-A553-EE6706B70AB8} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{D586042D-103C-486A-A73D-DB84D4C8E0E3} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{5834868B-62A7-4F50-AA65-7789EDE7D48E} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{4E9226CD-EFCF-4B0E-92B9-A56242751FAC} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

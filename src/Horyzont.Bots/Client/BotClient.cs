@@ -116,7 +116,7 @@ public sealed class BotClient : IClientSessionListener
     }
 
     /// <summary>One physics tick: polls the connection, reconnects after a pause, and in game sends the input and the tool action of the script.</summary>
-    /// <param name="scriptTick">Ticks since the epoch shared by all bots.</param>
+    /// <param name="scriptTick">Ticks since the epoch shared by all bots; before the epoch (negative) the bot only connects and waits.</param>
     public void Tick(long scriptTick)
     {
         Runtime.Poll();
@@ -127,7 +127,7 @@ public sealed class BotClient : IClientSessionListener
             return;
         }
 
-        if (state != ClientState.InGame || !_hasOwn || _tools is null)
+        if (state != ClientState.InGame || !_hasOwn || _tools is null || scriptTick < 0)
         {
             return;
         }

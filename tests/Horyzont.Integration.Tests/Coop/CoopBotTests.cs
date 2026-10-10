@@ -1,4 +1,5 @@
 using Horyzont.Bots.Client;
+using Horyzont.Bots.Runner;
 using Horyzont.Bots.Scripting;
 using Horyzont.Core.Intents;
 using Horyzont.Integration.Tests.Support;
@@ -80,6 +81,35 @@ public sealed class CoopBotTests
         // The journal holds the join and exactly the accepted too-fast edits.
         Assert.Equal((ulong)(1 + fast.Count(r => r.Reason == RejectReason.None)), rig.Server.State.LastOpId.Value);
         await rig.StopServerAsync();
+    }
+
+    [Fact]
+    public async Task Crowd_PumpedOnVirtualTime_RunsEveryFrameOnceAndWritesTheReport()
+    {
+        await using var rig = new CoopRig();
+        await rig.StartServerAsync();
+        rig.AddBot(BotRole.Builder, seed: 1);
+        rig.AddBot(BotRole.Abuser, seed: 2);
+        var crowd = rig.UseCrowd();
+
+        await rig.RunAsync(600);
+
+        // The step that starts the clock ran frame 0; no frame ran twice or was skipped.
+        Assert.InRange(crowd.LastFrame, 598, 600);
+        Assert.Equal(0, crowd.SkippedFrames);
+        Assert.All(rig.Bots, bot => Assert.True(bot.IsInGame));
+        Assert.All(rig.Bots, bot => Assert.InRange(bot.Stats.Inputs, 590, 600));
+
+        var path = Path.Combine(rig.DirectoryPath, "bots.json");
+        BotReport.Write(path, rig.Bots, rig.Time, crowd.LastFrame + 1, crowd.SkippedFrames);
+        using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+        var bots = document.RootElement.GetProperty("bots");
+        Assert.Equal(2, bots.GetArrayLength());
+        Assert.Equal("Builder", bots[0].GetProperty("role").GetString());
+        Assert.Equal(rig.Bots[0].Stats.Accepted, bots[0].GetProperty("accepted").GetInt32());
+        Assert.Equal(rig.Bots[0].Stats.Records.Count, bots[0].GetProperty("intents").GetArrayLength());
+        Assert.True(document.RootElement.GetProperty("frequency").GetInt64() > 0);
+        Assert.False(File.Exists(path + ".tmp"));
     }
 
     private static string Describe(BotStats stats) =>

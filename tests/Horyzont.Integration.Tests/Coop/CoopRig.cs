@@ -1,6 +1,7 @@
 using System.Numerics;
 
 using Horyzont.Bots.Client;
+using Horyzont.Bots.Runner;
 using Horyzont.Bots.Scripting;
 using Horyzont.Core.Hashing;
 using Horyzont.Core.Ids;
@@ -73,6 +74,13 @@ internal sealed class CoopRig : IAsyncDisposable
 
     public string WorldPath => Path.Combine(_dir, "saves", "world.db");
 
+    /// <summary>Gets the crowd that steps the bots when <see cref="UseCrowd"/> was called; null when the rig steps them itself.</summary>
+    public BotCrowd? Crowd { get; private set; }
+
+    /// <summary>Lets a <see cref="BotCrowd"/> on the virtual clock step the bots, as the runner process does on the system clock.</summary>
+    /// <returns>The crowd, whose epoch is the current virtual time.</returns>
+    public BotCrowd UseCrowd() => Crowd = new BotCrowd(_bots, Time, Time.GetUtcNow());
+
     /// <summary>Gets the frame counter, which is also the script tick of the bots.</summary>
     public long Frame => _frame;
 
@@ -112,9 +120,16 @@ internal sealed class CoopRig : IAsyncDisposable
     {
         Time.Advance(FrameTime);
         Server.Tick();
-        foreach (var bot in _bots)
+        if (Crowd is { } crowd)
         {
-            bot.Tick(_frame);
+            crowd.Pump();
+        }
+        else
+        {
+            foreach (var bot in _bots)
+            {
+                bot.Tick(_frame);
+            }
         }
 
         _frame++;
