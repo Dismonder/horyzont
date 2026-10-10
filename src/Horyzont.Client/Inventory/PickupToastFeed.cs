@@ -115,7 +115,13 @@ public sealed class PickupToastFeed
             }
         }
 
-        _credits.RemoveAll(c => nowMs - c.AtMs > SamePollMs);
+        for (var i = _credits.Count - 1; i >= 0; i--)
+        {
+            if (nowMs - _credits[i].AtMs > SamePollMs)
+            {
+                _credits.RemoveAt(i);
+            }
+        }
     }
 
     private void ShowWarning(long nowMs)

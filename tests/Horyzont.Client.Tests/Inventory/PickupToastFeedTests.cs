@@ -95,6 +95,29 @@ public sealed class PickupToastFeedTests
     }
 
     [Fact]
+    public void Update_SteadyState_DoesNotAllocate()
+    {
+        var feed = new PickupToastFeed();
+        long now = 0;
+
+        // Steady state is reached when a round allocates nothing: in a busy run the JIT promotes the methods during the first rounds.
+        var allocated = long.MaxValue;
+        for (var round = 0; round < 60 && allocated != 0; round++)
+        {
+            feed.OnOwnedCountChanged(_stone, -3, now); // leaves a credit for Update to expire
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 100; i++)
+            {
+                feed.Update(now++);
+            }
+
+            allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+
+        Assert.Equal(0, allocated);
+    }
+
+    [Fact]
     public void RepeatedWarnings_ShowOneToast()
     {
         var feed = new PickupToastFeed();
