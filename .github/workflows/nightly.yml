@@ -1,7 +1,15 @@
 name: Nightly
 
+# One nightly at a time on the single self-hosted runner: the soak, the bench and the engine tests must not overlap (CPU contention
+# skews the tick budgets and the timing of the kill checks).
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
 on:
   schedule:
+    # 02:00 UTC. The two-hour co-op soak and the bench now run one after the other (needs), about 3.5 hours in total with the
+    # other nightly jobs; move the time if the runner is wanted earlier.
     - cron: "0 2 * * *"
   workflow_dispatch:
     inputs:
@@ -273,6 +281,11 @@ jobs:
       - name: Build game
         run: dotnet build game/Horyzont.Game.csproj -nologo
 
+      # Dumps of a crashing godot*.exe (K4-19: access violation at server exit) for the artifact; HKCU only, removed afterwards.
+      - name: Enable WER LocalDumps
+        shell: pwsh
+        run: tools/ci/wer_localdumps.ps1 -Action enable -Dir wer-dumps
+
       - name: Co-op soak
         run: |
           python tools/coop/coop_soak.py --self-test
@@ -287,9 +300,26 @@ jobs:
           retention-days: 30
           if-no-files-found: ignore
 
+      - name: Disable WER LocalDumps
+        if: always()
+        shell: pwsh
+        run: tools/ci/wer_localdumps.ps1 -Action disable
+
+      - name: Upload crash dumps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wer-dumps-coop-soak
+          path: wer-dumps/**
+          retention-days: 14
+          if-no-files-found: ignore
+
   # K4-19 criterion 8 and the budgets: BenchmarkDotNet (short job), the engine report and the server tick of 8 bots on 6 cores.
   bench:
     name: bench
+    # After the soak (both want the whole machine), and also when the soak failed: the budgets are a separate verdict.
+    needs: coop-soak
+    if: ${{ !cancelled() }}
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 60
     permissions:
@@ -339,11 +369,19 @@ jobs:
           mkdir -p engine-bench
           engine-ci/editor/godot.windows.editor.double.x86_64.mono.console.exe --headless --path game -- --benchmark-report "$PWD/engine-bench"
 
+      # Dumps of a crashing godot*.exe (K4-19: access violation at server exit) for the artifact; HKCU only, removed afterwards.
+      - name: Enable WER LocalDumps
+        shell: pwsh
+        run: tools/ci/wer_localdumps.ps1 -Action enable -Dir wer-dumps
+
       - name: Server tick profile (8 bots, 6 cores)
+        # A failed tick run must not hide the benchmark verdicts; Check budgets reports the missing tick summary.
+        continue-on-error: true
         run: |
           python tools/coop/coop_soak.py --godot engine-ci/editor/godot.windows.editor.double.x86_64.mono.console.exe             --profile tick --affinity 0x3F --minutes "${{ inputs.minutes || '10' }}" --bots 8 --engine-bots 0 --out coop-tick
 
       - name: Check budgets
+        if: always()
         run: |
           python tools/bench/check_budgets.py --self-test
           python tools/bench/check_budgets.py --bench-dir tests/Horyzont.Benchmarks/BenchmarkDotNet.Artifacts/results             --baseline docs/reports/K4-19/bench-baseline.json --engine-report engine-bench/benchmark-report.json             --coop-summary coop-tick/summary.json --summary "$GITHUB_STEP_SUMMARY"
@@ -358,4 +396,18 @@ jobs:
             engine-bench/**
             coop-tick/summary.*
           retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Disable WER LocalDumps
+        if: always()
+        shell: pwsh
+        run: tools/ci/wer_localdumps.ps1 -Action disable
+
+      - name: Upload crash dumps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wer-dumps-bench
+          path: wer-dumps/**
+          retention-days: 14
           if-no-files-found: ignore

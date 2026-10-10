@@ -196,6 +196,11 @@ jobs:
           python tools/modes_smoke.py --self-test
           python tools/modes_smoke.py --godot engine-ci/editor/${{ matrix.editor }}
 
+      # Dumps of a crashing godot*.exe (K4-19: access violation at server exit) for the artifact; HKCU only, removed afterwards.
+      - name: Enable WER LocalDumps
+        shell: pwsh
+        run: tools/ci/wer_localdumps.ps1 -Action enable -Dir wer-dumps
+
       # K4-19 criteria 1, 5 and 7 in miniature: 8 bots of the .NET runner, a graceful restart and a kill, 3 minutes.
       # Phase C raises --engine-bots to 1 once the bot mode of the game exists.
       - name: Co-op smoke
@@ -211,6 +216,20 @@ jobs:
           path: |
             coop-smoke/summary.*
             coop-smoke/**/bots.json
+          if-no-files-found: ignore
+
+      - name: Disable WER LocalDumps
+        if: always()
+        shell: pwsh
+        run: tools/ci/wer_localdumps.ps1 -Action disable
+
+      - name: Upload crash dumps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wer-dumps-smoke-${{ runner.os }}
+          path: wer-dumps/**
+          retention-days: 14
           if-no-files-found: ignore
 
       # Reports, does not block: the generation rate per LOD of the engine (budgets are checked in nightly.yml / bench).
