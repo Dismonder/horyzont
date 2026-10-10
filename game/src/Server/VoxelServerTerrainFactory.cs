@@ -56,6 +56,18 @@ public sealed partial class VoxelServerTerrainFactory : IServerTerrainFactory
     /// <summary>Observed cleanup of the last failed construction; never blocks the scene thread.</summary>
     internal Task FailureCleanup { get; private set; } = Task.CompletedTask;
 
+    /// <summary>Retained stores whose failure cleanup has not drained successfully.</summary>
+    internal int FailedStoreCount => _failedStores.Count;
+
+    /// <summary>Test seam for failure during a later planet's construction.</summary>
+    internal Func<PlanetParams, PlanetTerrainOptions, Material?, VoxelLodTerrain> CreatePlanet { get; init; } = PlanetTerrainFactory.Create;
+
+    /// <summary>Test seam for stopping an actual store read before construction fails.</summary>
+    internal Action<TerrainBlockStore>? StoreCreated { get; init; }
+
+    /// <summary>Test seam for issuing a read of an already built planet.</summary>
+    internal Action<PlanetTerrain>? PlanetCreated { get; init; }
+
     /// <inheritdoc />
     public IServerTerrain Create(string worldPath, WorldState state)
     {
@@ -67,14 +79,16 @@ public sealed partial class VoxelServerTerrainFactory : IServerTerrainFactory
         ServerTerrainBlocks? blocks = null;
         try
         {
+            StoreCreated?.Invoke(store);
             blocks = new ServerTerrainBlocks(store, state.TerrainVersions.All, _buffer, _time, _loggers.CreateLogger<ServerTerrainBlocks>());
             service = new VoxelTerrainService(
                 blocks, new TerrainBlockCodec(), TerrainMaterialMap.Build(state.Materials), _loggers.CreateLogger<VoxelTerrainService>());
             _material ??= _options.Render ? PlanetTerrainMaterial.Create() : null;
             foreach (var planet in state.Planets.All)
             {
-                var node = service.AddPlanet(planet, PlanetTerrainFactory.Create(planet, _options, _material));
+                var node = service.AddPlanet(planet, CreatePlanet(planet, _options, _material));
                 nodes.Add(node);
+                PlanetCreated?.Invoke(node);
             }
 
             // Build every planet before any stream can enter the scene tree.
