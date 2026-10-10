@@ -1,12 +1,15 @@
 using System.Numerics;
 
 using Horyzont.Core.Ids;
+using Horyzont.Core.Motion;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Serialization;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.World.Constructs;
+using Horyzont.Game.Server.Characters;
+using Horyzont.Game.Server.Replication;
 using Horyzont.Net.Session;
 using Horyzont.Net.Transport;
 using Horyzont.Server.Replication;
@@ -108,21 +111,59 @@ public sealed class EntityReplicationLifecycleTests
             new GameServerHooks(simulation, () => true, NullLogger<GameServerHooks>.Instance), time);
         session.Poll(new Tick(1));
         Assert.Equal(8, session.PlayersInGame.Count);
-        var source = new MovingSource(simulation.State, session.PlayersInGame);
+        var characters = new FakeCharacters();
+        var source = new ServerReplicationSource(simulation.State, characters);
         var replication = new EntityReplication(session, simulation, source, new FixedSnapshotBudget(), new TokenBucketReplicationBudget(time),
             time, NullLogger<EntityReplication>.Instance);
-        for (ulong tick = 0; tick < 600; tick++)
+        var players = session.PlayersInGame;
+        var acks = new SnapshotAck[players.Count][];
+        for (var i = 0; i < acks.Length; i++)
         {
-            source.Move();
-            replication.Step(new Tick(tick));
+            acks[i] = new SnapshotAck[4000];
+            for (var id = 0; id < acks[i].Length; id++)
+            {
+                acks[i][id] = new SnapshotAck((uint)id);
+            }
         }
 
+        var x = 0f;
+
+        void Round(ulong tick)
+        {
+            x += 0.001f;
+            for (var i = 0; i < players.Count; i++)
+            {
+                characters.States[players[i]] = new ServerCharacterState(
+                    WorldFactory.HomePlanet, FrameRef.Of(WorldFactory.HomePlanet), 0, new Vector3(x + i, 4000, 0), Quaternion.Identity, 0,
+                    Vector3.UnitX, MovementMode.Walking, 0);
+            }
+
+            replication.Step(new Tick(tick));
+
+            // The client acknowledges what it reconstructed, so the builder works from a baseline and not only from full states.
+            for (var i = 0; i < players.Count; i++)
+            {
+                var sentTo = transport.SentTo((ulong)players[i].Value);
+                if (sentTo > 0 && sentTo < acks[i].Length)
+                {
+                    replication.Handle(players[i], acks[i][sentTo]);
+                }
+            }
+        }
+
+        transport.Inspect = true;
+        for (ulong tick = 0; tick < 600; tick++)
+        {
+            Round(tick);
+        }
+
+        transport.Inspect = false;
+        Assert.True(transport.DeltasSeen > 100, "the warm-up must reach the baseline branch: " + transport.DeltasSeen);
         var sent = transport.SnapshotsSent;
         var before = GC.GetAllocatedBytesForCurrentThread();
         for (ulong tick = 600; tick < 10_600; tick++)
         {
-            source.Move();
-            replication.Step(new Tick(tick));
+            Round(tick);
         }
 
         var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
@@ -130,37 +171,20 @@ public sealed class EntityReplicationLifecycleTests
         Assert.InRange(transport.SnapshotsSent - sent, (8 * (10_000 / 3)) - 16, (8 * (10_000 / 3)) + 16);
     }
 
-    private sealed class MovingSource(Horyzont.Core.World.WorldState world, IReadOnlyList<PlayerId> players) : IEntityReplicationSource
-    {
-        private float _x;
-
-        public void Move() => _x += 0.001f;
-
-        public int CopyEntities(Span<ReplicationEntity> destination)
-        {
-            var count = 0;
-            for (var i = 0; i < players.Count && count < destination.Length; i++)
-            {
-                world.Players.TryGet(players[i], out var player);
-                var state = new EntityState(player!.Entity, (EntityStateFields)15, 0, 0, new Vector3(_x + i, 4000, 0), Quaternion.Identity,
-                    Vector3.UnitX, 1);
-                destination[count++] = new ReplicationEntity(player.Entity, EntityKind.Player, players[i],
-                    new SnapshotFrame(FrameRef.Of(WorldFactory.HomePlanet), 0), state, 0f);
-            }
-
-            destination[..count].Sort(static (a, b) => a.Id.Value.CompareTo(b.Id.Value));
-            return count;
-        }
-
-        public uint GetLastProcessedInputSeq(PlayerId player) => 0;
-    }
-
     private sealed class CopyingTransport : ITransport
     {
         private readonly byte[] _copy = new byte[ProtocolConstants.MaxReliableMessageBytes];
         private bool _joined;
 
+        private readonly uint[] _perConnection = new uint[16];
+
         public int SnapshotsSent { get; private set; }
+
+        public bool Inspect { get; set; }
+
+        public int DeltasSeen { get; private set; }
+
+        public uint SentTo(ulong connection) => _perConnection[connection];
 
         public int MaxReliablePayload => ProtocolConstants.MaxReliableMessageBytes;
 
@@ -174,6 +198,11 @@ public sealed class EntityReplicationLifecycleTests
             if (payload[0] == (byte)MessageType.Snapshot)
             {
                 SnapshotsSent++;
+                _perConnection[connection.Value]++;
+                if (Inspect && MessageCodec.Read(payload) is Snapshot { BaselineSnapshotId: not 0 })
+                {
+                    DeltasSeen++;
+                }
             }
         }
 

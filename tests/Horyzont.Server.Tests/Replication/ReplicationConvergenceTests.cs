@@ -6,6 +6,7 @@ using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Net.Transport.InMemory;
+using Horyzont.Server.Replication;
 using Horyzont.Server.Tests.Support;
 
 namespace Horyzont.Server.Tests.Replication;
@@ -41,6 +42,29 @@ public sealed class ReplicationConvergenceTests
         }
 
         return hash;
+    }
+
+    /// <summary>Stands for a transfer that the shared budget stretches over many seconds: one bulk part per second.</summary>
+    private sealed class OnePartPerSecondBudget(TimeProvider time) : IReplicationSendBudget
+    {
+        private long _last = long.MinValue;
+
+        public bool TryConsume(PlayerId player, ReplicationTraffic traffic, int bytes)
+        {
+            if (traffic == ReplicationTraffic.Live)
+            {
+                return true;
+            }
+
+            var now = time.GetTimestamp();
+            if (_last != long.MinValue && time.GetElapsedTime(_last, now) < TimeSpan.FromSeconds(1))
+            {
+                return false;
+            }
+
+            _last = now;
+            return true;
+        }
     }
 
     private sealed class Mirrored
@@ -237,5 +261,35 @@ public sealed class ReplicationConvergenceTests
         Assert.Equal(0, alice.Resyncs);
         Assert.InRange(slowest.TotalMilliseconds, 0, 100);
         Assert.True(gate.BulkBytes > 0);
+    }
+
+    [Fact]
+    [Trait("Category", "Slow")]
+    public async Task Replicate_SlowLargeConstructUnderSharedBudget_IsPublishedWithoutDisconnect()
+    {
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        await using var rig = await ReplicationRig.StartAsync(time: time, sendBudget: new OnePartPerSecondBudget(time));
+        var alice = new Mirrored(await rig.JoinAsync("alice", 1), rig.Time);
+        var cells = new CellPos[300];
+        for (var i = 0; i < cells.Length; i++)
+        {
+            cells[i] = new CellPos((16 * (i % 20)) + 1, 16 * (i / 20), 0);
+        }
+
+        var id = rig.AddConstruct(new Vector3(10, 4000, 10), cells);
+        var ticks = 0;
+        while (ticks < 60 * 120 && !alice.Constructs.TryGetConstruct(id, out _))
+        {
+            rig.Step();
+            alice.Constructs.ExpireTransfers();
+            alice.Replication.Entities.RetryResyncs();
+            ticks++;
+        }
+
+        Assert.True(ticks > 5 * 60, "the transfer must outlast the former 5 s deadline: " + ticks);
+        Assert.True(alice.Constructs.TryGetConstruct(id, out var copy), "the copy was never published");
+        Assert.Equal(Digest(rig.Runtime.State.Constructs.All.Single(c => c.Id == id)), Digest(copy!));
+        Assert.Equal(0, alice.Resyncs);
+        Assert.Equal(0, alice.Constructs.StagingBytes);
     }
 }

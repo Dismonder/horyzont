@@ -174,4 +174,22 @@ public sealed class SnapshotBuilderTests
         Assert.True(reconstructed > 300);
         Assert.True(deltas > 100, "deltas must be used: " + deltas);
     }
+
+    [Fact]
+    public void Acknowledge_IdFallenOutOfTheSixtyFourEntryRing_IsIgnored()
+    {
+        var builder = new SnapshotBuilder(new FixedSnapshotBudget());
+        var player = new PlayerId(1);
+        builder.SetEntities(player, [Body(1, player, Vector3.One)]);
+        var bytes = new byte[1150];
+        for (uint tick = 0; tick < 70; tick++)
+        {
+            builder.Build(player, new Tick(tick), 0, bytes);
+        }
+
+        Assert.False(builder.Acknowledge(player, 3));
+        Assert.False(builder.Acknowledge(player, 6));
+        Assert.True(builder.Acknowledge(player, 70));
+        Assert.False(builder.Acknowledge(player, 69));
+    }
 }

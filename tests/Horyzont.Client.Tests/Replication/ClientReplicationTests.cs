@@ -104,4 +104,31 @@ public sealed class ClientReplicationTests
         Assert.Single(requests);
         Assert.True(mirror.ParkedSamples <= EntityMirror.MaxParkedSamples);
     }
+
+    [Fact]
+    public void EntityMirror_UnansweredResync_IsRepeatedUntilTheSpawnArrives()
+    {
+        var time = new FakeTimeProvider();
+        var mirror = new EntityMirror(time);
+        var requests = new List<EntityId>();
+        mirror.ResyncNeeded += requests.Add;
+        for (uint i = 0; i < 40; i++)
+        {
+            mirror.OnFullSnapshot(new Snapshot(10 + i, new Tick(10 + i), 0, 0, [_frame], [State(3, parentSeq: 5, x: i)]));
+        }
+
+        Assert.Single(requests);
+        mirror.RetryResyncs();
+        Assert.Single(requests);
+        time.Advance(TimeSpan.FromSeconds(2));
+        mirror.RetryResyncs();
+        Assert.Equal(2, requests.Count);
+        time.Advance(TimeSpan.FromSeconds(4));
+        mirror.RetryResyncs();
+        Assert.Equal(3, requests.Count);
+        mirror.Apply(Spawn(3, 5));
+        time.Advance(TimeSpan.FromMinutes(1));
+        mirror.RetryResyncs();
+        Assert.Equal(3, requests.Count);
+    }
 }

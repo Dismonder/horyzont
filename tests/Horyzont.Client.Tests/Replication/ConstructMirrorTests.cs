@@ -80,4 +80,90 @@ public sealed class ConstructMirrorTests
         Assert.True(mirror.TryGetConstruct(Header.Id, out var value));
         Assert.Equal(4u, value.Version);
     }
+
+    private static ConstructChunkRecord Chunk(int x) => new(new(Header.Id, new ChunkPos(x, 0, 0)), new uint[4096]);
+
+    [Fact]
+    public void Apply_SlowTransferThatKeepsProgressing_IsNotExpired()
+    {
+        var time = new FakeTimeProvider();
+        var mirror = new ConstructMirror(time);
+        var requests = new List<EntityId>();
+        mirror.ResyncNeeded += requests.Add;
+        Assert.False(mirror.Apply(new ConstructState(Header, 0, 4, [Chunk(0)])));
+        for (ushort part = 1; part < 3; part++)
+        {
+            time.Advance(TimeSpan.FromSeconds(4));
+            Assert.False(mirror.Apply(new ConstructState(Header, part, 4, [Chunk(part)])));
+        }
+
+        time.Advance(TimeSpan.FromSeconds(4));
+        Assert.True(mirror.Apply(new ConstructState(Header, 3, 4, [Chunk(3)])));
+        Assert.Empty(requests);
+        Assert.Equal(0, mirror.StagingBytes);
+    }
+
+    [Fact]
+    public void Apply_StalledTransferThenLeftoverParts_RequestsOnceAndIgnoresLeftoversWithoutDisconnect()
+    {
+        var time = new FakeTimeProvider();
+        var mirror = new ConstructMirror(time);
+        var requests = new List<EntityId>();
+        mirror.ResyncNeeded += requests.Add;
+        mirror.Apply(new ConstructState(Header, 0, 40, [Chunk(0)]));
+        time.Advance(TimeSpan.FromSeconds(5));
+        mirror.ExpireTransfers();
+        Assert.Single(requests);
+        for (ushort part = 1; part < 30; part++)
+        {
+            Assert.False(mirror.Apply(new ConstructState(Header, part, 40, [Chunk(part)])));
+        }
+
+        Assert.Single(requests);
+        Assert.Equal(0, mirror.StagingBytes);
+        Assert.True(mirror.Apply(new ConstructState(Header, 0, 1, [])));
+    }
+
+    [Fact]
+    public void ExpireTransfers_UnansweredResync_IsRepeatedWithBackoff()
+    {
+        var time = new FakeTimeProvider();
+        var mirror = new ConstructMirror(time);
+        var requests = new List<EntityId>();
+        mirror.ResyncNeeded += requests.Add;
+        var edit = new OperationApplied(new OpId(100), default, new BlockSetOp(Header.Id, default, BlockState.Create(1, 0)), [new(Header.Id, 3, false)]);
+        mirror.Apply(new ConstructState(Header, 0, 1, []));
+        mirror.Apply(edit);
+        Assert.Single(requests);
+        time.Advance(TimeSpan.FromSeconds(1));
+        mirror.ExpireTransfers();
+        Assert.Single(requests);
+        time.Advance(TimeSpan.FromSeconds(1));
+        mirror.ExpireTransfers();
+        Assert.Equal(2, requests.Count);
+        time.Advance(TimeSpan.FromSeconds(3));
+        mirror.ExpireTransfers();
+        Assert.Equal(2, requests.Count);
+        time.Advance(TimeSpan.FromSeconds(1));
+        mirror.ExpireTransfers();
+        Assert.Equal(3, requests.Count);
+
+        // An answer (part 0) ends the repetition.
+        mirror.Apply(new ConstructState(Header, 0, 1, []));
+        time.Advance(TimeSpan.FromMinutes(1));
+        mirror.ExpireTransfers();
+        Assert.Equal(3, requests.Count);
+    }
+
+    [Fact]
+    public void Apply_InvalidPartsSpreadOverTime_DoNotDisconnect()
+    {
+        var time = new FakeTimeProvider();
+        var mirror = new ConstructMirror(time);
+        for (var i = 0; i < 40; i++)
+        {
+            mirror.Apply(new ConstructState(Header, 0, 2, [Chunk(0), Chunk(0)]));
+            time.Advance(TimeSpan.FromSeconds(31));
+        }
+    }
 }

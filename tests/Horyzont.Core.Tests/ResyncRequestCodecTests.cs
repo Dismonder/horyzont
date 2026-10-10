@@ -28,4 +28,15 @@ public sealed class ResyncRequestCodecTests
         Assert.Throws<ProtocolViolationException>(() => MessageCodec.Read([21, 1, 1, 0]));
         Assert.Throws<ArgumentException>(() => MessageCodec.Write(new ByteWriter(), new ResyncRequest(default)));
     }
+
+    [Fact]
+    public void Codec_ResyncRequest_MatchesHandComputedBytes()
+    {
+        // Type 21 (0x15), format version 1, then the entity id 300 as a varuint: 300 = 0b1_0010_1100 -> 0xAC 0x02.
+        byte[] golden = [0x15, 0x01, 0xAC, 0x02];
+        var writer = new ByteWriter();
+        MessageCodec.Write(writer, new ResyncRequest(new EntityId(300)));
+        Assert.Equal(golden, writer.WrittenSpan.ToArray());
+        Assert.Equal(new ResyncRequest(new EntityId(300)), MessageCodec.Read(golden));
+    }
 }

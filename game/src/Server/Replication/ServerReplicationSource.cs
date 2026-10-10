@@ -22,8 +22,10 @@ public sealed class ServerReplicationSource(WorldState world, IServerCharacterSo
     public int CopyEntities(Span<ReplicationEntity> destination)
     {
         var count = 0;
-        foreach (var player in world.Players.All)
+        var players = world.Players.All;
+        for (var p = 0; p < players.Count; p++)
         {
+            var player = players[p];
             if (!player.IsOnline || !characters.TryGetState(player.Player, out var state))
             {
                 continue;

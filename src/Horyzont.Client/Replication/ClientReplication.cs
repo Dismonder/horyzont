@@ -16,12 +16,13 @@ public sealed class ClientReplication : IClientSessionListener
     /// <summary>Initializes a new instance of the <see cref="ClientReplication"/> class.</summary>
     /// <param name="send">Sends a client message to the server (reliable for resync, unreliable for acknowledgements).</param>
     /// <param name="constructs">Mirror of constructs; null when the world is shared with the server.</param>
-    public ClientReplication(Action<Message> send, ConstructMirror? constructs)
+    /// <param name="time">Clock of the resync retries; the system clock when omitted.</param>
+    public ClientReplication(Action<Message> send, ConstructMirror? constructs, TimeProvider? time = null)
     {
         ArgumentNullException.ThrowIfNull(send);
         _send = send;
         Constructs = constructs;
-        Entities = new EntityMirror();
+        Entities = new EntityMirror(time);
         Decoder = new SnapshotDecoder(id => _send(new SnapshotAck(id)));
         Decoder.AddSink(Entities);
         Entities.ResyncNeeded += Request;

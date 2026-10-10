@@ -302,6 +302,15 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
             return;
         }
 
+        // The client still holds these entities: withdraw them, or they stay as ghosts (collision, raycast) until the body returns.
+        foreach (var pair in state.Known)
+        {
+            if (!state.Removed.Contains(pair.Key))
+            {
+                _session.Send(player, new EntityDespawn(pair.Key));
+            }
+        }
+
         state.Known.Clear();
         state.Mobile.Clear();
         state.Removed.Clear();
@@ -422,12 +431,7 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
 
         if (kind == EntityKind.Construct)
         {
-            if (_constructs.IsTransferring(player, entity))
-            {
-                _logger.ResyncRefused(player.Value, entity.Value, "active");
-                return;
-            }
-
+            // A request for a transfer in progress means the client gave up on it (stall): restart with a new part 0.
             _constructs.Enqueue(player, entity);
         }
         else if (_index.TryGetValue(entity, out var index))

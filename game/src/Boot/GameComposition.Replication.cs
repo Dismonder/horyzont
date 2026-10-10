@@ -76,7 +76,7 @@ public sealed partial class GameComposition
 
         // A process that runs the server shares its world with the local client; only a remote client mirrors the constructs.
         var mirror = Server is null ? new ConstructMirror(_env.Time) : null;
-        var replication = new ClientReplication(Client.Session.Send, mirror);
+        var replication = new ClientReplication(Client.Session.Send, mirror, _env.Time);
         replication.Decoder.AddSink(LocalPlayer);
         if (_fullSnapshots is not null)
         {

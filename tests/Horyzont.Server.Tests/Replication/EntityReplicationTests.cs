@@ -178,4 +178,64 @@ public sealed class EntityReplicationTests
         Assert.Equal(new uint[] { 41, 42 }, all.OfType<OperationApplied>().Select(o => o.ConstructChanges[0].Version).ToArray());
         Assert.Equal(0, rig.Replication.Constructs.BufferedOperations(alice.Player));
     }
+
+    [Fact]
+    public async Task Resync_WhileTransferRuns_RestartsWithNewPartZero()
+    {
+        var gate = new GatedSendBudget();
+        await using var rig = await ReplicationRig.StartAsync(sendBudget: gate);
+        var alice = await rig.JoinAsync("alice", 1);
+        var cells = new CellPos[300];
+        for (var i = 0; i < cells.Length; i++)
+        {
+            cells[i] = new CellPos((16 * (i % 20)) + 1, 16 * (i / 20), 0);
+        }
+
+        var id = rig.AddConstruct(new Vector3(10, 4000, 10), cells);
+        for (var i = 0; i < 30 && !alice.Received.OfType<ConstructState>().Any(); i++)
+        {
+            rig.Step();
+        }
+
+        gate.Open = false;
+        rig.Step(3);
+        var sent = alice.Received.OfType<ConstructState>().Count(m => m.Header.Id == id);
+        Assert.InRange(sent, 1, 24);
+        Assert.True(rig.Replication.Constructs.IsTransferring(alice.Player, id));
+
+        alice.Session.Send(new ResyncRequest(id));
+        rig.Step(3);
+        gate.Open = true;
+        rig.Step(120);
+        var parts = alice.Received.OfType<ConstructState>().Where(m => m.Header.Id == id).ToList();
+        Assert.True(parts.Count(m => m.PartIndex == 0) >= 2, "a request during a transfer must restart it, not be refused");
+        var lastRestart = parts.FindLastIndex(m => m.PartIndex == 0);
+        Assert.Equal(parts[lastRestart].PartCount, parts.Count - lastRestart);
+        Assert.False(rig.Replication.Constructs.IsTransferring(alice.Player, id));
+    }
+
+    [Fact]
+    public async Task Interest_BodyDisappears_DespawnsEveryKnownEntityBeforeForgetting()
+    {
+        await using var rig = await ReplicationRig.StartAsync();
+        var alice = await rig.JoinAsync("alice", 1);
+        var bob = await rig.JoinAsync("bob", 2, new Vector3(20, 4000, 0));
+        var construct = rig.AddConstruct(new Vector3(10, 4000, 10));
+        rig.Step(30);
+        var bobBody = rig.EntityOf(bob.Player);
+        Assert.True(rig.Replication.Knows(alice.Player, bobBody));
+        Assert.True(rig.Replication.Knows(alice.Player, construct));
+
+        rig.Characters.States.Remove(alice.Player);
+        rig.Step(30);
+        Assert.False(rig.Replication.Knows(alice.Player, bobBody));
+        var despawned = alice.Received.OfType<EntityDespawn>().Select(m => m.Entity).ToList();
+        Assert.Contains(bobBody, despawned);
+        Assert.Contains(construct, despawned);
+
+        rig.Place(alice.Player, new Vector3(0, 4000, 0));
+        rig.Step(30);
+        Assert.True(rig.Replication.Knows(alice.Player, construct));
+        Assert.Equal(2, alice.Received.OfType<EntitySpawn>().Count(m => m.Entity == construct));
+    }
 }

@@ -100,6 +100,7 @@ public sealed partial class RemotePlayers : Node3D, IClientSessionListener
             return;
         }
 
+        _mirror.RetryResyncs();
         foreach (var pair in _nodes)
         {
             if (_mirror.TryGet(pair.Key, out var spawn) && spawn is not null)

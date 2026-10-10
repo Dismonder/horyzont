@@ -14,11 +14,16 @@ namespace Horyzont.Client.Replication;
 public sealed class ConstructMirror(TimeProvider time) : IConstructSource
 {
     private const int MaxStagingBytes = 16 * 1024 * 1024;
+    private static readonly TimeSpan StallTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan TotalTimeout = TimeSpan.FromSeconds(120);
+    private static readonly TimeSpan InvalidDecay = TimeSpan.FromSeconds(30);
     private readonly ConstructReplicaSet _set = new();
     private readonly Dictionary<EntityId, Transfer> _transfers = [];
-    private readonly HashSet<EntityId> _resync = [];
+    private readonly ResyncTracker _resync = new(time);
+    private readonly List<EntityId> _due = [];
     private readonly List<EntityId> _expired = [];
     private int _invalid;
+    private long _lastInvalid;
 
     /// <summary>Raised once per unresolved entity gap.</summary>
     public event Action<EntityId>? ResyncNeeded;
@@ -61,7 +66,13 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
         {
             DropTransfer(id);
             Withdraw(id);
+            _resync.MarkAnswered(id);
             _transfers[id] = new Transfer(part.Header, part.PartCount, time.GetTimestamp());
+        }
+        else if (!_transfers.ContainsKey(id) && _resync.Contains(id))
+        {
+            // Leftover of a transfer that was abandoned: the requested restart begins with part 0.
+            return false;
         }
 
         if (!_transfers.TryGetValue(id, out var transfer) || transfer.Header != part.Header
@@ -84,6 +95,7 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
         }
 
         transfer.Next++;
+        transfer.Progress = time.GetTimestamp();
         if (transfer.Next != transfer.Count)
         {
             return false;
@@ -225,9 +237,11 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
     public void ExpireTransfers()
     {
         _expired.Clear();
+        var now = time.GetTimestamp();
         foreach (var pair in _transfers)
         {
-            if (time.GetElapsedTime(pair.Value.Start) >= TimeSpan.FromSeconds(5))
+            // A slow transfer under the shared send budget may legitimately take long: only a stall (or an absurd total) is repaired.
+            if (time.GetElapsedTime(pair.Value.Progress, now) >= StallTimeout || time.GetElapsedTime(pair.Value.Start, now) >= TotalTimeout)
             {
                 _expired.Add(pair.Key);
             }
@@ -237,6 +251,13 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
         {
             DropTransfer(id);
             RequestResync(id);
+        }
+
+        _due.Clear();
+        _resync.CollectDue(_due);
+        foreach (var id in _due)
+        {
+            ResyncNeeded?.Invoke(id);
         }
     }
 
@@ -321,6 +342,13 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
     {
         DropTransfer(id);
         RequestResync(id);
+        var now = time.GetTimestamp();
+        if (_invalid > 0 && time.GetElapsedTime(_lastInvalid, now) >= InvalidDecay)
+        {
+            _invalid = 0;
+        }
+
+        _lastInvalid = now;
         if (++_invalid > 8)
         {
             throw new Horyzont.Core.Serialization.ProtocolViolationException("Repeated invalid construct transfers.");
@@ -347,6 +375,7 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
 
     private sealed class Transfer(ConstructHeaderRecord header, ushort count, long start)
     {
+        public long Progress { get; set; } = start;
         public ConstructHeaderRecord Header { get; } = header;
         public ushort Count { get; } = count;
         public long Start { get; } = start;

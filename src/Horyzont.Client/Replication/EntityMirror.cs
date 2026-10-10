@@ -11,7 +11,7 @@ namespace Horyzont.Client.Replication;
 /// newer than the known one (or whose entity has no spawn yet) wait, at most <see cref="MaxParkedSamples"/> per entity, until the
 /// reparent operation or the spawn arrives; an overflow asks for a resynchronisation. Older counters are dropped.
 /// </summary>
-public sealed class EntityMirror : IFullSnapshotSink
+public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
 {
     /// <summary>Most samples one entity may park while its parent counter is ahead of the known one.</summary>
     public const int MaxParkedSamples = 32;
@@ -19,7 +19,8 @@ public sealed class EntityMirror : IFullSnapshotSink
     private readonly Dictionary<EntityId, EntitySpawn> _entities = [];
     private readonly List<EntityId> _ids = [];
     private readonly Dictionary<EntityId, List<Sample>> _parked = [];
-    private readonly HashSet<EntityId> _resync = [];
+    private readonly ResyncTracker _resync = new(time ?? TimeProvider.System);
+    private readonly List<EntityId> _due = [];
 
     /// <summary>Raised once per entity when parked samples overflow; the owner sends a resynchronisation request.</summary>
     public event Action<EntityId>? ResyncNeeded;
@@ -140,6 +141,17 @@ public sealed class EntityMirror : IFullSnapshotSink
         }
 
         return count;
+    }
+
+    /// <summary>Repeats the resync requests that the server has not answered (it may have refused them silently).</summary>
+    public void RetryResyncs()
+    {
+        _due.Clear();
+        _resync.CollectDue(_due);
+        foreach (var id in _due)
+        {
+            ResyncNeeded?.Invoke(id);
+        }
     }
 
     /// <summary>Clears a disconnected session.</summary>
