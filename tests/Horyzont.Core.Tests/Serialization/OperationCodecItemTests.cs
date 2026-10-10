@@ -162,6 +162,17 @@ public sealed class OperationCodecItemTests
         Assert.IsType<ContainerCreateOp>(Kit.DecodeOperation(Kit.Hex("23 01 01 04 01 01 01 01 01")));
     }
 
+    [Fact]
+    public void InvalidSourceOrSink_Throws_BeforeWritingAnyByte()
+    {
+        var writer = new ByteWriter();
+
+        Assert.Throws<ArgumentException>(() => OperationCodec.Write(writer, new ItemCreateOp(_a, new ItemTypeId(1), 1, 1, (ItemSource)10)));
+        Assert.Throws<ArgumentException>(() => OperationCodec.Write(writer, new ItemDestroyOp(_a, new ItemTypeId(1), 1, (ItemSink)12)));
+
+        Assert.Equal(0, writer.Length);
+    }
+
     private static ContainerHost HostOf(int host) => host switch
     {
         0 => ContainerHost.Player(new PlayerId(12)),

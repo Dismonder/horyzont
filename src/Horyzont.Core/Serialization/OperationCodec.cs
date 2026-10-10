@@ -119,31 +119,31 @@ public static class OperationCodec
                 break;
 
             case ItemCreateOp ic:
+                if (!Enum.IsDefined(ic.Source))
+                {
+                    throw new ArgumentException($"Invalid ItemSource {(byte)ic.Source}.", nameof(op));
+                }
+
                 w.WriteByte((byte)OperationKind.ItemCreate);
                 w.WriteByte(CurrentFormatVersion);
                 CoreCodecPrimitives.WriteSlotRef(w, ic.Slot);
                 w.WriteVarUInt(ic.Type.Value);
                 w.WriteVarUInt(ic.Count);
                 w.WriteVarUInt(ic.StackLimit);
-                if (!Enum.IsDefined(ic.Source))
-                {
-                    throw new ArgumentException($"Invalid ItemSource {(byte)ic.Source}.", nameof(op));
-                }
-
                 w.WriteByte((byte)ic.Source);
                 break;
 
             case ItemDestroyOp id:
-                w.WriteByte((byte)OperationKind.ItemDestroy);
-                w.WriteByte(CurrentFormatVersion);
-                CoreCodecPrimitives.WriteSlotRef(w, id.Slot);
-                w.WriteVarUInt(id.Type.Value);
-                w.WriteVarUInt(id.Count);
                 if (!Enum.IsDefined(id.Sink))
                 {
                     throw new ArgumentException($"Invalid ItemSink {(byte)id.Sink}.", nameof(op));
                 }
 
+                w.WriteByte((byte)OperationKind.ItemDestroy);
+                w.WriteByte(CurrentFormatVersion);
+                CoreCodecPrimitives.WriteSlotRef(w, id.Slot);
+                w.WriteVarUInt(id.Type.Value);
+                w.WriteVarUInt(id.Count);
                 w.WriteByte((byte)id.Sink);
                 break;
 
