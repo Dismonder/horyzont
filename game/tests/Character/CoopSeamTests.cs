@@ -21,7 +21,8 @@ public class CoopSeamTests
     {
         await using var scene = EngineTestScene.Create();
         var dir = ModeFixture.NewDirectory();
-        var fixture = await ModeFixture.StartWithCharactersAsync(scene, dir, true, true,
+        // Rendered parts: the visual viewer exists only with rendering (a solo host shares the server's collisions, so it has no collision viewer).
+        var fixture = await ModeFixture.StartRenderedAsync(scene, dir, true,
             "--solo", "--data-dir", dir, "--profile", Path.Combine(dir, "profile.json"), "--world", Guid.NewGuid().ToString());
         var composition = fixture.Composition;
         AssertThat(await fixture.WaitInGame()).IsTrue();
