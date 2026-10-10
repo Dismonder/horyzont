@@ -149,13 +149,13 @@ Fixture xUnit: `FakeTimeProvider`, `InMemoryTransport`, 60 Hz fizyki/20 Hz stan�
 
 ## Kroki
 
-- [ ] 0. Rebase na scalone K2 i K3-00; sprawdzić nazwy oraz zastosować szwy S4–S7 i własność plików według X10. Nie zmieniać cudzych testów akceptacyjnych bez zgody.
-- [ ] 1. Testy czyste prezentacji i ringów, następnie implementacja; mały commit Conventional Commits po zielonym kroku.
-- [ ] 2. Testy replay/pauzy/ACK; adapter pełnej migawki do próbek, bez regresji `Validate(Snapshot, ...)`.
-- [ ] 3. Testy polityki budżetu, implementacja bez alokacji i API dla K3-15.
-- [ ] 4. Testy Godota, odseparować siatkę/kamerę od kapsuły; zdalny widok tylko wizualny. Sprawdzić FPP/TPP, bieguny i ściany.
-- [ ] 5. Test łącza, pomiary płynności i alokacji; raport seedów, błędów i niedoborów próbek. Po dwóch nieudanych próbach tego samego testu eskalować z testem i logiem zgodnie z ZASADY pkt 12.
-- [ ] 6. Po scaleniu K3-15 (albo w K3-15, jeśli scala później — X10) powtórzyć scenariusz na prawdziwych migawkach delta/spawn/despawn i sprawdzić actual bytes. Bez tej integracji nie ogłaszać kompletnego odbioru co-op.
+- [x] 0. Baza potwierdzona: K2 + K3-00, czysta gałąź pakietu; bez zbędnego rebase. Rebase na scalone K2 i K3-00; sprawdzić nazwy oraz zastosować szwy S4–S7 i własność plików według X10. Nie zmieniać cudzych testów akceptacyjnych bez zgody.
+- [x] 1. RED: brak API; GREEN: Client 173/173, interpolacja/ring/clock i 0 B w gorących ścieżkach. Testy czyste prezentacji i ringów, następnie implementacja; mały commit Conventional Commits po zielonym kroku.
+- [x] 2. GREEN: Client 177/177; replay 1..128, pauza/ACK i pełny sink z resetem sesji. Testy replay/pauzy/ACK; adapter pełnej migawki do próbek, bez regresji `Validate(Snapshot, ...)`.
+- [x] 3. RED: brak API; GREEN: Server 124/124; budżet per klient, forced full i 0 B. Testy polityki budżetu, implementacja bez alokacji i API dla K3-15.
+- [x] 4. Testy zapisane przed API, RED kompilacji; build game GREEN 0 ostrzeżeń/błędów, gdUnit NOT RUN. Testy Godota, odseparować siatkę/kamerę od kapsuły; zdalny widok tylko wizualny. Sprawdzić FPP/TPP, bieguny i ściany.
+- [x] 5. GREEN: Client 187/187; `MotionLinkTests` 10 przebiegów (seedy 14/140/1400; 50 ms/jitter 10 ms/dup 1%; wariant 100 ms w każdą stronę), 5% utraty, zbieżność w 1 migawce, 0 nieuzasadnionych snapów, 0 B w gorących ścieżkach. Test łącza, pomiary płynności i alokacji; raport seedów, błędów i niedoborów próbek. Po dwóch nieudanych próbach tego samego testu eskalować z testem i logiem zgodnie z ZASADY pkt 12.
+- [x] 6. Po scaleniu K3-15 (albo w K3-15, jeśli scala później — X10) powtórzyć scenariusz na prawdziwych migawkach delta/spawn/despawn i sprawdzić actual bytes. Bez tej integracji nie ogłaszać kompletnego odbioru co-op. Zrobione: `SnapshotBuilder` K3-15 wybiera przez `SnapshotSchedulingPolicy` (własny, głodzone, odległość/wiek), `MotionSnapshotBudget` w `EntityReplicationBinder`, ring/`RemotePlayerPresentation` rejestrowane w `RemotePlayers` przy spawn/despawn, `RemoteMotionSampleAdapter` podpięty do `SnapshotDecoder` (pass-through K2 jest podmieniany). Testy: `MotionReplicationIntegrationTests` (delty, despawn, rzeczywiste bajty). gdUnit NOT RUN.
 - [ ] 7. Pełne `dotnet build Horyzont.sln`, `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"`, `dotnet format Horyzont.sln --verify-no-changes`, `python tools/engine/build.py smoke`; seryjne gdUnit4 na Windows. Wyniki i ograniczenia do PR; zielone CI po scaleniu.
 
 ## Odbiór
@@ -166,6 +166,15 @@ Fixture xUnit: `FakeTimeProvider`, `InMemoryTransport`, 60 Hz fizyki/20 Hz stan�
 - Raport build/test/format/smoke, pomiary alokacji i przegląd Sol w PR. Linux: `VALIDATION_NOT_PERFORMED`, nie wymagać wyłączonego joba ani potwierdzać zgodności między systemami bez pomiaru.
 
 ## Odstępstwa i decyzje wykonawcy
+
+- wykonawca: GPT-6.1 Sol, przegląd Opus 5.5.
+- Polecenie użytkownika: bez Godota, gdUnit i smoke; testy silnika tylko pisane i kompilowane, wykonanie NOT RUN. Testy .NET per projekt, bez push.
+- K3-15 nie jest w tej bazie; krok 6 integruje pakiet scalany później (X10). Bez zmian Core/protokołu.
+- Cache SDK forka skopiowano z F:/dev/horyzont-k3-00/engine/nuget-local do ignorowanego engine/nuget-local; bez zmian konfiguracji i bez silnika.
+- wykonawca: Claude Sonnet 5.5 (kontynuacja po limicie Sol); naprawiono kompilację `MotionLinkTests` (`FirstSeq`), nazwy pól `_planet`/`_rules`. Fixture łącza używa idealnej kolizji sfery zamiast Godota; `max_jump` = 0, bo `Reconcile` zachowuje widoczną pozę z konstrukcji (próg 2 cm spełniony).
+- Krok 6 wykonany po scaleniu K3-15 (merge origin/main); `python tools/engine/build.py smoke` / gdUnit: NOT RUN (K3-15 poza bazą; polecenie zakazuje silnika).
+- Przegląd Opus (poprawki): test łącza mierzy teraz krok wygaszania na klatkę; przy błędach > 0,12 m przekraczał 2 cm/klatkę (do 12 cm), więc wygaszanie ma limit prędkości 1,2 m/s (czas = max(100 ms, błąd/1,2 m/s)). Odstępstwo od „100 ms” dla błędów > 12 cm; pytanie P1 do właściciela: czy zaakceptować dłuższe wygaszanie zamiast kroku > 2 cm. Próg 1 m/45° liczony od widocznej pozy po replay. Fixture startował na biegunie (osobliwość yaw dawała rotacje 180°); przeniesiony poza biegun. Zdalny kursor przez `RemoteMotionSampleAdapter`/`RemoteMotionPolicy`; `_slewAllowance` ≤ 1 tick; `MotionStatistics` raportuje bieżące opóźnienie. Test kamery przy ścianie napisany przez `LocalPlayer` (NOT RUN).
+- Zegar zdalny umieszczono w RemoteMotionPolicy; TrySample przyjmuje już opóźniony kursor, 100 ms odejmowane raz.
 
 ## Pułapki
 
@@ -186,3 +195,4 @@ Warianty domyślne obowiązują przy starcie bez odpowiedzi (README:42); sprzecz
 | P2 | Czy przy dłuższej luce preferujemy zatrzymanie cudzej postaci po 50 ms ekstrapolacji? | Tak; alternatywa: sam hold bez ekstrapolacji, nadal bufor 100 ms |
 | X1 | Czy przyjmujemy K3-00 przed równoległym startem pakietów? | Domyślnie tak: S1–S9 na bramce K2 bez Core/protokołu; alternatywa po odrzuceniu: X10 „integruje pakiet scalany później”, K3-14 krok 6 i K3-16 krok 6 dopiero po scaleniu K3-15 |
 | X3 | Czy przyjmujemy wspólny podział pasma? | Domyślnie migawki 20 480 B/s / 2 300 B, niezawodne wspólne 27 000 B/s / 65 536 B, sterowanie poza budżetem (~2,5 KB/s); alternatywa: strojenie podziału po raporcie actual bytes, limit ≤50 000 B/s, bez osobnego wiadra terenu |
+

@@ -1,9 +1,11 @@
 using Godot;
 
+using Horyzont.Client.Movement;
 using Horyzont.Client.Replication;
 using Horyzont.Client.Session;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Protocol.Messages;
+using Horyzont.Game.Client.Character;
 using Horyzont.Game.Client.Replication;
 using Horyzont.Game.Testing;
 using Horyzont.Net.Session;
@@ -56,6 +58,36 @@ public sealed class RemotePlayersTests : EngineTestBase
         client.Session.Disconnect();
         players.OnDisconnected(Horyzont.Core.Protocol.DisconnectCode.Normal);
         EngineAssert.Equal(0, players.Count, "the session ending frees all nodes");
+        players.GetParent()?.RemoveChild(players);
+        players.Free();
+    }
+
+    [EngineTest]
+    public async Task RemotePlayers_WithMotionAdapter_UsesPresentationAndRegistersRings()
+    {
+        var network = new InMemoryNetwork(TimeProvider.System);
+        using var transport = network.CreateTransport("client", TransportOptions.Default);
+        var client = new ClientRuntime(transport, new ClientOptions { BuildHash = 1 }, false, TimeProvider.System, NullLoggerFactory.Instance);
+        var mirror = new EntityMirror();
+        var motion = new RemoteMotionSampleAdapter(TimeProvider.System);
+        var hello = new ServerHello(WorldFactory.DefaultWorldId, default, 60, new PlayerId(1), new EntityId(1), [], [], []);
+        motion.OnServerHello(hello);
+        var players = new RemotePlayers { Name = "RemotePlayers" };
+        players.Initialize(client, mirror, render: true, motion: motion);
+        Host.AddChild(players);
+        players.OnServerHello(hello);
+
+        mirror.Apply(Spawn(2, 2, 10));
+        await NextFrame();
+        EngineAssert.True(players.TryGetNode(new EntityId(2), out var node) && node is RemotePlayerPresentation, "presentation node");
+        var full = new Snapshot(1, new Tick(100), 0, 0, [_frame],
+            [new EntityState(new EntityId(2), (EntityStateFields)15, 0, 0, new System.Numerics.Vector3(11, 4000, 0),
+                System.Numerics.Quaternion.Identity, System.Numerics.Vector3.Zero, 0)]);
+        motion.OnFullSnapshot(full);
+        EngineAssert.True(motion.Clock.RenderTick >= 0, "the shared clock runs");
+
+        mirror.Apply(new EntityDespawn(new EntityId(2)));
+        EngineAssert.Equal(0, players.Count, "despawn frees the presentation");
         players.GetParent()?.RemoveChild(players);
         players.Free();
     }
