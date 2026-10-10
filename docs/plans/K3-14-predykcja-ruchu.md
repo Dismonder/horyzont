@@ -149,8 +149,8 @@ Fixture xUnit: `FakeTimeProvider`, `InMemoryTransport`, 60 Hz fizyki/20 Hz stan�
 
 ## Kroki
 
-- [ ] 0. Rebase na scalone K2 i K3-00; sprawdzić nazwy oraz zastosować szwy S4–S7 i własność plików według X10. Nie zmieniać cudzych testów akceptacyjnych bez zgody.
-- [ ] 1. Testy czyste prezentacji i ringów, następnie implementacja; mały commit Conventional Commits po zielonym kroku.
+- [x] 0. Baza potwierdzona: K2 + K3-00, czysta gałąź pakietu; bez zbędnego rebase. Rebase na scalone K2 i K3-00; sprawdzić nazwy oraz zastosować szwy S4–S7 i własność plików według X10. Nie zmieniać cudzych testów akceptacyjnych bez zgody.
+- [x] 1. RED: brak API; GREEN: Client 173/173, interpolacja/ring/clock i 0 B w gorących ścieżkach. Testy czyste prezentacji i ringów, następnie implementacja; mały commit Conventional Commits po zielonym kroku.
 - [ ] 2. Testy replay/pauzy/ACK; adapter pełnej migawki do próbek, bez regresji `Validate(Snapshot, ...)`.
 - [ ] 3. Testy polityki budżetu, implementacja bez alokacji i API dla K3-15.
 - [ ] 4. Testy Godota, odseparować siatkę/kamerę od kapsuły; zdalny widok tylko wizualny. Sprawdzić FPP/TPP, bieguny i ściany.
@@ -166,6 +166,11 @@ Fixture xUnit: `FakeTimeProvider`, `InMemoryTransport`, 60 Hz fizyki/20 Hz stan�
 - Raport build/test/format/smoke, pomiary alokacji i przegląd Sol w PR. Linux: `VALIDATION_NOT_PERFORMED`, nie wymagać wyłączonego joba ani potwierdzać zgodności między systemami bez pomiaru.
 
 ## Odstępstwa i decyzje wykonawcy
+
+- wykonawca: GPT-6.1 Sol, przegląd Opus 5.5.
+- Polecenie użytkownika: bez Godota, gdUnit i smoke; testy silnika tylko pisane i kompilowane, wykonanie NOT RUN. Testy .NET per projekt, bez push.
+- K3-15 nie jest w tej bazie; krok 6 integruje pakiet scalany później (X10). Bez zmian Core/protokołu.
+- Zegar zdalny umieszczono w RemoteMotionPolicy; TrySample przyjmuje już opóźniony kursor, 100 ms odejmowane raz.
 
 ## Pułapki
 
