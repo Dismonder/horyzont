@@ -232,7 +232,7 @@ public sealed class DerivedLodRebuilder
                     uint version = 0;
                     if (child.Lod == 0)
                     {
-                        var lookup = _source.TryLoad(child, out version, out data);
+                        var lookup = _source.TryLoad(child, refetch: false, out version, out data);
                         if (lookup == TerrainBlockLookup.Unavailable)
                         {
                             return false;

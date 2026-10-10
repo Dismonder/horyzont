@@ -14,6 +14,9 @@ public sealed class DerivedRebuildSchedule
     /// <summary>Most turned-away blocks remembered; beyond it only the fact that something was missed is kept.</summary>
     public const int MaxMissedKeys = 4096;
 
+    /// <summary>Most evicted-but-current results remembered; beyond it an evicted block goes back to dirty and is rebuilt on demand.</summary>
+    public const int MaxEvicted = 65536;
+
     /// <summary>Shortest time between two engine reloads requested by the schedule.</summary>
     public static readonly TimeSpan MinReloadInterval = TimeSpan.FromSeconds(2);
 
@@ -27,6 +30,7 @@ public sealed class DerivedRebuildSchedule
     private long _sequence;
     private TerrainBlockKey? _cursor;
     private bool _missedOverflow;
+    private bool _publishedSinceReload;
     private TimeSpan? _lastReload;
 
     /// <summary>Creates an empty queue.</summary>
@@ -194,7 +198,9 @@ public sealed class DerivedRebuildSchedule
             }
         }
 
-        if (_settled.Count == 0 && (!_missedOverflow || _dirty.Count != 0))
+        // Turned-away blocks beyond the memory bound are unknown by key, so a rebuild since the last reload is the best evidence that
+        // one of them may be ready: reload for it instead of waiting until nothing at all is dirty (edits could postpone that for ever).
+        if (_settled.Count == 0 && (!_missedOverflow || !_publishedSinceReload))
         {
             return false;
         }
@@ -206,6 +212,7 @@ public sealed class DerivedRebuildSchedule
 
         // Blocks beyond the memory bound are not known by key: the fact stays until nothing is dirty, so none is forgotten unbuilt.
         _missedOverflow = _missedOverflow && _dirty.Count != 0;
+        _publishedSinceReload = false;
         _lastReload = now;
         return true;
     }
@@ -227,12 +234,13 @@ public sealed class DerivedRebuildSchedule
         _dirty.Remove(key);
         _ready.Remove(key);
         _evicted.Remove(key);
+        _publishedSinceReload = true;
         while (_ready.Count >= _capacity && _order.TryDequeue(out var oldest))
         {
             if (_ready.TryGetValue(oldest.Key, out var held) && held.Sequence == oldest.Sequence)
             {
                 _ready.Remove(oldest.Key);
-                if (held.Fingerprint is { } stored)
+                if (held.Fingerprint is { } stored && _evicted.Count < MaxEvicted)
                 {
                     _evicted[oldest.Key] = stored;
                 }

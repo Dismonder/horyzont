@@ -149,6 +149,7 @@ public sealed class ClientTerrainReplicator : IClientSessionListener, IClientWor
     /// <inheritdoc />
     public void OnDisconnected(DisconnectCode code)
     {
+        _terrain.Cache?.ResetRefetch();
         _accepted.Clear();
         _recheck.Clear();
         _prediction?.RevertAll();
@@ -305,10 +306,17 @@ public sealed class ClientTerrainReplicator : IClientSessionListener, IClientWor
                 continue;
             }
 
-            if (!state.MarkPending(entry))
+            if (!state.MarkPending(entry, out var contradicts))
             {
+                if (contradicts)
+                {
+                    Leave($"manifest: {entry.Key} has version {entry.Version} with another hash than the block received");
+                    return;
+                }
+
                 // A live block of this session is at least as new (it overtook the manifest): neither wait for the old version nor
-                // let the expectation drop or hide the newer data.
+                // let the expectation drop or hide the newer data. Note that readiness may therefore come before this newer live block
+                // is applied to the terrain (it sits in the accepted queue until ApplyAccepted); that is intended: it is never older.
                 continue;
             }
 

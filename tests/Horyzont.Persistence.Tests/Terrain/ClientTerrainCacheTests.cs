@@ -365,6 +365,97 @@ public sealed class ClientTerrainCacheTests
         await CloseCleanly(cache);
     }
 
+    private static async Task<(ClientTerrainCache Cache, FakeTimeProvider Time)> EvictedKeyOne(TempDirectory dir)
+    {
+        var time = new FakeTimeProvider();
+        var cache = Open(dir, time);
+        cache.MaxDiskBytes = 100;
+        for (var i = 1; i <= 4; i++)
+        {
+            cache.Put(Key(i), 1, (ulong)i, Blob(i, 40));
+            await cache.FlushAsync().WaitAsync(_wait, TestContext.Current.CancellationToken);
+        }
+
+        return (cache, time);
+    }
+
+    [Fact]
+    public async Task Refetch_RequestStaysUnanswered_IsRepeatedAfterTheRetryInterval()
+    {
+        using var dir = new TempDirectory();
+        var (cache, time) = await EvictedKeyOne(dir);
+        var wanted = new List<TerrainBlockKey>();
+        cache.TryLoad(Key(1), out _, out _);
+        Assert.Equal(1, cache.TakeRefetch(wanted));
+
+        time.Advance(ClientTerrainCache.RefetchRetryInterval - TimeSpan.FromSeconds(1));
+        cache.TryLoad(Key(1), out _, out _);
+        Assert.Equal(0, cache.TakeRefetch(wanted));
+
+        time.Advance(TimeSpan.FromSeconds(2));
+        cache.TryLoad(Key(1), out _, out _);
+        wanted.Clear();
+        Assert.Equal(1, cache.TakeRefetch(wanted));
+        Assert.Equal([Key(1)], wanted);
+        await CloseCleanly(cache);
+    }
+
+    [Fact]
+    public async Task ResetRefetch_AfterADisconnect_AsksAgainAtOnce()
+    {
+        using var dir = new TempDirectory();
+        var (cache, _) = await EvictedKeyOne(dir);
+        var wanted = new List<TerrainBlockKey>();
+        cache.TryLoad(Key(1), out _, out _);
+        Assert.Equal(1, cache.TakeRefetch(wanted));
+
+        cache.ResetRefetch();
+        cache.TryLoad(Key(1), out _, out _);
+        wanted.Clear();
+        Assert.Equal(1, cache.TakeRefetch(wanted));
+        await CloseCleanly(cache);
+    }
+
+    [Fact]
+    public async Task ResetRefetch_DropsRequestsNotTakenYet()
+    {
+        using var dir = new TempDirectory();
+        var (cache, _) = await EvictedKeyOne(dir);
+        cache.TryLoad(Key(1), out _, out _);
+        cache.ResetRefetch();
+
+        Assert.Equal(0, cache.TakeRefetch([]));
+        await CloseCleanly(cache);
+    }
+
+    [Fact]
+    public async Task Expect_VersionZeroForAnEvictedEditedBlock_ForgetsItsRefetchState()
+    {
+        using var dir = new TempDirectory();
+        var (cache, _) = await EvictedKeyOne(dir);
+        cache.Expect(Key(1), 0, 0);
+        Assert.Equal(TerrainBlockLookup.NotEdited, cache.TryLoad(Key(1), out _, out _));
+
+        // The server edits the block again: it sends the data itself, so the old eviction mark must not trigger a refetch.
+        cache.Expect(Key(1), 2, 77);
+        Assert.Equal(TerrainBlockLookup.Unavailable, cache.TryLoad(Key(1), out _, out _));
+        Assert.Equal(0, cache.TakeRefetch([]));
+        await CloseCleanly(cache);
+    }
+
+    [Fact]
+    public async Task TryLoad_WithoutRefetch_DoesNotQueueTheEvictedBlock()
+    {
+        using var dir = new TempDirectory();
+        var (cache, _) = await EvictedKeyOne(dir);
+        Assert.Equal(TerrainBlockLookup.Unavailable, cache.TryLoad(Key(1), refetch: false, out _, out _));
+        Assert.Equal(0, cache.TakeRefetch([]));
+
+        Assert.Equal(TerrainBlockLookup.Unavailable, cache.TryLoad(Key(1), refetch: true, out _, out _));
+        Assert.Equal(1, cache.TakeRefetch([]));
+        await CloseCleanly(cache);
+    }
+
     [Fact]
     public async Task MemoryLimit_EvictedUnsavedEditedBlock_IsUnavailableNotPristine()
     {

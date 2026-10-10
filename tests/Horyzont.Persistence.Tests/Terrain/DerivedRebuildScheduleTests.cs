@@ -178,6 +178,40 @@ public sealed class DerivedRebuildScheduleTests
     }
 
     [Fact]
+    public void TakeReloadDue_OverflowedMissesWhileEditsKeepBlocksDirty_ReloadsWithoutWaitingForQuiet()
+    {
+        var queue = new DerivedRebuildSchedule(10);
+        const int total = DerivedRebuildSchedule.MaxMissedKeys + 50;
+        for (var i = 0; i < total; i++)
+        {
+            queue.MarkDirty(Key(1, i));
+            queue.NoteMissed(Key(1, i));
+        }
+
+        Assert.False(queue.TakeReloadDue(TimeSpan.Zero));
+
+        // Only blocks beyond the remembered keys are rebuilt; the remembered ones (and thus "something dirty") stay.
+        queue.Publish(Key(1, total - 1), [1], "fp");
+        Assert.True(queue.DirtyCount > 0);
+        Assert.True(queue.TakeReloadDue(TimeSpan.Zero));
+        Assert.False(queue.TakeReloadDue(DerivedRebuildSchedule.MinReloadInterval));
+    }
+
+    [Fact]
+    public void Publish_EvictedResults_AreBounded()
+    {
+        var queue = new DerivedRebuildSchedule(1);
+        for (var i = 0; i < DerivedRebuildSchedule.MaxEvicted + 20; i++)
+        {
+            queue.MarkDirty(Key(1, i));
+            queue.Publish(Key(1, i), [1], "fp");
+        }
+
+        Assert.True(queue.EvictedCount <= DerivedRebuildSchedule.MaxEvicted);
+        Assert.True(queue.DirtyCount > 0);
+    }
+
+    [Fact]
     public void Publish_MoreChangedBlocksThanTheCapacity_ConvergesAndKeepsEveryBlockCurrent()
     {
         var queue = new DerivedRebuildSchedule(8);

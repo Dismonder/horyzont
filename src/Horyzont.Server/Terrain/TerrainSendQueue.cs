@@ -121,14 +121,24 @@ public sealed class TerrainSendQueue
                 bestBulk = candidate;
             }
         }
-        best = bestBulk ?? best;
-        if (best is null || !_budget.TryConsume(player, best.Priority == 0 ? ReplicationTraffic.Live : ReplicationTraffic.Bulk, best.Bytes))
+        var chosen = bestBulk ?? best;
+        if (chosen is null)
         {
             return false;
         }
-        queue.Entries.Remove(best.Data.Key);
-        queue.LiveStreak = best.Priority == 0 ? queue.LiveStreak + 1 : 0;
-        data = best.Data;
+        if (!_budget.TryConsume(player, chosen.Priority == 0 ? ReplicationTraffic.Live : ReplicationTraffic.Bulk, chosen.Bytes))
+        {
+            // The bulk turn found no tokens: live edits must not wait for the bulk refill, so fall back to the best live block now.
+            // The streak stays, the bulk block keeps its turn for the next call that has tokens.
+            if (chosen.Priority == 0 || best is not { Priority: 0 } || !_budget.TryConsume(player, ReplicationTraffic.Live, best.Bytes))
+            {
+                return false;
+            }
+            chosen = best;
+        }
+        queue.Entries.Remove(chosen.Data.Key);
+        queue.LiveStreak = chosen.Priority == 0 ? queue.LiveStreak + 1 : 0;
+        data = chosen.Data;
         return true;
     }
 

@@ -17,7 +17,7 @@ public sealed class ClientTerrainSyncState : IClientWorldReadiness
 
     private readonly Dictionary<PlanetId, PlanetState> _planets = [];
     private readonly Dictionary<TerrainBlockKey, (uint Version, ulong Hash)> _pending = [];
-    private readonly Dictionary<TerrainBlockKey, uint> _latest = [];
+    private readonly Dictionary<TerrainBlockKey, (uint Version, ulong Hash)> _latest = [];
     private readonly Dictionary<OpId, IReadOnlyList<TerrainSyncEntry>> _barriers = [];
     private readonly Queue<OpId> _barrierOrder = new();
     private readonly int _maxBarriers;
@@ -150,10 +150,21 @@ public sealed class ClientTerrainSyncState : IClientWorldReadiness
     /// </summary>
     /// <param name="entry">The manifest entry.</param>
     /// <returns>True when the block is awaited; false when a version at least this new was already seen.</returns>
-    public bool MarkPending(TerrainSyncEntry entry)
+    public bool MarkPending(TerrainSyncEntry entry) => MarkPending(entry, out _);
+
+    /// <summary>
+    /// <see cref="MarkPending(TerrainSyncEntry)"/> that also reports a manifest entry naming the version this session already received
+    /// with another hash: the server contradicts itself, which is a protocol violation like any other hash mismatch.
+    /// </summary>
+    /// <param name="entry">The manifest entry.</param>
+    /// <param name="violation">True when the entry has the received version but another hash.</param>
+    /// <returns>True when the block is awaited.</returns>
+    public bool MarkPending(TerrainSyncEntry entry, out bool violation)
     {
-        if (_latest.TryGetValue(entry.Key, out var latest) && latest >= entry.Version)
+        violation = false;
+        if (_latest.TryGetValue(entry.Key, out var latest) && latest.Version >= entry.Version)
         {
+            violation = latest.Version == entry.Version && latest.Hash != entry.Hash;
             return false;
         }
 
@@ -187,16 +198,16 @@ public sealed class ClientTerrainSyncState : IClientWorldReadiness
 
             // An equal block, or a newer one that an edit made after the manifest: either way the wait is over.
             _pending.Remove(key);
-            _latest[key] = version;
+            _latest[key] = (version, hash);
             return TerrainDataVerdict.Accept;
         }
 
-        if (_latest.TryGetValue(key, out var latest) && version < latest)
+        if (_latest.TryGetValue(key, out var latest) && version < latest.Version)
         {
             return TerrainDataVerdict.Stale;
         }
 
-        _latest[key] = version;
+        _latest[key] = (version, hash);
         return TerrainDataVerdict.Accept;
     }
 

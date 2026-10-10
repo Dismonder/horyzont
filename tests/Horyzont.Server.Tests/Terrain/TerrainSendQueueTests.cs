@@ -114,6 +114,35 @@ public sealed class TerrainSendQueueTests
     }
 
     [Fact]
+    public void Queue_BulkTurnWithADrainedBucket_StillSendsLiveEditsAndKeepsTheBulkBlock()
+    {
+        var time = new FakeTimeProvider();
+        var budget = new TokenBucketReplicationBudget(time);
+        var queue = new TerrainSendQueue(budget, time.TimestampFrequency);
+        queue.Enqueue(_player, _key with { X = 1000 }, 1, new byte[6000], 1, 1);
+        for (var i = 0; i < 12; i++)
+        {
+            queue.Enqueue(_player, _key with { X = i }, 1, new byte[6000], 0, i);
+        }
+
+        // Live debt drains the shared bucket well below the size of a bulk frame, and nothing refills it.
+        Assert.True(budget.TryConsume(_player, ReplicationTraffic.Live, 70000));
+
+        var order = new List<int>();
+        while (queue.TryTake(_player, time.GetTimestamp(), out var data))
+        {
+            order.Add(data!.Key.X);
+        }
+
+        Assert.Equal(Enumerable.Range(0, 12), order);
+        Assert.Equal(1, queue.Count(_player));
+
+        time.Advance(TimeSpan.FromSeconds(10));
+        Assert.True(queue.TryTake(_player, time.GetTimestamp(), out var bulk));
+        Assert.Equal(1000, bulk!.Key.X);
+    }
+
+    [Fact]
     public void Queue_SustainedLiveWhileOnlyLiveIsWanted_NeverSendsBulk()
     {
         var time = new FakeTimeProvider();

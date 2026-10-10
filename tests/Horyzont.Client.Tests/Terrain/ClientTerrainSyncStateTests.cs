@@ -145,4 +145,18 @@ public sealed class ClientTerrainSyncStateTests
         Assert.True(state.MarkPending(new TerrainSyncEntry(_b, 0, 7)));
         Assert.Equal(TerrainDataVerdict.Accept, state.OnData(_b, 0, 7));
     }
+
+    [Fact]
+    public void MarkPending_ReceivedVersionWithAnotherHash_IsAViolation()
+    {
+        var state = new ClientTerrainSyncState([_planet]);
+        Assert.Equal(TerrainDataVerdict.Accept, state.OnData(_a, 2, 7));
+
+        Assert.False(state.MarkPending(new TerrainSyncEntry(_a, 2, 8), out var violation));
+        Assert.True(violation);
+        Assert.False(state.MarkPending(new TerrainSyncEntry(_a, 2, 7), out violation));
+        Assert.False(violation);
+        Assert.False(state.MarkPending(new TerrainSyncEntry(_a, 1, 99), out violation));
+        Assert.False(violation);
+    }
 }

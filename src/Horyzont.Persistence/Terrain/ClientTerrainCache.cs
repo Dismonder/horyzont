@@ -17,6 +17,10 @@ namespace Horyzont.Persistence.Terrain;
 public sealed partial class ClientTerrainCache : ITerrainBlockSource
 {
     private const int MaxLoadAttempts = 3;
+    private const long NotRequested = -1;
+
+    /// <summary>How long a refetch request may stay unanswered before the block is requested again.</summary>
+    internal static readonly TimeSpan RefetchRetryInterval = TimeSpan.FromSeconds(5);
 
     private readonly string _path;
     private readonly string _fingerprint;
@@ -31,7 +35,8 @@ public sealed partial class ClientTerrainCache : ITerrainBlockSource
     private readonly SortedDictionary<TerrainBlockKey, Entry> _index = [];
     private readonly Dictionary<TerrainBlockKey, (uint Version, ulong Hash)> _expected = [];
     private readonly Dictionary<TerrainBlockKey, int> _pins = [];
-    private readonly Dictionary<TerrainBlockKey, bool> _evictedEdited = [];
+    // Value: timestamp of the last refetch request, or NotRequested.
+    private readonly Dictionary<TerrainBlockKey, long> _evictedEdited = [];
     private readonly List<TerrainBlockKey> _refetch = [];
     private readonly Dictionary<TerrainBlockKey, WriteOp> _queue = [];
     private long _clock;
@@ -143,7 +148,18 @@ public sealed partial class ClientTerrainCache : ITerrainBlockSource
     /// <param name="version">The version when found.</param>
     /// <param name="blob">The shared, immutable blob when found; otherwise empty.</param>
     /// <returns>The lookup result.</returns>
-    public TerrainBlockLookup TryLoad(TerrainBlockKey key, out uint version, out byte[] blob)
+    public TerrainBlockLookup TryLoad(TerrainBlockKey key, out uint version, out byte[] blob) => TryLoad(key, refetch: true, out version, out blob);
+
+    /// <summary>
+    /// <see cref="TryLoad(TerrainBlockKey, out uint, out byte[])"/> with a choice about refetching: readers that only derive data from
+    /// the block (LOD rebuilds) pass <c>false</c> so that their look does not make the owner ask the server for an evicted block.
+    /// </summary>
+    /// <param name="key">Block key.</param>
+    /// <param name="refetch">Whether an evicted edited block may be queued for a refetch.</param>
+    /// <param name="version">The version when found.</param>
+    /// <param name="blob">The shared, immutable blob when found; otherwise empty.</param>
+    /// <returns>The lookup result.</returns>
+    public TerrainBlockLookup TryLoad(TerrainBlockKey key, bool refetch, out uint version, out byte[] blob)
     {
         version = 0;
         blob = [];
@@ -162,11 +178,19 @@ public sealed partial class ClientTerrainCache : ITerrainBlockSource
                 {
                     if (expecting && expected.Version != 0)
                     {
-                        if (_evictedEdited.TryGetValue(key, out var requested) && !requested)
+                        if (refetch && _evictedEdited.TryGetValue(key, out var requestedAt))
                         {
                             // The cache gave this edited block up itself: ask the server for it again instead of waiting forever.
-                            _evictedEdited[key] = true;
-                            _refetch.Add(key);
+                            // A request whose answer never came (a lost report) is repeated after the retry interval.
+                            var now = _time.GetTimestamp();
+                            if (requestedAt == NotRequested || _time.GetElapsedTime(requestedAt, now) >= RefetchRetryInterval)
+                            {
+                                _evictedEdited[key] = now;
+                                if (!_refetch.Contains(key))
+                                {
+                                    _refetch.Add(key);
+                                }
+                            }
                         }
 
                         return TerrainBlockLookup.Unavailable;
@@ -280,7 +304,7 @@ public sealed partial class ClientTerrainCache : ITerrainBlockSource
             _memoryBytes += copy.Length;
             if (_expected.TryGetValue(key, out var expected) && expected.Version == version && expected.Hash == hash)
             {
-                _expected.Remove(key);
+                ClearExpectedLocked(key);
             }
 
             QueuePutLocked(key, entry);
@@ -300,6 +324,10 @@ public sealed partial class ClientTerrainCache : ITerrainBlockSource
             }
 
             RemoveEntryLocked(key, queueDelete: true);
+            if (!_expected.ContainsKey(key))
+            {
+                _evictedEdited.Remove(key);
+            }
         }
     }
 
@@ -323,7 +351,7 @@ public sealed partial class ClientTerrainCache : ITerrainBlockSource
             var matches = _index.TryGetValue(key, out var entry) && entry.Version == version && entry.Hash == hash;
             if (version == 0)
             {
-                _expected.Remove(key);
+                ClearExpectedLocked(key);
                 if (entry is not null && !matches)
                 {
                     RemoveEntryLocked(key, queueDelete: true);
@@ -331,7 +359,7 @@ public sealed partial class ClientTerrainCache : ITerrainBlockSource
             }
             else if (matches)
             {
-                _expected.Remove(key);
+                ClearExpectedLocked(key);
             }
             else
             {
@@ -355,6 +383,22 @@ public sealed partial class ClientTerrainCache : ITerrainBlockSource
             into.AddRange(_refetch);
             _refetch.Clear();
             return count;
+        }
+    }
+
+    /// <summary>
+    /// Forgets which evicted blocks were already requested, e.g. when the connection ended or a new session starts: requests in flight
+    /// are lost with it, so the next lookup of such a block asks again.
+    /// </summary>
+    public void ResetRefetch()
+    {
+        lock (_lock)
+        {
+            _refetch.Clear();
+            foreach (var key in _evictedEdited.Keys.ToArray())
+            {
+                _evictedEdited[key] = NotRequested;
+            }
         }
     }
 
@@ -808,8 +852,16 @@ public sealed partial class ClientTerrainCache : ITerrainBlockSource
         if (entry.Version != 0 && !_expected.ContainsKey(key))
         {
             _expected[key] = (entry.Version, entry.Hash);
-            _evictedEdited[key] = false;
+            _evictedEdited[key] = NotRequested;
         }
+    }
+
+    // The expectation for the key is satisfied or withdrawn: nothing is left to refetch (under _lock).
+    private void ClearExpectedLocked(TerrainBlockKey key)
+    {
+        _expected.Remove(key);
+        _evictedEdited.Remove(key);
+        _refetch.Remove(key);
     }
 
     // Brings the file under the limit (under _lock): least recently used unpinned blocks are deleted.
