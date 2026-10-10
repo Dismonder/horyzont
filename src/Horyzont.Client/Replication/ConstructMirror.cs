@@ -196,10 +196,12 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
     public void Remove(EntityId id)
     {
         DropTransfer(id);
-        _values.Remove(id);
-        _ids.Remove(id);
         _resync.Remove(id);
-        Changed?.Invoke(id);
+        if (_values.Remove(id))
+        {
+            _ids.Remove(id);
+            Changed?.Invoke(id);
+        }
     }
 
     /// <summary>Releases all session data.</summary>

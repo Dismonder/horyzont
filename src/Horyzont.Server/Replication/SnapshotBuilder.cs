@@ -13,6 +13,7 @@ public sealed class SnapshotBuilder(ISnapshotBudget budget)
     private readonly SnapshotFrame[] _frames = new SnapshotFrame[8];
     private readonly EntityState[] _delta = new EntityState[22];
     private readonly EntityState[] _full = new EntityState[22];
+    private readonly List<EntityId> _stale = [];
 
     /// <summary>Copies the visible set. Capacity changes allocate only when the interest set grows.</summary>
     /// <param name="player">Recipient.</param>
@@ -35,6 +36,34 @@ public sealed class SnapshotBuilder(ISnapshotBudget budget)
         foreach (var entity in entities)
         {
             connection.LastSent.TryAdd(entity.Id, 0);
+        }
+
+        if (connection.LastSent.Count > (entities.Length * 2) + 16)
+        {
+            // Entities that left the set keep no age: forget them so the table follows the interest set.
+            _stale.Clear();
+            foreach (var id in connection.LastSent.Keys)
+            {
+                var present = false;
+                foreach (var entity in entities)
+                {
+                    if (entity.Id == id)
+                    {
+                        present = true;
+                        break;
+                    }
+                }
+
+                if (!present)
+                {
+                    _stale.Add(id);
+                }
+            }
+
+            foreach (var id in _stale)
+            {
+                connection.LastSent.Remove(id);
+            }
         }
     }
 
