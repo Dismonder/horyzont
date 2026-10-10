@@ -165,13 +165,13 @@ Sonnet pisze testy controller/catalog/parser/protocol i scenariusze UI przed kod
 
 ## Kroki
 
-- [ ] 0. Sprawdź scalone K2-10 i K3-00 oraz realne nazwy; kody X4, szwy S9 i cykl życia X8 są ustalone. Sonnet dostarcza testy.
-- [ ] 1. Dodaj nowe modele/controller/parser/catalog/error mapper; czerwone→zielone testy .NET, bez Godota.
-- [ ] 2. Dodaj ServerStatus/JoinUnavailable, kodek/channels/router, kontrolowaną odmowę i D4; Opus przegląda przed UI integracją; fixture X6 (`ProtocolContractTests`, `MaxMessages.All`, `CodecGen.Message`), test routera X5 i aktualizacja istniejących testów wersji (X4).
-- [ ] 3. Wystaw WorldStartResult oraz status broadcaster bez parsowania logu; przetestuj safe mode i D1.
-- [ ] 4. Utwórz dokładne sceny i ui.csv, podłącz MainMenu/WorldList/Join/Loading/Error; zostaw CLI bez menu.
-- [ ] 5. Dodaj cancel/restore/recovery i lifecycle powrotu do menu, input gate i Pause; żadnych lokalnych zmian świata.
-- [ ] 6. Dodaj HUD 4 Hz/F3 i zastąp starą instancję ToolHud; podłącz fake Steam, następnie adapter K3-17 po rebase.
+- [x] 0. Sprawdź scalone K2-10 i K3-00 oraz realne nazwy; kody X4, szwy S9 i cykl życia X8 są ustalone. Sonnet dostarcza testy.
+- [x] 1. Dodaj nowe modele/controller/parser/catalog/error mapper; czerwone→zielone testy .NET, bez Godota.
+- [x] 2. Dodaj ServerStatus/JoinUnavailable, kodek/channels/router, kontrolowaną odmowę i D4; Opus przegląda przed UI integracją; fixture X6 (`ProtocolContractTests`, `MaxMessages.All`, `CodecGen.Message`), test routera X5 i aktualizacja istniejących testów wersji (X4).
+- [x] 3. Wystaw WorldStartResult oraz status broadcaster bez parsowania logu; przetestuj safe mode i D1.
+- [x] 4. Utwórz dokładne sceny i ui.csv, podłącz MainMenu/WorldList/Join/Loading/Error; zostaw CLI bez menu.
+- [x] 5. Dodaj cancel/restore/recovery i lifecycle powrotu do menu, input gate i Pause; żadnych lokalnych zmian świata.
+- [ ] 6. Dodaj HUD 4 Hz/F3 i zastąp starą instancję ToolHud; podłącz fake Steam, następnie adapter K3-17 po rebase. (HUD i fake Steam gotowe; `ToolHud` zostaje, adapter `SteamUiLobbyService` czeka na scalenie K3-17, zob. odstępstwa.)
 - [ ] 7. Testy scen szeregowo, ręcznie solo→menu→host→menu→join, modal i save warning; raport i zrzuty w PR.
 - [ ] 8. Wykonawca uruchamia build/test/format/smoke z ZASADY pkt 10, Windows CI, przegląd Sonnet/Opus, aktualizacja D4 po rebase i zielone CI przed scaleniem.
 
@@ -180,6 +180,19 @@ Sonnet pisze testy controller/catalog/parser/protocol i scenariusze UI przed kod
 Menu realizuje wszystkie trzy tryby i listę istniejących światów, błędy startu nie zamykają aplikacji UI, restore/recovery wyłącznie po zgodzie, warning i odmowa read-only czytelne również u klienta zdalnego. HUD pokazuje FPS/tick/pasmo z poprawnymi jednostkami i stan narzędzi; modal blokuje gameplay. CLI/dedicated/diagnostyka bez regresji. CI wyłącznie jeden self-hosted Windows, testy silnika bez równoległości. Nie przywracaj Linux CI; kryteria platformowe całego podprojektu pozostają do dalszego odbioru właściciela.
 
 ## Odstępstwa i decyzje wykonawcy
+
+Wykonawcy: GPT-6.1 Sol (kroki 0–1 i szkic kroku 2, przerwane limitem), potem Claude Sonnet 5.5 (reszta). Przegląd: Opus 5.5.
+
+1. **ProtocolVersion = 6** (README D4/X4, kolejność X10: K3-15 → 4, K3-16 → 5, K3-18 → 6). `main` ma dziś 3; ostateczna wartość to (main przy scaleniu)+1, więc po rebase trzeba zaktualizować `ProtocolConstants.ProtocolVersion` oraz istniejące `ProtocolVersion_MatchesDocumentedMergeValue` i `Constants_GoldenValues` (bez nowego testu wersji). Wiersz „Kolejność K3” w README do dopisania przy scalaniu.
+2. **`ToolHud` zostaje.** Plan każe go wyłączyć, ale DeveloperHud jest domyślnie ukryty (P3), więc wyłączenie `ToolHud` usunęłoby celownik i podpowiedzi narzędzi z normalnej gry. `DeveloperHud.ToolsLabel` dodaje oczekujące/odrzucone intencje, ostatnią odmowę i uwagę „Serwer stosuje własne limity…” (`HudRejectNotice`). Zastąpienie `ToolHud` zostaje dla K9 (HUD gracza).
+3. **Adapter `SteamUiLobbyService` nie powstał**: K3-17 nie jest scalone (brak `SteamLobbyController`/`SteamEndpoint`), a plan każe mapować 1:1 dopiero po scaleniu. Gotowe: `IUiLobbyService`, `UnavailableUiLobbyService` (domyślny), typy `UiLobby*`, zaproszenie z potwierdzeniem w `MenuController.OfferInvite`, lista znajomych i przycisk Steam w `JoinPanel`, opcje lobby hosta. `GameUiCoordinator.OnLobbyConnectRequested` loguje i pokazuje błąd do czasu podłączenia `SteamEndpoint` przez pakiet scalany później (X10).
+4. **Wynik startu a klient lokalny:** `GameComposition.StartAsync(ct, connectClient: false)` + nowa publiczna `ConnectLocalClient()`; UI łączy lokalnego klienta dopiero po `Started`, więc `StartedReadOnly` nigdy nie dołącza lokalnie. Ścieżka CLI (`connectClient: true`) bez zmian.
+5. **Błąd sesji/start a zwolnienie:** po nieudanym starcie (kod wyjścia z `StartAsync`) kompozycja jest już zwolniona (`Release()`), więc UI nie czeka na `IsFinished` takiego serwera (jego stan po błędzie nie jest `Stopped`), tylko na `ReleaseStep()`. Ogólny limit zamykania serwera przed „release” to 120 s (kroki serwera mają własne terminy), release po `IsFinished` — 5 s jak w `GameComposition`.
+6. `MenuController` ma kilka metod ponad tabelę planu (`TryBeginLaunch`, `CompleteStop`, `Pause/Resume`, `RequestRestore/RequestRecover/Confirm`, `OfferInvite`, `TakeRelaunch`, `ApplyServerStatus`, `JoinRefused`, `Rejected`); modale (restore, recover, invite) to `UiConfirmation`, a to, co startuje po zwolnieniu sesji, to `UiRelaunchKind`. `IsBlocked` kontrolera dotyczy stanu menu; bramka wejścia w grze (`GameUiCoordinator.IsBlocked`) dodatkowo uwzględnia otwarte pytanie.
+7. Nowe pliki pomocnicze poza tabelą: `UiNodes.cs`, `HudRejectNotice.cs`, `UiConfirmation.cs`, `UiRelaunchKind.cs`. Panel „okno nowego świata” to `PanelContainer` (`NewWorldWindow`), nie osobne okno systemowe. Banner „Zapis nie działa” i przycisk ponowienia zapisu to małe `CanvasLayer` budowane w `GameUiCoordinator`, widoczne niezależnie od F3.
+8. `ServerNode.Initialize` dostał opcjonalny `TimeProvider` (czas ticku mierzony poza symulacją). Pliki `.uid` nowych skryptów C# nie są dołączone: Godot generuje je przy pierwszym imporcie (sceny odwołują się do skryptów po ścieżce).
+9. Pliki zapisane przez poprzedniego wykonawcę miały zakończenia CRLF w kopii roboczej (indeks był LF); znormalizowano je i uruchomiono `dotnet format` (zmiany tylko białych znaków w testach Sonneta).
+10. **Nie uruchomiono** (zasada współdzielonego runnera): testy silnika gdUnit (`game/tests/UI/`), ręczny scenariusz solo→menu→host→menu→join, zrzuty ekranu i smoke silnika. Sceny `.tscn` są pisane ręcznie i nie były ładowane w Godocie: pierwszy import/test silnika na runnerze jest też ich pierwszą weryfikacją.
 
 ## Pułapki
 
