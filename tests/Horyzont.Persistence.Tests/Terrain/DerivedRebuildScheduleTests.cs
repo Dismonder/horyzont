@@ -124,21 +124,103 @@ public sealed class DerivedRebuildScheduleTests
         queue.MarkDirty(Key(1, 0));
         queue.Publish(Key(1, 0), [1]);
 
-        Assert.False(queue.TakeReloadDue());
+        Assert.False(queue.TakeReloadDue(TimeSpan.Zero));
     }
 
     [Fact]
-    public void TakeReloadDue_MissedWhileDirty_IsDueOnceAfterTheRebuildSettles()
+    public void TakeReloadDue_MissedBlockRebuiltWhileOthersStayDirty_IsDueWithoutWaitingForThem()
     {
         var queue = new DerivedRebuildSchedule(10);
         queue.MarkDirty(Key(1, 0));
         queue.MarkDirty(Key(2, 0));
-        queue.NoteMissed();
-        queue.Publish(Key(1, 0), [1]);
-        Assert.False(queue.TakeReloadDue());
+        queue.NoteMissed(Key(1, 0));
+        Assert.False(queue.TakeReloadDue(TimeSpan.Zero));
 
-        queue.Publish(Key(2, 0), [2]);
-        Assert.True(queue.TakeReloadDue());
-        Assert.False(queue.TakeReloadDue());
+        queue.Publish(Key(1, 0), [1]);
+        Assert.True(queue.TakeReloadDue(TimeSpan.Zero));
+        Assert.False(queue.TakeReloadDue(TimeSpan.FromMinutes(1)));
+    }
+
+    [Fact]
+    public void TakeReloadDue_MissedBlockStillDirty_StaysRememberedUntilItIsRebuilt()
+    {
+        var queue = new DerivedRebuildSchedule(10);
+        queue.MarkDirty(Key(1, 0));
+        queue.MarkDirty(Key(1, 1));
+        queue.NoteMissed(Key(1, 0));
+        queue.NoteMissed(Key(1, 1));
+        queue.Publish(Key(1, 0), [1]);
+        Assert.True(queue.TakeReloadDue(TimeSpan.Zero));
+
+        queue.Publish(Key(1, 1), [2]);
+        Assert.False(queue.TakeReloadDue(TimeSpan.FromSeconds(1)));
+        Assert.True(queue.TakeReloadDue(DerivedRebuildSchedule.MinReloadInterval));
+        Assert.False(queue.TakeReloadDue(TimeSpan.FromMinutes(1)));
+    }
+
+    [Fact]
+    public void TakeReloadDue_ManyMissedBlocks_KeepsAMemoryBoundAndStillReloads()
+    {
+        var queue = new DerivedRebuildSchedule(10);
+        for (var i = 0; i < DerivedRebuildSchedule.MaxMissedKeys + 50; i++)
+        {
+            queue.MarkDirty(Key(1, i));
+            queue.NoteMissed(Key(1, i));
+        }
+
+        for (var i = 0; i < DerivedRebuildSchedule.MaxMissedKeys + 50; i++)
+        {
+            queue.Publish(Key(1, i), [1], "fp");
+        }
+
+        Assert.True(queue.TakeReloadDue(TimeSpan.Zero));
+        Assert.False(queue.TakeReloadDue(TimeSpan.FromMinutes(1)));
+    }
+
+    [Fact]
+    public void Publish_MoreChangedBlocksThanTheCapacity_ConvergesAndKeepsEveryBlockCurrent()
+    {
+        var queue = new DerivedRebuildSchedule(8);
+        const int total = 100;
+        for (var i = 0; i < total; i++)
+        {
+            queue.MarkDirty(Key(1, i));
+        }
+
+        var attempts = new List<TerrainBlockKey>();
+        for (var step = 0; step < total && queue.DirtyCount > 0; step++)
+        {
+            queue.NextAttempts(attempts, 4);
+            foreach (var key in attempts)
+            {
+                queue.Publish(key, [1], $"fp{key.X}");
+                queue.Attempted(key);
+            }
+        }
+
+        Assert.Equal(0, queue.DirtyCount);
+        Assert.True(queue.ReadyCount <= 8);
+        Assert.Equal(total - queue.ReadyCount, queue.EvictedCount);
+        for (var i = 0; i < total; i++)
+        {
+            Assert.True(queue.Tracks(Key(1, i)));
+            Assert.False(queue.IsDirty(Key(1, i)));
+        }
+
+        Assert.True(queue.TryGetEvicted(Key(1, 0), out var fingerprint));
+        Assert.Equal("fp0", fingerprint);
+        queue.MarkDirty(Key(1, 0));
+        Assert.False(queue.TryGetEvicted(Key(1, 0), out _));
+    }
+
+    [Fact]
+    public void Publish_EvictedBlockWithoutAFingerprint_GoesBackToDirty()
+    {
+        var queue = new DerivedRebuildSchedule(1);
+        queue.Publish(Key(1, 0), [1]);
+        queue.Publish(Key(1, 1), [2]);
+
+        Assert.True(queue.IsDirty(Key(1, 0)));
+        Assert.Equal(0, queue.EvictedCount);
     }
 }

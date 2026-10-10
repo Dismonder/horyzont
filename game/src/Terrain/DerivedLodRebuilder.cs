@@ -51,15 +51,20 @@ public sealed class DerivedLodRebuilder
         _maxLod = maxLod;
     }
 
-    /// <summary>Raised on the main thread when the engine holds placeholders for blocks that were dirty and everything is rebuilt: reload the area.</summary>
+    /// <summary>
+    /// Raised on the main thread when the engine holds placeholders for blocks that were dirty and some of them are rebuilt by now: it
+    /// has to load again. Voxel Tools offers no per-area reload for a block stream, so the subscriber reloads the whole terrain; the
+    /// schedule spaces the events by <see cref="DerivedRebuildSchedule.MinReloadInterval"/> and does not wait for other dirty blocks.
+    /// </summary>
     public event Action? ReloadRequested;
 
     /// <summary>Records that the stream turned away a request for a dirty block, so the engine needs a reload once it is rebuilt. Any thread.</summary>
-    public void NoteMissed()
+    /// <param name="key">The derived block that was turned away.</param>
+    public void NoteMissed(TerrainBlockKey key)
     {
         lock (_lock)
         {
-            _schedule.NoteMissed();
+            _schedule.NoteMissed(key);
         }
     }
 
@@ -105,7 +110,7 @@ public sealed class DerivedLodRebuilder
         bool reload;
         lock (_lock)
         {
-            reload = _schedule.TakeReloadDue();
+            reload = _schedule.TakeReloadDue(TimeSpan.FromMilliseconds(Time.GetTicksMsec()));
         }
 
         if (reload)
@@ -150,7 +155,7 @@ public sealed class DerivedLodRebuilder
             built++;
             lock (_lock)
             {
-                _schedule.Publish(key, blob);
+                _schedule.Publish(key, blob, fingerprint);
                 _schedule.Attempted(key);
             }
         }
@@ -173,10 +178,37 @@ public sealed class DerivedLodRebuilder
     /// <returns>Whether its current result is available.</returns>
     public bool TryLoad(TerrainBlockKey key, out byte[] blob)
     {
+        string fingerprint;
         lock (_lock)
         {
-            return _schedule.TryGetReady(key, out blob);
+            if (_schedule.TryGetReady(key, out blob))
+            {
+                return true;
+            }
+
+            if (!_schedule.TryGetEvicted(key, out fingerprint))
+            {
+                return false;
+            }
         }
+
+        // Current, but its blob left memory: the derived store still has it for that fingerprint.
+        if (_store.TryLoad(key, fingerprint, out blob))
+        {
+            return true;
+        }
+
+        // The store dropped it too: rebuild it on request, which keeps only wanted blocks dirty.
+        lock (_lock)
+        {
+            if (_schedule.TryGetEvicted(key, out var again) && again == fingerprint)
+            {
+                _schedule.MarkDirty(key);
+            }
+        }
+
+        blob = [];
+        return false;
     }
 
     private bool Build(TerrainBlockKey parent, out string fingerprint, out byte[] blob)

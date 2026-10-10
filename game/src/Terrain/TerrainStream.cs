@@ -125,7 +125,7 @@ public sealed partial class TerrainStream : VoxelStreamScript
                         // Changed by an edit and not rebuilt yet: wait for the rebuild instead of showing the unedited planet.
                         // Not a fault of the terrain (no error is recorded). The engine keeps a placeholder for the block, so the
                         // rebuilder asks for a reload once everything is rebuilt.
-                        _derived.NoteMissed();
+                        _derived.NoteMissed(key);
                         return (int)VoxelStream.ResultCode.Error;
                     }
                 }
