@@ -15,7 +15,7 @@ public static class MessageChannels
             or MessageType.TerrainCacheReport or MessageType.TerrainBlockData or MessageType.TerrainChecksums
             or MessageType.ConstructState or MessageType.ConstructRemoved or MessageType.OperationApplied
             or MessageType.IntentSubmit or MessageType.IntentReply or MessageType.EntitySpawn or MessageType.EntityDespawn
-            or MessageType.Disconnect
+            or MessageType.Disconnect or MessageType.ResyncRequest
             => DeliveryChannel.ReliableOrdered,
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown message type."),
     };

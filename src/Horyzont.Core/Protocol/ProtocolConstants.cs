@@ -4,7 +4,7 @@ namespace Horyzont.Core.Protocol;
 public static class ProtocolConstants
 {
     /// <summary>Protocol version; bumped by every change of a message format. 2: RejectReason.ServerReadOnly (K2-10). 3: InputButtons.DevFly and the 0x3F button mask (K2-11).</summary>
-    public const ushort ProtocolVersion = 3;
+    public const ushort ProtocolVersion = 4;
 
     /// <summary>Bits of <see cref="Messages.InputButtons"/> that a valid input may set.</summary>
     public const int InputButtonsMask = 0x3F;

@@ -126,6 +126,16 @@ public sealed class OwnStateValidatorTests
     }
 
     [Fact]
+    public void OwnStateValidator_SnapshotIdsAcrossWrap_UseSequenceArithmetic()
+    {
+        var validator = Validator();
+        Assert.Equal(OwnStateVerdict.Accepted, validator.Validate(Snap(id: uint.MaxValue - 1, tick: 100), out _));
+        Assert.Equal(OwnStateVerdict.Accepted, validator.Validate(Snap(id: 2, tick: 101), out _));
+        Assert.Equal(OwnStateVerdict.Stale, validator.Validate(Snap(id: uint.MaxValue, tick: 102), out _));
+        Assert.Equal(OwnStateVerdict.Accepted, validator.Validate(Snap(id: 3, tick: 102), out _));
+    }
+
+    [Fact]
     public void OwnStateValidator_OlderOrRepeatedSnapshot_Rejected()
     {
         var validator = Validator();
