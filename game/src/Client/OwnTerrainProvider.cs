@@ -32,6 +32,7 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
     private readonly TerrainBlockCodec _codec = new();
     private readonly SortedDictionary<ulong, PlanetTerrain> _planets = [];
     private readonly ClientTerrainViews _views = new();
+    private readonly List<(DerivedLodRebuilder Rebuilder, Action Handler)> _reloads = [];
     private string? _cacheDirectory;
     private DerivedTerrain? _derived;
 
@@ -122,6 +123,12 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
             var node = new PlanetTerrain(planet.Id, terrain, stream);
             _planets.Add(planet.Id.Value, node);
             _parent.AddChild(node);
+            if (rebuilder is not null)
+            {
+                // Without it the engine keeps placeholders for the mipmaps it asked for while they were stale (as in the server terrain).
+                rebuilder.ReloadRequested += node.ReloadFromStream;
+                _reloads.Add((rebuilder, node.ReloadFromStream));
+            }
         }
 
         if (_derived is not null && Cache is not null)
@@ -189,6 +196,12 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
 
     private void Clear()
     {
+        foreach (var (rebuilder, handler) in _reloads)
+        {
+            rebuilder.ReloadRequested -= handler;
+        }
+
+        _reloads.Clear();
         foreach (var node in _planets.Values)
         {
             if (GodotObject.IsInstanceValid(node))
