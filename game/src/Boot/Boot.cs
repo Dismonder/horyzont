@@ -17,13 +17,15 @@ public partial class Boot : Node
 
     private const string Usage =
         "Horyzont modes (after --): --solo [--world <id>] [--dev-speed <1-64>] [--screenshot <png> [--screenshot-after <s>]] | --host [--world <id>] [--port 27015] [--bind <ipv4>] [--password <text>] | --connect <host:port> [--password <text>] [--dev]"
+        + " | +connect_lobby <id> [--password <text>] (Steam) | --host/--connect [--steam] [--steam-app-id <id>] [--lobby-visibility private|friends|public]"
         + " | --server --config <server.json> [--data-dir <dir>] [--restore-latest-backup] [--dev] | --write-default-config <path>";
 
     private ILoggerFactory? _loggers;
 
     public override void _Ready()
     {
-        var args = OS.GetCmdlineUserArgs();
+        // Steam starts the game with "+connect_lobby <id>" outside the user arguments; only that pair is taken over.
+        var args = LaunchOptions.WithConnectLobby(OS.GetCmdlineArgs(), OS.GetCmdlineUserArgs());
         if (DevModes.TryRun(this, args))
         {
             return;
@@ -114,6 +116,23 @@ public partial class Boot : Node
             ManageQuit = true,
             RegisterSignals = true,
         };
+
+        if (launch.EnableSteam)
+        {
+            var steam = GameComposition.CreatePlatformServices(env, launch.SteamAppId);
+            if (launch.ConnectLobbyId is not null && !steam.Available)
+            {
+                GD.PrintErr("STEAM UNAVAILABLE: +connect_lobby needs a running Steam client.");
+                steam.TryShutdown();
+                GetTree().Quit(ExitFaulted);
+                return;
+            }
+
+            var lifetime = new SteamLifetime { Name = "SteamLifetime" };
+            lifetime.Initialize(steam);
+            AddChild(lifetime);
+            env = env with { Platform = steam, ProcessCleanup = steam.TryShutdown };
+        }
 
         GameComposition composition;
         try
