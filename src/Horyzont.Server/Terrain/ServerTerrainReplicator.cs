@@ -579,6 +579,14 @@ public sealed class ServerTerrainReplicator : IServerClientMessageHandler, IServ
                 continue;
             }
 
+            if (transfers.Active is { Purpose: < 2, TransferId: 0 } waiting && transfers.Pending.Count > 0 && transfers.Pending[0].Purpose == PurposeBarrier)
+            {
+                // A barrier closes a live edit and must not wait for a bulk manifest that has not started sending: that one resumes
+                // right after it (its build state is kept in the job).
+                transfers.Pending.Insert(1, waiting);
+                transfers.Active = null;
+            }
+
             if (transfers.Active is null)
             {
                 if (transfers.Pending.Count == 0)
@@ -697,14 +705,11 @@ public sealed class ServerTerrainReplicator : IServerClientMessageHandler, IServ
 
     private void SendBlocks(PlayerTerrainState player, long now)
     {
-        if (player.ManifestPending)
-        {
-            return;
-        }
-
+        // Bulk data waits for the manifest that describes it; live edits do not wait behind a bulk manifest.
+        var liveOnly = player.ManifestPending;
         for (var i = 0; i < TerrainReplicationPolicy.MaxBlocksPerFrame; i++)
         {
-            if (!_queue.TryTake(player.Player, now, out var data) || data is null)
+            if (!_queue.TryTake(player.Player, now, liveOnly, out var data) || data is null)
             {
                 break;
             }

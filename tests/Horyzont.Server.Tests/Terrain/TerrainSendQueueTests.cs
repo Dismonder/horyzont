@@ -44,6 +44,54 @@ public sealed class TerrainSendQueueTests
     }
 
     [Fact]
+    public void Queue_AgedBulkBlock_DoesNotOvertakeLive()
+    {
+        var time = new FakeTimeProvider();
+        var budget = new TokenBucketReplicationBudget(time);
+        var queue = new TerrainSendQueue(budget, time.TimestampFrequency);
+        var bulk = _key with { X = 10 };
+        var live = _key with { X = 20 };
+        queue.Enqueue(_player, bulk, 1, [1], 1, 1);
+        Assert.True(budget.TryConsume(_player, ReplicationTraffic.Live, 65536));
+        var later = time.TimestampFrequency * 5;
+        Assert.False(queue.TryTake(_player, later, out _));
+        queue.Enqueue(_player, live, 1, [1], 0, 9000);
+        time.Advance(TimeSpan.FromSeconds(10));
+
+        Assert.True(queue.TryTake(_player, later, out var data));
+        Assert.Equal(live, data!.Key);
+    }
+
+    [Fact]
+    public void Queue_NewerBulkVersionOfALiveBlock_KeepsLivePriority()
+    {
+        var time = new FakeTimeProvider();
+        var queue = new TerrainSendQueue(new TokenBucketReplicationBudget(time), time.TimestampFrequency);
+        queue.Enqueue(_player, _key, 1, [1], 0, 9000);
+        queue.Enqueue(_player, _key with { X = 10 }, 1, [1], 1, 1);
+        queue.Enqueue(_player, _key, 2, [2], 1, 9000);
+
+        Assert.True(queue.TryTake(_player, time.GetTimestamp(), out var data));
+        Assert.Equal(_key.X, data!.Key.X);
+        Assert.Equal(2u, data.Version);
+    }
+
+    [Fact]
+    public void Queue_LiveOnly_SkipsBulkAndTakesLive()
+    {
+        var time = new FakeTimeProvider();
+        var queue = new TerrainSendQueue(new TokenBucketReplicationBudget(time), time.TimestampFrequency);
+        queue.Enqueue(_player, _key with { X = 10 }, 1, [1], 1, 1);
+        Assert.False(queue.TryTake(_player, time.GetTimestamp(), liveOnly: true, out _));
+        queue.Enqueue(_player, _key with { X = 20 }, 1, [1], 0, 9000);
+
+        Assert.True(queue.TryTake(_player, time.GetTimestamp(), liveOnly: true, out var data));
+        Assert.Equal(20, data!.Key.X);
+        Assert.False(queue.TryTake(_player, time.GetTimestamp(), liveOnly: true, out _));
+        Assert.Equal(1, queue.Count(_player));
+    }
+
+    [Fact]
     public void Queue_DistantFlood_BoundedAndMarksResync()
     {
         var time = new FakeTimeProvider();

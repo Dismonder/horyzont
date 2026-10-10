@@ -54,7 +54,8 @@ public sealed class TerrainSendQueue
         var data = new TerrainBlockData(key, version, immutableBlob);
         _writer.Reset();
         MessageCodec.Write(_writer, data);
-        queue.Entries[key] = new Entry(data, priorityClass, distanceSquared, old?.Timestamp ?? queue.Timestamp, _writer.Length);
+        // A newer version of a block that is waiting as live stays live, whatever class announced it.
+        queue.Entries[key] = new Entry(data, old is null ? priorityClass : Math.Min(old.Priority, priorityClass), distanceSquared, old?.Timestamp ?? queue.Timestamp, _writer.Length);
         if (queue.Entries.Count <= TerrainReplicationPolicy.MaxQueuedBlocks)
         {
             return;
@@ -72,7 +73,7 @@ public sealed class TerrainSendQueue
         queue.Resync = true;
     }
 
-    /// <summary>Gets the encoded frame size of the block last returned by <see cref="TryTake"/>.</summary>
+    /// <summary>Gets the encoded frame size of the block last returned by <see cref="TryTake(PlayerId, long, out TerrainBlockData?)"/>.</summary>
     public int LastTakenBytes { get; private set; }
 
     /// <summary>Selects one task and debits its complete encoded frame. No allocation after enqueue.</summary>
@@ -80,7 +81,15 @@ public sealed class TerrainSendQueue
     /// <param name="timestamp">Current injected clock timestamp.</param>
     /// <param name="data">Selected data.</param>
     /// <returns>Whether a task fits the shared budget.</returns>
-    public bool TryTake(PlayerId player, long timestamp, out TerrainBlockData? data)
+    public bool TryTake(PlayerId player, long timestamp, out TerrainBlockData? data) => TryTake(player, timestamp, liveOnly: false, out data);
+
+    /// <summary>Selects one task, optionally only a live one, and debits its complete encoded frame. No allocation after enqueue.</summary>
+    /// <param name="player">Recipient.</param>
+    /// <param name="timestamp">Current injected clock timestamp.</param>
+    /// <param name="liveOnly">True to leave bulk tasks in the queue.</param>
+    /// <param name="data">Selected data.</param>
+    /// <returns>Whether a task fits the shared budget.</returns>
+    public bool TryTake(PlayerId player, long timestamp, bool liveOnly, out TerrainBlockData? data)
     {
         data = null;
         if (!_players.TryGetValue(player, out var queue))
@@ -91,6 +100,10 @@ public sealed class TerrainSendQueue
         Entry? best = null;
         foreach (var candidate in queue.Entries.Values)
         {
+            if (liveOnly && candidate.Priority != 0)
+            {
+                continue;
+            }
             if (best is null || Before(candidate, best, timestamp))
             {
                 best = candidate;
@@ -130,6 +143,11 @@ public sealed class TerrainSendQueue
 
     private bool Before(Entry candidate, Entry best, long now)
     {
+        // Live edits always go before bulk traffic; aging only keeps far blocks of one class from starving behind near ones.
+        if (candidate.Priority != best.Priority)
+        {
+            return candidate.Priority < best.Priority;
+        }
         var candidateAged = now - candidate.Timestamp >= _frequency;
         var bestAged = now - best.Timestamp >= _frequency;
         if (candidateAged != bestAged)
@@ -139,10 +157,6 @@ public sealed class TerrainSendQueue
         if (candidateAged && candidate.Timestamp != best.Timestamp)
         {
             return candidate.Timestamp < best.Timestamp;
-        }
-        if (candidate.Priority != best.Priority)
-        {
-            return candidate.Priority < best.Priority;
         }
         return candidate.Distance < best.Distance || (candidate.Distance == best.Distance && candidate.Data.Key < best.Data.Key);
     }

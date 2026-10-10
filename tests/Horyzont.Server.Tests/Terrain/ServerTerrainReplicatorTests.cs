@@ -178,6 +178,32 @@ public sealed class ServerTerrainReplicatorTests
     }
 
     [Fact]
+    public void Live_EditWhileALargeStartupManifestIsBuilding_ReachesTheAuthorAndClosesTheBarrierFirst()
+    {
+        var phantoms = Enumerable.Range(0, 2000)
+            .Select(i => new TerrainBlockVersion(new TerrainBlockKey(_planet, 0, 100 + (i % 50), 100 + (i / 50), 100), 1)).ToList();
+        for (var offset = 0; offset < phantoms.Count; offset += 1000)
+        {
+            _replicator.Handle(_alice, new TerrainCacheReport(_planet, phantoms.GetRange(offset, 1000)));
+        }
+
+        _replicator.Handle(_alice, View(1, _spot));
+        _replicator.OnPlayerReady(_alice);
+        _replicator.Step();
+        _host.Clear();
+
+        var applied = Edit(_spot, 1f, _alice);
+        _replicator.Step();
+        _replicator.Step();
+
+        var data = _host.Messages<TerrainBlockData>(_alice);
+        Assert.Equal(applied.TerrainVersions.Count, data.Count);
+        var sync = _host.Messages<TerrainSync>(_alice);
+        Assert.Contains(sync, s => s.Purpose == 2 && s.IsLastPage && s.BarrierOpId == applied.Id);
+        Assert.DoesNotContain(sync, s => s.Purpose == 0 && s.IsLastPage);
+    }
+
+    [Fact]
     public void Queue_RepeatedEditsOfOneBlock_SendTheLatestVersionAndCloseEveryBarrier()
     {
         Ready(_alice, _spot);
