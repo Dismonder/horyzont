@@ -40,7 +40,7 @@ public sealed class JoinAddressParserTests
         Assert.False(JoinAddressParser.TryParse(new string('a', 254), "1", out _, out _));
         Assert.True(JoinAddressParser.IsPasswordValid(new string('a', 64)));
         Assert.False(JoinAddressParser.IsPasswordValid(new string('a', 65)));
-        Assert.True(JoinAddressParser.IsPasswordValid(new string('ą', 32)));
-        Assert.False(JoinAddressParser.IsPasswordValid(new string('ą', 33)));
+        Assert.True(JoinAddressParser.IsPasswordValid(new string('\u0105', 32)));
+        Assert.False(JoinAddressParser.IsPasswordValid(new string('\u0105', 33)));
     }
 }
