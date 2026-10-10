@@ -41,6 +41,7 @@ public sealed class ConstructPrediction : IEditPrediction, IIntentReplyObserver,
         _clock = clock;
         mirror.OperationObserved += NoteOperation;
         mirror.Changed += OnConstructChanged;
+        mirror.Cleared += OnMirrorCleared;
     }
 
     /// <summary>Raised when the overlay changed (an entry was added or removed).</summary>
@@ -148,6 +149,7 @@ public sealed class ConstructPrediction : IEditPrediction, IIntentReplyObserver,
     {
         _mirror.OperationObserved -= NoteOperation;
         _mirror.Changed -= OnConstructChanged;
+        _mirror.Cleared -= OnMirrorCleared;
         if (_entries.Count > 0)
         {
             _entries.Clear();
@@ -169,6 +171,13 @@ public sealed class ConstructPrediction : IEditPrediction, IIntentReplyObserver,
                 RemoveAt(i);
             }
         }
+    }
+
+    private void OnMirrorCleared()
+    {
+        // A new session numbers its operations again: the old ones must not settle new predictions.
+        Array.Clear(_seen);
+        _seenNext = 0;
     }
 
     private void OnConstructChanged(EntityId construct)

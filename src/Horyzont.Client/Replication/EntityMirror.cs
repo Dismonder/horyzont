@@ -16,7 +16,10 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
     /// <summary>Most samples one entity may park while its parent counter is ahead of the known one.</summary>
     public const int MaxParkedSamples = 32;
 
+    private const int MaxFrameDepth = 8;
+
     private readonly Dictionary<EntityId, EntitySpawn> _entities = [];
+    private readonly Dictionary<EntityId, Pose> _poses = [];
     private readonly List<EntityId> _ids = [];
     private readonly Dictionary<EntityId, List<Sample>> _parked = [];
     private readonly ResyncTracker _resync = new(time ?? TimeProvider.System);
@@ -66,9 +69,10 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
                 }
 
                 _entities[spawn.Entity] = spawn;
+                _poses[spawn.Entity] = new Pose(spawn.Frame, spawn.Initial);
                 _resync.Remove(spawn.Entity);
                 Replay(spawn.Entity);
-                Spawned?.Invoke(_entities[spawn.Entity]);
+                Spawned?.Invoke(Merged(spawn.Entity));
                 break;
             case EntityDespawn despawn:
                 Remove(despawn.Entity);
@@ -77,19 +81,17 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
                 Remove(removed.Construct);
                 break;
             case OperationApplied { Operation: EntityReparentOp op }:
-                if (_entities.TryGetValue(op.Entity, out var known) && op.NewParentSeq == unchecked(known.Initial.ParentSeq + 1))
+                if (_poses.TryGetValue(op.Entity, out var known) && op.NewParentSeq == unchecked(known.State.ParentSeq + 1))
                 {
-                    _entities[op.Entity] = known with
-                    {
-                        Frame = new SnapshotFrame(op.NewParent, op.NewParentSeq),
-                        Initial = known.Initial with
+                    _poses[op.Entity] = new Pose(
+                        new SnapshotFrame(op.NewParent, op.NewParentSeq),
+                        known.State with
                         {
                             ParentSeq = op.NewParentSeq,
                             Position = op.LocalPosition,
                             Rotation = op.LocalRotation,
                             Velocity = op.LocalVelocity
-                        },
-                    };
+                        });
                     Replay(op.Entity);
                 }
 
@@ -101,8 +103,9 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
     public void OnFullSnapshot(Snapshot full)
     {
         ArgumentNullException.ThrowIfNull(full);
-        foreach (var state in full.Entities)
+        for (var i = 0; i < full.Entities.Count; i++)
         {
+            var state = full.Entities[i];
             if (state.FrameIndex >= full.Frames.Count)
             {
                 continue;
@@ -112,31 +115,102 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
         }
     }
 
-    /// <summary>Looks up the latest complete lifecycle state.</summary>
+    /// <summary>Looks up the latest complete lifecycle state. Allocates a record; per-frame readers use <see cref="TryGetPose"/>.</summary>
     /// <param name="id">Entity.</param>
     /// <param name="spawn">State and ownership.</param>
     /// <returns>Whether known.</returns>
-    public bool TryGet(EntityId id, out EntitySpawn? spawn) => _entities.TryGetValue(id, out spawn);
+    public bool TryGet(EntityId id, out EntitySpawn? spawn)
+    {
+        if (_entities.ContainsKey(id))
+        {
+            spawn = Merged(id);
+            return true;
+        }
+
+        spawn = null;
+        return false;
+    }
+
+    /// <summary>Looks up the newest frame and state sample of an entity, without allocating.</summary>
+    /// <param name="id">Entity.</param>
+    /// <param name="frame">Frame of the sample.</param>
+    /// <param name="state">Newest state.</param>
+    /// <returns>Whether known.</returns>
+    public bool TryGetPose(EntityId id, out SnapshotFrame frame, out EntityState state)
+    {
+        if (_poses.TryGetValue(id, out var pose))
+        {
+            frame = pose.Frame;
+            state = pose.State;
+            return true;
+        }
+
+        frame = default;
+        state = default;
+        return false;
+    }
+
+    /// <summary>Converts the newest sample of an entity into the frame of its planet, following construct frames. Does not allocate.</summary>
+    /// <param name="id">Entity.</param>
+    /// <param name="constructs">Construct copies for the conversion; without them only planet frames convert.</param>
+    /// <param name="planet">Planet of the entity.</param>
+    /// <param name="position">Position in the planet frame.</param>
+    /// <param name="rotation">Rotation in the planet frame.</param>
+    /// <returns>False when the entity is unknown or its construct chain is not available.</returns>
+    public bool TryGetPlanetPose(EntityId id, ConstructMirror? constructs, out PlanetId planet, out Vector3 position, out Quaternion rotation)
+    {
+        planet = default;
+        position = default;
+        rotation = Quaternion.Identity;
+        if (!_poses.TryGetValue(id, out var pose))
+        {
+            return false;
+        }
+
+        var frame = pose.Frame.Frame;
+        position = pose.State.Position;
+        rotation = pose.State.Rotation;
+        for (var depth = 0; depth <= MaxFrameDepth; depth++)
+        {
+            switch (frame.Kind)
+            {
+                case FrameKind.Planet:
+                    planet = new PlanetId(frame.Id);
+                    return true;
+                case FrameKind.Construct when constructs is not null && constructs.TryGetConstruct(new EntityId(frame.Id), out var construct):
+                    position = construct.LocalToParent(position);
+                    rotation = Quaternion.Concatenate(rotation, construct.Rotation);
+                    frame = construct.Parent;
+                    break;
+                default:
+                    return false;
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>Copies other players' feet in one planet frame, without allocating.</summary>
     /// <param name="planet">Planet.</param>
     /// <param name="own">Local player to exclude.</param>
     /// <param name="destination">Caller buffer.</param>
+    /// <param name="constructs">Construct copies, to convert players standing on constructs.</param>
     /// <returns>Number copied.</returns>
-    public int CopyOtherPlayerFeet(PlanetId planet, PlayerId own, Span<Vector3> destination)
+    public int CopyOtherPlayerFeet(PlanetId planet, PlayerId own, Span<Vector3> destination, ConstructMirror? constructs = null)
     {
         var count = 0;
         for (var i = 0; i < _ids.Count; i++)
         {
             var entity = _entities[_ids[i]];
-            if (entity.Kind == EntityKind.Player && entity.Owner != own && entity.Frame.Frame == FrameRef.Of(planet))
+            if (entity.Kind == EntityKind.Player && entity.Owner != own
+                && TryGetPlanetPose(entity.Entity, constructs, out var entityPlanet, out var feet, out _) && entityPlanet == planet)
             {
                 if (count == destination.Length)
                 {
                     break;
                 }
 
-                destination[count++] = entity.Initial.Position;
+                destination[count++] = feet;
             }
         }
 
@@ -159,6 +233,7 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
     {
         var ids = _ids.ToArray();
         _entities.Clear();
+        _poses.Clear();
         _ids.Clear();
         _parked.Clear();
         _resync.Clear();
@@ -172,6 +247,7 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
 
     private void Remove(EntityId id)
     {
+        _poses.Remove(id);
         if (_entities.Remove(id))
         {
             _ids.Remove(id);
@@ -185,15 +261,15 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
     private void Offer(Sample sample)
     {
         var id = sample.State.Entity;
-        if (_entities.TryGetValue(id, out var known))
+        if (_poses.TryGetValue(id, out var known))
         {
-            if (known.Initial.ParentSeq == sample.State.ParentSeq)
+            if (known.State.ParentSeq == sample.State.ParentSeq)
             {
-                _entities[id] = known with { Frame = sample.Frame, Initial = sample.State with { FrameIndex = 0 } };
+                _poses[id] = new Pose(sample.Frame, sample.State with { FrameIndex = 0 });
                 return;
             }
 
-            if (IsOlder(sample.State.ParentSeq, known.Initial.ParentSeq))
+            if (IsOlder(sample.State.ParentSeq, known.State.ParentSeq))
             {
                 return;
             }
@@ -221,12 +297,12 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
 
     private void Replay(EntityId id)
     {
-        if (!_parked.TryGetValue(id, out var list) || !_entities.TryGetValue(id, out var known))
+        if (!_parked.TryGetValue(id, out var list) || !_poses.TryGetValue(id, out var known))
         {
             return;
         }
 
-        var seq = known.Initial.ParentSeq;
+        var seq = known.State.ParentSeq;
         Sample? latest = null;
         var keep = new List<Sample>();
         foreach (var sample in list)
@@ -253,9 +329,18 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
 
         if (latest is { } sampleToApply)
         {
-            _entities[id] = known with { Frame = sampleToApply.Frame, Initial = sampleToApply.State with { FrameIndex = 0 } };
+            _poses[id] = new Pose(sampleToApply.Frame, sampleToApply.State with { FrameIndex = 0 });
         }
     }
+
+    private EntitySpawn Merged(EntityId id)
+    {
+        var spawn = _entities[id];
+        var pose = _poses[id];
+        return spawn with { Frame = pose.Frame, Initial = pose.State };
+    }
+
+    private readonly record struct Pose(SnapshotFrame Frame, EntityState State);
 
     private readonly record struct Sample(SnapshotFrame Frame, EntityState State);
 

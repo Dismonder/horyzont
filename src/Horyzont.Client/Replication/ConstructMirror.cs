@@ -43,6 +43,9 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
     /// <summary>Raised after an operation changed a published copy (never for a removal, which raises <see cref="StateWithdrawn"/>).</summary>
     public event Action<Operation, IReadOnlyList<ConstructChange>>? EditApplied;
 
+    /// <summary>Raised after <see cref="Clear"/> dropped all session data (disconnect).</summary>
+    public event Action? Cleared;
+
     /// <summary>Gets the read-only store of the published copies, for ray, overlap and pose queries.</summary>
     public ConstructStore Store => _set.Store;
 
@@ -231,9 +234,10 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
         _resync.Clear();
         StagingBytes = 0;
         _invalid = 0;
+        Cleared?.Invoke();
     }
 
-    /// <summary>Requests repair for transfers unfinished after five seconds.</summary>
+    /// <summary>Requests repair for transfers that made no progress for 5 s or run longer than 120 s in total.</summary>
     public void ExpireTransfers()
     {
         _expired.Clear();
@@ -250,7 +254,7 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
         foreach (var id in _expired)
         {
             DropTransfer(id);
-            RequestResync(id);
+            RequestResync(id, restart: true);
         }
 
         _due.Clear();
@@ -341,7 +345,7 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
     private bool Invalid(EntityId id)
     {
         DropTransfer(id);
-        RequestResync(id);
+        RequestResync(id, restart: true);
         var now = time.GetTimestamp();
         if (_invalid > 0 && time.GetElapsedTime(_lastInvalid, now) >= _invalidDecay)
         {
@@ -357,9 +361,9 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
         return false;
     }
 
-    private void RequestResync(EntityId id)
+    private void RequestResync(EntityId id, bool restart = false)
     {
-        if (!id.IsNone && _resync.Add(id))
+        if (!id.IsNone && (restart ? _resync.Restart(id) : _resync.Add(id)))
         {
             ResyncNeeded?.Invoke(id);
         }

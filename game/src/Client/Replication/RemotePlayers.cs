@@ -22,6 +22,7 @@ public sealed partial class RemotePlayers : Node3D, IClientSessionListener
     private readonly Dictionary<EntityId, Node3D> _nodes = [];
     private ClientRuntime? _client;
     private EntityMirror? _mirror;
+    private ConstructMirror? _constructs;
     private bool _render;
     private PlayerId _self;
     private Mesh? _mesh;
@@ -40,12 +41,14 @@ public sealed partial class RemotePlayers : Node3D, IClientSessionListener
     /// <param name="client">Client runtime whose hello and disconnect drive the node.</param>
     /// <param name="mirror">Mirror of the entities.</param>
     /// <param name="render">Whether a marker is drawn (false: the node exists without visuals, for headless runs).</param>
-    public void Initialize(ClientRuntime client, EntityMirror mirror, bool render)
+    /// <param name="constructs">Construct copies that place players standing on constructs; without them such markers are not moved.</param>
+    public void Initialize(ClientRuntime client, EntityMirror mirror, bool render, ConstructMirror? constructs = null)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(mirror);
         _client = client;
         _mirror = mirror;
+        _constructs = constructs;
         _render = render;
     }
 
@@ -103,23 +106,19 @@ public sealed partial class RemotePlayers : Node3D, IClientSessionListener
         _mirror.RetryResyncs();
         foreach (var pair in _nodes)
         {
-            if (_mirror.TryGet(pair.Key, out var spawn) && spawn is not null)
-            {
-                Place(pair.Value, spawn);
-            }
+            Place(pair.Value, pair.Key);
         }
     }
 
-    private static void Place(Node3D node, EntitySpawn spawn)
+    private void Place(Node3D node, EntityId entity)
     {
-        if (spawn.Frame.Frame.Kind != FrameKind.Planet)
+        if (_mirror is null || !_mirror.TryGetPlanetPose(entity, _constructs, out var planet, out var position, out var rotation))
         {
             return;
         }
 
-        var planet = new PlanetId(spawn.Frame.Frame.Id);
-        node.Position = PlanetFrames.ToGodot(planet, spawn.Initial.Position);
-        node.Basis = PlanetFrames.ToGodotBasis(planet, spawn.Initial.Rotation);
+        node.Position = PlanetFrames.ToGodot(planet, position);
+        node.Basis = PlanetFrames.ToGodotBasis(planet, rotation);
     }
 
     private void OnSpawned(EntitySpawn spawn)
@@ -150,7 +149,7 @@ public sealed partial class RemotePlayers : Node3D, IClientSessionListener
             AddChild(node);
         }
 
-        Place(node, spawn);
+        Place(node, spawn.Entity);
     }
 
     private void OnDespawned(EntityId id)

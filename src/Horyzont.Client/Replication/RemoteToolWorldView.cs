@@ -123,5 +123,5 @@ public sealed class RemoteToolWorldView : IToolWorldView
 
     /// <inheritdoc />
     public int CopyOtherPlayerFeet(PlanetId planet, Span<Vector3> destination) =>
-        _entities?.CopyOtherPlayerFeet(planet, _self, destination) ?? 0;
+        _entities?.CopyOtherPlayerFeet(planet, _self, destination, _constructs) ?? 0;
 }

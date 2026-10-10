@@ -166,4 +166,33 @@ public sealed class ConstructMirrorTests
             time.Advance(TimeSpan.FromSeconds(31));
         }
     }
+
+    [Fact]
+    public void ExpireTransfers_StallAfterPartZeroOfAnAnsweredResync_RepeatsTheRequest()
+    {
+        var time = new FakeTimeProvider();
+        var mirror = new ConstructMirror(time);
+        var requests = new List<EntityId>();
+        mirror.ResyncNeeded += requests.Add;
+        Assert.False(mirror.Apply(new ConstructState(Header, 1, 2, [Chunk(1)])));
+        Assert.Single(requests);
+        Assert.False(mirror.Apply(new ConstructState(Header, 0, 3, [Chunk(0)])));
+        time.Advance(TimeSpan.FromSeconds(5));
+        mirror.ExpireTransfers();
+        Assert.Equal(2, requests.Count);
+        Assert.Equal(0, mirror.StagingBytes);
+    }
+
+    [Fact]
+    public void Apply_InvalidPartAfterPartZeroOfAnAnsweredResync_RepeatsTheRequest()
+    {
+        var mirror = new ConstructMirror(new FakeTimeProvider());
+        var requests = new List<EntityId>();
+        mirror.ResyncNeeded += requests.Add;
+        Assert.False(mirror.Apply(new ConstructState(Header, 1, 2, [Chunk(1)])));
+        Assert.Single(requests);
+        Assert.False(mirror.Apply(new ConstructState(Header, 0, 3, [Chunk(0)])));
+        Assert.False(mirror.Apply(new ConstructState(Header, 2, 3, [Chunk(2)])));
+        Assert.Equal(2, requests.Count);
+    }
 }

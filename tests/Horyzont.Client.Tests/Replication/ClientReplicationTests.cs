@@ -131,4 +131,47 @@ public sealed class ClientReplicationTests
         mirror.RetryResyncs();
         Assert.Equal(3, requests.Count);
     }
+
+    [Fact]
+    public void EntityMirror_ResyncNeverAnswered_IsRetriedSixTimesThenDropped()
+    {
+        var time = new FakeTimeProvider();
+        var mirror = new EntityMirror(time);
+        var requests = new List<EntityId>();
+        mirror.ResyncNeeded += requests.Add;
+        for (uint i = 0; i < 40; i++)
+        {
+            mirror.OnFullSnapshot(new Snapshot(10 + i, new Tick(10 + i), 0, 0, [_frame], [State(3, parentSeq: 5, x: i)]));
+        }
+
+        for (var i = 0; i < 30; i++)
+        {
+            time.Advance(TimeSpan.FromSeconds(17));
+            mirror.RetryResyncs();
+        }
+
+        Assert.Equal(7, requests.Count);
+    }
+
+    [Fact]
+    public void EntityMirror_WarmedUpSnapshotsOfKnownEntities_AllocateZeroBytes()
+    {
+        var mirror = new EntityMirror();
+        mirror.Apply(Spawn(2));
+        var snapshot = new Snapshot(1, new Tick(3), 0, 0, [_frame], [State(2, x: 5), State(2, x: 6)]);
+        for (var i = 0; i < 200; i++)
+        {
+            mirror.OnFullSnapshot(snapshot);
+        }
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 10_000; i++)
+        {
+            mirror.OnFullSnapshot(snapshot);
+        }
+
+        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.True(mirror.TryGet(new EntityId(2), out var spawn));
+        Assert.Equal(6f, spawn!.Initial.Position.X);
+    }
 }

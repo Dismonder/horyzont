@@ -4,10 +4,14 @@ namespace Horyzont.Client.Replication;
 
 /// <summary>
 /// Entities that await a server answer to a resync request. An unanswered request is repeated with growing delays (2, 4, 8, then 16 s),
-/// because the server may refuse a request (rate limit) and a refusal is silent.
+/// because the server may refuse a request (rate limit) and a refusal is silent. After <see cref="MaxRetries"/> repeats the entry is
+/// dropped; the next gap of the entity starts a fresh request.
 /// </summary>
 internal sealed class ResyncTracker(TimeProvider time)
 {
+    /// <summary>Repeats of one request before the entry is dropped.</summary>
+    public const int MaxRetries = 6;
+
     private static readonly TimeSpan _firstDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan _maxDelay = TimeSpan.FromSeconds(16);
     private readonly Dictionary<EntityId, Entry> _entries = [];
@@ -19,6 +23,26 @@ internal sealed class ResyncTracker(TimeProvider time)
 
     /// <summary>Starts waiting for an answer; false when the entity was already waiting.</summary>
     public bool Add(EntityId id) => _entries.TryAdd(id, new Entry(time.GetTimestamp(), 0, false));
+
+    /// <summary>
+    /// Like <see cref="Add"/>, but also restarts an entry whose answer began and then failed (stalled or invalid transfer): the
+    /// request is due again at once. False when the entity is still waiting for the first part.
+    /// </summary>
+    public bool Restart(EntityId id)
+    {
+        if (_entries.TryGetValue(id, out var entry))
+        {
+            if (!entry.Answered)
+            {
+                return false;
+            }
+
+            _entries[id] = new Entry(time.GetTimestamp(), 0, false);
+            return true;
+        }
+
+        return Add(id);
+    }
 
     public bool Remove(EntityId id) => _entries.Remove(id);
 
@@ -50,6 +74,12 @@ internal sealed class ResyncTracker(TimeProvider time)
         foreach (var id in _scratch)
         {
             var entry = _entries[id];
+            if (entry.Attempt >= MaxRetries)
+            {
+                _entries.Remove(id);
+                continue;
+            }
+
             _entries[id] = entry with { Last = now, Attempt = entry.Attempt + 1 };
             into.Add(id);
         }

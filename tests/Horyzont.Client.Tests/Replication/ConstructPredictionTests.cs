@@ -155,4 +155,17 @@ public sealed class ConstructPredictionTests
 
         public void NoteReply(IntentReply reply) => Log.Add("reply " + reply.ClientSeq);
     }
+
+    [Fact]
+    public void Prediction_MirrorCleared_ForgetsSeenOperations()
+    {
+        var (mirror, prediction, _, _) = Setup();
+        var cell = new CellPos(1, 0, 0);
+        Assert.True(mirror.Apply(Op(70, 2, cell)));
+        mirror.Clear();
+        prediction.Begin(1, new PlaceBlockIntent(new ConstructFaceTarget(_construct, default, Face.PosX), 1, 0), Preview(cell));
+        prediction.NoteReply(new IntentReply(1, RejectReason.None, new OpId(70)));
+        prediction.Commit(1);
+        Assert.Equal(1, prediction.Count);
+    }
 }

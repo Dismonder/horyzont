@@ -114,4 +114,21 @@ public sealed class RemoteToolWorldViewTests
 
         Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
     }
+
+    [Fact]
+    public void CopyOtherPlayerFeet_PlayerInAConstructFrame_IsConvertedToThePlanetFrame()
+    {
+        var (view, constructs, entities) = Create();
+        var rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 2);
+        var header = new ConstructHeaderRecord(_construct, FrameRef.Of(_planet), 0, ConstructMode.Static,
+            new Vector3(0, 100, 0), rotation, 1);
+        Assert.True(constructs.Apply(new ConstructState(header, 0, 1, [])));
+        entities.Apply(new EntitySpawn(new EntityId(2), EntityKind.Player, 0, new PlayerId(2),
+            new SnapshotFrame(FrameRef.Of(_construct), 0),
+            new EntityState(new EntityId(2), (EntityStateFields)15, 0, 0, new Vector3(1, 2, 0), Quaternion.Identity, Vector3.Zero, 0), []));
+        var feet = new Vector3[4];
+        Assert.Equal(1, view.CopyOtherPlayerFeet(_planet, feet));
+        var expected = new Vector3(0, 100, 0) + Vector3.Transform(new Vector3(1, 2, 0), rotation);
+        Assert.True(Vector3.Distance(expected, feet[0]) < 1e-4f);
+    }
 }

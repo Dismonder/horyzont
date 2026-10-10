@@ -89,7 +89,7 @@ public sealed partial class GameComposition
         ClientReplication = replication;
 
         var players = new RemotePlayers { Name = "RemotePlayers" };
-        players.Initialize(Client, replication.Entities, _env.Render);
+        players.Initialize(Client, replication.Entities, _env.Render, mirror);
         ClientNode.AddChild(players);
         RemotePlayers = players;
         if (mirror is null)
