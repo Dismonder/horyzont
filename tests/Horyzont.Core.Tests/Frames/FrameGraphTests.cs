@@ -143,6 +143,44 @@ public class FrameGraphTests
     }
 
     [Fact]
+    public void FrameGraph_ExpressInRegion_ComposesUpToRegionWithoutPlanetPlacement()
+    {
+        // Two nested constructs on a second planet that has no placement: the world pose is unknown, the region position is not.
+        var second = FrameRef.Of(new PlanetId(2));
+        var outer = Header(new EntityId(1), second, new Vector3(100f, 4000f, -20f), Quaternion.CreateFromAxisAngle(Vector3.UnitY, 0.5f));
+        var inner = Header(new EntityId(2), FrameRef.Of(new EntityId(1)), new Vector3(3f, 1f, 2f), Quaternion.CreateFromAxisAngle(Vector3.UnitX, 0.25f));
+        var builder = new WorldStateBuilder(WorldFactory.DefaultWorldId, 42);
+        builder.SetProgress(default, default, 100, 1);
+        builder.AddPlanet(WorldFactory.HomePlanetParams);
+        builder.AddPlanet(new PlanetParams(new PlanetId(2), new SystemId(1), 3, "core:test/1"));
+        builder.AddBlockType(new RegistryEntry(1, WorldFactory.StoneBlockKey));
+        foreach (var header in new[] { outer, inner })
+        {
+            builder.AddConstruct(header);
+            var blocks = new uint[ConstructChunk.CellCount];
+            blocks[0] = BlockState.Create(1, 0).Packed;
+            builder.AddChunk(new ConstructChunkRecord(new ConstructChunkKey(header.Id, default), blocks));
+        }
+
+        var graph = new FrameGraph(new WorldStateFramePoses(builder.Build(), new HomeOnlyPlacement(WorldFactory.HomePlanet)));
+        var local = new Vector3(0.5f, -1f, 4f);
+        Assert.False(graph.TryGetWorldPose(FrameRef.Of(new EntityId(2)), out _));
+
+        Assert.True(graph.TryExpressInRegion(FrameRef.Of(new EntityId(2)), local, out var region, out var point));
+        Assert.Equal(second, region);
+        var expected = FrameMath.TransformPoint(
+            FrameMath.Compose(FrameMath.FromFloat(outer.Origin, outer.Rotation), FrameMath.FromFloat(inner.Origin, inner.Rotation)),
+            Vector3D.FromFloat(local));
+        Assert.InRange(Vector3D.Distance(expected, point), 0, 1e-9);
+
+        // A region frame expresses the point as it is; an unknown frame fails.
+        Assert.True(graph.TryExpressInRegion(second, local, out region, out point));
+        Assert.Equal(second, region);
+        Assert.Equal(Vector3D.FromFloat(local), point);
+        Assert.False(graph.TryExpressInRegion(FrameRef.Of(new EntityId(99)), local, out _, out _));
+    }
+
+    [Fact]
     public void FrameGraph_WorldPose_AllocatesZeroBytes()
     {
         var headers = new List<ConstructHeaderRecord>();
@@ -178,7 +216,8 @@ public class FrameGraphTests
             graph.TryRelative(middle, deepest, out var relative);
             graph.TryExpress(deepest, Vector3.One, middle, out var point);
             graph.TryGetRegion(deepest, out _);
-            return world.Position.X + relative.Position.Y + point.Z;
+            graph.TryExpressInRegion(deepest, Vector3.One, out _, out var inRegion);
+            return world.Position.X + relative.Position.Y + point.Z + inRegion.X;
         }
     }
 
