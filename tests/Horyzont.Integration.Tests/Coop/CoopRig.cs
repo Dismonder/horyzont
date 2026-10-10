@@ -36,17 +36,20 @@ internal sealed class CoopRig : IAsyncDisposable
     private readonly bool _ownsDir;
     private readonly List<BotClient> _bots = [];
     private readonly IPersistenceFaults _faults;
+    private readonly bool _hashEveryOperation;
     private readonly InMemoryNetwork _network;
     private InMemoryTransport _serverTransport;
     private long _frame;
     private int _spawned;
+    private ServerRuntime? _server;
 
-    public CoopRig(string? dir = null, LinkConditions? conditions = null, IPersistenceFaults? faults = null)
+    public CoopRig(string? dir = null, LinkConditions? conditions = null, IPersistenceFaults? faults = null, bool hashEveryOperation = false)
     {
         _ownsDir = dir is null;
         _dir = dir ?? Path.Combine(Path.GetTempPath(), "horyzont-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_dir);
         _faults = faults ?? NoFaults.Instance;
+        _hashEveryOperation = hashEveryOperation;
         Time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 10, 12, 0, 0, TimeSpan.Zero));
         _network = new InMemoryNetwork(Time, conditions);
         _serverTransport = _network.CreateTransport("server", TransportOptions.Default);
@@ -62,6 +65,11 @@ internal sealed class CoopRig : IAsyncDisposable
     public FakeServerTerrainFactory Terrain { get; private set; }
 
     public IReadOnlyList<BotClient> Bots => _bots;
+
+    /// <summary>Gets the state hash after each operation of the current server run (when <c>hashEveryOperation</c> was asked for).</summary>
+    public CoopHashingSink? Hashes { get; private set; }
+
+    public string DirectoryPath => _dir;
 
     public string WorldPath => Path.Combine(_dir, "saves", "world.db");
 
@@ -204,9 +212,11 @@ internal sealed class CoopRig : IAsyncDisposable
             BlockTypeKeys = [WorldFactory.StoneBlockKey],
             MaterialKeys = ["stone", "dirt"],
             NewPlayerSpawn = SpawnOnEquator,
+            JournalSinkDecorator = _hashEveryOperation ? inner => Hashes = new CoopHashingSink(() => _server!.State, inner) : null,
         };
         var runtime = new ServerRuntime(
             ProcessMode.DedicatedServer, options, _serverTransport, terrain, WorldFactory.CreateDefault, Time, NullLoggerFactory.Instance);
+        _server = runtime;
         runtime.AddClientMessageHandler(characters);
         runtime.AddTickParticipant(characters);
         runtime.AddPlayerObserver(characters);
