@@ -227,8 +227,7 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
             if (derived is not null)
             {
                 // Rebuildable data: a timeout leaves the writer to finish alone.
-                await derived.CloseAsync().ConfigureAwait(true);
-                derived.Dispose();
+                await Horyzont.Game.Server.TerrainFailureCleanup.DisposeAfterCloseAsync(derived.CloseAsync, derived.Dispose).ConfigureAwait(true);
             }
         }
 #pragma warning disable CA1031 // The cache is advisory; a failure to close it is logged and does not stop the shutdown.

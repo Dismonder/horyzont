@@ -142,8 +142,7 @@ public sealed partial class VoxelServerTerrainFactory : IServerTerrainFactory
             if (derived is not null)
             {
                 // Rebuildable data: a timeout leaves the writer to finish alone and never blocks the cleanup of the world store.
-                await derived.CloseAsync().ConfigureAwait(true);
-                derived.Dispose();
+                await TerrainFailureCleanup.DisposeAfterCloseAsync(derived.CloseAsync, derived.Dispose).ConfigureAwait(true);
             }
         }
         catch (Exception exception)

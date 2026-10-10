@@ -134,16 +134,17 @@ public sealed class VoxelServerTerrain : IServerTerrain, ITerrainReplicationSour
     /// <inheritdoc />
     public async Task<bool> ShutdownAsync()
     {
-        foreach (var source in _generated.Values)
-        {
-            source.Dispose();
-        }
-
-        _generated.Clear();
-        _codec.Dispose();
         var drained = await Voxel.ShutdownAsync().ConfigureAwait(true);
         if (drained)
         {
+            // D8: readers that did not finish may still use the generated sources and the codec, so they go only after a drain.
+            foreach (var source in _generated.Values)
+            {
+                source.Dispose();
+            }
+
+            _generated.Clear();
+            _codec.Dispose();
             _store.Close();
         }
 

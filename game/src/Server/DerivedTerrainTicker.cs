@@ -36,8 +36,8 @@ public sealed class DerivedTerrainTicker(VoxelServerTerrainFactory factory) : IS
         _stopped = true;
         if (factory.Terrain?.Derived is { } derived)
         {
-            await derived.CloseAsync().ConfigureAwait(true);
-            derived.Dispose();
+            // Dispose only after a successful close: on a timeout the writer still uses the database and the codec.
+            await TerrainFailureCleanup.DisposeAfterCloseAsync(derived.CloseAsync, derived.Dispose).ConfigureAwait(true);
         }
     }
 }
