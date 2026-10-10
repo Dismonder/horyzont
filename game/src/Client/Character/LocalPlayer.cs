@@ -2,6 +2,7 @@ using Godot;
 
 using Horyzont.Client;
 using Horyzont.Client.Camera;
+using Horyzont.Client.Frames;
 using Horyzont.Client.Movement;
 using Horyzont.Client.Replication;
 using Horyzont.Client.Session;
@@ -48,6 +49,9 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     private readonly PresentationCorrection _presentation = new();
     private uint _parentSeq;
     private bool _hasParent;
+    private ClientFrameGraph? _frames;
+    private Func<double>? _renderTick;
+    private OwnState? _attached;
     private long _smallCorrections;
     private long _largeCorrections;
     private float _maxPresentationOffset;
@@ -342,6 +346,8 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
             return;
         }
 
+        FollowAttachedFrame();
+
         _clientTick++;
         var sample = InputSource.Take();
         var devCameraActive = _dev is { IsActive: true };
@@ -377,6 +383,23 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         return MotorInput.Neutral(lastYaw, lastPitch);
     }
 
+    /// <summary>
+    /// Gives the client frames (K5-20): with them the own body follows a construct frame it is attached to (frozen, no input sent)
+    /// and a reparent does not snap the camera unless the pose really moved.
+    /// </summary>
+    /// <param name="frames">Client frames.</param>
+    /// <param name="renderTick">Server tick the remote world is rendered at (the interpolation cursor).</param>
+    public void AttachFrames(ClientFrameGraph frames, Func<double> renderTick)
+    {
+        ArgumentNullException.ThrowIfNull(frames);
+        ArgumentNullException.ThrowIfNull(renderTick);
+        _frames = frames;
+        _renderTick = renderTick;
+    }
+
+    /// <summary>Gets a value indicating whether the own body is attached to a construct frame (K5-20).</summary>
+    public bool IsAttached => _attached is not null;
+
     /// <inheritdoc />
     public override void _Process(double delta)
     {
@@ -403,6 +426,12 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         var feet = body.Feet;
         var up = TerrainMath.UpAt(feet);
         orientation.Advance(up, sample.MouseYaw, sample.MousePitch);
+        if (_attached is not null)
+        {
+            // Attached to a construct frame: the server ignores own motion, so none is predicted or sent (K5-20).
+            return;
+        }
+
         var buttons = sample.Buttons | (_devFlyOn && _devAllowed ? InputButtons.DevFly : InputButtons.None);
         var wire = new PlayerInput(_clientTick, sample.MoveX, sample.MoveY, orientation.YawFor(up), orientation.Pitch, buttons);
         var motor = ValidMotor(wire, _movement, ref _lastYaw, ref _lastPitch);
@@ -455,10 +484,18 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         }
 
         var parentChanged = _hasParent && (_planet?.Id != own.Planet || _parentSeq != own.ParentSeq);
+        var before = _body is { } previous && _orientation is { } view ? Capture(previous, view.Pitch) : default;
+        var rebase = parentChanged && _frames is not null && _body is not null && _planet?.Id == own.Planet;
         if (parentChanged)
         {
+            // Predictions of the old frame are void. With client frames the body stays in planet coordinates across a reparent
+            // on the same planet, so the presentation only smooths the difference (K5-20, decision 14).
             _buffer!.Clear();
-            _presentation.Reset();
+            if (!rebase)
+            {
+                _presentation.Reset();
+            }
+
             if (_planet?.Id != own.Planet)
             {
                 ReleaseWorld();
@@ -474,12 +511,33 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         }
 
         var body = _body!;
+        if (OwnFrames.IsAttached(own))
+        {
+            if (_frames is null || !OwnFrames.TryToPlanet(_frames, own, own.ServerTick.Value, out var feet, out var rotation))
+            {
+                return;
+            }
+
+            _attached = own;
+            body.Place(feet, NumVector3.Zero, rotation, MovementMode.Frozen, false);
+            ReconcileReparent(rebase, before, body);
+            return;
+        }
+
+        _attached = null;
+
         var open = WorldReadiness.IsReady && (own.Mode == MovementMode.DevFlying || body.OnFloor || _probe!.TryFindGround(body.GetWorld3D(), own.Feet, GateDepthMeters, out _));
         if (own.LastProcessedInputSeq == 0 || own.Mode == MovementMode.Frozen || !open || parentChanged)
         {
             // The server has not moved the body yet (or the terrain under it is not here yet): follow it, do not predict.
             _buffer!.Reconcile(own, _orientation!.Pitch, false);
             body.Place(own.Feet, own.Velocity, own.Rotation, own.Mode, OnFloorOf(own.Mode));
+            if (rebase)
+            {
+                ReconcileReparent(rebase, before, body);
+                return;
+            }
+
             _presentation.Reset();
             _snapCamera = true;
             return;
@@ -511,6 +569,28 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
             default:
                 break;
         }
+    }
+
+    private void ReconcileReparent(bool rebase, in PredictedState before, PlayerBody body)
+    {
+        if (!rebase)
+        {
+            return;
+        }
+
+        _presentation.Reconcile(before, Capture(body, _orientation!.Pitch), false);
+        _snapCamera |= _presentation.Snapped;
+    }
+
+    private void FollowAttachedFrame()
+    {
+        if (_attached is not { } own || _frames is null || _renderTick is null
+            || !OwnFrames.TryToPlanet(_frames, own, _renderTick(), out var feet, out var rotation))
+        {
+            return;
+        }
+
+        _body!.Place(feet, NumVector3.Zero, rotation, MovementMode.Frozen, false, false);
     }
 
     private void NoteCorrectionWhileFlying()
@@ -739,6 +819,7 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     {
         _presentation.Reset();
         _hasParent = false;
+        _attached = null;
         foreach (var viewer in new[] { _visualViewer, _collisionViewer })
         {
             if (viewer is not null && IsInstanceValid(viewer))

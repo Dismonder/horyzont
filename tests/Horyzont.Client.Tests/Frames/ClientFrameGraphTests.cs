@@ -107,6 +107,37 @@ public sealed class ClientFrameGraphTests
     }
 
     [Fact]
+    public void ClientFrameGraph_HistoryView_ShipOnlyInsideItsWindow()
+    {
+        var rig = Ships();
+        IFrameHistoryView view = rig.Graph;
+        Assert.True(view.TryGetWorldPose(FrameRef.Of(_ship), 31.5, out var ship));
+        Assert.InRange(Vector3D.Distance(new Vector3D(1.5, 4010, 0), ship.Position), 0, 1e-6);
+        Assert.True(view.TryGetWorldPose(FrameRef.Of(_onShip), 31.5, out _));
+        Assert.True(view.TryGetWorldPose(FrameRef.Of(_still), 10, out _));
+        Assert.True(view.TryGetWorldPose(_homeFrame, 10, out _));
+
+        // Unlike the render query, a rebase never falls back to the newest pose of a ship.
+        Assert.False(view.TryGetWorldPose(FrameRef.Of(_ship), 40, out _));
+        Assert.False(view.TryGetWorldPose(FrameRef.Of(_onShip), 29, out _));
+    }
+
+    [Fact]
+    public void OwnFrames_AttachedToShip_PlanetPoseFollowsInterpolatedShip()
+    {
+        var rig = Ships();
+        var own = new Horyzont.Client.Movement.OwnState(_home, 1, new Vector3(1f, 2f, 3f), Quaternion.Identity, Vector3.Zero,
+            Horyzont.Core.Motion.MovementMode.Frozen, 0, 1, new Tick(33))
+        { Frame = FrameRef.Of(_ship) };
+        Assert.True(OwnFrames.TryToPlanet(rig.Graph, own, 31.5, out var feet, out var rotation));
+        Assert.True(rig.Graph.TryGetWorldPose(FrameRef.Of(_ship), 31.5, out var ship));
+        var expected = FrameMath.Compose(ship, FrameMath.FromFloat(own.Feet, own.Rotation));
+        Assert.InRange(Vector3D.Distance(expected.Position, Vector3D.FromFloat(feet)), 0, 1e-3);
+        Assert.InRange(Math.Abs(QuaternionD.Dot(expected.Rotation, QuaternionD.FromFloat(rotation))), 1 - 1e-6, 1 + 1e-6);
+        Assert.False(OwnFrames.TryToPlanet(rig.Graph, own with { Frame = FrameRef.Of(new EntityId(99)) }, 31.5, out _, out _));
+    }
+
+    [Fact]
     public void ClientFrameGraph_NewestPoses_ShipFromMirrorStaticFromHeader()
     {
         var rig = Ships();

@@ -10,9 +10,10 @@ namespace Horyzont.Client.Frames;
 /// Reference frames as a client sees them (K5-20): the system frame is the root, planets lie in it at their placement, static
 /// constructs at the pose of their header (<see cref="ConstructMirror"/>), ship-mode constructs at their newest snapshot pose
 /// (<see cref="EntityMirror"/>) or, for a render tick, at the pose interpolated from the client frame history. As a
-/// <see cref="IFramePoseSource"/> it gives the newest poses to <see cref="Graph"/>. Main thread only; no allocation.
+/// <see cref="IFramePoseSource"/> it gives the newest poses to <see cref="Graph"/>. As an <see cref="IFrameHistoryView"/> it is strict:
+/// a ship frame outside its history window has no pose (rebasing samples, K5-20 decision 13). Main thread only; no allocation.
 /// </summary>
-public sealed class ClientFrameGraph : IFramePoseSource
+public sealed class ClientFrameGraph : IFramePoseSource, IFrameHistoryView
 {
     private readonly EntityMirror _entities;
     private readonly ConstructMirror? _constructs;
@@ -57,16 +58,28 @@ public sealed class ClientFrameGraph : IFramePoseSource
     /// <param name="renderTick">Server tick being rendered.</param>
     /// <param name="pose">Receives the world pose.</param>
     /// <returns>False for an unknown frame, a missing pose or a chain deeper than <see cref="FrameGraph.MaxDepth"/>.</returns>
-    public bool TryGetWorldPose(FrameRef frame, double renderTick, out PoseD pose)
+    public bool TryGetWorldPose(FrameRef frame, double renderTick, out PoseD pose) => TryGetWorldPose(frame, renderTick, strict: false, out pose);
+
+    /// <inheritdoc />
+    bool IFrameHistoryView.TryGetWorldPose(FrameRef frame, double tick, out PoseD pose) => TryGetWorldPose(frame, tick, strict: true, out pose);
+
+    private bool TryGetWorldPose(FrameRef frame, double renderTick, bool strict, out PoseD pose)
     {
         var local = PoseD.Identity;
         for (var links = 0; links <= FrameGraph.MaxDepth + 1; links++)
         {
-            if (frame.Kind == FrameKind.Construct && !IsStatic(new EntityId(frame.Id))
-                && _history.TryGetWorldPose(frame, renderTick, out var world))
+            if (frame.Kind == FrameKind.Construct && !IsStatic(new EntityId(frame.Id)))
             {
-                pose = FrameMath.Compose(world, local);
-                return true;
+                if (_history.TryGetWorldPose(frame, renderTick, out var world))
+                {
+                    pose = FrameMath.Compose(world, local);
+                    return true;
+                }
+
+                if (strict)
+                {
+                    break;
+                }
             }
 
             if (!TryGetLocalPose(frame, out var parent, out var inParent))

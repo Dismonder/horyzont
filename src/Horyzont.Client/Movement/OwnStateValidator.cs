@@ -27,6 +27,7 @@ public sealed class OwnStateValidator
     private readonly PlanetId[] _planets;
     private readonly ILogger _logger;
     private bool _hasAccepted;
+    private PlanetId _lastPlanet;
     private uint _lastSnapshotId;
     private Tick _lastTick;
     private uint _lastAck;
@@ -104,12 +105,14 @@ public sealed class OwnStateValidator
         }
 
         _hasAccepted = true;
+        _lastPlanet = planet;
         _lastSnapshotId = snapshot.SnapshotId;
         _lastTick = snapshot.ServerTick;
         _lastAck = snapshot.LastProcessedInputSeq;
         state = new OwnState(
             planet, entity.ParentSeq, entity.Position, entity.Rotation, entity.Velocity, mode, snapshot.LastProcessedInputSeq,
-            snapshot.SnapshotId, snapshot.ServerTick);
+            snapshot.SnapshotId, snapshot.ServerTick)
+        { Frame = snapshot.Frames[entity.FrameIndex].Frame };
         return OwnStateVerdict.Accepted;
     }
 
@@ -146,12 +149,20 @@ public sealed class OwnStateValidator
         }
 
         var frame = snapshot.Frames[entity.FrameIndex].Frame;
-        if (frame.Kind != FrameKind.Planet || Array.IndexOf(_planets, new PlanetId(frame.Id)) < 0)
+        if (frame.Kind == FrameKind.Construct && frame.Id != 0 && _hasAccepted)
+        {
+            // Attached to a construct (K5-20): the values are in its frame, the body stays with the last planet.
+            planet = _lastPlanet;
+        }
+        else if (frame.Kind != FrameKind.Planet || Array.IndexOf(_planets, new PlanetId(frame.Id)) < 0)
         {
             return OwnStateVerdict.UnknownPlanet;
         }
+        else
+        {
+            planet = new PlanetId(frame.Id);
+        }
 
-        planet = new PlanetId(frame.Id);
         var rotation = entity.Rotation;
         var length = rotation.Length();
         if (!IsFinite(entity.Position) || !IsFinite(entity.Velocity) || !float.IsFinite(length))
