@@ -10,6 +10,22 @@ namespace Horyzont.Core.Tests.Simulation;
 
 public sealed class IntentValidationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Submit_RawRayOriginBehindOneMeterWall_NoLineOfSight(bool placement)
+    {
+        var f = new SimFixture();
+        var p = f.Join();
+        var eye = f.Eye(p);
+        // One metre along X, spanning the ray's height; the raw origin lies beyond it.
+        AddConstruct(f, new Vector3(0.25f, eye.Y - 0.5f, -0.5f));
+        var target = f.Ground(4);
+        Intent intent = placement ? PlaceShiftedToward(f, p, target, 1.5f) : DigShiftedToward(f, p, target, 1.5f);
+
+        Assert.Equal(RejectReason.NoLineOfSight, f.Sim.Submit(p, intent).Reason);
+    }
+
     private static readonly Dictionary<RejectReason, Func<RejectReason>> _scenarios = new()
     {
         [RejectReason.UnknownPlayer] = () =>

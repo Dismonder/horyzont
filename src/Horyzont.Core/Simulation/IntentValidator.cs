@@ -123,8 +123,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.OutOfReach;
         }
 
-        if (ConstructRaycast.Raycast(state.Constructs, FrameRef.Of(tool.Planet), tool.RayOrigin, tool.RayDirection, hit.Distance, out var blocker)
-            && blocker.Distance < hit.Distance)
+        if (!HasLineOfSight(tool.Planet, eye, hit.Position, null, default))
         {
             return RejectReason.NoLineOfSight;
         }
@@ -260,8 +259,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.OutOfReach;
         }
 
-        if (ConstructRaycast.Raycast(state.Constructs, FrameRef.Of(target.Planet), target.RayOrigin, target.RayDirection, hit.Distance, out var blocker)
-            && blocker.Distance < hit.Distance)
+        if (!HasLineOfSight(target.Planet, eye, hit.Position, null, default))
         {
             return RejectReason.NoLineOfSight;
         }
@@ -345,7 +343,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
     /// <summary>
     /// The ray from the eye to a target point inside or on the target cell hits no terrain and no other cell first.
     /// </summary>
-    private bool HasLineOfSight(PlanetId planet, Vector3 eye, Vector3 target, EntityId construct, CellPos cell)
+    private bool HasLineOfSight(PlanetId planet, Vector3 eye, Vector3 target, EntityId? construct, CellPos cell)
     {
         var toTarget = target - eye;
         var distance = toTarget.Length();
