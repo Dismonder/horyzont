@@ -51,7 +51,7 @@ public sealed class JoinUnavailableTests
         }
         Assert.False(MessageRouter.IsGameMessageFromServer(MessageType.JoinUnavailable));
         Assert.True(MessageRouter.IsGameMessageFromServer(MessageType.ServerStatus));
-        Assert.True(MessageRouter.TryGetType(new byte[] {22}, out _));
-        Assert.True(MessageRouter.TryGetType(new byte[] {23}, out _));
+        Assert.True(MessageRouter.TryGetType(new byte[] { 22 }, out _));
+        Assert.True(MessageRouter.TryGetType(new byte[] { 23 }, out _));
     }
 }

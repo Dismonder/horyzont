@@ -237,6 +237,12 @@ public sealed class ServerSession
             ? TimeSpan.FromMilliseconds(_transport.GetStats(peer.Connection).RttMs)
             : TimeSpan.Zero;
 
+    /// <summary>Returns the transport counters of a player's connection (bytes are cumulative per connection).</summary>
+    /// <param name="player">The player.</param>
+    /// <returns>The statistics, or all zero for an unknown player.</returns>
+    public TransportStats GetTransportStats(PlayerId player) =>
+        _byPlayer.TryGetValue(player, out var peer) ? _transport.GetStats(peer.Connection) : default;
+
     /// <summary>
     /// Ends every session with <paramref name="code"/> (a leaving host uses <see cref="DisconnectCode.HostLeft"/>) and
     /// refuses new connections the same way. Keep calling <see cref="Poll"/> until <see cref="IsShutdownComplete"/>.

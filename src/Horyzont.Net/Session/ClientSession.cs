@@ -73,6 +73,10 @@ public sealed class ClientSession
     /// </summary>
     public TimeSpan Rtt => _rtt.Smoothed;
 
+    /// <summary>Returns the transport counters of the current connection (bytes are cumulative; all zero when not connected).</summary>
+    /// <returns>The statistics.</returns>
+    public TransportStats GetTransportStats() => State == ClientState.Disconnected ? default : _transport.GetStats(_connection);
+
     /// <summary>Gets the number of frames dropped without ending the session (diagnostics and tests).</summary>
     internal long SilentlyDropped { get; private set; }
 
