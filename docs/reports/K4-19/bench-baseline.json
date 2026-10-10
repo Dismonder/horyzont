@@ -1,0 +1,30 @@
+{
+  "CodecBench.DecodeIntentReply": {
+    "allocBytes": 32.0,
+    "meanNs": 24.231014649073284
+  },
+  "CodecBench.EncodeIntentReply": {
+    "allocBytes": 0.0,
+    "meanNs": 33.421640594800316
+  },
+  "ConstructMesherBench.MeshChunk(Pattern=Checkerboard)": {
+    "allocBytes": 0.0,
+    "meanNs": 1174292.0572916667
+  },
+  "ConstructMesherBench.MeshChunk(Pattern=Random35)": {
+    "allocBytes": 0.0,
+    "meanNs": 958808.6588541666
+  },
+  "ConstructMesherBench.MeshChunk(Pattern=Solid)": {
+    "allocBytes": 0.0,
+    "meanNs": 127431.34765625
+  },
+  "ServerTickBench.Tick": {
+    "allocBytes": 120.0,
+    "meanNs": 118483.33333333333
+  },
+  "StateHasherBench.Hash": {
+    "allocBytes": 3704.0,
+    "meanNs": 99290.28727213542
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "commit": "unknown",
+  "runtime": "editor",
+  "meshBlockSize": 16,
+  "generation": {
+    "0": {
+      "blocks": 6825,
+      "meanMs": 1.4219,
+      "p95Ms": 2.678,
+      "blocksPerSecond": 703.3
+    },
+    "1": {
+      "blocks": 24,
+      "meanMs": 1.6961,
+      "p95Ms": 3.4031,
+      "blocksPerSecond": 589.6
+    },
+    "2": {
+      "blocks": 21,
+      "meanMs": 2.3462,
+      "p95Ms": 3.2518,
+      "blocksPerSecond": 426.2
+    },
+    "3": {
+      "blocks": 21,
+      "meanMs": 2.2654,
+      "p95Ms": 2.9519,
+      "blocksPerSecond": 441.4
+    },
+    "4": {
+      "blocks": 21,
+      "meanMs": 2.7469,
+      "p95Ms": 3.207,
+      "blocksPerSecond": 364
+    },
+    "5": {
+      "blocks": 21,
+      "meanMs": 2.8908,
+      "p95Ms": 3.3627,
+      "blocksPerSecond": 345.9
+    },
+    "6": {
+      "blocks": 21,
+      "meanMs": 2.7834,
+      "p95Ms": 3.4982,
+      "blocksPerSecond": 359.3
+    },
+    "7": {
+      "blocks": 18,
+      "meanMs": 3.0686,
+      "p95Ms": 4.0797,
+      "blocksPerSecond": 325.9
+    },
+    "8": {
+      "blocks": 15,
+      "meanMs": 3.2168,
+      "p95Ms": 4.8236,
+      "blocksPerSecond": 310.9
+    },
+    "9": {
+      "blocks": 15,
+      "meanMs": 3.2976,
+      "p95Ms": 4.1741,
+      "blocksPerSecond": 303.2
+    }
+  }
+}

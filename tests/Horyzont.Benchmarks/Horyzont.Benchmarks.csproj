@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Horyzont.Benchmarks</RootNamespace>
+    <!-- Benchmarks are a tool, not part of the shipped game; BenchmarkDotNet generates and builds its own host project. -->
+    <NoWarn>$(NoWarn);CA1822;CA1515;CA1812</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Horyzont.Core/Horyzont.Core.csproj" />
+    <ProjectReference Include="../../src/Horyzont.Constructs/Horyzont.Constructs.csproj" />
+    <ProjectReference Include="../../src/Horyzont.Net/Horyzont.Net.csproj" />
+    <ProjectReference Include="../../src/Horyzont.Client/Horyzont.Client.csproj" />
+    <ProjectReference Include="../../src/Horyzont.Server/Horyzont.Server.csproj" />
+    <ProjectReference Include="../../src/Horyzont.Persistence/Horyzont.Persistence.csproj" />
+    <ProjectReference Include="../../src/Horyzont.Bots/Horyzont.Bots.csproj" />
+    <ProjectReference Include="../Horyzont.Testing/Horyzont.Testing.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The same miniature server characters as the co-op tests (see Horyzont.Integration.Tests). -->
+    <Compile Include="../Horyzont.Integration.Tests/Coop/CoopCharacters.cs" Link="Shared/CoopCharacters.cs" />
+    <Compile Include="../../game/src/Server/Characters/OwnStateSender.cs" Link="Game/OwnStateSender.cs" />
+    <Compile Include="../../game/src/Server/Characters/IServerCharacterSource.cs" Link="Game/IServerCharacterSource.cs" />
+    <Compile Include="../../game/src/Server/Characters/ServerCharacterState.cs" Link="Game/ServerCharacterState.cs" />
+  </ItemGroup>
+</Project>

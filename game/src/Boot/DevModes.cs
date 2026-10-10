@@ -25,6 +25,12 @@ public static class DevModes
             return true;
         }
 
+        if (args.Has("--benchmark-report"))
+        {
+            RunBenchmarkReport(host, args);
+            return true;
+        }
+
         if (!args.Has("--planet-preview"))
         {
             return false;
@@ -73,6 +79,28 @@ public static class DevModes
             // Headless CI tool: any other failure must end the process with an error instead of leaving it running.
             GD.PushError($"Generator report failed: {ex}");
             GD.Print($"GENERATOR REPORT FAILED: {ex.Message}");
+            host.GetTree().Quit(1);
+        }
+    }
+
+    private static void RunBenchmarkReport(Node host, DevModeArguments args)
+    {
+        try
+        {
+            var directory = args.Directory("--benchmark-report", mustExist: true)!;
+            BenchmarkReport.Run(directory, args.GalaxySeed());
+            host.GetTree().Quit(0);
+        }
+        catch (ArgumentException ex)
+        {
+            GD.PushError(ex.Message);
+            GD.Print($"ARGUMENT ERROR: {ex.Message}");
+            host.GetTree().Quit(ExitBadArguments);
+        }
+        catch (Exception ex)
+        {
+            GD.PushError($"Benchmark report failed: {ex}");
+            GD.Print($"BENCHMARK REPORT FAILED: {ex.Message}");
             host.GetTree().Quit(1);
         }
     }

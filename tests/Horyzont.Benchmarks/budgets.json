@@ -1,0 +1,16 @@
+{
+  "regressionWarnPercent": 25,
+  "benchmarks": [
+    { "name": "ServerTickBench.Tick", "maxAllocBytes": 256, "note": "target 0 B (K1-03); measured 120 B per tick on 2026-10-10, ceiling set above that until the allocation is found" },
+    { "name": "CodecBench.EncodeIntentReply", "maxAllocBytes": 0 },
+    { "name": "ConstructMesherBench.MeshChunk", "maxAllocBytes": 0 },
+    { "name": "StateHasherBench.Hash", "maxAllocBytes": 8192 }
+  ],
+  "engine": {
+    "maxFrameMs": 50,
+    "minRayHitRatio": 1.0
+  },
+  "coopTick": {
+    "maxMeanMs": 8.0
+  }
+}

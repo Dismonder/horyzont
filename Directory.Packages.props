@@ -19,6 +19,8 @@
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
     <PackageVersion Include="FsCheck.Xunit.v3" Version="3.4.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.12" />
+    <!-- Benchmarks (K4-19 step 7): tests/Horyzont.Benchmarks only; never referenced by shipped projects. -->
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <!-- Engine tests in game/tests (K2-08). gdUnit4Net requires GodotSharp >= 4.4.0; ours (4.7.2, double) comes from engine/nuget-local. -->
     <PackageVersion Include="gdUnit4.api" Version="5.0.0" />
     <PackageVersion Include="gdUnit4.test.adapter" Version="3.0.0" />
