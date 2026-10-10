@@ -98,6 +98,20 @@ public sealed class ClientInventoryTests
     }
 
     [Fact]
+    public void CountOfAndTypeLookup_SumBagAndHotbar()
+    {
+        var fx = new InventoryFixture();
+        fx.Put(InventoryFixture.Bag(2), InventoryFixture.Stone, 30);
+        fx.Put(InventoryFixture.Hotbar(4), InventoryFixture.Stone, 12);
+
+        Assert.Equal(42, fx.Inventory.CountOf(InventoryFixture.Stone));
+        Assert.Equal(0, fx.Inventory.CountOf(InventoryFixture.Soil));
+        Assert.True(fx.Inventory.TryGetTypeId("test:soil", out var soil));
+        Assert.Equal(InventoryFixture.Soil, soil);
+        Assert.False(fx.Inventory.TryGetTypeId("test:none", out _));
+    }
+
+    [Fact]
     public void ItemLookups_UseTheRegistryAndTheCatalog()
     {
         var fx = new InventoryFixture();

@@ -2,6 +2,7 @@ using Godot;
 
 using Horyzont.Client.Tools;
 using Horyzont.Game.Client.Character;
+using Horyzont.Game.Client.Inventory;
 
 namespace Horyzont.Game.Client.Tools;
 
@@ -26,8 +27,11 @@ public sealed partial class ToolsDemo : Node, IToolInputSource, ILocalInputSourc
         (175, Frame(secondaryPressed: true)),
     ];
 
+    private const int OpenInventoryAfterTicks = 400;
+
     private readonly ToolNode _tools;
     private readonly ILocalInputSource _player;
+    private bool _opened;
     private bool _pitched;
     private long _start = -1;
     private int _next;
@@ -43,6 +47,9 @@ public sealed partial class ToolsDemo : Node, IToolInputSource, ILocalInputSourc
         _player = player;
         Name = "ToolsDemo";
     }
+
+    /// <summary>Gets or sets the inventory that the demo opens once the script is over, so a late screenshot shows the screen; null leaves it closed.</summary>
+    public InventoryNode? Inventory { get; set; }
 
     /// <inheritdoc />
     LocalInputSample ILocalInputSource.Take()
@@ -68,6 +75,12 @@ public sealed partial class ToolsDemo : Node, IToolInputSource, ILocalInputSourc
             }
 
             _start = _tools.Ticks;
+        }
+
+        if (!_opened && Inventory is not null && _tools.Ticks - _start >= OpenInventoryAfterTicks)
+        {
+            _opened = true;
+            Inventory.Open();
         }
 
         if (_next < _script.Length && _tools.Ticks - _start >= _script[_next].Tick)

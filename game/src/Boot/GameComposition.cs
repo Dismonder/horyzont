@@ -13,6 +13,7 @@ using Horyzont.Core.Simulation;
 using Horyzont.Core.World;
 using Horyzont.Game.Client;
 using Horyzont.Game.Client.Character;
+using Horyzont.Game.Client.Inventory;
 using Horyzont.Game.Client.Sky;
 using Horyzont.Game.Client.Tools;
 using Horyzont.Game.Constructs;
@@ -153,6 +154,9 @@ public sealed partial class GameComposition
     /// <summary>Gets the tools of the local player (K2-13); null in dedicated server mode, in client mode and with characters off.</summary>
     public ToolNode? Tools { get; }
 
+    /// <summary>Gets the inventory of the local player (K6-29W): the hotbar, the inventory screen and the toasts; null with characters off and on a server.</summary>
+    public InventoryNode? Inventory { get; private init; }
+
     /// <summary>Gets the movement rules the server characters and the local player share in this process.</summary>
     public MovementRules Movement { get; private init; } = new();
 
@@ -223,6 +227,7 @@ public sealed partial class GameComposition
         ClientDayNight? dayNight = null;
         HostConstructs? constructs = null;
         ToolNode? tools = null;
+        InventoryNode? inventory = null;
         ServerRuntime? server = null;
         ClientRuntime? client = null;
         ITransport? serverTransport = null;
@@ -361,10 +366,10 @@ public sealed partial class GameComposition
             clientNode!.Initialize(client, loggers.CreateLogger<ClientNode>());
             if (env.Characters)
             {
-                (localPlayer, dayNight) = CreateClientCharacter(clientNode, client, server, env, rules, movement, devFlight);
+                (localPlayer, dayNight, inventory) = CreateClientCharacter(clientNode, client, server, env, rules, movement, devFlight);
                 if (isHostLocal)
                 {
-                    tools = CreateTools(clientNode, client, server!, factory!, localPlayer, rules, env, launch.DevToolsDemo);
+                    tools = CreateTools(clientNode, client, server!, factory!, localPlayer, rules, env, launch.DevToolsDemo, inventory);
                 }
             }
 
@@ -384,6 +389,7 @@ public sealed partial class GameComposition
             worldId, fromConfig, characters, localPlayer, dayNight, constructs, tools, platform, serverCapacity)
         {
             Movement = movement,
+            Inventory = inventory,
         };
         if (client is not null && localPlayer is not null)
         {
@@ -450,7 +456,7 @@ public sealed partial class GameComposition
             };
     }
 
-    private static (LocalPlayer Player, ClientDayNight Sky) CreateClientCharacter(
+    private static (LocalPlayer Player, ClientDayNight Sky, InventoryNode Inventory) CreateClientCharacter(
         ClientNode clientNode, ClientRuntime client, ServerRuntime? server, GameEnvironment env, GameRules rules, MovementRules movement,
         bool devFlight)
     {
@@ -473,12 +479,23 @@ public sealed partial class GameComposition
 
         clientNode.AddChild(player);
         clientNode.AddChild(sky);
+
+        // The content is read locally on every client: the server sends only the keys of the item types (K6-29W D16).
+        var inventory = new InventoryNode { Name = "Inventory" };
+        inventory.Initialize(client, SurvivalContentLoader.Load(), ItemVisuals.Load(), env.Loggers, env.Render, reader.CaptureMouse);
+        if (env.Render)
+        {
+            inventory.AddChild(new InventoryInputReader { Name = "Input" });
+        }
+
+        reader.Blocked = () => inventory.IsOpen;
+        clientNode.AddChild(inventory);
         if (env.Render)
         {
             clientNode.AddChild(new HelpOverlay(player, sky, dev));
         }
 
-        return (player, sky);
+        return (player, sky, inventory);
     }
 
     /// <summary>
@@ -487,12 +504,14 @@ public sealed partial class GameComposition
     /// </summary>
     private static ToolNode CreateTools(
         ClientNode clientNode, ClientRuntime client, ServerRuntime server, VoxelServerTerrainFactory factory, LocalPlayer player, GameRules rules,
-        GameEnvironment env, bool demo)
+        GameEnvironment env, bool demo, InventoryNode inventory)
     {
         var scene = GD.Load<PackedScene>(ToolsScene) ?? throw new InvalidOperationException($"Scene {ToolsScene} not found.");
         var tools = scene.Instantiate<ToolNode>();
         tools.Initialize(client, server, () => factory.Terrain!.Service, player, rules, env.Loggers);
         tools.BlockDefinitions = ShipBlockDefinitions(BlockContentLoader.Load());
+        tools.Inventory = inventory;
+        tools.DigAccepted += inventory.OnDigAccepted;
         if (env.Render)
         {
             tools.AddChild(new TerrainToolPreview(tools));
@@ -502,7 +521,7 @@ public sealed partial class GameComposition
 
         if (demo)
         {
-            var script = new ToolsDemo(tools, player.InputSource);
+            var script = new ToolsDemo(tools, player.InputSource) { Inventory = inventory };
             player.InputSource = script;
             tools.InputSource = script;
             tools.AddChild(script);

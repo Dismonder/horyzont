@@ -74,6 +74,45 @@ public sealed class ClientInventory : IClientSessionListener
         return KeyOf(type) is { } key && _catalog.TryGet(key, out def);
     }
 
+    /// <summary>The type id of an item key in the server registry.</summary>
+    /// <param name="key">Content key.</param>
+    /// <param name="type">The id when the registry has the key.</param>
+    /// <returns>True when found.</returns>
+    public bool TryGetTypeId(string key, out ItemTypeId type)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        foreach (var (id, itemKey) in _keys)
+        {
+            if (string.Equals(itemKey, key, StringComparison.Ordinal))
+            {
+                type = new ItemTypeId(id);
+                return true;
+            }
+        }
+        type = default;
+        return false;
+    }
+
+    /// <summary>The number of items of a type in the bag and the hotbar.</summary>
+    /// <param name="type">Item type.</param>
+    /// <returns>The total count.</returns>
+    public int CountOf(ItemTypeId type)
+    {
+        var total = 0;
+        foreach (var container in new[] { Bag, Hotbar })
+        {
+            foreach (var stack in container?.Slots ?? [])
+            {
+                if (stack.Type == type)
+                {
+                    total += stack.Count;
+                }
+            }
+        }
+
+        return total;
+    }
+
     /// <summary>
     /// True when more resource items can still be taken: some bag or hotbar slot is empty, or a stack of a resource is below its limit.
     /// True when the containers are not known yet.

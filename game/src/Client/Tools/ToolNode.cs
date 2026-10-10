@@ -4,12 +4,15 @@ using Horyzont.Client;
 using Horyzont.Client.Session;
 using Horyzont.Client.Ships;
 using Horyzont.Client.Tools;
+using Horyzont.Core.Intents;
+using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Terrain;
 using Horyzont.Game.Frames;
+using Horyzont.Game.Client.Inventory;
 using Horyzont.Net.Session;
 using Horyzont.Server;
 
@@ -44,12 +47,20 @@ public sealed partial class ToolNode : Node, IClientSessionListener
     private ILogger<ToolNode>? _logger;
     private IToolWorldView? _view;
     private ShipModeSwitch? _ship;
+    private readonly Dictionary<uint, Intent> _sent = [];
+    private ToolKind? _hotbarTool;
     private long _tick;
     private int _accepted;
     private int _rejected;
 
     /// <summary>Raised on the main thread when the server answered an intent that the tracker knew (the HUD and tests listen).</summary>
     public event Action<IntentReply, PendingIntentOutcome>? IntentAnswered;
+
+    /// <summary>Raised on the main thread when the server accepted a dig (the terrain tool in removal mode); the inventory warns when the yield did not fit.</summary>
+    public event Action? DigAccepted;
+
+    /// <summary>Gets or sets the inventory whose selected hotbar slot decides the tool and whose open screen blocks the input; null without one.</summary>
+    public InventoryNode? Inventory { get; set; }
 
     /// <summary>Gets or sets where the input of each tick comes from (the keyboard and mouse reader; tests script it).</summary>
     public IToolInputSource InputSource { get; set; } = new NoToolInput();
@@ -165,6 +176,10 @@ public sealed partial class ToolNode : Node, IClientSessionListener
         if (InputSource is NoToolInput && GetNodeOrNull<ToolInputReader>("Input") is { } reader)
         {
             InputSource = reader;
+            if (Inventory is { } inventory)
+            {
+                reader.Blocked = () => inventory.IsOpen;
+            }
         }
 
         _client.AddListener(this);
@@ -182,8 +197,11 @@ public sealed partial class ToolNode : Node, IClientSessionListener
         Pending = new PendingIntentTracker(_prediction, _loggers!.CreateLogger<PendingIntentTracker>());
         Blocks = BlockPalette.FromHello(hello);
         Materials = MaterialPalette.FromHello(hello);
+        _sent.Clear();
+        _hotbarTool = null;
         Controller = new ToolController(
-            _rules, _view, new SessionIntentSender(_client!.Session), Pending, Blocks, Materials, _loggers!.CreateLogger<ToolController>());
+            _rules, _view, new RecordingSender(new SessionIntentSender(_client!.Session), _sent), Pending, Blocks, Materials,
+            _loggers!.CreateLogger<ToolController>());
         var content = BlockContentTable.Create(hello.BlockTypes, BlockDefinitions ?? new Dictionary<string, BlockTypeDef>());
         _ship = new ShipModeSwitch(_view, new SessionIntentSender(_client.Session), Pending, content, _rules);
         LastShipToggle = null;
@@ -200,9 +218,15 @@ public sealed partial class ToolNode : Node, IClientSessionListener
             observer.NoteReply(reply);
         }
 
+        var known = _sent.Remove(reply.ClientSeq, out var intent);
         if (Pending is null || !Pending.OnReply(reply, out var outcome))
         {
             return;
+        }
+
+        if (known && outcome == PendingIntentOutcome.Accepted && intent is TerrainToolIntent { Mode: TerrainEditMode.Remove })
+        {
+            DigAccepted?.Invoke();
         }
 
         LastReply = reply;
@@ -223,6 +247,7 @@ public sealed partial class ToolNode : Node, IClientSessionListener
     {
         // Revert from the newest: the contract of the prediction, although NoEditPrediction has nothing to undo.
         Pending?.Clear();
+        _sent.Clear();
         Controller = null;
         _ship = null;
         Pending = null;
@@ -238,6 +263,13 @@ public sealed partial class ToolNode : Node, IClientSessionListener
         if (Controller is not { } controller)
         {
             return;
+        }
+
+        // The tool follows the selected hotbar slot: when the slot changes (a key, the wheel, an item moved) its tool, or none, is selected.
+        if (Inventory is { } inventory && inventory.TryGetSelectedTool(out var slotTool) && slotTool != _hotbarTool)
+        {
+            _hotbarTool = slotTool;
+            frame = frame with { SelectTool = frame.SelectTool ?? slotTool };
         }
 
         if (frame.RadiusSteps != 0 && controller.Settings.Tool == ToolKind.Builder)
@@ -276,6 +308,26 @@ public sealed partial class ToolNode : Node, IClientSessionListener
             {
                 ship.Observe(ray);
             }
+        }
+    }
+
+    /// <summary>Remembers each intent by its sequence number, to know what a reply answers.</summary>
+    private sealed class RecordingSender(IIntentSender inner, Dictionary<uint, Intent> sent) : IIntentSender
+    {
+        private const int MaxRemembered = 64;
+
+        public bool CanSend => inner.CanSend;
+
+        public uint Submit(Intent intent)
+        {
+            var seq = inner.Submit(intent);
+            if (sent.Count >= MaxRemembered)
+            {
+                sent.Clear(); // replies that never came; the HUD loses at most one warning
+            }
+
+            sent[seq] = intent;
+            return seq;
         }
     }
 
