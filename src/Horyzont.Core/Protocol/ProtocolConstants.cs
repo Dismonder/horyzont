@@ -3,8 +3,8 @@ namespace Horyzont.Core.Protocol;
 /// <summary>Limits of the network protocol and of the persisted formats.</summary>
 public static class ProtocolConstants
 {
-    /// <summary>Protocol version; bumped by every change of a message format. 2: RejectReason.ServerReadOnly (K2-10). 3: InputButtons.DevFly and the 0x3F button mask (K2-11).</summary>
-    public const ushort ProtocolVersion = 4;
+    /// <summary>Protocol version; bumped by every change of a message format. 2: RejectReason.ServerReadOnly (K2-10). 3: InputButtons.DevFly and the 0x3F button mask (K2-11). 5: ship-mode constructs in snapshots (K5-20; main + 1 per D4, rebased with main).</summary>
+    public const ushort ProtocolVersion = 5;
 
     /// <summary>Bits of <see cref="Messages.InputButtons"/> that a valid input may set.</summary>
     public const int InputButtonsMask = 0x3F;
