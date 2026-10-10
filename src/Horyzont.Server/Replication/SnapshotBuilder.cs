@@ -14,6 +14,8 @@ public sealed class SnapshotBuilder(ISnapshotBudget budget)
     private readonly EntityState[] _delta = new EntityState[22];
     private readonly EntityState[] _full = new EntityState[22];
     private readonly List<EntityId> _stale = [];
+    private readonly int[] _order = new int[22];
+    private SnapshotCandidate[] _candidates = [];
 
     /// <summary>Copies the visible set. Capacity changes allocate only when the interest set grows.</summary>
     /// <param name="player">Recipient.</param>
@@ -84,7 +86,7 @@ public sealed class SnapshotBuilder(ISnapshotBudget budget)
         return true;
     }
 
-    /// <summary>Builds one packet, always selecting the own body first and then the oldest sent visible entities.</summary>
+    /// <summary>Builds one packet, selecting the own body first and then the rest by the K3-14 scheduling policy (starved entities, then distance over age).</summary>
     /// <param name="player">Recipient.</param>
     /// <param name="tick">Server tick.</param>
     /// <param name="lastInputSeq">Last processed input.</param>
@@ -124,33 +126,30 @@ public sealed class SnapshotBuilder(ISnapshotBudget budget)
             }
         }
 
-        // Selection marks entries in the reusable history of ages; skipped entries keep their old age.
-        for (var attempt = 0; attempt < connection.Count && count < 22; attempt++)
+        // Order: own body, starved entities, then distance over age (K3-14 policy); exact sizes are re-checked while writing.
+        var ownState = own >= 0 ? connection.Entities[own] : default;
+        if (_candidates.Length < connection.Count)
         {
-            var selected = attempt == 0 ? own : -1;
-            if (selected < 0)
-            {
-                ulong oldest = ulong.MaxValue;
-                for (var i = 0; i < connection.Count; i++)
-                {
-                    var entity = connection.Entities[i];
-                    var age = connection.LastSent[entity.Id];
-                    if (age < oldest && !connection.Attempted.Contains(entity.Id))
-                    {
-                        oldest = age;
-                        selected = i;
-                    }
-                }
-            }
+            _candidates = new SnapshotCandidate[Math.Max(connection.Count, _candidates.Length * 2)];
+        }
 
-            if (selected < 0)
-            {
-                break;
-            }
+        for (var i = 0; i < connection.Count; i++)
+        {
+            var entity = connection.Entities[i];
+            var distance = own >= 0 && entity.Frame.Frame == ownState.Frame.Frame
+                ? Vector3.Distance(entity.State.Position, ownState.State.Position)
+                : float.PositiveInfinity;
+            var rounds = (int)Math.Min(int.MaxValue, connection.SentCount - connection.LastSent[entity.Id]);
+            _candidates[i] = new SnapshotCandidate(entity.Id, distance, EntityCost(entity, baseline, i == own), rounds, i == own);
+        }
 
+        var selectedCount = SnapshotSchedulingPolicy.Select(
+            _candidates.AsSpan(0, connection.Count), _order.AsSpan(0, Math.Min(connection.Count, 22)), Math.Max(0, limit - size - (own >= 0 ? FrameCost(ownState.Frame) : 0)));
+
+        for (var attempt = 0; attempt < selectedCount && count < 22; attempt++)
+        {
+            var selected = _order[attempt];
             var candidate = connection.Entities[selected];
-            // Prevent retrying a skipped entry in this packet; restore its age below.
-            connection.Attempted.Add(candidate.Id);
             var frameIndex = -1;
             for (var i = 0; i < frameCount; i++)
             {
@@ -170,35 +169,16 @@ public sealed class SnapshotBuilder(ISnapshotBudget budget)
                 }
 
                 frameIndex = frameCount;
-                frameBytes = 1 + VarSize(candidate.Frame.Frame.Id) + VarSize(candidate.Frame.ParentSeq);
+                frameBytes = FrameCost(candidate.Frame);
             }
 
             var full = candidate.State with { FrameIndex = (byte)frameIndex, Fields = (EntityStateFields)15 };
-            var delta = full;
-            if (selected != own && baseline is not null)
-            {
-                for (var i = 0; i < baseline.Count; i++)
-                {
-                    var previous = baseline.Entities[i];
-                    if (previous.Entity == full.Entity && previous.ParentSeq == full.ParentSeq
-                        && baseline.Frames[previous.FrameIndex] == candidate.Frame)
-                    {
-                        delta = full with { Fields = ChangedFields(full, previous) };
-                        break;
-                    }
-                }
-            }
-
-            var entityBytes = VarSize(delta.Entity.Value) + 2 + VarSize(delta.ParentSeq)
-                + ((delta.Fields & EntityStateFields.Position) != 0 ? 12 : 0)
-                + ((delta.Fields & EntityStateFields.Rotation) != 0 ? 4 : 0)
-                + ((delta.Fields & EntityStateFields.Velocity) != 0 ? 6 : 0)
-                + ((delta.Fields & EntityStateFields.MotionFlags) != 0 ? 1 : 0);
+            var delta = DeltaOf(full, candidate.Frame, baseline, selected == own);
+            var entityBytes = FieldBytes(delta);
             if (size + frameBytes + entityBytes > limit)
             {
                 if (selected == own)
                 {
-                    connection.Attempted.Clear();
                     return 0;
                 }
 
@@ -215,7 +195,6 @@ public sealed class SnapshotBuilder(ISnapshotBudget budget)
             _delta[count++] = delta;
         }
 
-        connection.Attempted.Clear();
         if (count == 0)
         {
             return 0;
@@ -242,6 +221,37 @@ public sealed class SnapshotBuilder(ISnapshotBudget budget)
     /// <summary>Releases one disconnected recipient's history.</summary>
     /// <param name="player">Recipient.</param>
     public void Forget(PlayerId player) => _connections.Remove(player);
+
+    private static int FrameCost(SnapshotFrame frame) => 1 + VarSize(frame.Frame.Id) + VarSize(frame.ParentSeq);
+
+    private static int EntityCost(ReplicationEntity entity, Retained? baseline, bool isOwn) =>
+        FieldBytes(DeltaOf(entity.State with { Fields = (EntityStateFields)15 }, entity.Frame, baseline, isOwn));
+
+    private static EntityState DeltaOf(EntityState full, SnapshotFrame frame, Retained? baseline, bool isOwn)
+    {
+        if (isOwn || baseline is null)
+        {
+            return full;
+        }
+
+        for (var i = 0; i < baseline.Count; i++)
+        {
+            var previous = baseline.Entities[i];
+            if (previous.Entity == full.Entity && previous.ParentSeq == full.ParentSeq && baseline.Frames[previous.FrameIndex] == frame)
+            {
+                return full with { Fields = ChangedFields(full, previous) };
+            }
+        }
+
+        return full;
+    }
+
+    private static int FieldBytes(EntityState delta) =>
+        VarSize(delta.Entity.Value) + 2 + VarSize(delta.ParentSeq)
+        + ((delta.Fields & EntityStateFields.Position) != 0 ? 12 : 0)
+        + ((delta.Fields & EntityStateFields.Rotation) != 0 ? 4 : 0)
+        + ((delta.Fields & EntityStateFields.Velocity) != 0 ? 6 : 0)
+        + ((delta.Fields & EntityStateFields.MotionFlags) != 0 ? 1 : 0);
 
     private static EntityStateFields ChangedFields(EntityState current, EntityState previous)
     {
@@ -302,7 +312,6 @@ public sealed class SnapshotBuilder(ISnapshotBudget budget)
         public ulong SentCount { get; set; }
         public Retained[] History { get; } = new Retained[64];
         public Dictionary<EntityId, ulong> LastSent { get; } = [];
-        public HashSet<EntityId> Attempted { get; } = [];
     }
 
     private sealed class Retained

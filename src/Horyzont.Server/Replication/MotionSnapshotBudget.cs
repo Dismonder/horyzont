@@ -46,6 +46,9 @@ public sealed class MotionSnapshotBudget : ISnapshotBudget
         _buckets[player] = bucket with { Tokens = bucket.Tokens - encodedBytes };
     }
 
+    /// <inheritdoc />
+    public void Forget(PlayerId player) => Remove(player);
+
     /// <summary>Forgets a player's bucket after the session ends.</summary>
     /// <param name="player">Disconnected player.</param>
     public void Remove(PlayerId player) => _buckets.Remove(player);
