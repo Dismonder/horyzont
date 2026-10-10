@@ -17,6 +17,7 @@ using Horyzont.Game.Client.Sky;
 using Horyzont.Game.Client.Tools;
 using Horyzont.Game.Constructs;
 using Horyzont.Game.Frames;
+using Horyzont.Game.Content;
 using Horyzont.Game.Planet;
 using Horyzont.Game.Planet.Generators;
 using Horyzont.Game.Planet.Rendering;
@@ -30,6 +31,7 @@ using Horyzont.Persistence.Backup;
 using Horyzont.Server;
 using Horyzont.Server.Console;
 using Horyzont.Server.Frames;
+using Horyzont.Server.Inventory;
 
 using Microsoft.Extensions.Logging;
 
@@ -292,6 +294,8 @@ public sealed partial class GameComposition
             serverTransport = new ReleaseTrackedTransport(transports.Count == 1 ? transports[0] : new CompositeTransport(transports));
 
             var catalog = BlockContentLoader.Load();
+            var survival = SurvivalContentLoader.Load();
+            var itemKeys = SurvivalContentLoader.ItemKeys(survival);
             var runtimeOptions = new ServerRuntimeOptions
             {
                 WorldPath = worldPath,
@@ -308,6 +312,8 @@ public sealed partial class GameComposition
                 BlockTypeKeys = catalog.BlockTypeKeys,
                 BlockDefinitions = ShipBlockDefinitions(catalog),
                 MaterialKeys = TerrainMaterials.Keys,
+                ItemTypeKeys = itemKeys,
+                Content = survival,
                 RecoverFromCheckpoint = launch.RecoverFromCheckpoint,
                 Rules = rules,
                 NewPlayerSpawn = env.Characters ? SpawnLocator.ForNewPlayer : null,
@@ -315,9 +321,10 @@ public sealed partial class GameComposition
             serverCapacity = runtimeOptions.ServerOptions.MaxPlayers;
             var seed = launch.GalaxySeed;
             server = new ServerRuntime(
-                launch.Mode, runtimeOptions, serverTransport, factory, () => NewWorld(worldId, seed, catalog.BlockTypeKeys), env.Time, loggers);
+                launch.Mode, runtimeOptions, serverTransport, factory, () => NewWorld(worldId, seed, catalog.BlockTypeKeys, itemKeys), env.Time, loggers);
             constructs = new HostConstructs(serverNode!, catalog, env.Render, loggers, env.Time);
             constructs.Register(server);
+            InventoryService.Register(server, loggers);
 
             (serverFrames, serverFrameNodes) = RegisterServerFrames(server, serverNode!);
             if (env.Characters)
@@ -702,12 +709,13 @@ public sealed partial class GameComposition
 
     private static string WorldPathOf(string savesDir, Guid id) => Path.Combine(savesDir, id.ToString("D"), "world.db");
 
-    private static WorldState NewWorld(Guid id, ulong seed, IReadOnlyList<string> blockTypeKeys) =>
-        NewWorld(id, seed, Horyzont.Core.Space.StarSystemGenesis.CreateWorldBodies(seed, GeneratorProfiles.Current), blockTypeKeys);
+    private static WorldState NewWorld(Guid id, ulong seed, IReadOnlyList<string> blockTypeKeys, IReadOnlyList<string> itemTypeKeys) =>
+        NewWorld(id, seed, Horyzont.Core.Space.StarSystemGenesis.CreateWorldBodies(seed, GeneratorProfiles.Current), blockTypeKeys, itemTypeKeys);
 
     // K5-21: a new world gets its star system (home planet of PlanetGenesis and the bodies of StarSystemLayout.V1).
-    private static WorldState NewWorld(Guid id, ulong seed, Horyzont.Core.Space.GeneratedStarSystem created, IReadOnlyList<string> blockTypeKeys) =>
-        WorldState.CreateNew(new Horyzont.Core.Ids.WorldId(id), seed, created.System, created.Bodies, blockTypeKeys, TerrainMaterials.Keys);
+    private static WorldState NewWorld(
+        Guid id, ulong seed, Horyzont.Core.Space.GeneratedStarSystem created, IReadOnlyList<string> blockTypeKeys, IReadOnlyList<string> itemTypeKeys) =>
+        WorldState.CreateNew(new Horyzont.Core.Ids.WorldId(id), seed, created.System, created.Bodies, blockTypeKeys, TerrainMaterials.Keys, itemTypeKeys);
 
     private async Task<int?> StartServerAsync(CancellationToken ct)
     {

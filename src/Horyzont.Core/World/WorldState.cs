@@ -154,14 +154,15 @@ public sealed class WorldState
     /// <param name="planets">Planets.</param>
     /// <param name="blockTypeKeys">Block type keys.</param>
     /// <param name="materialKeys">Material keys.</param>
+    /// <param name="itemTypeKeys">Item type keys (K6-29W); none when null.</param>
     /// <returns>The new world.</returns>
     /// <exception cref="ArgumentException">The system is invalid or a body is not among the planets.</exception>
     public static WorldState CreateNew(
         WorldId id, ulong galaxySeed, StarSystemParams system, IEnumerable<PlanetParams> planets, IEnumerable<string> blockTypeKeys,
-        IEnumerable<string> materialKeys)
+        IEnumerable<string> materialKeys, IEnumerable<string>? itemTypeKeys = null)
     {
         ArgumentNullException.ThrowIfNull(system);
-        var state = CreateNew(id, galaxySeed, planets, blockTypeKeys, materialKeys);
+        var state = CreateNew(id, galaxySeed, planets, blockTypeKeys, materialKeys, itemTypeKeys ?? []);
         try
         {
             state.SetStarSystem(system);

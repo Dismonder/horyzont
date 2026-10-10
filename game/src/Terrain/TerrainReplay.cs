@@ -67,7 +67,7 @@ public static class TerrainReplay
             foreach (var entry in tail)
             {
                 ct.ThrowIfCancellationRequested();
-                if (entry.Operation is TerrainEditOp edit)
+                if (OperationTerrain.TryGetTerrainEdit(entry.Operation, out var edit))
                 {
                     if (!simulation.State.Planets.TryGet(edit.Planet, out var planet))
                     {
