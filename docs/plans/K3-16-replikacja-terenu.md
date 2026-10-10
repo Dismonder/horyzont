@@ -1,0 +1,221 @@
+# K3-16 · Replikacja terenu: wersje, cache, sumy kontrolne
+
+| | |
+| --- | --- |
+| Prowadzi | Opus 5.5 |
+| Testy akceptacyjne | Opus 5.5, przed implementacją; podzadania mechaniczne Gemini 3.8 Flash |
+| Przegląd | GPT-6.1 Sol; nowe kontrakty protokołu i kodek także Opus 5.5 |
+| Zależy od | K2-09, K2-10 (graf projektu). Konsumuje istniejące narzędzia K2-13 z bramki K2; połączenie widoku budowli K3-15 na bramce K3, bez dodatkowej zależności startu |
+| Gałąź | `pakiet/k3-16-replikacja-terenu` |
+
+**Cel:** zdalny klient ma własny teren i trwały cache; edycje serwera podmieniają bloki 16³ u pozostałych klientów w najwyżej 200 ms przy RTT 100 ms, a wersje i xxHash64 pozwalają wykryć i naprawić rozjazd bez podwójnego stosowania edycji u hosta.
+
+## Kontekst
+
+- `docs/ZASADY.md`: pkt 2 (główny wątek Godota, źródło strumienia dla workerów, autorytet, wspólny teren hosta), 3 (Core, wersje i zamrożony korpus), 4, 6, 7 (błędy i zamykanie), 8.
+- `docs/spec/01-planeta.md:190–240`: niezawodny kanał danych (194), cache przed gotowością (212–213), generator i bloki 16³ (224–225), predykcja/paste/kolejka/checksum (229–232), zasięg widza (236), 50 KB/s (240).
+- `docs/spec/01-planeta.md:294–314`: odmowa i cofnięcie (302), naprawa sum (304), timeout (306), awaria zapisu i utrata okna 100 ms (308–312).
+- `docs/spec/01-planeta.md:316–355`: sieć i boty (327–330), 200 ms i zgodne skróty (340–341), ryzyko replikacji LOD i różnic generatora (352,354–355).
+- `docs/plan/plan-projektu.md`, tabela Planety, wiersze K3-14..18; `docs/plans/README.md:78–80`, D1/D4/D8 i decyzja wyłączenia Linux CI 2026-10-09.
+- `docs/plans/K2-09-adapter-voxel-tools.md:439,505–523`: P1 i rozpoznanie S2–S6 (blok do 12 337 B z kopertą w próbie najgorszego przypadku; `Paste`; LOD-y zapisują się zależnie od momentu wyładowania).
+- `docs/plans/K2-10-tryby-gry.md:322,335,359–364,587` i `K2-13-narzedzia.md:59,178–182,302,433,469,483,499`: gotowość, lokalny gracz, źródło cache, narzędzia i predykcja zdalna.
+
+### Kod, na którym pakiet buduje
+
+Nazwy i linie sprawdzone w `pakiet/k2-bramka`; nie traktować dawnych fragmentów planów jako istniejących metod.
+
+| Co | Gdzie |
+| --- | --- |
+| `ITerrainBlockSource.TryLoad(TerrainBlockKey, out uint version, out byte[] blob)`; `Found` / `NotEdited` / `Unavailable` | `src/Horyzont.Persistence/Terrain/ITerrainBlockSource.cs:23`; `TerrainBlockLookup.cs:4` |
+| `ServerTerrainBlocks.Record`, `TryLoad`, `CloseAsync`; bieżące bloby przed checkpointem | `src/Horyzont.Persistence/Terrain/ServerTerrainBlocks.cs:105`, `:133`, `:299` |
+| `TerrainStream._LoadVoxelBlock`, `_SaveVoxelBlock`, `Close()` | `game/src/Terrain/TerrainStream.cs:95`, `:151`, `:89` |
+| `TerrainBlockCodec.Encode(VoxelBuffer)`, `Decode(ReadOnlySpan<byte>, VoxelBuffer)`, `Digest(VoxelBuffer)` | `game/src/Terrain/TerrainBlockCodec.cs:39`, `:59`, `:98` |
+| `TerrainDigest.Compute(IEnumerable<(TerrainBlockKey Key, uint Version, ulong VoxelDigest)>)` | `game/src/Terrain/TerrainDigest.cs:20` |
+| `DerivedLodCache.Put`, `TryGet`, `DefaultMaxBlocks = 8192`; obecnie tylko pamięć sesji | `game/src/Terrain/DerivedLodCache.cs:48`, `:89`, `:14` |
+| `VoxelTerrainService.ApplyEdit(TerrainEditOp, IReadOnlyList<TerrainBlockVersion>)`, `TryCopyBlock(TerrainBlockKey, VoxelBuffer)` | `game/src/Terrain/VoxelTerrainService.cs:282`, `:367` |
+| `VoxelServerTerrain.Voxel`, `Service`; `_blocks` jest prywatne, brak publicznego API eksportu | `game/src/Server/VoxelServerTerrain.cs:47`, `:50` |
+| `ServerRuntime.IsLocalPlayer`, `AddTickParticipant`, `AddPlayerObserver`; obserwator gotowości/wyjścia | `src/Horyzont.Server/ServerRuntime.cs:143`, `:113`, `:121`; `IServerPlayerObserver.cs:12` |
+| `GameServerHooks.OnClientMessage` tylko loguje; `OnPlayerReady` już powiadamia obserwatorów | `src/Horyzont.Server/GameServerHooks.cs:116`, `:93` |
+| `ServerSimulation.Applied` (zdarzenie `Action<AppliedOperation>`) | `src/Horyzont.Core/Simulation/ServerSimulation.cs:61` |
+| `OwnTerrainProvider.Prepare(ServerHello)` tworzy strumień z `GeneratorOnlyBlockSource`; `ClientNode.OnServerHello` woła `SendReady` | `game/src/Client/OwnTerrainProvider.cs:51`; `game/src/Client/ClientNode.cs:63` |
+| `ClientRuntime.IsHostLocal`, `AddListener`; `ClientSession.Send(Message)` w Loading/InGame zależnie od typu | `src/Horyzont.Client/Session/ClientRuntime.cs:42`, `:49`; `src/Horyzont.Net/Session/ClientSession.cs:169` |
+| `TerrainCacheReport(Planet, Entries)`, `TerrainBlockData(Key, Version, Data)`, `TerrainChecksums(Planet, Entries)`; checksum ma tylko `Key`, `Hash` | `src/Horyzont.Core/Protocol/Messages/TerrainCacheReport.cs:9`; `TerrainBlockData.cs:10`; `TerrainChecksums.cs:9`; `TerrainBlockChecksum.cs:8` |
+| `StateCodec.EncodeTerrainBlockBlob`, `DecodeTerrainBlockBlob`; istniejąca koperta blobu | `src/Horyzont.Core/Serialization/StateCodec.cs:414`, `:443` |
+| `ProtocolVersion = 3`; limity 4096 cache entries, 1024 checksums, 64 KiB danych bloku | `src/Horyzont.Core/Protocol/ProtocolConstants.cs:7`, `:64`, `:67`, `:70` |
+| `IEditPrediction.Begin(uint, Intent, in ToolPreview)`, `Commit(uint)`, `Revert(uint)` | `src/Horyzont.Client/Tools/IEditPrediction.cs:11` |
+| `PendingIntentTracker.MaxPending = 16`, `DeadlineTicks = 300`, `OnReply`; `IntentReply.AppliedOpId` | `src/Horyzont.Client/Tools/PendingIntentTracker.cs:19`, `:22`, `:82`; `src/Horyzont.Core/Protocol/Messages/IntentReply.cs:12` |
+| `GodotToolWorldView` wymaga `WorldState` i serwerowego `ITerrainService`; nie jest widokiem klienta zdalnego | `game/src/Client/Tools/GodotToolWorldView.cs:23` |
+
+## Zakres
+
+- Pierwszy test akceptacyjny: serwer i dwa niezależne tereny klientów, edycja → dane → cache/paste → identyczny digest.
+- Wymiana wersji przed wejściem w grę, zainteresowanie według widzów, kolejka i limit pasma, live bloby z bufora serwera.
+- Cache SQLite `cache/<WorldId>/terrain.db`, predykcja własnych edycji i cofanie odmowy/timeoutu, zdalne celowanie i narzędzia terenowe.
+- Kontrola xxHash64 wygenerowanych bloków i naprawa, diagnostyka, brak drugiej kopii u solo/hosta.
+- Zamknięcie odroczenia odległych LOD-ów po restarcie: trwałe dane pochodne z unieważnianiem i odbudową; test oraz ocena wizualna.
+
+## Poza zakresem
+
+- Replikacja/predykcja budowli i lustro bytów K3-15; wygładzanie ruchu K3-14; Steam K3-17; menu/błędy świata/HUD K3-18.
+- Zmiana generatora, semantyki `ApplyEdit`, operacji lub intencji; cache klienta nie jest zapisem autorytatywnego świata. Godot nie trafia do Core/Net/Persistence.
+- Godzinny test całej gry i soak 2 h należą do K4-19; pakiet dostarcza fixture i mierniki, nie uznaje ich za wykonane.
+
+## Projekt
+
+### Pliki
+
+Wszystkie wymienione niżej nowe typy/metody są **nowe API**.
+
+| Pliki | Odpowiedzialność |
+| --- | --- |
+| `src/Horyzont.Core/Protocol/Messages/TerrainSync.cs`, `TerrainSyncEntry.cs`, `TerrainView.cs` (nowe); `Protocol/MessageType.cs`, `MessageChannels.cs`, `ProtocolConstants.cs`, `Serialization/MessageCodec.cs` | Manifest/bariera i dane widzów, kodek oraz D4 |
+| `src/Horyzont.Server/IServerClientMessageObserver.cs` (nowy), `GameServerHooks.cs`, `ServerRuntime.cs` | Rozdzielanie komunikatów gry do systemów 15/16 zamiast drugiego zestawu haków |
+| `src/Horyzont.Server/Terrain/TerrainSendQueue.cs`, `TerrainReplicationPolicy.cs` (nowe) | Scalanie kluczy, priorytet odległości, token bucket i ograniczenia |
+| `src/Horyzont.Persistence/Terrain/ClientTerrainCache.cs`, `ClientTerrainCacheSchema.cs` (nowe) | Osobna baza klienta, trwały cache i thread-safe `ITerrainBlockSource` |
+| `game/src/Server/Terrain/ServerTerrainReplicator.cs` (nowy), `game/src/Server/VoxelServerTerrain.cs` | Eksport z bieżącego `_blocks` i generatora, zdarzenia operacji, manifesty i bariery |
+| `game/src/Client/Terrain/ClientTerrainReplicator.cs`, `RemoteTerrainPrediction.cs`, `RemoteTerrainToolView.cs` (nowe) | Odbiór, podmiana, checksum, predykcja i celowanie |
+| `game/src/Client/OwnTerrainProvider.cs`, `ClientNode.cs`, `Character/LocalPlayer.cs`, `Tools/ToolNode.cs`, `game/src/Boot/GameComposition.cs` | Przygotowanie cache, gotowość, dane widzów i narzędzia |
+| `game/src/Terrain/DerivedLodCache.cs`, `TerrainStream.cs`; `game/src/Terrain/DerivedLodRebuilder.cs` i `src/Horyzont.Persistence/Terrain/DerivedLodStore.cs` (nowe) | Trwałość LOD, unieważnianie, odbudowa; osobna baza pochodna serwera |
+| `src/Horyzont.Net/Session/MessageRouter.cs` | Dopuszczenie nowych typów do właściwych stanów, bez rozluźniania innych reguł |
+| `tests/Horyzont.Server.Tests/Terrain/TerrainSendQueueTests.cs`, `tests/Horyzont.Persistence.Tests/Terrain/ClientTerrainCacheTests.cs`, `tests/Horyzont.Core.Tests/Serialization/TerrainSyncCodecTests.cs` (nowe) | Czyste testy i parser |
+| `game/tests/Terrain/TerrainReplicationTests.cs`, `TerrainPredictionTests.cs`, `DerivedLodReplicationTests.cs` (nowe) | Dwa tereny, silnik, LOD, restart, predykcja |
+
+### Kontrakty i numeracja
+
+- K1-03:616–623 przydziela Planecie `MessageType` 21–29, `OperationKind` 8–19, `RejectReason` 21–29, intencje 4–9, bloby 5–9. W kodzie tej gałęzi komunikaty zajmują 1–20; `RejectReason.ServerReadOnly = 21`, `BlobKind.TerrainBlock = 5`; operacje 1–7. K3-15 ma rezerwację `ResyncRequest = 21`. Ten plan proponuje **`TerrainSync = 24`**, **`TerrainView = 25`**, pozostawiając 22–23 dla K3-18 zgodnie z równoległym planem K3-15; koordynować rezerwacje przed implementacją. Nie wprowadzać nowych kodów operacji, odmów, intencji ani blobów.
+- `TerrainSync(uint TransferId, byte Purpose, PlanetId Planet, OpId BarrierOpId, ushort PageIndex, bool IsLastPage, IReadOnlyList<TerrainSyncEntry> Entries)` (nowy rekord S→K, niezawodny), `TerrainSyncEntry(TerrainBlockKey Key, uint Version, ulong Hash)` (nowy). `Purpose`: 0 = odpowiedź na cache przy starcie, 1 = aktualizacja zainteresowania, 2 = bariera edycji. Do 1024 wpisów/stronę, strony od 0, ten sam transfer/purpose/planeta/bariera, wpisy unikalne i posortowane. Jednocześnie najwyżej jeden transfer manifestu na planetę/klienta. Licznik transferów monotoniczny w sesji; po rozłączeniu reset. Każda strona ma wersję formatu 1 w standardowej kopercie komunikatu.
+- `TerrainView(PlanetId Planet, uint ViewSeq, Vector3 VisualPosition, float VisualDistance, Vector3 CollisionPosition, float CollisionDistance)` (nowy K→S, niezawodny). Wysyłka najwyżej 5 Hz, przy zmianie bloku widza/odległości; odległości wizualne 2048/4096/8192/16384 m według istniejącego `LocalPlayer.ViewDistanceFor`, kolizyjna z aktualnego widza. Początkowy raport w Loading przed `ClientReady`; potem InGame. Serwer sprawdza skończoność, planetę, maks. 16384 m, monotoniczną sekwencję; dalekie centrum wizualne tylko przy dozwolonej kamerze dev, kolizyjne w pobliżu autorytatywnej postaci. Nigdy nie wczytuje całej zadeklarowanej kuli na żądanie klienta.
+- Nowy `IServerClientMessageObserver.OnClientMessage(PlayerId player, Message message) → bool`; `ServerRuntime.AddClientMessageObserver(...)`. Hook iteruje obserwatorów do pierwszego `true`; 15 obsługuje resync/ACK, 16 teren, nie wolno pochłaniać cudzego typu. `IServerPlayerObserver` i `IServerTickParticipant` pozostają.
+- Nowa metoda `VoxelServerTerrain.TryExportBlock(TerrainBlockKey key, out uint version, out byte[] blob) → bool`: dla edytowanego LOD 0 czyta bieżące `ServerTerrainBlocks.TryLoad`, dla niezmienionego daje wersję 0 i kanoniczny blok generatora. Zwraca niemutowalną kopertę K2; brak danych edytowanego bloku nie powoduje generowania zamiennika. Odczyt terenu tylko na głównym wątku, worker dostać może skopiowany blob. Eksport generatora po jednym bloku jest zadaniem ograniczonym budżetem, nie synchronicznym generowaniem całej okolicy.
+- Nowy `ClientTerrainCache : ITerrainBlockSource`: `Put(TerrainBlockKey key, uint version, ulong hash, byte[] blob)`, `Invalidate(TerrainBlockKey key)`, `CopyVersions(PlanetId planet, Span<TerrainBlockVersion> destination, int offset) → int`, `CloseAsync() → Task<bool>`. Wyłącznie zweryfikowane autorytatywne dane, nigdy kopia po predykcji. Wersja 0 z danymi oznacza poprawkę generatora, więc `Found`, a nie `NotEdited`. Nieznany i niepotwierdzony klucz może być generowany tymczasowo; znany zmieniony blok bez danych to `Unavailable` i blokada predykcji w obszarze.
+- Nowy `ClientTerrainReplicator` implementuje `IClientSessionListener`; przygotowanie przez `Prepare(ServerHello hello)`, `OnMessage(Message)`, `OnDisconnected(DisconnectCode)`. `ClientNode` wysyła `TerrainCacheReport` i pierwszy `TerrainView` **po otwarciu cache i przed `SendReady`**; stan gameplay pozostaje zamrożony aż do zakończenia początkowego transferu. Sesyjny `ClientReady` uruchamia dostawę serwera, nie oznacza jeszcze gotowości lokalnych kolizji.
+- `RemoteTerrainPrediction : IEditPrediction` tylko dla osobnego terenu. `Commit` oznacza przyjęcie intencji, nie otrzymanie wszystkich bloków. Replikator wiąże `IntentReply.ClientSeq/AppliedOpId` z barierą; trzeba dodatkowego nowego `NoteReply(IntentReply)` w predykcji, wywołanego przed `PendingIntentTracker.OnReply`. Nie zmieniać istniejącej sygnatury `Commit(uint)`.
+- `RemoteTerrainToolView : IToolWorldView` jest samodzielnym adapterem terenu na czas równoległej implementacji; czyta parametry `ServerHello`, robi raycast własnego terenu i używa adaptera budowli K3-15. Przed integracją adapter zwraca brak budowli, ale kopanie i zasypywanie działają. `GameComposition` przekazuje do `ToolNode` ten widok i predykcję; solo/host nadal `GodotToolWorldView` + `NoEditPrediction`. Publiczny `IClientTerrainView` nadal nie ujawnia `VoxelTool` ani mutowalnego `VoxelLodTerrain`.
+
+Format nowych komunikatów: standardowy typ + wersja 1; identyfikatory i liczniki kodowane istniejącą konwencją varuint, `Purpose`/bool jako pojedynczy bajt (bool tylko 0/1), hash jako UInt64 little-endian, pozycje jako trzy skończone Single. `TerrainSync`: pola w kolejności konstruktora, następnie count i wpisy klucz/wersja/hash; klucz identyczny jak w istniejących wiadomościach terenu. `TerrainView`: pola w kolejności konstruktora. Maks. 1024 wpisy/stronę sprawdzane przed alokacją; bariera 0 dla purpose 0/1, niezerowa dla 2, pusta strona końcowa dozwolona. Router przyjmuje `TerrainView` w Loading/InGame, `TerrainSync` od serwera w Loading/InGame. Oba typy mapować wyłącznie na ReliableOrdered.
+
+Nowy `TerrainSendQueue.Enqueue(PlayerId player, TerrainBlockKey key, uint version, byte[] immutableBlob, int priorityClass, float distanceSquared)`, `TryTake(PlayerId player, long timestamp, out TerrainBlockData? data) → bool`, `Remove(PlayerId player)`, `Clear()`. `timestamp` pochodzi z wstrzykniętego `TimeProvider.GetTimestamp()`, częstotliwość jest parametrem konstruktora; nie czytać zegara systemowego wewnątrz polityki. Nowy `TerrainReplicationPolicy` definiuje wskazane niżej wartości pasma, kolejki i starzenia. Replikator serwera implementuje `IServerTickParticipant`, `IServerPlayerObserver` i nowy observer komunikatów; przy wyjściu usuwa raport, widzów, bariery i queue gracza. Replikator klienta tworzy `TerrainBlockChecksum` wyłącznie ze scratch bez nakładki, a odczyt metryk udostępnia nowym niemutowalnym `TerrainReplicationStatistics` (plik pod `src/Horyzont.Client/`, jeden typ na plik) dla K3-18.
+
+### Decyzje: przepływ wersji i danych
+
+1. **Start/cache:** baza klienta ma metadane schema=1, `WorldId`, build hash, profil i parametry każdej planety oraz wersję semantyki. Niepasująca metadana unieważnia cache, ale nie dotyka świata serwera. Raport wysyłany porcjami ≤4096 wpisów; `ClientReady` kończy raport. Serwer limituje łączny raport do 65 536 kluczy na planetę; nadmiar klient pomija deterministycznie (najbliższe najpierw), brak raportu oznacza zimny cache, a nie błąd.
+2. **Manifest:** serwer odpowiada dla sumy zgłoszonych kluczy cache i edytowanych kluczy w zasięgu obu widzów. Najpierw manifest określający autorytatywną wersję/hash, potem brakujące `TerrainBlockData`, następnie pusta ostatnia strona transferu jako marker zakończenia. Strony z wpisami mają `IsLastPage=false`; jedyny finał jest pusty. Klient nie usuwa niezgłoszonych kluczy na podstawie ich nieobecności w stronie. Wpis o wersji 0 usuwa stary edytowany blob albo zastępuje go poprawką generatora; przy złym hash serwer dostarcza dane także dla wersji 0.
+3. **Utrata nietrwałej partii:** cache może mieć wersję wyższą od serwera, a po restarcie ta sama liczba wersji może oznaczać inne bajty. Manifest wymusza autorytatywną wersję **i hash**, pozwala na downgrade i zastąpienie równej wersji o innym hash. Monotoniczne odrzucanie starszych danych obowiązuje tylko wewnątrz bieżącej sesji poza zadeklarowanym transferem. Dane z transferu przyporządkowane są kluczom jego manifestu i kolejności kanału; brak danych nie uprawnia do oznaczenia transferu ukończonym.
+4. **Live edycja:** subskrypcja `ServerSimulation.Applied` po zastosowaniu `TerrainEditOp`; klucze i wersje liczyć z aktualnego stanu i tych samych `TerrainMath.AffectedBlocks`, nie z promienia klienta. Kolejka scala wielokrotne zmiany jednego klucza do najnowszej pary wersja/blob. Odbiorcy: zasięg widza, autor zawsze, z pominięciem `IsLocalPlayer`. Dla autora po danych wysłać `TerrainSync` purpose=2 z `BarrierOpId` i ostatecznymi parami klucz/wersja/hash (stronicowanie jak wyżej). Przy scaleniu edycji jeden najnowszy blob może zamknąć wiele barier; usunięcie predykcji wymaga wszystkich kluczy każdej bariery, nie tylko ACK intencji.
+5. **Odbiór/paste:** przed cache i sceną sprawdzić kopertę `TerrainBlockCodec.Decode` do prywatnego scratch 16³; zły blob rozłącza nadawcę/loguje i nie psuje dobrego cache. `VoxelTool.Paste(Vector3I dst, VoxelBuffer src, int channelsMask)` jest zweryfikowane w K2-09 S6; `dst = (X,Y,Z)*16` w voxelach, także dla ujemnych współrzędnych, maska używanych kanałów. Załadowany/edytowalny blok podmienić na głównym wątku; niezaładowany trafia do cache, a strumień poda go przy odczycie. Odbiór w wyścigu z workerem musi pozostawić najnowszy blob w źródle oraz ponownie paste po załadowaniu starego odczytu.
+6. **Pasmo:** kolejka per klient ≤4096 kluczy, nie przechowuje tysięcy duplikatów blobów. Przekroczenie usuwa najdalsze zadania i oznacza potrzebę ponownego manifestu, nie gubi informacji o wersjach. Priorytet: autor/kolizje w pobliżu, następnie odległość do widza, remis klucz; starzenie 1 s zapobiega głodzeniu. Normalny token bucket danych terenu 25 KiB/s z pojemnością 64 KiB; reszta celu 50 KB/s dla 20 KiB/s migawek i sterowania. Burst jednego standardowego narzędzia w promieniu 8 m może wykorzystać bucket; czas 200 ms nie dotyczy zimnego cache i nieograniczonej burzy edycji, które mierzyć osobno. Blok >64 KiB odrzuca kodek, nie dzielić go niejawnie na inny format. Test limitu liczy rzeczywiste ramki, nie tylko długości blobów.
+7. **Predykcja:** najwyżej 16 oczekujących intencji zgodnie z trackerem. Przechowywać autorytatywne bazy dotkniętych bloków i listę lokalnych sfer; po nowych danych/odmowie odtworzyć bazę oraz nadal oczekujące edycje w kolejności `ClientSeq`. Nie cofać przez „odwrotną kulę”. Preview określa lokalną sferę, serwer nadal sam rozwiązuje raycast. Materiał z rejestru powitalnego; nie stosować `OperationApplier` na klientowym świecie ani nie bumpować autorytatywnych wersji. Duży zasięg niezaładowany → tylko wizualny preview, bez lokalnej mutacji. Timeout 300 ticków i disconnect cofają od najnowszej; zaakceptowana intencja czeka na barierę najwyżej 5 s, potem manifest i usunięcie spekulacji, nigdy zapis przewidzianych voxeli.
+8. **Checksum:** co 5 s do 32 bloków LOD 0 wygenerowanych bez predykcji, najbliższych w promieniu 64 m widza kolizyjnego; rotacja deterministyczna, cały cykl obejmuje kandydatów. `TerrainBlockCodec.Digest` to kanoniczne wartości kanałów, nie hash skompresowanego blobu. `TerrainChecksums` ma już kod 7 i limit 1024; nie zmieniać jego formatu. Ponieważ nie zawiera wersji, porównywać tylko z blokami niezmienionymi; jeśli blok serwera już edytowano, dosłać aktualny bez zgłaszania błędu generatora. Edytowane bloki sprawdza manifest/hash. Przy różnicy generatora serwer wysyła swój blok wersji 0; licznik napraw i log `[LoggerMessage]` z graczem, kluczem, hash i buildem. Maks. 32 sprawdzenia/5 s/klienta; nie udostępniać oracle generacji całej planety.
+9. **Cache IO:** WAL, tabela `(planet,lod,x,y,z,version,hash,data)` i metadane; zapis w osobnym writerze z kolejką ≤256 bloków, source najpierw widzi aktualne niemutowalne dane w pamięci. Cache na dysku ≤512 MiB, roboczy overlay ≤64 MiB; LRU usuwa tylko autorytatywne dane niepotrzebne aktywnej predykcji, aktywne klucze pinowane. Uszkodzona/pełna baza klienta: log, unieważnienie złej pozycji i przejście na cache pamięciowy/ponowny manifest, bez trybu bezpiecznego serwera. Testy SQLite w kolekcji `SqlitePools`, bez `ClearAllPools`.
+10. **Gorące ścieżki:** `OnTick` pustej kolejki i wybór zadania bez alokacji; alokacja koperty/rekordu przy nowym bloku jest kosztem zdarzenia, nie „0 B dla całej transmisji”. Mierzyć ją i liczbę kopii, nie udawać że istniejący dekoder nie alokuje. Codec/hash wykonywać poza pętlą selekcji, do 2 bloków/klatkę na klienta; pomiar p95 frame <50 ms i średni tick serwera ≤8 ms przy 8 graczach raportować, pełny benchmark prowadzi K4-19.
+
+### LOD-y: odroczenie K2-09 P1
+
+- S5 potwierdza, że samo zapisywanie callbacków wyładowania nie gwarantuje zachowania odległego wykopu. Domyślnie implementować trwałe LOD-y pochodne oraz test po restarcie; nie uznawać `DerivedLodCache` za rozwiązanie trwałości.
+- Nowy `DerivedLodStore` w osobnej bazie `terrain-derived.db` obok świata, schema=1; klient używa osobnych tabel pochodnych własnego cache. Nie potrzeba migracji autorytatywnego `world.db`. Każdy wpis: klucz LOD>0, fingerprint profilu/semantyki/wersji dzieci i blob. Te dane można usunąć i odbudować, nie są checkpointem ani dziennikiem.
+- Nowy `DerivedLodRebuilder.Invalidate(TerrainBlockKey lod0Key)`, `Step(int maxBlocks)`, `TryLoad(TerrainBlockKey key, out byte[] blob) → bool`. Przodek na poziomie L ma współrzędne `floor(x/2^L)` itd., także dla ujemnych x. Każda nowa baza LOD0 unieważnia wszystkich przodków; znane zmienione przodki nie mogą podać starego blobu jako aktualnego.
+- Krok rozpoznania przed kodem ustala dokładną, dostępną w forku procedurę mipmapowania i zgłaszania przeładowania; nie zakłada istnienia metody `Downscale`. Odbudowa jednego rodzica bierze 8 aktualnych dzieci (edytowane z blobów, pozostałe z generatora), stosuje **ten sam** filtr i format kanałów co Voxel Tools, zapisuje fingerprint i propaguje w górę. Wykonawca zapisuje nazwy/pliki forka oraz porównanie bajtów z mipmapą edycji w „Odstępstwach”. Jeśli brak dostępnego bindingu, dodać izolowany adapter w `game/src/Terrain/` po przeglądzie; nie zmieniać `voxel.ref` ani filtra edycji. Jeżeli to wymaga zmiany silnika/semantyki, zatrzymać wyłącznie ten krok i eskalować kontrakt, nie ukrywać deferral.
+- Zadania odbudowy po skopiowaniu dzieci mogą działać na workerze, bez drzewa sceny; paste/reload tylko główny wątek. Max 2 pochodne bloki/klatkę i 8192 bloków w pamięci, dirty queue ograniczona i trwałe fingerprinty odtwarzane z wersji LOD0 po restarcie. Brak gotowego pochodnego bloku oznacza oczekiwanie/odbudowę; nie cichy fallback do nieedytowanej planety dla znanego wykopu.
+- Serwer przechowuje pochodne lokalnie; przez sieć autorytetem są tylko LOD0. Klient liczy i trzyma własne LOD-y, bez nowych komunikatów LOD. Test musi obejmować wykop na granicy bloków, wyładowanie, restart i kamerę orbitalną bez ponownego zbliżenia do wykopu.
+
+### Chronione kontrakty i zamykanie
+
+- Zmiany `Protocol/` i `Serialization/` podbijają `ProtocolConstants.ProtocolVersion = (main w chwili scalenia) + 1`. K2 ma 3; 4 jest tylko kandydatem, K3-15 może scalić wcześniej. Test `ProtocolVersion_AfterTerrainSync_MatchesDocumentedMergeVersion`; rebase aktualizuje stałą/test/plan. Nie zmieniać zamrożonego początku `ClientHello` i `HandshakeReject`.
+- Operacje/intencje, `TerrainRules` i `TerrainEditSemantics` pozostają z K2. Gdy planowany adapter wymaga zmiany tych kontraktów, potrzebny format operacji/intencji z identycznym replay starej wersji oraz przegląd Opus. Sam bump protokołu tego nie załatwia. Zamrożony korpus terenu i `DeterminismTests` bez zmian (D1).
+- D8: zamykanie sesji → opróżnienie → `OnShutdown` (replicator odpina zdarzenia i czyści zadania) → wyjścia graczy → checkpoint → writer → serwerowy teren/blocks → magazyn tylko gdy drain=true. Zdalny klient: cofnąć spekulację, zamknąć streams, przerwać zadania pochodne, drain odczytów i cache writer (termin 5 s przez `TimeProvider`), dopiero close SQLite. Timeout: log i zostawienie aktywnego readera procesowi, bez zamknięcia używanej bazy. Lokalny host nie ma client-cache writera.
+
+### Odroczenia przejęte
+
+| Źródło | Realizacja / granica |
+| --- | --- |
+| K2-08:61,339,444 | Checksum, licznik częstości rozjazdów, artefakt build/profile; mechanizm naprawy testowany przez sztuczny błąd. Rzeczywiste porównanie Windows–Linux niewykonane przy wyłączonym Linux CI, nie zastępuje go sztuczny test |
+| K2-09:62,176,280,331–334,402,439,522–523 | Cache/source, koperta K2, digest, export live, paste S6 oraz trwała odbudowa LOD i wizualny odbiór |
+| K2-10:65,184,322,335,359–364,587 | Dispatch komunikatów, raport przed ready, źródło klienta, `IsLocalPlayer` i brak danych/cache u hosta |
+| K2-13:59,178–182,302,433/P5,469,499 | `IEditPrediction`, tracker, raycast terenowy i realny `ToolNode` na `--connect`; K3-15 składa planowane `RemoteToolWorldView` i `CompositeEditPrediction`, którym K3-16 wstrzykuje teren oraz predykcję; nie tworzyć drugiego facade ani drugiego `ToolNode` |
+| K2-13:483 | Test ręczny kopania/zasypywania na zdalnym kliencie przejmuje K3-16; budowlana część 5×5×3 wymaga K3-15 i odbywa się na bramce K3, bez rozszerzania tego pakietu o replikację budowli |
+
+### Równoległość i mapa kolizji
+
+Wszystkie K3-14..18 mogą startować równolegle po odpowiednich pakietach K2. Ustalenie API i rezerwacji jest krokiem 0, a nie dopisaniem zależności startu K3-16 → K3-15.
+
+| Kolizja | Rozdział odpowiedzialności |
+| --- | --- |
+| 15/16: `GameServerHooks.cs`, `ServerRuntime.cs` | 16 dodaje wspólny dispatch observerów; 15 rejestruje swój handler. Jeśli 15 już dodał równoważny kontrakt, konsumować go, nie tworzyć drugiego |
+| 15/16/18: `MessageType.cs`, `MessageChannels.cs`, `MessageCodec.cs`, `ProtocolConstants.cs`, `MessageRouter.cs` | 21 dla 15, 24/25 dla 16, 22–23 dla 18; jeden integrator scala rejestracje i D4 kolejno. Deklaracje w osobnych nowych plikach |
+| 14/16: `LocalPlayer.cs` | 14 ma korektę i prezentację; 16 dodaje odczyt pozy/odległości dwóch widzów (nowy niemutowalny DTO), bez zmiany algorytmu ruchu |
+| 15/16: zdalny `IToolWorldView`, `ToolNode`, predykcja | 16 ma adapter terenu; 15 adapter budowli. Wspólny facade `RemoteToolWorldView` oraz router `CompositeEditPrediction` należą do planowanego API K3-15, składane w `GameComposition`; K3-16 wstrzykuje swoje adaptery. Nie podmieniać wzajemnie implementacji |
+| Wszystkie: `GameComposition.cs`, `ClientNode.cs` | 16 przygotowuje teren/cache przed ready, 15 rejestruje lustra, 17 transport, 18 menu. Osobne helpery i kolejny rebase przed scaleniem |
+| 16/17: gotowość hosta | `IsHostLocal`/`IsLocalPlayer` decydują o pominięciu terenu, a nie typ Steam/UDP. Steam nie tworzy drugiej lokalnej kopii |
+| Wszystkie: CI/gdUnit4 | Jeden self-hosted Windows runner i stała pipe, testy silnika seryjne. Nie dodawać Linux CI ani drugiego procesu gdUnit4 |
+
+## Testy akceptacyjne (napisz najpierw)
+
+**Najpierw** utworzyć pierwszy scenariusz dwóch klientów Godota; bazą `game/tests/Terrain/` i prawdziwy kodek/paste, nie dwa mocki tego samego bufora. Czyste testy czasu/kolejki: `FakeTimeProvider`, `InMemoryTransport`, latency 50 ms w każdą stronę (RTT 100), seedy 16/160/1600; 5% utraty dotyczy tylko kanału zawodnego, kanał danych terenu jest niezawodny. Test partycji osobno wstrzymuje ten kanał. gdUnit4 `Slow` z terminem 60 s/scenariusz (dłuższy test oznaczyć osobno), prawdziwy czas silnika raportowany; SQLite w `SqlitePools`.
+
+| Test | Scenariusz → oczekiwany wynik |
+| --- | --- |
+| `Replicate_TwoRemoteClients_TerrainDigestsMatchWithin200ms` | Pierwszy test: edycja promień 1 m z 8 m, oba tereny załadowane; RTT 100 ms, czas od zastosowania serwera do podmiany danych/kolizji/render mesh ≤200 ms, wersje i `TerrainDigest` zgodne; raport momentów osobno |
+| `Prepare_CachedVersions_AreReportedBeforeClientReady` | Capture ramek: report/view przed ready; gracz nie przewiduje na niezweryfikowanych kolizjach |
+| `Synchronize_ColdCacheAndLateJoin_ReceivesAllEditedBlocksInView` | Nowy klient po wielu edycjach i ruch widza; kompletna lista, brak polegania na 500 m zainteresowania bytów |
+| `Synchronize_ClientAheadOrSameVersionDifferentHash_ReplacesWithServerState` | Crash traci partię i ponowna edycja używa tej samej wersji; downgrade/hash naprawia, brak starej geometrii |
+| `Receive_UnloadedBlock_IsPastedAfterLoadWithoutStaleRead` | Odbiór podczas worker read; cache aktualny i ponowny paste, ujemne współrzędne |
+| `Receive_CorruptOrOversizedBlob_PreservesLastGoodCacheAndClosesPeer` | Truncated/zły format/dekompresja i >64 KiB; scena i dobra baza bez zmian |
+| `Decode_TerrainSyncAndView_InvalidLimitsFailBeforeAllocation` | Roundtrip, złe purpose/page/planet/NaN, >1024 wpisów, duplikaty kluczy, fuzzing; wyjątek protokołu złapany na granicy |
+| `Queue_RepeatedEdits_SendsLatestVersionAndClosesEveryBarrier` | 3 operacje tego samego bloku; najwyższy blob, 3 bariery poprawnie kończą predykcję |
+| `Queue_DistantFlood_RespectsByteBudgetAndDoesNotStarveNearbyEdits` | 8 odbiorców i 4096 zadań; liczba ramek/bajty, limit i starzenie, overflow wymusza resync |
+| `Host_LocalPlayer_ReceivesNoTerrainAndUsesOneTerrainInstance` | Host + klient Steam/UDP lub atrapa zdalna; zero cache/report/danych dla lokalnego, edycja dokładnie raz |
+| `Predict_AcceptedReplyBeforeBlocks_RemovesOverlayOnlyAfterBarrier` | ACK najpierw, bloki później i odwrotna kolejność; wszystkie klucze bariery, zero podwójnej kuli |
+| `Predict_OverlappingEditsAndRejection_RebuildsFromAuthoritativeBase` | Dwie nakładające się sfery i cudza zmiana; odmowa jednej zachowuje drugą i dane serwera |
+| `Predict_TimeoutOrDisconnect_RevertsWithoutSavingSpeculation` | 300 ticków, 16 intencji, wyjście; rollback od końca, restart cache bez lokalnych edycji |
+| `UseTools_RemoteClient_CanAimDigAndFillWithoutServerWorldState` | Rzeczywisty `ToolNode`, teren własny, promień oka; serwerowe limity i odmowy nadal działają |
+| `Check_GeneratedBlockMismatch_RepairsVersionZeroAndCountsMismatch` | Jeden celowo zły voxel generatora; dosłany serwerowy blob version=0, kolejne checksum zgodne, log/licznik jeden |
+| `Check_ServerEditedBlock_DoesNotReportGeneratorMismatch` | Checksum klienta opóźniony wobec edycji; aktualne dane, bez fałszywej metryki generatora |
+| `Cache_RestartCorruptionOrDiskFull_RecoversWithoutServerMutation` | Ciepły start, zła metadana/blob, awaria writer; ponowna synchronizacja, autorytatywny świat bez zmian |
+| `Close_ActiveStreamRead_DrainsBeforeClosingDatabase` | Trzymany reader i termin 5 s; brak `ObjectDisposedException`, timeout nie zamyka używanej bazy |
+| `Rebuild_DerivedLodAfterRestart_PreservesDistantExcavation` | Wykop na granicy/ujemne klucze, nie zdążył unload callback; restart i widok orbitalny, poprawne fingerprinty i mipmapy |
+| `Rebuild_NewerLod0Version_InvalidatesAllAncestors` | Zmiana bazy w czasie pracy; worker stary fingerprint nie nadpisuje nowego, porównanie z natywnym filtrem |
+| `OnTick_IdleAndWarmedSelection_AllocatesZeroBytes` | 10 000 wywołań bez nowych danych + wybór z wcześniej przygotowanych zadań; 0 B; osobny raport kosztów transmisji |
+| `Replicate_TwoClientsRandomEdits_FinalDigestsMatch` | `Slow`, 600 deterministycznych edycji w czasie wirtualnym; po drain wersje i hashe zgodne. Scenariusz rzeczywistych 10 min/godziny przekazany K4-19 |
+
+## Kroki
+
+- [ ] 0. Rebase na scalone K2; uzgodnić kody 21/22/23/24/25 i dispatch z 15/18 oraz ownership composition root; potwierdzić kontrakty tej gałęzi.
+- [ ] 1. Pierwszy test serwer + dwa tereny klientów (wymóg spec:352), potem testy cache/manifestu i kodeka. Czerwone testy przed implementacją.
+- [ ] 2. Rozpoznanie adaptera mipmap/reload i pomiar paste/kolizji/render mesh; konkretne API oraz wyniki S5/S6 wpisać do „Odstępstw”. Nie zmieniać zamrożonego korpusu K2.
+- [ ] 3. Nowe komunikaty, walidacja stanów, numeracja i D4; przegląd Core przez Opus przed integracją. Golden roundtrip/fuzzing zielone.
+- [ ] 4. Cache schema/source/writer z testami restartu, błędów i drain; podłączyć source w `OwnTerrainProvider` i raport przed ready.
+- [ ] 5. Export live, manifest, observer komunikatów, queue/limity i bariery; test 200 ms z pomiarem danych, kolizji i obrazu.
+- [ ] 6. Zdalne narzędzia i predykcja bazowa/rollback/bariera, bez server `WorldState`; host nadal bez kopii/predykcji.
+- [ ] 7. Checksum i poprawki version=0, metryki dla K3-18; test symulowanego rozjazdu, bez twierdzenia o zgodności Linux.
+- [ ] 8. Trwałe LOD/fingerprinty, odbudowa po restarcie, wizualny test orbitalny. Blokadę adaptera eskalować z dowodami; nie odbierać całego pakietu z tym krokiem ukrycie odroczonym.
+- [ ] 9. Po integracji K3-15 podłączyć budowle do facade/routera i test ręczny z K2-13:483; część terenowa oraz 5×5×3 budowla, 5 min TPP host+zdalny klient. Ryzyka/odstępstwa zapisać w PR.
+- [ ] 10. Pełne `dotnet build Horyzont.sln`, `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"`, `dotnet format Horyzont.sln --verify-no-changes`, `python tools/engine/build.py smoke`; seryjne gdUnit4 Windows. Wyniki do PR, zielone CI po merge. Małe zielone kroki kończyć Conventional Commits; po dwóch nieudanych podejściach eskalacja z testem/logiem (ZASADY pkt 12).
+
+## Odbiór
+
+- Dwa zdalne tereny otrzymują normalne edycje ≤200 ms przy RTT 100 ms; zgodne wersje i hashe po drain, ciepłym starcie i crash/downgrade.
+- Zdalny klient rzeczywiście kopie/zasypuje i cofa odmowę; host ma jedną kopię oraz zero transmisji terenu do lokalnego gracza.
+- Checksum naprawia generator version=0; stale cache i uszkodzony blob nie nadpisują poprawnej geometrii. LOD-y po restarcie pokazują odległy wykop.
+- Raport actual bytes i czasów, wyniki testów/build/format/smoke, przegląd Sol i Core Opus. Windows na jedynym runnerze; Linux `VALIDATION_NOT_PERFORMED`, bez przywracania wyłączonego CI.
+
+## Odstępstwa i decyzje wykonawcy
+
+## Pułapki
+
+- Dysk serwera może zawierać starą wersję; wysyłka musi czytać bieżący `ServerTerrainBlocks`, nie sam `TerrainBlockStore`.
+- Równa wersja cache po awarii nie dowodzi równych danych. Najwyższa wersja klienta nie jest autorytetem.
+- `TerrainBlockData` nie zawiera `OpId`; dlatego ACK intencji nie wystarcza do zakończenia overlay, potrzebna bariera.
+- `TerrainDigest.Compute` sortuje i alokuje, nadaje się do odbioru/testów, nie do każdego ticku.
+- `TerrainBlockCodec` ma scratch; nie współdzielić jednej instancji równocześnie pomiędzy workerami a paste. Każdy worker własny kodek/bufor lub serializacja dostępu.
+- Samo `Paste` nie znaczy jeszcze nowej siatki ani gotowych kolizji. Kryterium 200 ms mierzy wszystkie etapy na załadowanym obszarze.
+- LOD-y zmieniają się asynchronicznie; brak fingerprintu i invalidacji po wersji powoduje trwałe zapisanie starego wykopu.
+
+## Pytania do właściciela
+
+Domyślne warianty obowiązują przy starcie bez odpowiedzi (README:42). Nie pozwalają zmieniać semantyki ani uznać niespełnionego kryterium specyfikacji za odebrane.
+
+| ID | Pytanie | Domyślny wariant / alternatywa |
+| --- | --- | --- |
+| P1 | Czy odroczenie LOD z K2-09 zamykamy trwałym cache pochodnym i odbudową w K3-16? | Tak; alternatywa: jawna decyzja właściciela o późniejszym pakiecie z opisem ograniczenia widoku orbitalnego |
+| P2 | Czy 25 KiB/s normalnego pasma terenu, burst 64 KiB i cache klienta 512 MiB są dobrymi limitami na K3? | Tak; alternatywa: strojenie po raporcie actual bytes i pamięci, przy zachowaniu celu 50 KB/s |
+| P3 | Czy nowe manifesty/bariera 24 i widzowie 25 przyjmujemy jako jawny kontrakt naprawy cache i końca predykcji? | Tak; alternatywa: równoważny kontrakt po przeglądzie Opus i koordynacji 15/18, nadal D4 oraz test downgrade/barier |
