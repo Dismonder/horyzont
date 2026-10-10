@@ -157,6 +157,11 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
         operation = null!;
         GetContainer(drop.Slot.Container, out var container);
         var stack = container.GetSlot(drop.Slot.Slot);
+        if (stack.Type != drop.ExpectedType || stack.Count != drop.ExpectedCount)
+        {
+            return RejectReason.ContainerChanged;
+        }
+
         if (stack.IsEmpty || drop.Count > stack.Count)
         {
             return RejectReason.NotEnoughItems;

@@ -14,8 +14,8 @@ public sealed class IntentCodecItemTests
             new SlotRef(new ContainerId(ulong.MaxValue), ushort.MaxValue), ItemMoveTarget.ToSlot(new SlotRef(new ContainerId(70_000), 255)),
             ushort.MaxValue, new ItemTypeId(4096), ushort.MaxValue),
         new ItemMoveIntent(new SlotRef(new ContainerId(3), 4), ItemMoveTarget.AnyIn(new ContainerId(1)), 12, new ItemTypeId(300), 499),
-        new ItemDropIntent(new SlotRef(new ContainerId(1), 39), 1),
-        new ItemDropIntent(new SlotRef(new ContainerId(ulong.MaxValue), ushort.MaxValue), ushort.MaxValue),
+        new ItemDropIntent(new SlotRef(new ContainerId(1), 39), 1, new ItemTypeId(7), 40),
+        new ItemDropIntent(new SlotRef(new ContainerId(ulong.MaxValue), ushort.MaxValue), ushort.MaxValue, new ItemTypeId(4096), ushort.MaxValue),
     ];
 
     [Theory]
@@ -37,14 +37,14 @@ public sealed class IntentCodecItemTests
 
         Assert.Equal("14 01 01 02 01 03 04 05 06 07", Kit.ToHex(Kit.Encode(toSlot)));
         Assert.Equal("14 01 01 02 02 03 05 06 07", Kit.ToHex(Kit.Encode(any)));
-        Assert.Equal("15 01 01 02 05", Kit.ToHex(Kit.Encode(new ItemDropIntent(new SlotRef(new ContainerId(1), 2), 5))));
+        Assert.Equal("15 01 01 02 05 06 07", Kit.ToHex(Kit.Encode(new ItemDropIntent(new SlotRef(new ContainerId(1), 2), 5, new ItemTypeId(6), 7))));
     }
 
     [Theory]
     [InlineData("14 01 01 02 00 03 05 06 07")]
     [InlineData("14 01 01 02 03 03 05 06 07")]
     [InlineData("14 02 01 02 02 03 05 06 07")]
-    [InlineData("16 01 01 02 05")]
+    [InlineData("16 01 01 02 05 06 07")]
     [InlineData("13 01")]
     public void Read_UnknownTargetCodeOrVersion_Throws(string hex) => Kit.AssertIntentViolation(hex);
 

@@ -157,6 +157,8 @@ public sealed class InventoryInteractionTests
         var drop = Assert.IsType<ItemDropIntent>(Assert.Single(fx.Sender.Intents));
         Assert.Equal(InventoryFixture.Bag(3), drop.Slot);
         Assert.Equal<ushort>(12, drop.Count);
+        Assert.Equal(InventoryFixture.Stone, drop.ExpectedType);
+        Assert.Equal<ushort>(12, drop.ExpectedCount);
         Assert.False(fx.Interaction.AwaitingDiscardConfirmation);
         Assert.Null(fx.Interaction.Held);
     }

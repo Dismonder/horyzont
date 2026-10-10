@@ -30,11 +30,22 @@ public sealed class ItemDropIntentTests
         var f = Fixture();
         f.Apply(Create(BagSlot(4), Stone, 30));
 
-        var result = f.Sim.Sim.Submit(Player1, new ItemDropIntent(BagSlot(4), 12));
+        var result = f.Sim.Sim.Submit(Player1, new ItemDropIntent(BagSlot(4), 12, Stone, 30));
 
         Assert.True(result.IsAccepted, $"{result.Reason}");
         Assert.Equal(new ItemDestroyOp(BagSlot(4), Stone, 12, ItemSink.Despawn), result.Applied!.Operation);
         Assert.Equal(new ItemStack(Stone, 18), f.Slot(BagSlot(4)));
+    }
+
+    [Fact]
+    public void Drop_SlotChangedSinceTheClientSawIt_ContainerChanged()
+    {
+        var f = Fixture();
+        f.Apply(Create(BagSlot(4), Stone, 30));
+
+        AssertRejected(f, new ItemDropIntent(BagSlot(4), 12, Stone, 31), RejectReason.ContainerChanged);
+        AssertRejected(f, new ItemDropIntent(BagSlot(4), 12, Gem, 30), RejectReason.ContainerChanged);
+        Assert.Equal(new ItemStack(Stone, 30), f.Slot(BagSlot(4)));
     }
 
     [Fact]
@@ -43,7 +54,7 @@ public sealed class ItemDropIntentTests
         var f = Fixture();
         f.Apply(Create(HotbarSlot(0), Tool, 1, limit: 1));
 
-        AssertRejected(f, new ItemDropIntent(HotbarSlot(0), 1), RejectReason.InvalidParameters);
+        AssertRejected(f, new ItemDropIntent(HotbarSlot(0), 1, Tool, 1), RejectReason.InvalidParameters);
     }
 
     [Fact]
@@ -52,8 +63,8 @@ public sealed class ItemDropIntentTests
         var f = Fixture();
         f.Apply(Create(BagSlot(4), Stone, 30));
 
-        AssertRejected(f, new ItemDropIntent(BagSlot(4), 31), RejectReason.NotEnoughItems);
-        AssertRejected(f, new ItemDropIntent(BagSlot(5), 1), RejectReason.NotEnoughItems);
+        AssertRejected(f, new ItemDropIntent(BagSlot(4), 31, Stone, 30), RejectReason.NotEnoughItems);
+        AssertRejected(f, new ItemDropIntent(BagSlot(5), 1, default, 0), RejectReason.NotEnoughItems);
     }
 
     [Fact]
@@ -63,10 +74,10 @@ public sealed class ItemDropIntentTests
         f.Apply(Create(BagSlot(4), Stone, 30));
         f.Apply(Create(new SlotRef(WorldFactory.BagOf(2), 0), Stone, 30));
 
-        AssertRejected(f, new ItemDropIntent(BagSlot(4), 0), RejectReason.InvalidParameters);
-        AssertRejected(f, new ItemDropIntent(BagSlot(WorldFactory.BagSize), 1), RejectReason.InvalidParameters);
-        AssertRejected(f, new ItemDropIntent(new SlotRef(WorldFactory.EquipmentOf(1), 0), 1), RejectReason.InvalidParameters);
-        AssertRejected(f, new ItemDropIntent(new SlotRef(WorldFactory.BagOf(2), 0), 1), RejectReason.ContainerLocked);
+        AssertRejected(f, new ItemDropIntent(BagSlot(4), 0, Stone, 30), RejectReason.InvalidParameters);
+        AssertRejected(f, new ItemDropIntent(BagSlot(WorldFactory.BagSize), 1, Stone, 30), RejectReason.InvalidParameters);
+        AssertRejected(f, new ItemDropIntent(new SlotRef(WorldFactory.EquipmentOf(1), 0), 1, Stone, 30), RejectReason.InvalidParameters);
+        AssertRejected(f, new ItemDropIntent(new SlotRef(WorldFactory.BagOf(2), 0), 1, Stone, 30), RejectReason.ContainerLocked);
     }
 
     [Fact]
@@ -75,7 +86,7 @@ public sealed class ItemDropIntentTests
         var f = new ItemFixture();
         f.Apply(Create(BagSlot(4), Stone, 30));
 
-        AssertRejected(f, new ItemDropIntent(BagSlot(4), 1), RejectReason.InvalidParameters);
+        AssertRejected(f, new ItemDropIntent(BagSlot(4), 1, Stone, 30), RejectReason.InvalidParameters);
         Assert.Equal(new PlayerId(1), Player1);
     }
 }

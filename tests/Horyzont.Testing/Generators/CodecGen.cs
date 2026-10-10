@@ -397,7 +397,9 @@ public static class CodecGen
     public static Gen<ItemDropIntent> ItemDropIntent { get; } =
         from slot in SlotRef
         from count in VarU16
-        select new ItemDropIntent(slot, count);
+        from type in ItemType
+        from expected in VarU16
+        select new ItemDropIntent(slot, count, type, expected);
 
     /// <summary>Terrain tool intents.</summary>
     public static Gen<TerrainToolIntent> TerrainToolIntent { get; } =

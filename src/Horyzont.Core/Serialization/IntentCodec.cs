@@ -176,6 +176,8 @@ public static class IntentCodec
                 w.WriteByte(CurrentFormatVersion);
                 CoreCodecPrimitives.WriteSlotRef(w, drop.Slot);
                 w.WriteVarUInt(drop.Count);
+                w.WriteVarUInt(drop.ExpectedType.Value);
+                w.WriteVarUInt(drop.ExpectedCount);
                 break;
 
             default:
@@ -313,7 +315,10 @@ public static class IntentCodec
 
             case IntentCode.ItemDrop:
                 var slot = CoreCodecPrimitives.ReadSlotRef(ref r);
-                return new ItemDropIntent(slot, r.ReadVarUInt16());
+                ushort dropCount = r.ReadVarUInt16();
+                var dropType = new ItemTypeId(r.ReadVarUInt16());
+                ushort dropExpected = r.ReadVarUInt16();
+                return new ItemDropIntent(slot, dropCount, dropType, dropExpected);
 
             default:
                 throw new ProtocolViolationException($"Unhandled intent code {code}.");

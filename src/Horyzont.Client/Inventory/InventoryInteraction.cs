@@ -136,7 +136,7 @@ public sealed class InventoryInteraction : IClientSessionListener
 
         _awaitingDiscard = false;
         Held = null;
-        Send(new ItemDropIntent(held.Source, held.Count), held.Source, null);
+        Send(new ItemDropIntent(held.Source, held.Count, held.Type, held.SourceCount), held.Source, null);
     }
 
     /// <summary>Withdraws the question about discarding; the items stay in hand.</summary>

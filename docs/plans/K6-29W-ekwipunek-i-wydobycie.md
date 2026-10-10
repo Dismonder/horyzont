@@ -158,7 +158,7 @@ tests/  (nazwy plików w „Testy akceptacyjne”)
 - `AppliedOperation` dostaje `IReadOnlyList<ContainerChange> ContainerChanges` (`ContainerId`, nowa wersja, posortowane indeksy zmienionych slotów; nowy kontener: wszystkie sloty). `TerrainVersions` złożonej = wersje jej składowej terenu.
 - `ItemStack` w kodekach: varuint typ, varuint liczba, bajt instancji (0; inna wartość w formacie 1 = `ProtocolViolationException`). Slot pusty w delcie i stanie: typ 0.
 - Blob `Container` (20), wersja 1: id, rodzaj, gospodarz, właściciel, dostęp, rozmiar, wersja, liczba niepustych slotów, (slot, stos)…
-- Intencja 20 `ItemMoveIntent(SlotRef From, ItemMoveTarget To, ushort Count, ItemTypeId ExpectedType, ushort ExpectedCount)`; `ItemMoveTarget` = bajt (1 slot: `SlotRef`; 2 dowolny w kontenerze: varuint kontener). Intencja 21 `ItemDropIntent(SlotRef Slot, ushort Count)`.
+- Intencja 20 `ItemMoveIntent(SlotRef From, ItemMoveTarget To, ushort Count, ItemTypeId ExpectedType, ushort ExpectedCount)`; `ItemMoveTarget` = bajt (1 slot: `SlotRef`; 2 dowolny w kontenerze: varuint kontener). Intencja 21 `ItemDropIntent(SlotRef Slot, ushort Count, ItemTypeId ExpectedType, ushort ExpectedCount)` (niezgodna zawartość slotu: `ContainerChanged`).
 - Komunikaty: 40 `ContainerState(ContainerId, RejectReason, ContainerKind, ContainerAccess, ushort Size, uint Version, IReadOnlyList<SlotContent> Slots)` (przy odmowie bez pól po `RejectReason`); 41 `ContainerDelta(ContainerId, uint Version, IReadOnlyList<SlotContent> Changed)`; 42 `ContainerSubscribe(ContainerId)`; 43 `ContainerUnsubscribe(ContainerId)`; 49 `ItemRegistry(IReadOnlyList<RegistryEntry> Entries)`. Wszystkie niezawodne. Limit `ContainerState`/`ContainerDelta` ≤ 256 slotów.
 
 ### Walidacja i rozwiązanie intencji przedmiotów
