@@ -102,15 +102,17 @@ internal sealed class CharacterRig : IAsyncDisposable
     /// <param name="movement">Movement rules.</param>
     /// <param name="rescue">The rescue position; the generator of the planet when null.</param>
     /// <param name="devFlight">Whether dev flight is allowed.</param>
+    /// <param name="constructsReady">Readiness of asynchronous construct collision.</param>
     /// <returns>The rig.</returns>
     public static async Task<CharacterRig> CreateAsync(
         EngineTestScene scene, Func<Godot.VoxelGenerator>? generator = null, MovementRules? movement = null,
-        Func<PlanetParams, Vector3, Vector3>? rescue = null, bool devFlight = false)
+        Func<PlanetParams, Vector3, Vector3>? rescue = null, bool devFlight = false,
+        Func<PlanetId, Vector3, bool>? constructsReady = null)
     {
         var world = await TerrainTestWorld.CreateAsync(scene, generator: generator);
         var inputs = new FakeInputSource();
         var log = new RecordingLogger<ServerCharacters>();
-        var characters = new ServerCharacters(world.Sim, inputs, world.Service, new GameRules(), movement ?? new MovementRules(), devFlight, log, rescue);
+        var characters = new ServerCharacters(world.Sim, inputs, world.Service, new GameRules(), movement ?? new MovementRules(), devFlight, log, rescue, constructsReady);
         scene.Add(characters);
         var stepper = scene.Add(new PhysicsStepper());
         var rig = new CharacterRig(scene, world, characters, inputs, log, stepper);

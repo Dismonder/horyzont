@@ -25,6 +25,34 @@ namespace Horyzont.Game.Tests.Tools;
 [TestSuite]
 public class ToolScenarioTests
 {
+    [TestCase(Timeout = 600000)]
+    [RequireGodotRuntime]
+    public async Task Solo_RestartWithPlayerOnConstruct_KeepsSavedRoofPose()
+    {
+        await using var scene = EngineTestScene.Create();
+        var dir = ModeFixture.NewDirectory();
+        var world = Guid.NewGuid();
+        var first = await ToolRig.StartSoloAsync(scene, dir, world, lookDown: false);
+        var server = first.Composition.Server!;
+        server.State.Players.TryGet(first.PlayerId, out var player);
+        var up = Horyzont.Core.World.Terrain.TerrainMath.UpAt(player!.Position);
+        var rotation = player.BodyRotation;
+        var origin = player.Position + (up * 4) - NumVector3.Transform(new NumVector3(0.5f, 0, 0.5f), rotation);
+        var saved = player.Position + (up * 5.01f);
+        server.State.BlockTypes.TryGetId("core:stone_block", out var type);
+        var id = server.State.EntityIds.PeekNext();
+        server.Simulation.ApplyServerOperation(new ConstructCreateOp(id, player.Frame, origin, rotation,
+            new Horyzont.Core.World.Constructs.CellPos(0, 0, 0), Horyzont.Core.World.Constructs.BlockState.Create(type, 0)));
+        AssertThat(await first.Fixture.WaitUntil(() => first.Composition.Constructs!.AreSpawnCollisionsReady(first.Player.Planet, saved), 120)).IsTrue();
+        first.Composition.ServerCharacters!.GetNode<Horyzont.Game.Character.PlayerBody>($"Body_{first.PlayerId.Value}").Place(
+            saved, NumVector3.Zero, rotation, Horyzont.Core.Motion.MovementMode.Walking, false);
+        AssertThat(await first.Fixture.StopAsync()).IsTrue();
+        var second = await ToolRig.StartSoloAsync(scene, dir, world, lookDown: false);
+        AssertThat(second.Composition.ServerCharacters!.TryGetState(second.PlayerId, out var restored)).IsTrue();
+        AssertThat(NumVector3.Distance(restored.Feet, saved)).IsLess(0.2f);
+        AssertThat(await second.Fixture.StopAsync()).IsTrue();
+    }
+
     [TestCase(Timeout = 400000)]
     [RequireGodotRuntime]
     public async Task SoloDigAndFill_RealTerrain()

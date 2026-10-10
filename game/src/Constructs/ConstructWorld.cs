@@ -79,6 +79,82 @@ public sealed partial class ConstructWorld : Node3D
     /// <summary>Number of constructs that currently have a node.</summary>
     public int LoadedConstructCount => _entries.Count;
 
+    /// <summary>Whether all construct chunks near a saved pose have installed their current collision result.</summary>
+    /// <param name="frame">The saved planet frame.</param>
+    /// <param name="position">Saved feet position in that frame.</param>
+    /// <param name="radius">Radius enclosing the support search.</param>
+    /// <returns>False while managed chunks are loading or uploading collision; exhausted retries keep the old result and finish the wait.</returns>
+    public bool AreCollisionsReady(FrameRef frame, System.Numerics.Vector3 position, float radius)
+    {
+        if (!_initialized || IsShutdown)
+        {
+            return false;
+        }
+
+        if (frame != _frame)
+        {
+            return true; // this world cannot produce collision in an unmanaged frame
+        }
+
+        if (_rangeDirty)
+        {
+            return false;
+        }
+
+        _constructScratch.Clear();
+        _source.CollectConstructs(frame, _constructScratch);
+        foreach (var id in _constructScratch)
+        {
+            if (!_source.TryGetPose(id, out var pose))
+            {
+                continue;
+            }
+
+            var low = new System.Numerics.Vector3(pose.BoundsMin.X, pose.BoundsMin.Y, pose.BoundsMin.Z);
+            var high = new System.Numerics.Vector3(pose.BoundsMax.X + 1, pose.BoundsMax.Y + 1, pose.BoundsMax.Z + 1);
+            var centre = pose.Origin + System.Numerics.Vector3.Transform((low + high) / 2, pose.Rotation);
+            if ((position - centre).Length() > radius + ((high - low).Length() / 2))
+            {
+                continue;
+            }
+
+            _chunkScratch.Clear();
+            _source.CollectChunks(id, _chunkScratch);
+            if (!_entries.TryGetValue(id, out var entry))
+            {
+                if (_chunkScratch.Count > 0)
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (!entry.Collision && _chunkScratch.Count > 0)
+            {
+                return false;
+            }
+
+            foreach (var chunk in _chunkScratch)
+            {
+                if (!entry.CollisionReadyChunks.Contains(chunk))
+                {
+                    return false;
+                }
+            }
+
+            foreach (var chunk in entry.KnownChunks)
+            {
+                if (!entry.CollisionReadyChunks.Contains(chunk))
+                {
+                    return false; // includes an emptied chunk whose old shape is still waiting to be removed
+                }
+            }
+        }
+
+        return true;
+    }
+
     /// <summary>Connects the world to its inputs and starts the workers.</summary>
     /// <param name="source">Where constructs are read from (main thread only).</param>
     /// <param name="table">Render table of the world session.</param>
@@ -107,7 +183,7 @@ public sealed partial class ConstructWorld : Node3D
         _options = options;
         _logger = logger;
         _queue = new ChunkRemeshQueue(options.MaxInFlightJobs) { Distance = DistanceOf };
-        _pool = new MeshWorkerPool(table, options.WorkerCount, options.MaxInFlightJobs, logger, BeforeBuild);
+        _pool = new MeshWorkerPool(table, options.WorkerCount, options.MaxInFlightJobs, logger, BeforeBuild, options.TimeProvider);
         _initialized = true;
         if (table.MissingKeyCount > 0)
         {
@@ -191,7 +267,7 @@ public sealed partial class ConstructWorld : Node3D
         UpdateRanges(RemeshPriority.Rebuild);
     }
 
-    /// <summary>Viewer positions in the planet frame (players, cameras). Empty = everything in range (tests, tools).</summary>
+    /// <summary>Viewer positions in the planet frame (players, cameras). No viewers means no interest unless the explicit tools mode is enabled.</summary>
     /// <param name="planetFramePositions">Positions.</param>
     public void SetViewers(ReadOnlySpan<System.Numerics.Vector3> planetFramePositions)
     {
@@ -327,6 +403,11 @@ public sealed partial class ConstructWorld : Node3D
                         _retryChunks.Remove(slot.Job.Key);
                         var key = slot.Job.Key;
                         LogMeshingRetryFailed(slot.Failure, key.Construct.Value, key.Chunk.X, key.Chunk.Y, key.Chunk.Z);
+                        if (_entries.TryGetValue(key.Construct, out var entry))
+                        {
+                            entry.CollisionReadyChunks.Add(key.Chunk); // the bounded rebuild ended; use the old collision, if any
+                        }
+
                         ChunkMeshApplied?.Invoke(key.Construct, key.Chunk);
                     }
                 }
@@ -405,6 +486,7 @@ public sealed partial class ConstructWorld : Node3D
         {
             _collisionPoints.Remove(key); // a queued older shape would be stale (the chunk lost its collision faces)
             chunk.ClearCollision();
+            entry.CollisionReadyChunks.Add(key.Chunk); // current geometry intentionally has no collision faces
             ChunkMeshApplied?.Invoke(key.Construct, key.Chunk);
             return;
         }
@@ -429,6 +511,7 @@ public sealed partial class ConstructWorld : Node3D
 
         var collisionStart = Stopwatch.GetTimestamp();
         entry.Node.GetOrCreateChunk(key.Chunk).ApplyCollision(result.Points);
+        entry.CollisionReadyChunks.Add(key.Chunk);
         Timings.AddCollision(collisionStart);
         ChunkMeshApplied?.Invoke(key.Construct, key.Chunk);
     }
@@ -442,6 +525,11 @@ public sealed partial class ConstructWorld : Node3D
             if (!_source.TryGetChunkBlocks(key.Construct, key.Chunk, out _))
             {
                 entry.KnownChunks.Remove(key.Chunk);
+                entry.CollisionReadyChunks.Remove(key.Chunk);
+            }
+            else
+            {
+                entry.CollisionReadyChunks.Add(key.Chunk); // a current non-colliding chunk is also ready
             }
 
             ChunkMeshApplied?.Invoke(key.Construct, key.Chunk);
@@ -504,7 +592,7 @@ public sealed partial class ConstructWorld : Node3D
     private void UpdateCollision(EntityId id, Entry entry, double distance)
     {
         var radius = _options.CollisionRadiusMeters + (entry.Collision ? _options.HysteresisMeters : 0f);
-        var wants = _viewers.Count == 0 || distance <= radius;
+        var wants = ConstructRange.Includes(_viewers.Count, _options.LoadAllWithoutViewers, distance, radius);
         if (wants == entry.Collision)
         {
             return;
@@ -524,7 +612,7 @@ public sealed partial class ConstructWorld : Node3D
     private bool TryEvaluate(EntityId id, out double distance, out bool collision)
     {
         distance = 0;
-        collision = true;
+        collision = _viewers.Count > 0 || _options.LoadAllWithoutViewers;
         if (!_source.TryGetPose(id, out var pose) || pose.Parent != _frame)
         {
             return false; // gone, or in a frame that is not the shown one
@@ -551,13 +639,8 @@ public sealed partial class ConstructWorld : Node3D
 
     private bool IsInLoadRange(double distance, Entry? loaded)
     {
-        if (_viewers.Count == 0)
-        {
-            return true;
-        }
-
         var radius = _options.Mode == ConstructWorldMode.CollisionOnly ? _options.CollisionRadiusMeters : _options.RenderRadiusMeters;
-        return distance <= radius + (loaded is null ? 0f : _options.HysteresisMeters);
+        return ConstructRange.Includes(_viewers.Count, _options.LoadAllWithoutViewers, distance, radius + (loaded is null ? 0f : _options.HysteresisMeters));
     }
 
     private void Load(EntityId id, double distance, bool collision, RemeshPriority priority)
@@ -657,9 +740,13 @@ public sealed partial class ConstructWorld : Node3D
     private void MarkDirty(ConstructChunkKey key, RemeshPriority priority)
     {
         _retryChunks.Remove(key);
-        if (_entries.TryGetValue(key.Construct, out var entry) && _source.TryGetChunkBlocks(key.Construct, key.Chunk, out _))
+        if (_entries.TryGetValue(key.Construct, out var entry))
         {
-            entry.KnownChunks.Add(key.Chunk); // keep until an emptied chunk completes, even before its first mesh upload
+            entry.CollisionReadyChunks.Remove(key.Chunk);
+            if (_source.TryGetChunkBlocks(key.Construct, key.Chunk, out _))
+            {
+                entry.KnownChunks.Add(key.Chunk); // keep until an emptied chunk completes, even before its first mesh upload
+            }
         }
 
         _queue.MarkDirty(key, priority);
@@ -678,5 +765,7 @@ public sealed partial class ConstructWorld : Node3D
         public bool Collision { get; set; }
 
         public HashSet<ChunkPos> KnownChunks { get; } = [];
+
+        public HashSet<ChunkPos> CollisionReadyChunks { get; } = [];
     }
 }

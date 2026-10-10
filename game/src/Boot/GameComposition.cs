@@ -288,12 +288,12 @@ public sealed class GameComposition
             var seed = launch.GalaxySeed;
             server = new ServerRuntime(
                 launch.Mode, runtimeOptions, serverTransport, factory, () => NewWorld(worldId, seed, catalog.BlockTypeKeys), env.Time, loggers);
-            constructs = new HostConstructs(serverNode!, catalog, env.Render, loggers);
+            constructs = new HostConstructs(serverNode!, catalog, env.Render, loggers, env.Time);
             constructs.Register(server);
 
             if (env.Characters)
             {
-                characters = new ServerCharactersBinder(serverNode!, factory, rules, movement, devFlight, loggers);
+                characters = new ServerCharactersBinder(serverNode!, factory, rules, movement, devFlight, loggers, constructs.AreSpawnCollisionsReady);
                 characters.Register(server);
             }
 

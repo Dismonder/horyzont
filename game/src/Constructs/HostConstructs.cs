@@ -28,6 +28,7 @@ public sealed class HostConstructs : IServerTickParticipant, IDisposable
     private readonly ILoggerFactory _loggers;
     private readonly ILogger<HostConstructs> _logger;
     private readonly bool _render;
+    private readonly TimeProvider _time;
     private readonly System.Numerics.Vector3[] _viewers = new System.Numerics.Vector3[MaxViewers];
     private ServerRuntime? _runtime;
     private BlockVisuals? _visuals;
@@ -39,13 +40,15 @@ public sealed class HostConstructs : IServerTickParticipant, IDisposable
     /// <param name="catalog">The block content, loaded at start.</param>
     /// <param name="render">Whether meshes are drawn (false: collision bodies only).</param>
     /// <param name="loggers">Loggers.</param>
-    public HostConstructs(Node parent, BlockTypeCatalog catalog, bool render, ILoggerFactory loggers)
+    /// <param name="time">Clock for worker shutdown deadlines.</param>
+    public HostConstructs(Node parent, BlockTypeCatalog catalog, bool render, ILoggerFactory loggers, TimeProvider? time = null)
     {
         ArgumentNullException.ThrowIfNull(parent);
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(loggers);
         Catalog = catalog;
         _render = render;
+        _time = time ?? TimeProvider.System;
         _loggers = loggers;
         _logger = loggers.CreateLogger<HostConstructs>();
         World = new ConstructWorld { Name = "Constructs" };
@@ -70,6 +73,13 @@ public sealed class HostConstructs : IServerTickParticipant, IDisposable
     /// <summary>Gets a value indicating whether <see cref="Attach"/> ran.</summary>
     public bool IsAttached => _runtime is not null;
 
+    /// <summary>Checks that asynchronous construct collision near a saved spawn pose has reached the physics world.</summary>
+    /// <param name="planet">The player's planet.</param>
+    /// <param name="feet">The saved feet position.</param>
+    /// <returns>True after current collision chunks have been applied.</returns>
+    public bool AreSpawnCollisionsReady(PlanetId planet, System.Numerics.Vector3 feet) =>
+        IsAttached && World.AreCollisionsReady(FrameRef.Of(planet), feet, Server.Characters.ServerCharacters.GroundSearchMeters + 1);
+
     /// <summary>Registers the shutdown step and the tick participant; call after the runtime is created and before it starts.</summary>
     /// <param name="runtime">The server runtime.</param>
     public void Register(ServerRuntime runtime)
@@ -92,7 +102,7 @@ public sealed class HostConstructs : IServerTickParticipant, IDisposable
         var state = runtime.State;
         var table = BlockRenderTable.Build(state.BlockTypes.Entries, Catalog);
         _visuals = _render ? BlockVisuals.Create(Catalog) : null;
-        var options = new ConstructWorldOptions { Mode = _render ? ConstructWorldMode.RenderAndCollision : ConstructWorldMode.CollisionOnly };
+        var options = new ConstructWorldOptions { Mode = _render ? ConstructWorldMode.RenderAndCollision : ConstructWorldMode.CollisionOnly, TimeProvider = _time };
         World.Initialize(new WorldStateConstructSource(state), table, _visuals, options, _loggers.CreateLogger<ConstructWorld>());
         runtime.Simulation.Applied += OnApplied;
         _runtime = runtime;

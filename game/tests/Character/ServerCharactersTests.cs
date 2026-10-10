@@ -4,7 +4,9 @@ using GdUnit4;
 
 using Horyzont.Core.Ids;
 using Horyzont.Core.Motion;
+using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol.Messages;
+using Horyzont.Game.Physics;
 using Horyzont.Game.Tests.Character.Fixtures;
 using Horyzont.Game.Tests.Support;
 using Horyzont.Game.Tests.Terrain;
@@ -16,6 +18,110 @@ namespace Horyzont.Game.Tests.Character;
 [TestSuite]
 public class ServerCharactersTests
 {
+    [TestCase(Timeout = 240000)]
+    [RequireGodotRuntime]
+    public async Task ServerCharacters_TerrainBlocksReadyButCollisionAbsent_DoesNotSnapToConstructBelow()
+    {
+        await using var scene = EngineTestScene.Create();
+        await using var rig = await CharacterRig.CreateAsync(scene);
+        rig.World.Node.Terrain.SetGenerateCollisions(false);
+        rig.World.Node.Terrain.SetCollisionLodCount(0);
+        var floor = scene.Add(new Godot.StaticBody3D
+        {
+            Position = new Godot.Vector3(0, TerrainTestWorld.Surface - 2.5, 0),
+            CollisionLayer = CollisionLayers.ConstructsMask,
+            CollisionMask = 0,
+        });
+        floor.AddChild(new Godot.CollisionShape3D { Shape = new Godot.BoxShape3D { Size = new Godot.Vector3(10, 1, 10) } });
+        var feet = new Vector3(0, TerrainTestWorld.Surface + 0.01f, 0);
+        var player = rig.Join(1, feet);
+        AssertThat(await scene.WaitFramesUntil(() => rig.World.Service.IsAreaLoaded(TerrainTestWorld.Planet.Id, feet, 8), 600)).IsTrue();
+        var terrainOnly = new Horyzont.Game.Character.GroundProbe(TerrainTestWorld.Planet.Id);
+        AssertThat(terrainOnly.TryFindGround(rig.BodyOf(player).GetWorld3D(), feet, 8, out _)).IsFalse();
+        var support = new Horyzont.Game.Character.GroundProbe(TerrainTestWorld.Planet.Id,
+            CollisionLayers.TerrainMask | CollisionLayers.ConstructsMask);
+        AssertThat(support.TryFindGround(rig.BodyOf(player).GetWorld3D(), feet, 8, out _)).IsTrue();
+        AssertThat(rig.Characters.TryGetState(player, out var waiting)).IsTrue();
+        AssertThat(waiting.Mode).IsEqual(MovementMode.Frozen);
+        AssertThat(waiting.Feet).IsEqual(feet);
+    }
+
+    [TestCase(Timeout = 240000)]
+    [RequireGodotRuntime]
+    public async Task ServerCharacters_LogoutAndRejoinOnRoof_KeepsSavedFeet()
+    {
+        await using var scene = EngineTestScene.Create();
+        await using var rig = await CharacterRig.CreateAsync(scene);
+        var roofTop = TerrainTestWorld.Surface + 5f;
+        var roof = scene.Add(new Godot.StaticBody3D
+        {
+            Position = new Godot.Vector3(0, roofTop - 0.5, 0),
+            CollisionLayer = CollisionLayers.ConstructsMask,
+            CollisionMask = 0,
+        });
+        roof.AddChild(new Godot.CollisionShape3D { Shape = new Godot.BoxShape3D { Size = new Godot.Vector3(10, 1, 10) } });
+        var feet = new Vector3(0, roofTop + 0.01f, 0);
+        var player = rig.Join(1, feet);
+        AssertThat(await rig.WaitUnfrozenAsync(player)).IsTrue();
+        AssertThat(Vector3.Distance(rig.BodyOf(player).Feet, feet)).IsLess(0.1f);
+        rig.Characters.Despawn(player);
+        rig.Sim.State.Players.TryGet(player, out var saved);
+        var lastFeet = saved!.Position;
+        rig.Sim.ApplyServerOperation(new PlayerLeaveOp(player, saved.Frame, saved.ParentSeq, saved.Position, saved.BodyRotation, saved.Pitch));
+        var join = rig.Sim.PreparePlayerJoin(new PlatformIdentity(IdentityPlatform.Dev, 1), "player1");
+        rig.Sim.ApplyServerOperation(join);
+        rig.Characters.Spawn(join.Player);
+        AssertThat(await rig.WaitUnfrozenAsync(join.Player)).IsTrue();
+        AssertThat(Vector3.Distance(rig.BodyOf(join.Player).Feet, lastFeet)).IsLess(0.1f);
+        AssertThat(rig.BodyOf(join.Player).Feet.Y).IsGreater(roofTop - 0.05f);
+    }
+
+    [TestCase(Timeout = 240000)]
+    [RequireGodotRuntime]
+    public async Task ServerCharacters_TerrainReadyBeforeRoof_StaysAtSavedFeetBeforeDeadline()
+    {
+        await using var scene = EngineTestScene.Create();
+        var collisionReady = false;
+        await using var rig = await CharacterRig.CreateAsync(scene, movement: new MovementRules { GroundWaitDeadlineTicks = 300 },
+            constructsReady: (_, _) => collisionReady);
+        var roofTop = TerrainTestWorld.Surface + 5f;
+        var feet = new Vector3(0, roofTop + 0.01f, 0);
+        var player = rig.Join(1, feet);
+        AssertThat(await rig.WaitTicks(rig.Ticks + 90)).IsTrue();
+        AssertThat(rig.Characters.TryGetState(player, out var frozen)).IsTrue();
+        AssertThat(frozen.Mode).IsEqual(MovementMode.Frozen);
+        AssertThat(frozen.Feet).IsEqual(feet);
+        var roof = scene.Add(new Godot.StaticBody3D
+        {
+            Position = new Godot.Vector3(0, roofTop - 0.5, 0),
+            CollisionLayer = CollisionLayers.ConstructsMask,
+            CollisionMask = 0,
+        });
+        roof.AddChild(new Godot.CollisionShape3D { Shape = new Godot.BoxShape3D { Size = new Godot.Vector3(10, 1, 10) } });
+        await scene.WaitFrames(3);
+        collisionReady = true;
+        AssertThat(await rig.WaitUnfrozenAsync(player)).IsTrue();
+        AssertThat(Vector3.Distance(rig.BodyOf(player).Feet, feet)).IsLess(0.1f);
+    }
+
+    [TestCase(Timeout = 240000)]
+    [RequireGodotRuntime]
+    public async Task ServerCharacters_ConstructCollisionNeverReady_ExpiresWithoutTeleporting()
+    {
+        await using var scene = EngineTestScene.Create();
+        await using var rig = await CharacterRig.CreateAsync(scene, movement: new MovementRules { GroundWaitDeadlineTicks = 5 },
+            constructsReady: (_, _) => false);
+        var feet = new Vector3(0, TerrainTestWorld.Surface + 5, 0);
+        var player = rig.Join(1, feet);
+        AssertThat(await rig.WaitUnfrozenAsync(player)).IsTrue();
+        AssertThat(rig.Characters.TryGetState(player, out var released)).IsTrue();
+        AssertThat(released.Mode).IsEqual(MovementMode.Falling);
+        // Released into Falling, the body may already have stepped a few ticks of gravity (millimetres) before this read;
+        // a teleport to the ground would move it by about 5 m.
+        AssertThat(Vector3.Distance(released.Feet, feet)).IsLess(0.05f);
+        AssertThat(rig.Log.Count(9306)).IsEqual(1);
+    }
+
     private static readonly Vector3 _start = new(0f, TerrainTestWorld.Surface + 1.5f, 0f);
 
     private static PlayerInput Forward(uint tick, float yaw = 0f) => new(tick, 0f, 1f, yaw, 0f, InputButtons.None);

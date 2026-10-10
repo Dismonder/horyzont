@@ -23,7 +23,7 @@ internal sealed class ConstructTestWorld : IDisposable
 
     public ConstructTestWorld(Godot.Node parent, WorldState state, ConstructWorldOptions? options = null, Action<MeshJobSlot>? beforeBuild = null)
     {
-        Options = options ?? new ConstructWorldOptions();
+        Options = options ?? new ConstructWorldOptions { LoadAllWithoutViewers = true };
         State = state;
         Catalog = BlockContentLoader.Load();
         Table = BlockRenderTable.Build(state.BlockTypes.Entries, Catalog);

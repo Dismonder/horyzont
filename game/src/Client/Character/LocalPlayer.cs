@@ -408,13 +408,13 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         if (own.LastProcessedInputSeq == 0 || own.Mode == MovementMode.Frozen || !open)
         {
             // The server has not moved the body yet (or the terrain under it is not here yet): follow it, do not predict.
-            _buffer!.Acknowledge(own.LastProcessedInputSeq, own.ToPredicted(_orientation!.Pitch, false));
+            _buffer!.Reconcile(own, _orientation!.Pitch, false);
             body.Place(own.Feet, own.Velocity, own.Rotation, own.Mode, OnFloorOf(own.Mode));
             _snapCamera = true;
             return;
         }
 
-        var outcome = _buffer!.Acknowledge(own.LastProcessedInputSeq, own.ToPredicted(_orientation!.Pitch, OnFloorOf(own.Mode)));
+        var outcome = _buffer!.Reconcile(own, _orientation!.Pitch, OnFloorOf(own.Mode));
         switch (outcome)
         {
             case AckOutcome.InSync:
@@ -453,6 +453,14 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         var body = _body!;
         var count = _buffer!.CopyUnacknowledged(_replay);
         body.Place(own.Feet, own.Velocity, own.Rotation, own.Mode, OnFloorOf(own.Mode));
+        if (_buffer.IsPaused)
+        {
+            // With no input progress, follow the latest server tick, including its neutral steps.
+            // Keep the history for recovery, but do not advance a paused body by replaying it.
+            _snapCamera = true;
+            return;
+        }
+
         for (var i = 0; i < count; i++)
         {
             if (body.Mode != MovementMode.Frozen && GateOpen(body))
