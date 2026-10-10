@@ -1,6 +1,6 @@
-using Godot;
-
 using GdUnit4;
+
+using Godot;
 
 using Horyzont.Client.Diagnostics;
 using Horyzont.Client.UI;
