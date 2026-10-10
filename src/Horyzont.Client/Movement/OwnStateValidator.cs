@@ -164,7 +164,7 @@ public sealed class OwnStateValidator
             return OwnStateVerdict.BadRotation;
         }
 
-        if (_hasAccepted && (snapshot.SnapshotId <= _lastSnapshotId || snapshot.ServerTick < _lastTick))
+        if (_hasAccepted && (unchecked((int)(snapshot.SnapshotId - _lastSnapshotId)) <= 0 || snapshot.ServerTick < _lastTick))
         {
             return OwnStateVerdict.Stale;
         }

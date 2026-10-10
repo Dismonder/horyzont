@@ -29,15 +29,54 @@ public sealed class ConstructReplica
     {
         ArgumentNullException.ThrowIfNull(header);
         ArgumentNullException.ThrowIfNull(chunks);
+        Validate(header);
+        var tracker = new ChangeTracker();
+        var value = new Construct(header.Id, header.Parent, header.ParentSeq, header.Mode, header.Origin, header.Rotation, header.Version, tracker);
+        LoadChunks(value, header, chunks);
+        return new ConstructReplica(value, tracker);
+    }
+
+    /// <summary>Adds a replica to a private store, so the public read-only ray and overlap queries can use the copy.</summary>
+    /// <param name="store">Store of the replica set.</param>
+    /// <param name="tracker">Tracker shared by the store; cleared after loading.</param>
+    /// <param name="header">Construct header.</param>
+    /// <param name="chunks">Unique chunks owned by this construct.</param>
+    /// <returns>The replica, already in <paramref name="store"/>.</returns>
+    internal static ConstructReplica LoadInto(
+        ConstructStore store, ChangeTracker tracker, ConstructHeaderRecord header, IReadOnlyList<ConstructChunkRecord> chunks)
+    {
+        ArgumentNullException.ThrowIfNull(header);
+        ArgumentNullException.ThrowIfNull(chunks);
+        Validate(header);
+        var value = store.Load(header.Id, header.Parent, header.ParentSeq, header.Mode, header.Origin, header.Rotation, header.Version);
+        try
+        {
+            LoadChunks(value, header, chunks);
+        }
+        catch (InvalidDataException)
+        {
+            // Never leave a partly loaded copy in the store.
+            store.Remove(header.Id);
+            tracker.Clear();
+            throw;
+        }
+
+        tracker.Clear();
+        return new ConstructReplica(value, tracker);
+    }
+
+    private static void Validate(ConstructHeaderRecord header)
+    {
         if (header.Id.IsNone || header.Parent.Id == 0 || header.Parent.Kind is < FrameKind.System or > FrameKind.Construct
             || header.Mode is < ConstructMode.Static or > ConstructMode.Ship
             || !Geometry.IsFinite(header.Origin) || !Geometry.IsRotation(header.Rotation))
         {
             throw new InvalidDataException("Invalid replica header.");
         }
+    }
 
-        var tracker = new ChangeTracker();
-        var value = new Construct(header.Id, header.Parent, header.ParentSeq, header.Mode, header.Origin, header.Rotation, header.Version, tracker);
+    private static void LoadChunks(Construct value, ConstructHeaderRecord header, IReadOnlyList<ConstructChunkRecord> chunks)
+    {
         var seen = new HashSet<ChunkPos>();
         foreach (var chunk in chunks)
         {
@@ -48,8 +87,6 @@ public sealed class ConstructReplica
 
             value.LoadChunk(chunk.Key.Chunk, chunk.Blocks);
         }
-
-        return new ConstructReplica(value, tracker);
     }
 
     /// <summary>Applies exactly the next block version; false leaves the copy unchanged.</summary>

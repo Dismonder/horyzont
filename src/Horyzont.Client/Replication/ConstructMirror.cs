@@ -14,18 +14,23 @@ namespace Horyzont.Client.Replication;
 public sealed class ConstructMirror(TimeProvider time) : IConstructSource
 {
     private const int MaxStagingBytes = 16 * 1024 * 1024;
-    private readonly Dictionary<EntityId, ConstructReplica> _values = [];
+    private readonly ConstructReplicaSet _set = new();
     private readonly Dictionary<EntityId, Transfer> _transfers = [];
     private readonly HashSet<EntityId> _resync = [];
     private readonly List<EntityId> _expired = [];
-    private readonly List<EntityId> _ids = [];
     private int _invalid;
 
     /// <summary>Raised once per unresolved entity gap.</summary>
     public event Action<EntityId>? ResyncNeeded;
 
+    /// <summary>Raised for every operation message, applied or not, after it was handled (edit predictions wait for their operation).</summary>
+    public event Action<OpId>? OperationObserved;
+
     /// <summary>Raised when a copy changes or is withdrawn. Consumers discard old mesh generations.</summary>
     public event Action<EntityId>? Changed;
+
+    /// <summary>Gets the read-only store of the published copies, for ray, overlap and pose queries.</summary>
+    public ConstructStore Store => _set.Store;
 
     /// <summary>Bytes currently retained in incomplete transfers.</summary>
     public int StagingBytes { get; private set; }
@@ -46,7 +51,7 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
         if (part.PartIndex == 0)
         {
             DropTransfer(id);
-            _values.Remove(id);
+            _set.Remove(id);
             Changed?.Invoke(id);
             _transfers[id] = new Transfer(part.Header, part.PartCount, time.GetTimestamp());
         }
@@ -76,10 +81,9 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
             return false;
         }
 
-        ConstructReplica replica;
         try
         {
-            replica = ConstructReplica.Create(transfer.Header, transfer.Chunks);
+            _set.Add(transfer.Header, transfer.Chunks);
         }
         catch (InvalidDataException)
         {
@@ -89,13 +93,6 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
 
         DropTransfer(id);
         _resync.Remove(id);
-        _values[id] = replica;
-        if (!_ids.Contains(id))
-        {
-            _ids.Add(id);
-            _ids.Sort(static (a, b) => a.Value.CompareTo(b.Value));
-        }
-
         Changed?.Invoke(id);
         return true;
     }
@@ -106,9 +103,16 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
     public bool Apply(OperationApplied message)
     {
         ArgumentNullException.ThrowIfNull(message);
+        var changed = ApplyOperation(message);
+        OperationObserved?.Invoke(message.Id);
+        return changed;
+    }
+
+    private bool ApplyOperation(OperationApplied message)
+    {
         if (message.Operation is EntityReparentOp reparent)
         {
-            if (_values.TryGetValue(reparent.Entity, out var target)
+            if (_set.TryGet(reparent.Entity, out var target)
                 && target.TryReparent(reparent.NewParent, reparent.NewParentSeq, reparent.LocalPosition, reparent.LocalRotation))
             {
                 Changed?.Invoke(reparent.Entity);
@@ -138,26 +142,22 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
 
         if (message.Operation is ConstructCreateOp create)
         {
-            if (create.Construct != id || result.Version != 1 || result.Removed || _values.ContainsKey(id))
+            if (create.Construct != id || result.Version != 1 || result.Removed || _set.TryGet(id, out _))
             {
                 return false;
             }
 
-            var replica = ConstructReplica.Create(new ConstructHeaderRecord(id, create.Parent, 0, ConstructMode.Static,
-                create.Origin, create.Rotation, 0), []);
-            if (!replica.TrySet(create.FirstCell, create.Block, 1))
+            var created = _set.Add(new ConstructHeaderRecord(id, create.Parent, 0, ConstructMode.Static, create.Origin, create.Rotation, 0), []);
+            if (!created.TrySet(create.FirstCell, create.Block, 1))
             {
+                _set.Remove(id);
                 RequestResync(id);
                 return false;
             }
-
-            _values[id] = replica;
-            _ids.Add(id);
-            _ids.Sort(static (a, b) => a.Value.CompareTo(b.Value));
         }
         else
         {
-            if (!_values.TryGetValue(id, out var replica))
+            if (!_set.TryGet(id, out var replica))
             {
                 RequestResync(id);
                 return false;
@@ -197,9 +197,8 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
     {
         DropTransfer(id);
         _resync.Remove(id);
-        if (_values.Remove(id))
+        if (_set.Remove(id))
         {
-            _ids.Remove(id);
             Changed?.Invoke(id);
         }
     }
@@ -207,10 +206,9 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
     /// <summary>Releases all session data.</summary>
     public void Clear()
     {
-        _values.Clear();
+        _set.Clear();
         _transfers.Clear();
         _resync.Clear();
-        _ids.Clear();
         StagingBytes = 0;
         _invalid = 0;
     }
@@ -240,7 +238,7 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
     /// <returns>Whether the complete copy is available.</returns>
     public bool TryGetConstruct(EntityId id, [NotNullWhen(true)] out Construct? value)
     {
-        value = _values.TryGetValue(id, out var replica) ? replica.Value : null;
+        value = _set.TryGet(id, out var replica) ? replica.Value : null;
         return value is not null;
     }
 
@@ -248,11 +246,12 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
     public void CollectConstructs(FrameRef frame, List<EntityId> into)
     {
         ArgumentNullException.ThrowIfNull(into);
-        foreach (var id in _ids)
+        var all = _set.Store.All;
+        for (var i = 0; i < all.Count; i++)
         {
-            if (_values.TryGetValue(id, out var replica) && replica.Value.Parent == frame)
+            if (all[i].Parent == frame)
             {
-                into.Add(id);
+                into.Add(all[i].Id);
             }
         }
     }
