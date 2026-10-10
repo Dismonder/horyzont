@@ -29,6 +29,9 @@ public sealed class DedicatedConsole
     /// <summary>Starts reading standard input.</summary>
     public void Start() => _pump.Start();
 
+    /// <summary>Stops reading standard input before the process quits (a short join; the read itself cannot be interrupted).</summary>
+    public void Stop() => _pump.Stop(TimeSpan.FromMilliseconds(100));
+
     /// <summary>Executes the lines read so far; main thread, once per frame.</summary>
     public void Pump()
     {

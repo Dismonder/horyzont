@@ -214,6 +214,9 @@ public sealed class PersistenceWriter : IAsyncDisposable
         _channel.Writer.TryComplete();
         await _stopped.Task.ConfigureAwait(false);
 
+        // _stopped is set by the thread's last statements; join so no thread of this writer is alive when the process quits.
+        _thread.Join(TimeSpan.FromSeconds(2));
+
         // Set only by the writer thread, which has stopped; a copy in progress finishes on its own connection.
         await _backupChain.ConfigureAwait(false);
         _flushTimer?.Dispose();

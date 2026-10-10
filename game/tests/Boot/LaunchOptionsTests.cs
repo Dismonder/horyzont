@@ -210,4 +210,29 @@ public class RotatingLogFileTests
         AssertThat(text.Contains("hello state", StringComparison.Ordinal) && text.Contains("boom", StringComparison.Ordinal)).IsTrue();
         AssertThat(text.Contains("filtered out", StringComparison.Ordinal)).IsFalse();
     }
+
+    [TestCase]
+    public void Provider_AfterShutdown_KeepsTheEngineConsoleQuiet()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "horyzont-k4-19-tests", Guid.NewGuid().ToString("N"));
+        var console = new List<string>();
+        var fallback = new List<(string Text, bool IsError)>();
+        var file = new RotatingLogFile(dir, "game", 1024 * 1024, 2);
+        using (var provider = new GodotLoggerProvider(file, LogLevel.Information, TimeProvider.System, (text, _) => console.Add(text), (text, isError) => fallback.Add((text, isError))))
+        {
+            var logger = provider.CreateLogger("Test.Category");
+            logger.Log(LogLevel.Information, default, "state", null, (s, _) => "before");
+            Task.Run(() => logger.Log(LogLevel.Information, default, "state", null, (s, _) => "other thread")).Wait();
+            provider.Shutdown();
+            logger.Log(LogLevel.Information, default, "state", null, (s, _) => "quiet info");
+            logger.Log(LogLevel.Error, default, "state", null, (s, _) => "loud error");
+        }
+
+        AssertThat(console.Count).IsEqual(1);
+        AssertThat(fallback.Count).IsEqual(2);
+        AssertThat(fallback[0].Text.Contains("other thread", StringComparison.Ordinal) && !fallback[0].IsError).IsTrue();
+        AssertThat(fallback[1].Text.Contains("loud error", StringComparison.Ordinal) && fallback[1].IsError).IsTrue();
+        var text = File.ReadAllText(Path.Combine(dir, "game.log"));
+        AssertThat(text.Contains("quiet info", StringComparison.Ordinal)).IsTrue();
+    }
 }

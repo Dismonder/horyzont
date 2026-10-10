@@ -16,6 +16,7 @@ public sealed partial class ServerNode : Node
 
     private ServerRuntime? _runtime;
     private DedicatedConsole? _console;
+    private bool _consoleStopped;
 
     /// <summary>Gets the server runtime.</summary>
     public ServerRuntime Runtime => _runtime ?? throw new InvalidOperationException("ServerNode.Initialize was not called.");
@@ -47,5 +48,10 @@ public sealed partial class ServerNode : Node
     {
         _console?.Pump();
         _runtime!.Tick();
+        if (_runtime.IsStopped && !_consoleStopped)
+        {
+            _consoleStopped = true;
+            _console?.Stop();
+        }
     }
 }

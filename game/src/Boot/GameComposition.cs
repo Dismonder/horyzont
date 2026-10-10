@@ -397,7 +397,7 @@ public sealed partial class GameComposition
             var quit = new QuitCoordinator { Name = "Quit" };
             quit.Initialize(
                 composition.RequestShutdown, () => composition.IsFinished, () => composition.ExitCode, composition.ProcessCleanupStep, env.RegisterSignals,
-                loggers.CreateLogger<QuitCoordinator>(), env.Time, _releaseTimeout);
+                loggers.CreateLogger<QuitCoordinator>(), env.Time, _releaseTimeout, env.BeforeQuit);
             root.AddChild(quit);
             composition.Quit = quit;
         }

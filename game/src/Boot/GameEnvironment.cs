@@ -16,6 +16,9 @@ public sealed record GameEnvironment
     /// <summary>Gets process cleanup run by the quit coordinator only after successful session transport release.</summary>
     public Func<bool>? ProcessCleanup { get; init; }
 
+    /// <summary>Gets an action the quit coordinator runs right before it asks the tree to quit (from then on the engine console must not be used).</summary>
+    public Action? BeforeQuit { get; init; }
+
     /// <summary>Gets the clock of the server, the sessions and the deadlines.</summary>
     public required TimeProvider Time { get; init; }
 

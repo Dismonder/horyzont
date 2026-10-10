@@ -20,6 +20,7 @@ public partial class Boot : Node
         + " | --server --config <server.json> [--data-dir <dir>] [--restore-latest-backup] [--dev] | --write-default-config <path>";
 
     private ILoggerFactory? _loggers;
+    private GodotLoggerProvider? _provider;
 
     public override void _Ready()
     {
@@ -53,7 +54,7 @@ public partial class Boot : Node
 
     public override void _ExitTree() => _loggers?.Dispose();
 
-    private static ILoggerFactory CreateLoggers(LaunchOptions launch, string userDir, string executableDir)
+    private ILoggerFactory CreateLoggers(LaunchOptions launch, string userDir, string executableDir)
     {
         var dedicated = launch.Mode == ServerProcessMode.DedicatedServer;
         var dataDir = launch.DataDir ?? (dedicated ? executableDir : userDir);
@@ -74,7 +75,8 @@ public partial class Boot : Node
             GD.PrintErr($"Cannot open the log file in '{logDir}': {ex.Message}");
         }
 
-        return LoggerFactory.Create(builder => builder.SetMinimumLevel(LogLevel.Information).AddProvider(new GodotLoggerProvider(file, LogLevel.Information, TimeProvider.System)));
+        _provider = new GodotLoggerProvider(file, LogLevel.Information, TimeProvider.System);
+        return LoggerFactory.Create(builder => builder.SetMinimumLevel(LogLevel.Information).AddProvider(_provider));
     }
 
     private async Task RunGameAsync(string[] args)
@@ -113,6 +115,7 @@ public partial class Boot : Node
             ConsoleInput = launch.Mode == ServerProcessMode.DedicatedServer ? System.Console.In : null,
             ManageQuit = true,
             RegisterSignals = true,
+            BeforeQuit = () => _provider?.Shutdown(),
         };
 
         GameComposition composition;
@@ -141,6 +144,7 @@ public partial class Boot : Node
         {
             GD.PrintErr($"START FAILED: {ex}");
             composition.Release();
+            _provider?.Shutdown();
             GetTree().Quit(ExitFaulted);
         }
     }

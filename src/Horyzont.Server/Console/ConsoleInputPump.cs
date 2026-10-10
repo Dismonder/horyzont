@@ -6,7 +6,8 @@ namespace Horyzont.Server.Console;
 
 /// <summary>
 /// Reads console lines on a background thread into a bounded queue; the main thread takes them with <see cref="TryTake"/>.
-/// The thread only reads and enqueues. <c>ReadLine</c> cannot be interrupted, so nobody waits for the thread when the server stops.
+/// The thread only reads and enqueues. <c>ReadLine</c> cannot be interrupted, so <see cref="Stop"/> waits for the thread only briefly,
+/// and from then on the thread neither logs nor enqueues (it must not touch the logging of a process that is quitting).
 /// </summary>
 public sealed class ConsoleInputPump
 {
@@ -20,6 +21,8 @@ public sealed class ConsoleInputPump
     private readonly TaskCompletionSource _ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _dropped;
     private int _started;
+    private int _stopped;
+    private Thread? _thread;
 
     /// <summary>Initializes a new instance of the <see cref="ConsoleInputPump"/> class.</summary>
     /// <param name="input">The standard input (a <see cref="StringReader"/> in tests).</param>
@@ -46,7 +49,17 @@ public sealed class ConsoleInputPump
             return;
         }
 
-        new Thread(Run) { IsBackground = true, Name = "Horyzont console input" }.Start();
+        _thread = new Thread(Run) { IsBackground = true, Name = "Horyzont console input" };
+        _thread.Start();
+    }
+
+    /// <summary>Stops the pump before the process quits: joins the thread for at most <paramref name="wait"/>; later input is ignored.</summary>
+    /// <param name="wait">Longest wait; the thread may sit in a blocking read that nothing can interrupt.</param>
+    /// <returns>True when the thread has ended (or never started).</returns>
+    public bool Stop(TimeSpan wait)
+    {
+        Volatile.Write(ref _stopped, 1);
+        return _thread is null || _thread.Join(wait);
     }
 
     /// <summary>Takes the oldest queued line; main thread.</summary>
@@ -65,6 +78,11 @@ public sealed class ConsoleInputPump
         {
             while (_input.ReadLine() is { } line)
             {
+                if (Volatile.Read(ref _stopped) != 0)
+                {
+                    return;
+                }
+
                 if (line.Length > ConsoleCommandProcessor.MaxLineLength)
                 {
                     Drop("line longer than 256 characters");
@@ -75,13 +93,19 @@ public sealed class ConsoleInputPump
                 }
             }
 
-            _logger.ConsoleInputEnded();
+            if (Volatile.Read(ref _stopped) == 0)
+            {
+                _logger.ConsoleInputEnded();
+            }
         }
 #pragma warning disable CA1031 // The console is optional: a failing standard input ends the pump and the server keeps running; the error is logged.
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            _logger.ConsoleReadFailed(ex);
+            if (Volatile.Read(ref _stopped) == 0)
+            {
+                _logger.ConsoleReadFailed(ex);
+            }
         }
         finally
         {

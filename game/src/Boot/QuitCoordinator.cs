@@ -26,6 +26,7 @@ public sealed partial class QuitCoordinator : Node
     private long _cleanupStarted;
     private bool _cleanupBegun;
     private ILogger<QuitCoordinator>? _logger;
+    private Action? _beforeQuit;
     private bool _registerSignals;
     private int _stopRequested;
     private int _requests;
@@ -46,10 +47,12 @@ public sealed partial class QuitCoordinator : Node
     /// <param name="logger">Logger.</param>
     /// <param name="time">Clock of the cleanup deadline; the system clock when null.</param>
     /// <param name="cleanupTimeout">Longest wait for the cleanup; five seconds when null.</param>
+    /// <param name="beforeQuit">Run once right before the tree is asked to quit; may be null.</param>
     public void Initialize(
         Action requestShutdown, Func<bool> isFinished, Func<int> exitCode, Func<bool>? cleanup, bool registerSignals, ILogger<QuitCoordinator> logger,
-        TimeProvider? time = null, TimeSpan? cleanupTimeout = null)
+        TimeProvider? time = null, TimeSpan? cleanupTimeout = null, Action? beforeQuit = null)
     {
+        _beforeQuit = beforeQuit;
         ArgumentNullException.ThrowIfNull(requestShutdown);
         ArgumentNullException.ThrowIfNull(isFinished);
         ArgumentNullException.ThrowIfNull(exitCode);
@@ -118,6 +121,7 @@ public sealed partial class QuitCoordinator : Node
         if (Advance())
         {
             _quitting = true;
+            _beforeQuit?.Invoke();
             GetTree().Quit(_exitCode!());
         }
     }

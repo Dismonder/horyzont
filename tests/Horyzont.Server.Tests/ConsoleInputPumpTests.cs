@@ -27,6 +27,29 @@ public sealed class ConsoleInputPumpTests
     }
 
     [Fact]
+    public void Stop_ThenInputEnds_ThreadStaysSilent()
+    {
+        var gate = new ManualResetEventSlim();
+        var logger = new CountingLogger();
+        var pump = new ConsoleInputPump(new GatedReader(gate), logger);
+        pump.Start();
+
+        Assert.False(pump.Stop(TimeSpan.FromMilliseconds(50)), "the read is blocked, the join times out");
+        gate.Set();
+
+        Assert.True(pump.WaitForEnd(TimeSpan.FromSeconds(5)));
+        Assert.Equal(0, logger.Count);
+    }
+
+    [Fact]
+    public void Stop_WhenNeverStarted_ReturnsTrue()
+    {
+        var pump = new ConsoleInputPump(new StringReader(string.Empty), NullLogger<ConsoleInputPump>.Instance);
+
+        Assert.True(pump.Stop(TimeSpan.Zero));
+    }
+
+    [Fact]
     public async Task Eof_EndsPumpServerKeepsRunning()
     {
         await using var rig = new ServerRig(mode: ProcessMode.DedicatedServer);
@@ -127,5 +150,29 @@ public sealed class ConsoleInputPumpTests
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
             _inner.Log(logLevel, eventId, state, exception, formatter);
+    }
+
+    private sealed class GatedReader(ManualResetEventSlim gate) : TextReader
+    {
+        public override string? ReadLine()
+        {
+            gate.Wait();
+            return null;
+        }
+    }
+
+    private sealed class CountingLogger : ILogger<ConsoleInputPump>
+    {
+        private int _count;
+
+        public int Count => Volatile.Read(ref _count);
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Interlocked.Increment(ref _count);
     }
 }
