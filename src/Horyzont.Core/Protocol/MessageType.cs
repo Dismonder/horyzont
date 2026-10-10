@@ -67,4 +67,10 @@ public enum MessageType : byte
 
     /// <summary>Client to server, reliable; visible entity state repair.</summary>
     ResyncRequest = 21,
+
+    /// <summary>Server to client, reliable terrain manifest or edit barrier.</summary>
+    TerrainSync = 24,
+
+    /// <summary>Client to server, reliable terrain viewer update.</summary>
+    TerrainView = 25,
 }

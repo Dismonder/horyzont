@@ -41,7 +41,8 @@ public class DevCameraTests
         Input.ParseInputEvent(press);
         AssertThat(await fixture.WaitUntil(() => dev.IsActive, 30)).IsTrue();
         AssertThat(await fixture.WaitUntil(() => player.CameraMode == CameraMode.DevFree, 30)).IsTrue();
-        AssertThat(dev.Position.Length()).IsEqual(DevFlyCamera.OrbitRadiusFactor * planet.RadiusMeters);
+        // The direction is normalised in single precision, so the length is the orbit radius within a few float ulps (8000.0005 m seen).
+        AssertThat(dev.Position.Length()).IsEqualApprox(DevFlyCamera.OrbitRadiusFactor * planet.RadiusMeters, 0.01f);
 
         var descending = true;
         player.InputSource = new HostLoopTests.ScriptedInput(_ => descending ? new LocalInputSample(0f, 1f, InputButtons.Sprint, 0f, 0f) : LocalInputSample.None);

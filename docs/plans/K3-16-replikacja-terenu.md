@@ -183,17 +183,17 @@ Po K3-00 wszystkie K3-14…18 startują równolegle po swoich zależnościach K2
 
 ## Kroki
 
-- [ ] 0. Rebase na scalone K2 i K3-00; przydziały X4, dispatch S1, szwy S6–S9 i własność X10 są ustalone; sprawdzić kontrakty tej gałęzi.
-- [ ] 1. Pierwszy test serwer + dwa tereny klientów (wymóg spec:352), potem testy cache/manifestu i kodeka. Czerwone testy przed implementacją.
-- [ ] 2. Rozpoznanie adaptera mipmap/reload i pomiar paste/kolizji/render mesh; konkretne API oraz wyniki S5/S6 wpisać do „Odstępstw”. Nie zmieniać zamrożonego korpusu K2.
-- [ ] 3. Nowe komunikaty, walidacja stanów, numeracja i D4; przegląd Core przez Opus przed integracją. Golden roundtrip/fuzzing zielone; fixture X6 i test routera (X5: 24 S→K Loading/InGame; 25 K→S Loading i InGame, `IsGameMessageFromClient`).
-- [ ] 4. Cache schema/source/writer z testami restartu, błędów i drain; podłączyć source w `OwnTerrainProvider` i raport przed ready.
-- [ ] 5. Export live, manifest, handler S1, queue/limity i bariery; test 200 ms z pomiarem danych, kolizji i obrazu.
-- [ ] 6. Zdalne narzędzia i predykcja bazowa/rollback/bariera, bez server `WorldState`; host nadal bez kopii/predykcji.
-- [ ] 7. Checksum i poprawki version=0, metryki dla K3-18; test symulowanego rozjazdu, bez twierdzenia o zgodności Linux.
-- [ ] 8. Trwałe LOD/fingerprinty, odbudowa po restarcie, wizualny test orbitalny. Blokadę adaptera eskalować z dowodami; nie odbierać całego pakietu z tym krokiem ukrycie odroczonym. Krok LOD może trafić osobnym PR `K3-16B` na tej samej gałęzi; bramka K3 wymaga K3-16B albo jawnej decyzji właściciela (wariant alternatywny P1).
-- [ ] 9. Po integracji K3-15 podłączyć budowle do facade/routera i test ręczny z K2-13:483; część terenowa oraz 5×5×3 budowla, 5 min TPP host+zdalny klient. Ryzyka/odstępstwa zapisać w PR.
-- [ ] 10. Pełne `dotnet build Horyzont.sln`, `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"`, `dotnet format Horyzont.sln --verify-no-changes`, `python tools/engine/build.py smoke`; seryjne gdUnit4 Windows. Wyniki do PR, zielone CI po merge. Małe zielone kroki kończyć Conventional Commits; po dwóch nieudanych podejściach eskalacja z testem/logiem (ZASADY pkt 12).
+- [x] 0. Baza K2 + K3-00 zweryfikowana, czysta w�a�ciwa ga���; rebase niepotrzebny. Rebase na scalone K2 i K3-00; przydziały X4, dispatch S1, szwy S6–S9 i własność X10 są ustalone; sprawdzić kontrakty tej gałęzi.
+- [x] 1. Pierwszy test serwer + dwa tereny klientów (wymóg spec:352), potem testy cache/manifestu i kodeka. Czerwone testy przed implementacją. Testy: `game/tests/Terrain/TerrainReplicationTests.cs` (silnik, NOT RUN — CI/ręcznie), `ClientTerrainCacheTests`, `ServerTerrainReplicatorTests`, `TerrainSendQueueTests`, `ClientTerrainSyncStateTests`, `TerrainReplicationHelpersTests`, `TerrainSyncCodecTests`, `TerrainMessageRouterTests` (zielone). Kolejność red→green nie była zachowana przez wcześniejszych wykonawców (testy i kod w tych samych commitach).
+- [~] 2. Rozpoznanie adaptera mipmap/reload i pomiar paste/kolizji/render mesh; konkretne API oraz wyniki S5/S6 wpisać do „Odstępstw”. Nie zmieniać zamrożonego korpusu K2. API rozpoznane (patrz Odstępstwa); pomiary S5/S6 NOT RUN (brak silnika w tej sesji).
+- [~] 3. Nowe komunikaty, walidacja stanów, numeracja i D4; przegląd Core przez Opus przed integracją. Złote bajty (kodowanie i dekodowanie), odrzucenia limitów i fuzzing zielone; fixture X6 i test routera (X5: 24 S→K Loading/InGame; 25 K→S Loading i InGame, `IsGameMessageFromClient`). Wykonane i zielone; przegląd Core przez Opus 5.5 NIE wykonany (czeka na recenzenta).
+- [x] 4. Cache schema/source/writer z testami restartu, błędów i drain; podłączyć source w `OwnTerrainProvider` i raport przed ready.
+- [~] 5. Export live, manifest, handler S1, queue/limity i bariery; test 200 ms z pomiarem danych, kolizji i obrazu. Kod i testy czyste gotowe; test 200 ms (`Replicate_TwoRemoteClients_TerrainDigestsMatchWithin200ms`) napisany, mierzy dekodowanie+paste+kolizję, siatka renderu NIE mierzona; NOT RUN — CI/ręcznie.
+- [~] 6. Zdalne narzędzia i predykcja bazowa/rollback/bariera, bez server `WorldState`; host nadal bez kopii/predykcji. Kod i `TerrainPredictionTests` (silnik, NOT RUN) gotowe; `UseTools_RemoteClient_CanAimDigAndFillWithoutServerWorldState` (prawdziwy `ToolNode` na `--connect`) NIE napisany — wymaga dwóch procesów, zostaje jako test ręczny K2-13:483.
+- [x] 7. Checksum i poprawki version=0, metryki dla K3-18; test symulowanego rozjazdu, bez twierdzenia o zgodności Linux.
+- [~] 8. Trwałe LOD/fingerprinty, odbudowa po restarcie, wizualny test orbitalny. Blokadę adaptera eskalować z dowodami; nie odbierać całego pakietu z tym krokiem ukrycie odroczonym. Krok LOD może trafić osobnym PR `K3-16B` na tej samej gałęzi; bramka K3 wymaga K3-16B albo jawnej decyzji właściciela (wariant alternatywny P1). Serwer i zdalny klient mają trwałe pochodne (`DerivedTerrain`, `terrain-derived.db`); testy silnika `DerivedLodReplicationTests` NOT RUN, ocena wizualna orbitalna NOT RUN — CI/ręcznie.
+- [ ] 9. (ODROCZONE wg X10 do integracji K3-15) Po integracji K3-15 podłączyć budowle do facade/routera i test ręczny z K2-13:483; część terenowa oraz 5×5×3 budowla, 5 min TPP host+zdalny klient. Ryzyka/odstępstwa zapisać w PR.
+- [~] 10. Pełne `dotnet build Horyzont.sln`, `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"`, `dotnet format Horyzont.sln --verify-no-changes`, `python tools/engine/build.py smoke`; seryjne gdUnit4 Windows. Wyniki do PR, zielone CI po merge. Małe zielone kroki kończyć Conventional Commits; po dwóch nieudanych podejściach eskalacja z testem/logiem (ZASADY pkt 12).
 
 ## Odbiór
 
@@ -203,6 +203,15 @@ Po K3-00 wszystkie K3-14…18 startują równolegle po swoich zależnościach K2
 - Raport actual bytes według X3 (migawki, wspólne Live/Bulk i sterowanie) i czasów X11, wyniki testów/build/format/smoke, przegląd Sol i Core Opus. Windows na jedynym runnerze; Linux `VALIDATION_NOT_PERFORMED`, bez przywracania wyłączonego CI.
 
 ## Odstępstwa i decyzje wykonawcy
+
+- Pozostałe do wykonania poza tą sesją: pomiary S5/S6, testy silnika (gdUnit4), `python tools/engine/build.py smoke`, ocena wizualna orbitalna i ręczny test K2-13:483 — wszystko NOT RUN — CI/ręcznie (zakaz uruchamiania silnika w sesji wykonawczej).
+- Mipmapy: procedura silnika to `VoxelBuffer.DownscaleTo(dst, srcMin, srcMax, dstMin)` — ten sam filtr, którego `voxel_data.cpp` używa do propagacji edycji; `DerivedLodRebuilder` składa rodzica z 8 dzieci (edytowane z blobów, reszta z generatora) i zapisuje fingerprint (profil + wersja i digest dzieci). `voxel.ref` i filtr edycji bez zmian.
+- Paste: `VoxelTool.Paste(dst, src, channelsMask)` z `dst` = klucz*16 w voxelach (także ujemne), jak w K2-09 S6; nie ma pomiaru czasu.
+- `ProtocolVersion = 5` na tej gałęzi (D4: kolejność 15 → 16 → 18 daje 4, 5, 6); `main` ma 3, więc rebase na scalone K3-15 musi zaktualizować stałą, `ProtocolVersion_MatchesDocumentedMergeValue` i `Constants_GoldenValues`.
+- Pochodne LOD: serwer trzyma `terrain-derived.db` obok `world.db`; klient obok `terrain.db` cache'a. Przy starcie każdy zapisany blok LOD 0 unieważnia przodków, a odbudowa korzysta z istniejących fingerprintów (bez ponownego zapisu). Do czasu odbudowy strumień zwraca błąd dla znanego zmienionego przodka zamiast nieedytowanej planety. Ograniczenie: wyrzucenie bloku z cache klienta (LRU) nie unieważnia jego przodków.
+- Krok 9 (budowle przez K3-15) odroczony zgodnie z X10; `GameComposition.cs` i inne partiale poza `GameComposition.TerrainReplication.cs` nie zmieniane.
+- Przegląd Sol i przegląd Core przez Opus 5.5 (wymagane w nagłówku planu) nie zostały wykonane.
+- Formatowanie: wcześniejsze commity miały błędy `dotnet format` (CRLF, nazwy pól `_x`); naprawione.
 
 ## Pułapki
 
