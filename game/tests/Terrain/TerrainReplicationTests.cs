@@ -6,6 +6,7 @@ using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Serialization;
 using Horyzont.Game.Client.Terrain;
+using Horyzont.Game.Terrain;
 using Horyzont.Game.Tests.Support;
 using Horyzont.Persistence.Terrain;
 using Horyzont.Testing;
@@ -91,8 +92,9 @@ public sealed class TerrainReplicationTests
         GD.Print($"Replicate_Within200ms delivery={delivery.TotalMilliseconds:F0} ms engine={engineMs:F1} ms (decode, paste, collision; mesh not measured)");
         AssertThat(changed).IsTrue();
         AssertThat(delivery.TotalMilliseconds + engineMs).IsLess(200.0);
-        AssertThat(first.LiveDigest()).IsEqual(server.LiveDigest());
-        AssertThat(second.LiveDigest()).IsEqual(server.LiveDigest());
+        var edited = server.State.TerrainVersions.All;
+        AssertThat(first.LiveDigest(edited)).IsEqual(server.LiveDigest());
+        AssertThat(second.LiveDigest(edited)).IsEqual(server.LiveDigest());
     }
 
     [TestCase(Timeout = 600000)]
@@ -129,8 +131,9 @@ public sealed class TerrainReplicationTests
         }
 
         var expected = server.LiveDigest();
-        AssertThat(first.LiveDigest()).IsEqual(expected);
-        AssertThat(second.LiveDigest()).IsEqual(expected);
+        var edited = server.State.TerrainVersions.All;
+        AssertThat(first.LiveDigest(edited)).IsEqual(expected);
+        AssertThat(second.LiveDigest(edited)).IsEqual(expected);
     }
 
     [TestCase(Timeout = 60000)]
@@ -183,10 +186,15 @@ public sealed class TerrainReplicationTests
         await using var client = await TerrainTestWorld.CreateAsync(scene);
         // Negative coordinates: the blocks around (-8, ground, -8) have negative X and Z.
         var center = TerrainTestWorld.Ground(-8, -8);
-        server.AddViewer(center);
+        var serverViewer = server.AddViewer(center);
         AssertThat(await server.WaitLoaded(center, 8)).IsTrue();
         server.Edit(center, 1, TerrainEditMode.Remove);
         var keys = server.State.TerrainVersions.All.Select(v => v.Key).ToList();
+
+        // Voxel Tools viewers are process-wide: the viewer of the server loaded the area of the client terrain too. Move it away so
+        // the client really has the area unloaded (the server keeps the edit in its buffer and streams it back on the next load).
+        serverViewer.Position = TerrainVectors.ToGodot(TerrainTestWorld.Ground(3000, 0));
+        AssertThat(await client.WaitUnloaded(center, 8)).IsTrue();
 
         // The client has not loaded the area: nothing is pasted, the cache keeps the block for the stream.
         foreach (var key in keys)
@@ -197,12 +205,13 @@ public sealed class TerrainReplicationTests
 
         client.AddViewer(center);
         AssertThat(await client.WaitLoaded(center, 8)).IsTrue();
+        AssertThat(await server.WaitLoaded(center, 8)).IsTrue();
         foreach (var key in keys)
         {
             server.Blocks.TryLoad(key, out var v, out var blob);
             AssertThat(ClientTerrainReplicator.PasteValidated(client.Node.Terrain, new TerrainBlockData(key, v, blob), client.Codec)).IsTrue();
         }
 
-        AssertThat(client.LiveDigest()).IsEqual(server.LiveDigest());
+        AssertThat(client.LiveDigest(server.State.TerrainVersions.All)).IsEqual(server.LiveDigest());
     }
 }

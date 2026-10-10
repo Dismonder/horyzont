@@ -208,6 +208,13 @@ public sealed class TerrainPredictionTests
                 throw new InvalidOperationException("The client terrain did not load.");
             }
 
+            // Voxel Tools viewers are process-wide, so this viewer loads the server terrain as well, but not in step with the client:
+            // the server edits of the tests need their own area loaded too.
+            if (!await server.WaitLoaded(_center, 8))
+            {
+                throw new InvalidOperationException("The server terrain did not load.");
+            }
+
             var time = new FakeTimeProvider();
             var sync = new Horyzont.Client.Terrain.ClientTerrainSyncState([WorldFactory.HomePlanet]);
             sync.OnSync(new TerrainSync(1, 0, WorldFactory.HomePlanet, default, 0, true, []));
