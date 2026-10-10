@@ -6,6 +6,7 @@ using Horyzont.Constructs.Content;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Testing;
+using Horyzont.Testing.Ships;
 
 namespace Horyzont.Constructs.Tests.Content;
 
@@ -175,6 +176,20 @@ public sealed class BlockTypeCatalogTests
 
         Assert.Equal(expected.Length, catalog.BlockTypeKeys.Count);
         Assert.Equal(BlockShape.Mesh, catalog.Blocks.Single(b => b.Def.Key == "core:ship_seat").Def.Shape);
+    }
+
+    [Fact]
+    public void ShippedContent_FixtureDefinitionsMatchBlocksJson()
+    {
+        var catalog = BlockTypeCatalog.Parse(File.ReadAllBytes(Path.Combine(RepoRoot(), "game", "content", "blocks", "blocks.json")), new FakeResolver());
+
+        Assert.Equal(ShipFixtures.BlockKeys, catalog.BlockTypeKeys);
+        foreach (var block in catalog.Blocks)
+        {
+            var fixture = ShipFixtures.Def(block.Def.Key);
+            Assert.Equal(block.Def.MassKg, fixture.MassKg);
+            Assert.Equal(block.Def.Function, fixture.Function);
+        }
     }
 
     [Fact]
