@@ -154,6 +154,7 @@ public static class MaxMessages
             new Ping(ulong.MaxValue),
             new Pong(ulong.MaxValue, new Tick(ulong.MaxValue)),
             new Disconnect(DisconnectCode.HandshakeTimeout),
+            new ResyncRequest(new EntityId(ulong.MaxValue)),
         ];
     }
 }

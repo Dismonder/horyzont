@@ -145,21 +145,31 @@ Po K3-00 wszystkie K3-14…18 ruszają równolegle po swoich zależnościach K2.
 
 ## Kroki
 
-- [ ] 0. Potwierdź zależności na main, rzeczywiste numery i pole reply, zapisz różnice w Odstępstwach; zastosuj szwy K3-00 i mapę X10. Potwierdź, że każda operacja 1–7 zmienia najwyżej jedną komórkę na budowlę (`Construct.SetBlock` podbija `Version` o 1 na komórkę, `Construct.cs:154`). Jeśli nie: stosuj `TrySet` kolejno z wersjami Version+1…, a końcową porównaj z `ConstructChange.Version`; rozbieżność = resync.
-- [ ] 1. Napisz testy .NET i scenariusze silnika z tabeli; użyj InMemoryTransport i FakeTimeProvider.
-- [ ] 2. Dodaj ResyncRequest/kodek/router, D4 i przegląd Opus przed integracją oraz fixture X6 (`ProtocolContractTests`, `MaxMessages.All`, `CodecGen.Message`) i test routera w `tests/Horyzont.Net.Tests` (X5).
-- [ ] 3. Zarejestruj handler w dispatchu S1, dodaj zainteresowanie, lifecycle bytów i transfer pełnych budowli.
-- [ ] 4. Dodaj baseline/ACK, bezalokacyjny builder/SendEncoded i rekonstrukcję; wyłącz OwnStateSender.
-- [ ] 5. Dodaj lustro, wersje/resync, RemoteConstructs i RemotePlayers; sprawdź stare wyniki workerów.
-- [ ] 6. Dodaj RemoteToolWorldView, nakładkę predykcji i zdalny ToolNode; przygotuj wstrzyknięcie K3-16.
-- [ ] 7. Test 10 min, pasmo/latencja, duża budowla i zero alokacji; ręcznie 5 min host + zdalny klient, budowla 5×5×3 i po integracji K3-16 kopanie TPP (odroczenie K2-13).
-- [ ] 8. Wykonawca uruchamia build/test/format/smoke z ZASADY pkt 10 i testy silnika szeregowo na Windows, wyniki do PR. Rebase, D4, przegląd Opus, zielone CI przed scaleniem.
+- [x] 0. Potwierdź zależności na main, rzeczywiste numery i pole reply, zapisz różnice w Odstępstwach; zastosuj szwy K3-00 i mapę X10. Potwierdź, że każda operacja 1–7 zmienia najwyżej jedną komórkę na budowlę (`Construct.SetBlock` podbija `Version` o 1 na komórkę, `Construct.cs:154`). Jeśli nie: stosuj `TrySet` kolejno z wersjami Version+1…, a końcową porównaj z `ConstructChange.Version`; rozbieżność = resync.
+- [x] 1. Napisz testy .NET i scenariusze silnika z tabeli; użyj InMemoryTransport i FakeTimeProvider.
+- [~] 2. Dodaj ResyncRequest/kodek/router, D4 i przegląd Opus przed integracją oraz fixture X6 (`ProtocolContractTests`, `MaxMessages.All`, `CodecGen.Message`) i test routera w `tests/Horyzont.Net.Tests` (X5).
+- [x] 3. Zarejestruj handler w dispatchu S1, dodaj zainteresowanie, lifecycle bytów i transfer pełnych budowli.
+- [x] 4. Dodaj baseline/ACK, bezalokacyjny builder/SendEncoded i rekonstrukcję; wyłącz OwnStateSender.
+- [x] 5. Dodaj lustro, wersje/resync, RemoteConstructs i RemotePlayers; sprawdź stare wyniki workerów.
+- [x] 6. Dodaj RemoteToolWorldView, nakładkę predykcji i zdalny ToolNode; przygotuj wstrzyknięcie K3-16.
+- [~] 7. Test 10 min, pasmo/latencja, duża budowla i zero alokacji; ręcznie 5 min host + zdalny klient, budowla 5×5×3 i po integracji K3-16 kopanie TPP (odroczenie K2-13).
+- [~] 8. Wykonawca uruchamia build/test/format/smoke z ZASADY pkt 10 i testy silnika szeregowo na Windows, wyniki do PR. Rebase, D4, przegląd Opus, zielone CI przed scaleniem.
 
 ## Odbiór
 
 Dwa klienty z identycznym stanem budowli po 10 min, działający resync i zdalne narzędzia, jedna ścieżka korekty, brak dublowania świata hosta. Testy tabeli zielone; raport pasma według tabeli X3 (osobno migawki, niezawodne Live/Bulk, sterowanie), cel 50 000 B/s/klienta; raport latencji i kosztu kolejki dużej budowli. Złoty korpus bez zmian. Pełne godzina/8 botów/2 h to K4-19. CI tylko Windows; nie przywracaj jobów Linux w tym pakiecie.
 
 ## Odstępstwa i decyzje wykonawcy
+
+Legenda kroków: `[x]` zrobione i zweryfikowane uruchomieniem, `[~]` częściowe.
+
+- Krok 2 `[~]`: ResyncRequest/kodek/router/fixture X6/D4 (`ProtocolVersion = 4`) zrobione i zielone; przegląd Opus przed integracją NIE wykonany (do zrobienia przez właściciela).
+- Krok 7 `[~]`: test 10 min (`Replicate_TwoClientsRandomEditsTenMinutes_ConstructDigestsEqual`, `Slow`), latencja dostarczania, duża budowla (300 chunków: transfer bez blokowania ticku, `TryStartNext` <5 ms) i zero alokacji uruchomione w .NET i zielone. Testy silnika (gdUnit4 w `game/tests/Replication/`, w tym pomiar odbiór→`ChunkMeshApplied` i `RemoteTools_BuildAndClear_UsesMirrorAndServerValidation`) tylko skompilowane: NOT RUN — CI/manual. Ręczny przebieg 5 min host + zdalny klient i budowla 5x5x3: NOT RUN — CI/manual.
+- Krok 8 `[~]`: build, testy .NET (bez Soak/Manual) i oba `dotnet format --verify-no-changes` uruchomione lokalnie; rebase, przegląd Opus i zielone CI przed scaleniem: do zrobienia.
+- Uwaga K3-00 (NIT): stan per gracz w budżetach usuwany przy wyjściu: `Forget(PlayerId)` dodane jako domyślna metoda interfejsów `ISnapshotBudget` i `IReplicationSendBudget` (bez łamania implementacji K3-14/K3-16), implementowane w `TokenBucketReplicationBudget`; `EntityReplication.OnPlayerLeaving` je woła. `MotionSnapshotBudget` należy do K3-14 i nie istnieje na tej gałęzi: K3-14 musi nadpisać `Forget` przy integracji.
+- Przegląd Opus (poprawki): (1) wolny transfer: klient liczy 5 s od ostatniej części (nie od startu; bezwzględny limit 120 s), reszty porzuconego transferu po żądaniu resyncu są ignorowane bez liczenia jako błędne, licznik błędnych wygasa po 30 s; serwer traktuje resync aktywnego transferu jako restart (nowa część 0). (2) Odmowy resyncu są ciche, więc klient powtarza żądanie z narastającym opóźnieniem 2/4/8/16 s do odpowiedzi (`ResyncTracker`, także w `EntityMirror`). Odstępstwo od decyzji 5: termin 5 s dotyczy bezczynności transferu, a nie jego całości, bo wspólny budżet 27 000 B/s wydłuża duże budowle. (3) `ServerReplicationSource` bez alokacji, test zera alokacji używa go i potwierdza gałąź delty (ACK w pętli). (5) `ResetKnown` wysyła `EntityDespawn` dla wszystkich znanych bytów.
+- Limit 8 MiB/klienta kolejki niezawodnej (decyzja 6) NIE jest egzekwowany: ograniczają ją `MaxStagedBytesPerClient` i bufor 256 operacji na transfer; pełne wyliczenie bajtów kolejki transportu jest poza tym pakietem.
+- Domyślne metody `Forget` w interfejsach szwu K3-00 (`ISnapshotBudget`, `IReplicationSendBudget`) zaakceptował właściciel K3-00 (Opus).
 
 ## Pułapki
 
