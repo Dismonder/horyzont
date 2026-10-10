@@ -63,7 +63,7 @@ Predykcja/interpolacja, delty i lustra, cache/replikacja terenu, Steam i UI; bez
 
 ## Kroki
 
-- [ ] 0. Sprawdź bazę bramki K2 oraz X1–X11; domyślne decyzje właściciela obowiązują bez odpowiedzi.
+- [x] 0. Sprawdź bazę bramki K2 oraz X1–X11; domyślne decyzje właściciela obowiązują bez odpowiedzi.
 - [ ] 1. Napisz akceptację szwów i regresji przed kodem; nie zmieniaj testów pakietów 14…18 bez zgody.
 - [ ] 2. S1–S4: dispatch, lista routera, nazwa testu i wspólny budżet, bez Core i bumpu protokołu.
 - [ ] 3. S5–S8: pełny sink, readiness, viewers i neutralne narzędzia; zachować zachowanie K2.
@@ -75,6 +75,9 @@ Predykcja/interpolacja, delty i lustra, cache/replikacja terenu, Steam i UI; bez
 S1–S9 gotowe, pełne build/test/format/smoke zielone, zero zmian zachowania host/solo/`--connect`, brak zmian Core/protokołu, wersja 3. Opus przegląda; pakiety mogą ruszyć równolegle.
 
 ## Odstępstwa i decyzje wykonawcy
+
+- Decyzja użytkownika: GPT-6.1 Sol pisze testy i implementuje; Opus 5.5 przegląda. Praca na `pakiet/k3-00-szwy`, baza `91de59d` = bramka K2. Bez pushowania.
+- Na polecenie użytkownika nie uruchamiamy Godota, gdUnit ani smoke silnika na jedynym runnerze CI. Testy silnika zostaną napisane i skompilowane; wykonanie i odbiór pozostają dla CI i Opus.
 
 ## Pułapki
 
