@@ -1,3 +1,4 @@
+using Horyzont.Core.Ids;
 using Horyzont.Core.Motion;
 
 using Microsoft.Extensions.Logging;
@@ -22,6 +23,9 @@ public sealed class PredictionBuffer
     private bool _hasAcked;
     private uint _lastAcked;
     private bool _pauseLogged;
+    private bool _hasSnapshot;
+    private uint _lastSnapshotId;
+    private Tick _lastServerTick;
 
     /// <summary>Initializes a new instance of the <see cref="PredictionBuffer"/> class.</summary>
     /// <param name="policy">Correction thresholds; <c>MaxUnacknowledged</c> must be in 1..<see cref="Capacity"/>.</param>
@@ -79,8 +83,33 @@ public sealed class PredictionBuffer
     /// <param name="server">The server state after that input.</param>
     /// <returns>Whether the prediction was right, or the body must be corrected.</returns>
     public AckOutcome Acknowledge(uint seq, in PredictedState server)
+        => AcknowledgeCore(seq, server, false);
+
+    /// <summary>
+    /// Reconciles a validated snapshot. Snapshot freshness is independent of input progress:
+    /// neutral server steps can change the body without advancing the acknowledged sequence.
+    /// </summary>
+    /// <param name="own">Own state accepted by <see cref="OwnStateValidator"/>.</param>
+    /// <param name="pitch">Local view pitch, which snapshots do not carry.</param>
+    /// <param name="onFloor">Floor state corresponding to the server movement mode.</param>
+    /// <returns>Whether to correct the body; stale snapshots do not change the history.</returns>
+    public AckOutcome Reconcile(in OwnState own, float pitch, bool onFloor)
     {
-        if (_hasAcked && seq <= _lastAcked)
+        if ((_hasSnapshot && (own.SnapshotId <= _lastSnapshotId || own.ServerTick < _lastServerTick))
+            || (_hasAcked && own.LastProcessedInputSeq < _lastAcked))
+        {
+            return AckOutcome.Stale;
+        }
+
+        _hasSnapshot = true;
+        _lastSnapshotId = own.SnapshotId;
+        _lastServerTick = own.ServerTick;
+        return AcknowledgeCore(own.LastProcessedInputSeq, own.ToPredicted(pitch, onFloor), true);
+    }
+
+    private AckOutcome AcknowledgeCore(uint seq, in PredictedState server, bool freshSnapshot)
+    {
+        if (_hasAcked && (seq < _lastAcked || (seq == _lastAcked && !freshSnapshot)))
         {
             return AckOutcome.Stale;
         }
@@ -164,6 +193,9 @@ public sealed class PredictionBuffer
         Count = 0;
         _hasAcked = false;
         _lastAcked = 0;
+        _hasSnapshot = false;
+        _lastSnapshotId = 0;
+        _lastServerTick = default;
         _pauseLogged = false;
         LastPositionError = 0f;
         LastVelocityError = 0f;

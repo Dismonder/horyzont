@@ -12,6 +12,35 @@ namespace Horyzont.Client.Tests.Movement;
 
 public sealed class OwnStateValidatorTests
 {
+    [Theory]
+    [InlineData(3)]
+    [InlineData(PredictionBuffer.Capacity)]
+    public void Reconcile_AsymmetricInputLoss_AcceptsNeutralServerStepsWithUnchangedAck(int pending)
+    {
+        var validator = Validator(sent: 200);
+        var buffer = new PredictionBuffer(new CorrectionPolicy(), NullLogger<PredictionBuffer>.Instance);
+        var airborne = new PredictedState(new Vector3(4020f, 0f, 0f), -Vector3.UnitX, Quaternion.Identity, 0f, MovementMode.Falling, false);
+        buffer.Record(1, MotorInput.Neutral(0f, 0f), airborne);
+        Assert.Equal(AckOutcome.InSync, buffer.Acknowledge(1, airborne));
+        for (uint seq = 2; seq <= pending + 1; seq++)
+        {
+            Assert.True(buffer.Record(seq, MotorInput.Neutral(0f, 0f), airborne));
+        }
+
+        // Client inputs are lost, but server snapshots arrive every three ticks.
+        for (uint id = 10; id < 15; id++)
+        {
+            var elapsed = (id - 9) * 3f / 60f;
+            var feet = airborne.Feet - (Vector3.UnitX * (elapsed + (4.905f * elapsed * elapsed)));
+            var velocity = -Vector3.UnitX * (1f + (9.81f * elapsed));
+            var snapshot = Snap(id: id, tick: 100 + ((id - 9) * 3), ack: 1,
+                entities: State(position: feet, velocity: velocity, motion: (byte)MovementMode.Falling));
+            Assert.Equal(OwnStateVerdict.Accepted, validator.Validate(snapshot, out var own));
+            Assert.Equal(AckOutcome.Correct, buffer.Reconcile(own, 0f, false));
+            Assert.Equal(pending, buffer.Count);
+        }
+    }
+
     private static readonly EntityId _own = new(7);
     private static readonly PlanetId _planet = new(1);
     private static readonly PlanetId[] _planets = [new PlanetId(1), new PlanetId(2)];

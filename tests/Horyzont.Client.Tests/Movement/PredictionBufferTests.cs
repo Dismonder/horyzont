@@ -1,6 +1,7 @@
 using System.Numerics;
 
 using Horyzont.Client.Movement;
+using Horyzont.Core.Ids;
 using Horyzont.Core.Motion;
 using Horyzont.Core.Protocol.Messages;
 
@@ -11,6 +12,25 @@ namespace Horyzont.Client.Tests.Movement;
 
 public sealed class PredictionBufferTests
 {
+    [Fact]
+    public void Reconcile_SnapshotFreshnessAndAckProgress_AreIndependent()
+    {
+        var buffer = Filled(5);
+        var state = StateFor(3);
+        var own = new OwnState(new PlanetId(1), 0, state.Feet, state.BodyRotation, state.Velocity, state.Mode, 3, 10, new Tick(100));
+        Assert.Equal(AckOutcome.InSync, buffer.Reconcile(own, 0f, true));
+        Assert.Equal(AckOutcome.Stale, buffer.Reconcile(own with { Feet = Vector3.Zero }, 0f, true));
+        Assert.Equal(AckOutcome.Stale, buffer.Reconcile(own with { SnapshotId = 11, ServerTick = new Tick(99) }, 0f, true));
+        Assert.Equal(AckOutcome.Stale, buffer.Reconcile(own with { SnapshotId = 11, LastProcessedInputSeq = 2 }, 0f, true));
+        Assert.Equal(AckOutcome.Correct, buffer.Reconcile(own with { SnapshotId = 11, ServerTick = new Tick(103), Feet = state.Feet + Vector3.UnitX }, 0f, true));
+        Assert.Equal(2, buffer.Count);
+
+        buffer.Clear();
+        buffer.Record(1, InputFor(1), StateFor(1));
+        var restart = own with { SnapshotId = 1, ServerTick = new Tick(1), LastProcessedInputSeq = 1, Feet = StateFor(1).Feet };
+        Assert.Equal(AckOutcome.InSync, buffer.Reconcile(restart, 0f, true));
+    }
+
     private static MotorInput InputFor(uint seq) => new(seq / 100f, 1f, 0f, 0f, InputButtons.None);
 
     /// <summary>The state the client predicts after input <paramref name="seq"/>: 0.1 m per input along X.</summary>
