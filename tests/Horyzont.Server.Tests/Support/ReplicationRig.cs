@@ -10,6 +10,7 @@ using Horyzont.Game.Server.Replication;
 using Horyzont.Net.Transport.InMemory;
 using Horyzont.Server.Replication;
 using Horyzont.Testing;
+using Horyzont.Testing.Ships;
 
 using Microsoft.Extensions.Time.Testing;
 
@@ -119,6 +120,11 @@ internal sealed class ReplicationRig : IAsyncDisposable
             id, FrameRef.Of(id), 0, feet, Quaternion.Identity, 0, Vector3.Zero, MovementMode.Walking, lastInput);
     }
 
+    /// <summary>Places a character in any frame (a construct frame for K5-20), its body still on the home planet.</summary>
+    public void PlaceIn(PlayerId player, FrameRef frame, Vector3 local, uint parentSeq = 0) =>
+        Characters.States[player] = new ServerCharacterState(
+            WorldFactory.HomePlanet, frame, parentSeq, local, Quaternion.Identity, 0, Vector3.Zero, MovementMode.Walking, 0);
+
     public EntityId EntityOf(PlayerId player) =>
         Runtime.State.Players.TryGet(player, out var state) ? state.Entity : throw new InvalidOperationException("Unknown player.");
 
@@ -134,6 +140,23 @@ internal sealed class ReplicationRig : IAsyncDisposable
 
         return id;
     }
+
+    /// <summary>
+    /// Creates a one-block construct and switches it to ship mode in place (a runtime starts only from a fresh world, so a ship header
+    /// cannot be loaded; K5-23's ShipModeSetOp will replace <see cref="TestShips.ForceMode"/>).
+    /// </summary>
+    public EntityId AddShip(Vector3 origin, Quaternion? rotation = null)
+    {
+        var id = Runtime.State.EntityIds.PeekNext();
+        Runtime.Simulation.ApplyServerOperation(new ConstructCreateOp(
+            id, FrameRef.Of(WorldFactory.HomePlanet), origin, rotation ?? Quaternion.Identity, new CellPos(0, 0, 0), Stone));
+        SetMode(id, ConstructMode.Ship);
+        return id;
+    }
+
+    public void SetMode(EntityId construct, ConstructMode mode) =>
+        TestShips.ForceMode(
+            Runtime.State.Constructs.TryGet(construct, out var found) ? found! : throw new InvalidOperationException("Unknown construct."), mode);
 
     public void Step(int frames = 1) => Rig.StepMany(frames);
 

@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Reflection;
 
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
@@ -71,5 +72,19 @@ public static class TestShips
         }
 
         return builder.Build();
+    }
+
+    /// <summary>
+    /// Switches the mode of a live construct in place, the effect K5-23's <c>ShipModeSetOp</c> will have. Until that operation exists
+    /// only tests do this, through the backing field of the read-only <see cref="Construct.Mode"/>.
+    /// </summary>
+    /// <param name="construct">The construct.</param>
+    /// <param name="mode">The new mode.</param>
+    public static void ForceMode(Construct construct, ConstructMode mode)
+    {
+        ArgumentNullException.ThrowIfNull(construct);
+        var field = typeof(Construct).GetField("<Mode>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("Construct.Mode has no auto-property backing field any more.");
+        field.SetValue(construct, mode);
     }
 }
