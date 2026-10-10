@@ -98,6 +98,9 @@ public sealed partial class ServerRuntime
             TaskStep("5 flush journal", () => _writer!.FlushAsync(), _options.FlushTimeout, timeoutIsError: true, skip: !hasWriter, checkResult: true),
             TaskStep("6 dispose writer", () => _writer!.DisposeAsync().AsTask(), _options.DisposeTimeout, timeoutIsError: true, skip: !hasWriter),
             TaskStep("7 shut terrain down", async () => await TerrainShutdownAsync(), _options.TerrainShutdownTimeout, timeoutIsError: false),
+            TaskStep(
+                "7a shut game systems down", RunAfterTerrainShutdownAsync, _options.TerrainShutdownTimeout, timeoutIsError: false,
+                skip: _afterTerrainShutdown.Count == 0),
             new()
             {
                 // Off the main thread: LiteNetLib stops its thread with an unbounded join. A transport that hangs is left to the process exit.
@@ -166,6 +169,31 @@ public sealed partial class ServerRuntime
                 }
             },
         };
+    }
+
+    private async Task RunAfterTerrainShutdownAsync()
+    {
+        // Every registered task runs even if an earlier one throws; each failure is logged and the step fails with all of them.
+        List<Exception>? failures = null;
+        foreach (var task in _afterTerrainShutdown)
+        {
+            try
+            {
+                await task().ConfigureAwait(true);
+            }
+#pragma warning disable CA1031 // One failing game system must not keep the others from shutting down.
+            catch (Exception exception)
+#pragma warning restore CA1031
+            {
+                _logger.AfterTerrainShutdownTaskFailed(exception);
+                (failures ??= []).Add(exception);
+            }
+        }
+
+        if (failures is not null)
+        {
+            throw new AggregateException(failures);
+        }
     }
 
     private async Task TerrainShutdownAsync()

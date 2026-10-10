@@ -60,6 +60,57 @@ public sealed class ShutdownSequenceTests
     }
 
     [Fact]
+    public async Task Order_AfterTerrainTask_RunsAsStep7aBetweenTerrainAndTransport()
+    {
+        await using var rig = new ServerRig();
+        var events = new List<string>();
+        rig.Runtime.AddAfterTerrainShutdown(() =>
+        {
+            events.Add("game system");
+            return Task.CompletedTask;
+        });
+        await rig.StartAsync();
+        rig.Terrain.Last.OnShutdown = () => events.Add("terrain");
+
+        await rig.StopAsync();
+
+        Assert.Equal(
+            [
+                "1 session shutdown", "2 drain session and transport", "3a participants shutdown", "3b leave all online players", "4 checkpoint",
+                "5 flush journal", "6 dispose writer", "7 shut terrain down", "7a shut game systems down", "8 dispose transport",
+            ],
+            rig.Runtime.CompletedShutdownSteps);
+        Assert.Equal(["terrain", "game system"], events);
+        Assert.Equal(0, rig.Runtime.ExitCode);
+    }
+
+    [Fact]
+    public async Task AfterTerrainTasks_OneThrows_TheOthersStillRunAndTheStepIsLoggedOnly()
+    {
+        await using var rig = new ServerRig();
+        var ran = new List<string>();
+        rig.Runtime.AddAfterTerrainShutdown(() => throw new InvalidOperationException("first"));
+        rig.Runtime.AddAfterTerrainShutdown(() =>
+        {
+            ran.Add("second");
+            return Task.FromException(new InvalidOperationException("second fails too"));
+        });
+        rig.Runtime.AddAfterTerrainShutdown(() =>
+        {
+            ran.Add("third");
+            return Task.CompletedTask;
+        });
+        await rig.StartAsync();
+
+        await rig.StopAsync();
+
+        Assert.Equal(["second", "third"], ran);
+        Assert.Contains("7a shut game systems down", rig.Runtime.CompletedShutdownSteps);
+        Assert.Contains("8 dispose transport", rig.Runtime.CompletedShutdownSteps);
+        Assert.Equal(0, rig.Runtime.ExitCode);
+    }
+
+    [Fact]
     public async Task Order_DedicatedServer_SendsServerShutdownCode()
     {
         await using var rig = new ServerRig(mode: ProcessMode.DedicatedServer);

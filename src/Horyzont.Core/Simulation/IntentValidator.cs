@@ -43,16 +43,16 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.RayOriginMismatch;
         }
 
-        if (!bucket.HasToken)
+        if (!bucket.HasToken || (intent is TerrainToolIntent && !buckets.TerrainWindow.CanAccept(state.CurrentTick.Value)))
         {
             return RejectReason.RateLimited;
         }
 
         return intent switch
         {
-            TerrainToolIntent tool => ValidateTerrainTool(tool, hasPlanet, playerPlanet, out facts),
+            TerrainToolIntent tool => ValidateTerrainTool(tool, hasPlanet, playerPlanet, eye, out facts),
             PlaceBlockIntent { Target: ConstructFaceTarget face } place => ValidatePlaceOnFace(place, face, hasPlanet, playerPlanet, eye, out facts),
-            PlaceBlockIntent { Target: TerrainTarget target } place => ValidatePlaceOnTerrain(place, target, hasPlanet, playerPlanet, out facts),
+            PlaceBlockIntent { Target: TerrainTarget target } place => ValidatePlaceOnTerrain(place, target, hasPlanet, playerPlanet, eye, out facts),
             RemoveBlockIntent remove => ValidateRemove(remove, hasPlanet, playerPlanet, eye, out facts),
             _ => RejectReason.InvalidParameters,
         };
@@ -89,7 +89,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
         }
     }
 
-    private RejectReason ValidateTerrainTool(TerrainToolIntent tool, bool hasPlanet, PlanetId playerPlanet, out IntentFacts facts)
+    private RejectReason ValidateTerrainTool(TerrainToolIntent tool, bool hasPlanet, PlanetId playerPlanet, Vector3 eye, out IntentFacts facts)
     {
         facts = default;
         if (!state.Planets.TryGet(tool.Planet, out var planet))
@@ -116,6 +116,11 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
         if (!terrain.Raycast(tool.Planet, tool.RayOrigin, tool.RayDirection, rules.ReachMeters, out var hit))
         {
             return RejectReason.NoHit;
+        }
+
+        if (Vector3.Distance(eye, hit.Position) > rules.ReachMeters)
+        {
+            return RejectReason.OutOfReach;
         }
 
         if (ConstructRaycast.Raycast(state.Constructs, FrameRef.Of(tool.Planet), tool.RayOrigin, tool.RayDirection, hit.Distance, out var blocker)
@@ -204,6 +209,18 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.AreaNotLoaded;
         }
 
+        // The parent chain resolved to the planet above, so this fails only when it is nested deeper than the overlap test follows:
+        // such a construct cannot be checked against its neighbours, hence no block may be added to it.
+        if (!BlockOverlap.TryGetConstructPose(state.Constructs, construct, FrameRef.Of(planet), out _, out var planetRotation))
+        {
+            return RejectReason.WrongPlanet;
+        }
+
+        if (BlockOverlap.OverlapsConstruct(state.Constructs, FrameRef.Of(planet), cellCenter, planetRotation, construct.Id))
+        {
+            return RejectReason.CellOccupied;
+        }
+
         if (CellHitsPlayer(planet, construct.Origin, construct.Rotation, construct, cell))
         {
             return RejectReason.IntersectsPlayer;
@@ -214,7 +231,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
     }
 
     private RejectReason ValidatePlaceOnTerrain(
-        PlaceBlockIntent place, TerrainTarget target, bool hasPlanet, PlanetId playerPlanet, out IntentFacts facts)
+        PlaceBlockIntent place, TerrainTarget target, bool hasPlanet, PlanetId playerPlanet, Vector3 eye, out IntentFacts facts)
     {
         facts = default;
         var block = CheckBlockType(place);
@@ -238,18 +255,27 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.NoHit;
         }
 
+        if (Vector3.Distance(eye, hit.Position) > rules.ReachMeters)
+        {
+            return RejectReason.OutOfReach;
+        }
+
         if (ConstructRaycast.Raycast(state.Constructs, FrameRef.Of(target.Planet), target.RayOrigin, target.RayDirection, hit.Distance, out var blocker)
             && blocker.Distance < hit.Distance)
         {
             return RejectReason.NoLineOfSight;
         }
 
-        var rotation = OrientOnSurface(hit.Position, target.LookForward, target.RayDirection);
-        var origin = hit.Position - Vector3.Transform(new Vector3(0.5f, 0f, 0.5f), rotation);
+        ConstructPlacement.OnTerrain(hit.Position, target.LookForward, target.RayDirection, out var origin, out var rotation);
         var cellCenter = origin + Vector3.Transform(new Vector3(0.5f, 0.5f, 0.5f), rotation);
         if (!terrain.IsAreaLoaded(target.Planet, cellCenter, 1f))
         {
             return RejectReason.AreaNotLoaded;
+        }
+
+        if (BlockOverlap.OverlapsConstruct(state.Constructs, FrameRef.Of(target.Planet), cellCenter, rotation, null))
+        {
+            return RejectReason.CellOccupied;
         }
 
         if (CellHitsPlayer(target.Planet, origin, rotation, null, default))
@@ -363,8 +389,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
                 continue;
             }
 
-            Geometry.CapsuleAxis(feet, rules, out var bottom, out var top);
-            if (Geometry.DistanceToSegment(center, bottom, top) < rules.PlayerCapsuleRadius + radius)
+            if (PlayerCapsule.IntersectsSphere(feet, center, radius, rules))
             {
                 return true;
             }
@@ -376,9 +401,6 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
     /// <summary>True when a cell (box in the space of a construct pose) intersects the capsule of an online player.</summary>
     private bool CellHitsPlayer(PlanetId planet, Vector3 origin, Quaternion rotation, Construct? construct, CellPos cell)
     {
-        var inverse = Quaternion.Inverse(rotation);
-        var boxMin = new Vector3(cell.X, cell.Y, cell.Z);
-        var boxMax = boxMin + Vector3.One;
         var players = state.Players.All;
         for (var i = 0; i < players.Count; i++)
         {
@@ -388,26 +410,23 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
                 continue;
             }
 
-            Geometry.CapsuleAxis(feet, rules, out var bottom, out var top);
-            Vector3 localBottom, localTop;
-            if (construct is null)
-            {
-                localBottom = Vector3.Transform(bottom - origin, inverse);
-                localTop = Vector3.Transform(top - origin, inverse);
-            }
-            else
-            {
-                localBottom = PlanetToConstruct(construct, bottom);
-                localTop = PlanetToConstruct(construct, top);
-            }
-
-            if (Geometry.SegmentBoxDistance(localBottom, localTop, boxMin, boxMax) < rules.PlayerCapsuleRadius)
+            var hit = construct is null
+                ? PlayerCapsule.IntersectsCell(feet, origin, rotation, cell, rules)
+                : IntersectsNestedCell(construct, feet, cell);
+            if (hit)
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /// <summary>Capsule against a cell of a construct whose pose is composed along its parent chain.</summary>
+    private bool IntersectsNestedCell(Construct construct, Vector3 feet, CellPos cell)
+    {
+        PlayerCapsule.Axis(feet, rules, out var bottom, out var top);
+        return PlayerCapsule.IntersectsLocalCell(PlanetToConstruct(construct, bottom), PlanetToConstruct(construct, top), cell, rules);
     }
 
     private Vector3 ToPlanet(Construct construct, Vector3 local)
@@ -436,38 +455,4 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
         Face.PosZ => Vector3.UnitZ,
         _ => -Vector3.UnitZ,
     };
-
-    /// <summary>
-    /// Rotation of a new construct on the terrain: local +Y along <see cref="TerrainMath.UpAt"/>, local −Z along the
-    /// look direction projected on the tangent plane (fallbacks: the ray direction, then the planet X axis, then Z).
-    /// </summary>
-    internal static Quaternion OrientOnSurface(Vector3 hit, Vector3 lookForward, Vector3 rayDirection)
-    {
-        var up = TerrainMath.UpAt(hit);
-        var forward = Geometry.ProjectOnPlane(lookForward, up);
-        if (forward.Length() < 1e-3f)
-        {
-            forward = Geometry.ProjectOnPlane(rayDirection, up);
-        }
-
-        if (forward.Length() < 1e-3f)
-        {
-            forward = Geometry.ProjectOnPlane(Vector3.UnitX, up);
-        }
-
-        if (forward.Length() < 1e-3f)
-        {
-            forward = Geometry.ProjectOnPlane(Vector3.UnitZ, up);
-        }
-
-        forward = Vector3.Normalize(forward);
-        var zAxis = -forward;
-        var xAxis = Vector3.Normalize(Vector3.Cross(up, zAxis));
-        var matrix = new Matrix4x4(
-            xAxis.X, xAxis.Y, xAxis.Z, 0f,
-            up.X, up.Y, up.Z, 0f,
-            zAxis.X, zAxis.Y, zAxis.Z, 0f,
-            0f, 0f, 0f, 1f);
-        return Quaternion.Normalize(Quaternion.CreateFromRotationMatrix(matrix));
-    }
 }

@@ -31,7 +31,38 @@ public sealed class ServerSimulationTests
     }
 
     [Fact]
-    public void Submit_SixthTerrainEditInOneTick_RejectedUntilTwelveTicks()
+    public void Applied_SubmitAndServerOperations_RaisedAfterJournalAndNeverForRejected()
+    {
+        var f = new SimFixture();
+        var seen = new List<(OpId Id, int Journaled)>();
+        f.Sim.Applied += applied => seen.Add((applied.Id, f.Journal.Entries.Count));
+        var p = f.Join();
+
+        f.Sim.Submit(p, f.Dig(p, f.Ground(2)));
+        f.Sim.Submit(p, f.Dig(p, f.Ground(2)) with { RayDirection = Vector3.UnitY });
+
+        Assert.Equal([new OpId(1), new OpId(2)], seen.Select(s => s.Id));
+        Assert.Equal([1, 2], seen.Select(s => s.Journaled));
+    }
+
+    [Fact]
+    public void Applied_ThrowingSubscriber_DoesNotFaultOrUndoTheOperation()
+    {
+        var f = new SimFixture();
+        f.Sim.Applied += _ => throw new InvalidOperationException("subscriber");
+        var p = f.Join();
+
+        var results = Enumerable.Range(0, 5).Select(_ => f.Sim.Submit(p, f.Dig(p, f.Ground(2)))).ToList();
+
+        Assert.All(results, r => Assert.True(r.IsAccepted));
+        Assert.False(f.Sim.IsFaulted);
+        Assert.Equal(6, f.Journal.Entries.Count);
+        Assert.Equal(RejectReason.RateLimited, f.Sim.Submit(p, f.Dig(p, f.Ground(2))).Reason);
+        Assert.Equal(6, f.Journal.Entries.Count);
+    }
+
+    [Fact]
+    public void Submit_SixthTerrainEditInOneTick_RejectedUntilTheWindowOfOneSecondPasses()
     {
         var f = new SimFixture();
         var p = f.Join();
@@ -42,6 +73,12 @@ public sealed class ServerSimulationTests
 
         Assert.Equal(RejectReason.RateLimited, f.Sim.Submit(p, f.Dig(p, f.Ground(2))).Reason);
         f.Ticks(11);
+        Assert.Equal(RejectReason.RateLimited, f.Sim.Submit(p, f.Dig(p, f.Ground(2))).Reason);
+
+        // K2-13 W3 (gate decision D13): the bucket alone would accept at tick 12, the sliding window holds the five edits until tick 60.
+        f.Ticks(1);
+        Assert.Equal(RejectReason.RateLimited, f.Sim.Submit(p, f.Dig(p, f.Ground(2))).Reason);
+        f.Ticks(47);
         Assert.Equal(RejectReason.RateLimited, f.Sim.Submit(p, f.Dig(p, f.Ground(2))).Reason);
         f.Ticks(1);
         Assert.True(f.Sim.Submit(p, f.Dig(p, f.Ground(2))).IsAccepted);

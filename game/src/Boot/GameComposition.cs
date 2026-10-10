@@ -12,6 +12,8 @@ using Horyzont.Core.World;
 using Horyzont.Game.Client;
 using Horyzont.Game.Client.Character;
 using Horyzont.Game.Client.Sky;
+using Horyzont.Game.Client.Tools;
+using Horyzont.Game.Constructs;
 using Horyzont.Game.Planet;
 using Horyzont.Game.Planet.Generators;
 using Horyzont.Game.Planet.Rendering;
@@ -39,6 +41,7 @@ namespace Horyzont.Game.Boot;
 public sealed class GameComposition
 {
     private const string RootScene = "res://scenes/Root.tscn";
+    private const string ToolsScene = "res://scenes/client/tools/Tools.tscn";
 
     /// <summary>How long the quit coordinator waits for the final cleanup (the client transport) before it quits anyway.</summary>
     private static readonly TimeSpan _releaseTimeout = TimeSpan.FromSeconds(5);
@@ -68,8 +71,10 @@ public sealed class GameComposition
         LaunchOptions launch, GameEnvironment env, Node root, ITransport? serverTransport, ITransport? clientTransport, ServerRuntime? server,
         ClientRuntime? client, ServerNode? serverNode, ClientNode? clientNode, VoxelServerTerrainFactory? terrainFactory, OwnTerrainProvider? ownTerrain,
         string? savesDir, ServerConfig? config, LocalProfile? profile, Guid worldId, bool worldIdFromConfig, ServerCharactersBinder? characters,
-        LocalPlayer? localPlayer, ClientDayNight? dayNight)
+        LocalPlayer? localPlayer, ClientDayNight? dayNight, HostConstructs? constructs, ToolNode? tools)
     {
+        Constructs = constructs;
+        Tools = tools;
         _characters = characters;
         LocalPlayer = localPlayer;
         DayNight = dayNight;
@@ -128,6 +133,12 @@ public sealed class GameComposition
     /// <summary>Gets the sun and sky of the client; null in dedicated server mode and with characters off.</summary>
     public ClientDayNight? DayNight { get; }
 
+    /// <summary>Gets the constructs of the server (K2-12 wired in by K2-13); null in client mode.</summary>
+    public HostConstructs? Constructs { get; }
+
+    /// <summary>Gets the tools of the local player (K2-13); null in dedicated server mode, in client mode and with characters off.</summary>
+    public ToolNode? Tools { get; }
+
     /// <summary>Gets the movement rules the server characters and the local player share in this process.</summary>
     public MovementRules Movement { get; private init; } = new();
 
@@ -147,11 +158,16 @@ public sealed class GameComposition
     /// <param name="launch">The parsed command line.</param>
     /// <param name="env">The process around the game.</param>
     /// <returns>The composition.</returns>
-    /// <exception cref="ArgumentException">The server configuration file is missing or invalid.</exception>
+    /// <exception cref="ArgumentException">The server configuration file is missing or invalid, or <c>--dev-tools-demo</c> is used in a build that is not a development build.</exception>
     public static GameComposition Create(LaunchOptions launch, GameEnvironment env)
     {
         ArgumentNullException.ThrowIfNull(launch);
         ArgumentNullException.ThrowIfNull(env);
+        if (launch.DevToolsDemo && !env.DevBuild)
+        {
+            throw new ArgumentException("--dev-tools-demo works only in a development build (debug build of the game).");
+        }
+
         var scene = GD.Load<PackedScene>(RootScene) ?? throw new InvalidOperationException($"Scene {RootScene} not found.");
         var root = scene.Instantiate<Node>();
         var serverNode = root.GetNode<ServerNode>("Server");
@@ -182,6 +198,8 @@ public sealed class GameComposition
         ServerCharactersBinder? characters = null;
         LocalPlayer? localPlayer = null;
         ClientDayNight? dayNight = null;
+        HostConstructs? constructs = null;
+        ToolNode? tools = null;
         ServerRuntime? server = null;
         ClientRuntime? client = null;
         ITransport? serverTransport = null;
@@ -247,6 +265,7 @@ public sealed class GameComposition
                     break;
             }
 
+            var catalog = BlockContentLoader.Load();
             var runtimeOptions = new ServerRuntimeOptions
             {
                 WorldPath = worldPath,
@@ -260,6 +279,7 @@ public sealed class GameComposition
                 Listen = listen,
                 LocalClientEndpoint = dedicated ? null : new InMemoryEndpoint("local"),
                 CheckpointInterval = dedicated ? config!.CheckpointInterval : TimeSpan.FromSeconds(60),
+                BlockTypeKeys = catalog.BlockTypeKeys,
                 MaterialKeys = TerrainMaterials.Keys,
                 RecoverFromCheckpoint = launch.RecoverFromCheckpoint,
                 Rules = rules,
@@ -267,7 +287,9 @@ public sealed class GameComposition
             };
             var seed = launch.GalaxySeed;
             server = new ServerRuntime(
-                launch.Mode, runtimeOptions, serverTransport, factory, () => NewWorld(worldId, seed), env.Time, loggers);
+                launch.Mode, runtimeOptions, serverTransport, factory, () => NewWorld(worldId, seed, catalog.BlockTypeKeys), env.Time, loggers);
+            constructs = new HostConstructs(serverNode!, catalog, env.Render, loggers);
+            constructs.Register(server);
 
             if (env.Characters)
             {
@@ -301,6 +323,10 @@ public sealed class GameComposition
             if (env.Characters)
             {
                 (localPlayer, dayNight) = CreateClientCharacter(clientNode, client, server, env, rules, movement, devFlight);
+                if (isHostLocal)
+                {
+                    tools = CreateTools(clientNode, client, server!, factory!, localPlayer, rules, env, launch.DevToolsDemo);
+                }
             }
 
             if (!isHostLocal)
@@ -316,7 +342,7 @@ public sealed class GameComposition
 
         var composition = new GameComposition(
             launch, env, root, serverTransport, clientTransport, server, client, serverNode, clientNode, factory, own, savesDir, config, profile,
-            worldId, fromConfig, characters, localPlayer, dayNight)
+            worldId, fromConfig, characters, localPlayer, dayNight, constructs, tools)
         {
             Movement = movement,
         };
@@ -388,6 +414,36 @@ public sealed class GameComposition
         }
 
         return (player, sky);
+    }
+
+    /// <summary>
+    /// The tools of the local player of a solo or host process (K2-13): they read the authoritative terrain and state of the server in
+    /// this process, so the edit prediction is <c>NoEditPrediction</c> (decision 7).
+    /// </summary>
+    private static ToolNode CreateTools(
+        ClientNode clientNode, ClientRuntime client, ServerRuntime server, VoxelServerTerrainFactory factory, LocalPlayer player, GameRules rules,
+        GameEnvironment env, bool demo)
+    {
+        var scene = GD.Load<PackedScene>(ToolsScene) ?? throw new InvalidOperationException($"Scene {ToolsScene} not found.");
+        var tools = scene.Instantiate<ToolNode>();
+        tools.Initialize(client, server, () => factory.Terrain!.Service, player, rules, env.Loggers);
+        if (env.Render)
+        {
+            tools.AddChild(new TerrainToolPreview(tools));
+            tools.AddChild(new BlockGhostPreview(tools));
+            tools.AddChild(new ToolHud(tools));
+        }
+
+        if (demo)
+        {
+            var script = new ToolsDemo(tools, player.InputSource);
+            player.InputSource = script;
+            tools.InputSource = script;
+            tools.AddChild(script);
+        }
+
+        clientNode.AddChild(tools);
+        return tools;
     }
 
     private QuitCoordinator? Quit { get; set; }
@@ -524,6 +580,7 @@ public sealed class GameComposition
         }
 
         _ownTerrain?.Dispose();
+        Constructs?.Dispose();
         if (Server is not null && !_serverRan)
         {
             // The world did not start: the shutdown sequence never ran, so the caller owns the server transport.
@@ -545,12 +602,12 @@ public sealed class GameComposition
 
     private static string WorldPathOf(string savesDir, Guid id) => Path.Combine(savesDir, id.ToString("D"), "world.db");
 
-    private static WorldState NewWorld(Guid id, ulong seed) =>
+    private static WorldState NewWorld(Guid id, ulong seed, IReadOnlyList<string> blockTypeKeys) =>
         WorldState.CreateNew(
             new Horyzont.Core.Ids.WorldId(id),
             seed,
             [PlanetGenesis.CreatePlanet(seed, PlanetGenesis.HomePlanetIndex, GeneratorProfiles.Current)],
-            [],
+            blockTypeKeys,
             TerrainMaterials.Keys);
 
     private async Task<int?> StartServerAsync(CancellationToken ct)
@@ -576,11 +633,13 @@ public sealed class GameComposition
         {
             case WorldStartResult.Started:
                 _serverRan = true;
+                Constructs?.Attach(Server!);
                 RememberLastWorld();
                 _env.Print($"SERVER READY world={world} state hash={StateHasher.Hash(Server.State).ToString("X16", CultureInfo.InvariantCulture)}");
                 return null;
             case WorldStartResult.StartedReadOnly readOnly:
                 _serverRan = true;
+                Constructs?.Attach(Server!);
                 RememberLastWorld();
                 _env.Print($"SERVER READ-ONLY world={world} reason={readOnly.Reason}: {readOnly.Message}");
                 return null;

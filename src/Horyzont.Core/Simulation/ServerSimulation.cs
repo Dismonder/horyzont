@@ -53,6 +53,13 @@ public sealed class ServerSimulation
     /// <summary>Game rules.</summary>
     public GameRules Rules { get; }
 
+    /// <summary>
+    /// Raised on the calling thread after an operation of <see cref="Submit"/> or <see cref="ApplyServerOperation"/> was applied,
+    /// journaled and (for an intent) charged to the limiter (not for <see cref="Replay"/>). A subscriber that throws does not fault the
+    /// simulation and does not change the result: the exception is logged and swallowed, because the operation is already journaled.
+    /// </summary>
+    public event Action<AppliedOperation>? Applied;
+
     /// <summary>True after an exception while applying an operation.</summary>
     public bool IsFaulted { get; private set; }
 
@@ -83,6 +90,12 @@ public sealed class ServerSimulation
 
         var applied = ApplyAndJournal(player, operation);
         IntentValidator.BucketFor(intent, buckets!)!.Consume();
+        if (intent is TerrainToolIntent)
+        {
+            buckets!.TerrainWindow.Record(State.CurrentTick.Value);
+        }
+
+        RaiseApplied(applied);
         return IntentResult.Accepted(applied);
     }
 
@@ -131,7 +144,9 @@ public sealed class ServerSimulation
             throw new InvalidOperationException($"{operation.Kind} breaks a precondition: {failure}");
         }
 
-        return ApplyAndJournal(null, operation);
+        var applied = ApplyAndJournal(null, operation);
+        RaiseApplied(applied);
+        return applied;
     }
 
     /// <summary>Applies a <see cref="PlayerLeaveOp"/> with the current kinematics for every online player, by player id.</summary>
@@ -240,16 +255,34 @@ public sealed class ServerSimulation
     private AppliedOperation ApplyAndJournal(PlayerId? actor, Operation operation)
     {
         var id = State.LastOpId.Next;
+        AppliedOperation applied;
         try
         {
-            var applied = _applier.Apply(id, State.CurrentTick, actor, operation);
+            applied = _applier.Apply(id, State.CurrentTick, actor, operation);
             _journal.Append(new JournalEntry(applied.Id, applied.Tick, actor, operation));
-            return applied;
         }
         catch (Exception exception)
         {
             Fault(exception, id, operation.Kind);
             throw;
+        }
+
+        return applied;
+    }
+
+    // After the journal and the limiter bookkeeping: a subscriber (K2-13: the construct view of a host) sees only operations that are
+    // applied and journaled; its failure must not undo or fault anything.
+    private void RaiseApplied(AppliedOperation applied)
+    {
+        try
+        {
+            Applied?.Invoke(applied);
+        }
+#pragma warning disable CA1031 // Subscriber code is foreign; the operation is already journaled.
+        catch (Exception exception)
+#pragma warning restore CA1031
+        {
+            SimulationLog.AppliedSubscriberFailed(_logger, exception, applied.Id.Value);
         }
     }
 

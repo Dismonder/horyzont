@@ -35,7 +35,8 @@ internal sealed class SimulationServerHooks(ServerSimulation sim) : IServerGameH
     {
         sim.State.Players.TryGet(player, out var state);
         return new ServerHello(
-            sim.State.Id, sim.State.CurrentTick, TickRate, player, state!.Entity, sim.State.Planets.All, [], []);
+            sim.State.Id, sim.State.CurrentTick, TickRate, player, state!.Entity, sim.State.Planets.All, sim.State.BlockTypes.Entries,
+            sim.State.Materials.Entries);
     }
 
     public void OnPlayerReady(PlayerId player) => Ready.Add(player);

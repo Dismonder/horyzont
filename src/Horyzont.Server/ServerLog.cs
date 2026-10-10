@@ -73,6 +73,9 @@ internal static partial class ServerLog
     [LoggerMessage(EventId = 8024, Level = LogLevel.Warning, Message = "A shutdown was requested while the server was starting; the start is given up")]
     public static partial void StartAborted(this ILogger logger);
 
+    [LoggerMessage(EventId = 8025, Level = LogLevel.Error, Message = "A game system failed to shut down; the remaining systems are shut down regardless")]
+    public static partial void AfterTerrainShutdownTaskFailed(this ILogger logger, Exception exception);
+
     [LoggerMessage(EventId = 8021, Level = LogLevel.Information, Message = "Stopped; state hash={Hash}")]
     public static partial void Stopped(this ILogger logger, string hash);
 

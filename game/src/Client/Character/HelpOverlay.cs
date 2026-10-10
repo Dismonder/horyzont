@@ -14,6 +14,7 @@ public sealed partial class HelpOverlay : CanvasLayer
 {
     private const string Controls =
         "WASD move   Mouse look   Space jump   Shift sprint   V camera (3rd/1st person)   Esc free the mouse (click to capture again)\n"
+        + "Tools: 1 terrain manipulator   2 builder   LMB dig / remove block   RMB fill / place block   Wheel radius / block type   M material   R T rotate block\n"
         + "Dev builds: F fly (character)   F8 free camera   F9 camera to orbit   Wheel = free camera speed   F1 hide this";
 
     private const double RefreshSeconds = 0.25;
@@ -43,7 +44,7 @@ public sealed partial class HelpOverlay : CanvasLayer
     public override void _Ready()
     {
         _controls = new Label { Text = Controls, Position = new Vector2(12f, 8f) };
-        _status = new Label { Position = new Vector2(12f, 56f) };
+        _status = new Label { Position = new Vector2(12f, 84f) };
         foreach (var label in new[] { _controls, _status })
         {
             label.AddThemeColorOverride("font_color", Colors.White);

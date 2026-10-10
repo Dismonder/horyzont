@@ -1,0 +1,33 @@
+keys,en,pl
+TOOL_TERRAIN,Terrain manipulator,Manipulator terenu
+TOOL_BUILD,Builder,Budowanie
+TOOL_HINT_TERRAIN,"LMB dig   RMB fill   Wheel radius   M material","LPM kop   PPM zasyp   Kółko promień   M materiał"
+TOOL_HINT_BUILD,"LMB remove block   RMB place block   Wheel block type   R/T rotate","LPM usuń blok   PPM postaw blok   Kółko typ bloku   R/T obrót"
+TOOL_RADIUS,Radius,Promień
+TOOL_MATERIAL,Material,Materiał
+TOOL_BLOCK,Block,Blok
+TOOL_ORIENTATION,Orientation,Orientacja
+TOOL_WAITING,Waiting for the server,Czekam na serwer
+TOOL_LAST_REFUSAL,Last refusal,Ostatnia odmowa
+REJECT_NONE,OK,OK
+REJECT_UNKNOWN_PLAYER,Unknown player,Nieznany gracz
+REJECT_PLAYER_OFFLINE,Player offline,Gracz poza grą
+REJECT_RATE_LIMITED,Too fast,Za szybko
+REJECT_INVALID_PARAMETERS,Invalid parameters,Błędne parametry
+REJECT_RAY_ORIGIN_MISMATCH,Aim does not start at the eye,Promień nie zaczyna się w oku
+REJECT_NO_HIT,Nothing to hit,Nic nie trafiono
+REJECT_OUT_OF_REACH,Out of reach,Za daleko
+REJECT_AREA_NOT_LOADED,Terrain not loaded,Teren niezaładowany
+REJECT_BELOW_CORE,Too deep (planet core),Za głęboko (rdzeń planety)
+REJECT_OUTSIDE_ATMOSPHERE,Outside the atmosphere,Poza atmosferą
+REJECT_UNKNOWN_PLANET,Unknown planet,Nieznana planeta
+REJECT_UNKNOWN_CONSTRUCT,Unknown construct,Nieznana budowla
+REJECT_CELL_OUT_OF_BOUNDS,Out of the construct bounds,Poza granicami budowli
+REJECT_CELL_OCCUPIED,Place taken,Miejsce zajęte
+REJECT_CELL_EMPTY,Nothing to remove,Nie ma bloku
+REJECT_UNKNOWN_BLOCK_TYPE,Unknown block type,Nieznany typ bloku
+REJECT_UNKNOWN_MATERIAL,Unknown material,Nieznany materiał
+REJECT_INTERSECTS_PLAYER,A player is in the way,Gracz w przejściu
+REJECT_NO_LINE_OF_SIGHT,Something is in the way,Coś zasłania
+REJECT_WRONG_PLANET,Wrong planet,Zła planeta
+REJECT_SERVER_READ_ONLY,Server is read only,Serwer tylko do odczytu

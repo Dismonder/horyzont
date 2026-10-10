@@ -12,4 +12,7 @@ internal static partial class SimulationLog
 
     [LoggerMessage(EventId = 2, Level = LogLevel.Critical, Message = "Simulation faulted while applying operation {OpId} ({Kind})")]
     internal static partial void Faulted(ILogger logger, Exception exception, ulong opId, OperationKind kind);
+
+    [LoggerMessage(EventId = 3, Level = LogLevel.Error, Message = "A subscriber of Applied failed for operation {OpId}; the operation stays applied and journaled")]
+    internal static partial void AppliedSubscriberFailed(ILogger logger, Exception exception, ulong opId);
 }
