@@ -66,7 +66,7 @@ Kod stosujący operacje (`OperationApplier`, `ServerSimulation`, wszystko, co li
 - bez równoległości w stosowaniu operacji;
 - bez czytania treści gry (przedmioty, receptury, pojemności, generatory) w warunkach wstępnych appliera: operacja niesie każdą wartość z treści, od której zależy jej stosowanie (np. limit stosu, pojemność zbiornika), więc ogon dziennika odtwarza się tak samo po aktualizacji treści;
 - bez pytania terenu ani generatora przy stosowaniu: istnienie obiektów generatora i trafienia w teren sprawdza walidator, a wynik trafia do operacji;
-- walidator intencji może czytać treść (`BlockContentTable`) i teren (`ITerrainService.TrySampleSolid`); applier `ShipModeSetOp` nigdy: warunki wstępne appliera to tylko stan świata, a wszystko z treści albo terenu trafia do operacji lub zostaje w walidatorze (K5-23)
+- walidator intencji może czytać treść (`BlockContentTable`) i teren (`ITerrainService.TrySampleSolid`); applier `ShipModeSetOp` nigdy: warunki wstępne appliera to tylko stan świata, a wszystko z treści albo terenu trafia do operacji lub zostaje w walidatorze (K5-23);
 - stan zmienia się tylko operacjami: także zdarzenia czasowe (odrastanie, rozliczenie stacji, znikanie przedmiotów) są operacjami serwera, a checkpoint zapisuje wyłącznie ich skutki;
 - wartości zmiennoprzecinkowe w skrótach i formatach zapisywane bitowo; NaN i nieskończoności odrzucane na granicy (walidacja, deserializacja).
 
