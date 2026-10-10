@@ -163,6 +163,10 @@ Udokumentowane dołączenie przez Steam invite i listę znajomych do hosta P2P, 
 
 ## Odstępstwa i decyzje wykonawcy
 
+- wykonawca: GPT-6.1 Sol (luna; Antigravity niedostępny), przegląd Opus 5.5.
+- 2026-10-10: krok 0 rozpoczęty na właściwej gałęzi, czysty worktree, baza zawiera S1–S9 K3-00. Blokada zakresu: S9 `ConfigurePlatform()` wywołuje się po skonstruowaniu ServerRuntime/ClientRuntime z transportami. Nie ma szwów wyboru transportu/listenerów, startu połączenia Steam ani lifecycle platformy. Wymagane przez pkt 3 i 11 procedury zmiany leżą w `GameComposition.cs`, którego edycję przez K3-17 zabrania X10. Szczegóły i pytanie do przeglądu: [K3-17-opis-pr.md](K3-17-opis-pr.md). Bez zmian implementacji do rozstrzygnięcia sprzeczności (ZASADY pkt 1 i krok 4 instrukcji agentów).
+- Zgodnie z poleceniem użytkownika Godot, gdUnit i smoke silnika nie będą uruchamiane lokalnie; Manual oraz przegląd pozostają pending. Nie podbito ProtocolVersion, nie zmieniono kontraktów ani plików innych pakietów.
+
 ## Pułapki
 
 - SteamEndpoint przyjmuje SteamID hosta, nie lobbyID.
