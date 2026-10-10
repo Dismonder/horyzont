@@ -4,6 +4,8 @@ using System.Text;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
+using Horyzont.Core.Ships;
+using Horyzont.Core.World.Constructs;
 
 using Microsoft.Extensions.Logging;
 
@@ -67,6 +69,7 @@ public sealed class ConsoleCommandProcessor
             "stop" => Stop(),
             "players" => Players(),
             "kick" => Kick(parts),
+            "ship" => Ship(parts),
             "dev-op" when _devCommands => DevOp(),
             _ => Help,
         };
@@ -132,6 +135,48 @@ public sealed class ConsoleCommandProcessor
         }
 
         return text.ToString();
+    }
+
+    /// <summary>
+    /// Prints one line <c>SHIP id=… mode=… mass=…kg com=(x,y,z) thrust=+X:…,-X:…,+Y:…,-Y:…,+Z:…,-Z:… torque=… fuel=… cockpits=…
+    /// engines=… seats=…</c>. The format is fixed: tests and the manual procedure of K5-23 compare it.
+    /// </summary>
+    private string Ship(string[] parts)
+    {
+        if (parts.Length != 2 || !ulong.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var id))
+        {
+            return "usage: ship <construct id>";
+        }
+
+        if (_runtime.RuntimeState is not (ServerRuntimeState.Running or ServerRuntimeState.SafeMode))
+        {
+            return "the server is not running";
+        }
+
+        var construct = new EntityId(id);
+        if (!_runtime.State.Constructs.TryGet(construct, out var state))
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"unknown construct {id}");
+        }
+
+        var stats = _runtime.ShipStats.TryGet(construct, out var cached)
+            ? cached
+            : ShipStatsCalculator.Compute(state, _runtime.Simulation.Content);
+        return FormatShip(construct, state.Mode, stats);
+    }
+
+    /// <summary>Formats the <c>ship</c> line.</summary>
+    /// <param name="construct">Construct id.</param>
+    /// <param name="mode">Construct mode.</param>
+    /// <param name="stats">Its stats.</param>
+    /// <returns>The line.</returns>
+    public static string FormatShip(EntityId construct, ConstructMode mode, ShipStats stats)
+    {
+        ArgumentNullException.ThrowIfNull(stats);
+        var t = stats.Thrust;
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"SHIP id={construct.Value} mode={mode} mass={stats.MassKg:0.##}kg com=({stats.CenterOfMass.X:0.##},{stats.CenterOfMass.Y:0.##},{stats.CenterOfMass.Z:0.##}) thrust=+X:{t.PosX:0.##},-X:{t.NegX:0.##},+Y:{t.PosY:0.##},-Y:{t.NegY:0.##},+Z:{t.PosZ:0.##},-Z:{t.NegZ:0.##} torque={stats.TorqueNewtonMeters:0.##} fuel={stats.FuelCapacity:0.##} cockpits={stats.Cockpits} engines={stats.Engines} seats={stats.Seats.Count}");
     }
 
     private string Kick(string[] parts)

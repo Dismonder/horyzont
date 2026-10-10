@@ -1,4 +1,5 @@
 using Horyzont.Core.Simulation;
+using Horyzont.Core.World.Blocks;
 using Horyzont.Net.Session;
 using Horyzont.Net.Transport;
 using Horyzont.Persistence;
@@ -56,6 +57,12 @@ public sealed record ServerRuntimeOptions
 
     /// <summary>Gets the block type keys of the game content; missing keys are appended to the world registries.</summary>
     public IReadOnlyList<string> BlockTypeKeys { get; init; } = [];
+
+    /// <summary>
+    /// Gets the block definitions of the game content by key (mass and function of every block type). Keys of the world registry
+    /// that are absent get the placeholder definition. Read by the intent validators and the ship stats only.
+    /// </summary>
+    public IReadOnlyDictionary<string, BlockTypeDef> BlockDefinitions { get; init; } = new Dictionary<string, BlockTypeDef>();
 
     /// <summary>Gets the material keys of the game content; missing keys are appended to the world registries.</summary>
     public IReadOnlyList<string> MaterialKeys { get; init; } = [];
