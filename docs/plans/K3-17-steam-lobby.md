@@ -184,6 +184,8 @@ Udokumentowane dołączenie przez Steam invite i listę znajomych do hosta P2P, 
 
 - wykonawca: GPT-6.1 Sol (luna; Antigravity niedostępny), przegląd Opus 5.5.
 - 2026-10-10: krok 0 rozpoczęty na właściwej gałęzi, czysty worktree, baza zawiera S1–S9 K3-00. Blokada zakresu: S9 `ConfigurePlatform()` wywołuje się po skonstruowaniu ServerRuntime/ClientRuntime z transportami. Nie ma szwów wyboru transportu/listenerów, startu połączenia Steam ani lifecycle platformy. Wymagane przez pkt 3 i 11 procedury zmiany leżą w `GameComposition.cs`, którego edycję przez K3-17 zabrania X10. Szczegóły i pytanie do przeglądu: [K3-17-opis-pr.md](K3-17-opis-pr.md). Bez zmian implementacji do rozstrzygnięcia sprzeczności (ZASADY pkt 1 i krok 4 instrukcji agentów).
+- 2026-10-10 (rozstrzygnięcie): blokada kroku 0 USUNIĘTA przez szew S10 w K3-00 (decyzja właściciela K3-00): `ICompositionPlatform`, `PlatformSession`, `ReleaseTrackedTransport`, `GameEnvironment.ProcessCleanup`, wczesny `static partial ConfigurePlatform(LaunchOptions, GameEnvironment, ref ICompositionPlatform)` i instancyjny `partial ConfigurePlatform()`. K3-17 implementuje Steam wyłącznie w `GameComposition.Platform.cs` i własnych plikach; wyjątek od X10 niepotrzebny. Wykonanie od kroku 0.
+- Wykonawca kroków 0–7: Claude Sonnet 5.5 (implementer). Domyślne warianty P1/P2/X1 bez odpowiedzi właściciela.
 - Zgodnie z poleceniem użytkownika Godot, gdUnit i smoke silnika nie będą uruchamiane lokalnie; Manual oraz przegląd pozostają pending. Nie podbito ProtocolVersion, nie zmieniono kontraktów ani plików innych pakietów.
 
 ## Pułapki
