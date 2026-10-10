@@ -12,15 +12,15 @@ namespace Horyzont.Core.Tests.Frames;
 
 public class FrameGraphTests
 {
-    private static readonly FrameRef Home = FrameRef.Of(WorldFactory.HomePlanet);
-    private static readonly FrameRef System1 = FrameRef.Of(new SystemId(1));
+    private static readonly FrameRef _home = FrameRef.Of(WorldFactory.HomePlanet);
+    private static readonly FrameRef _system1 = FrameRef.Of(new SystemId(1));
 
     [Fact]
     public void FrameGraph_NestedConstructs_ComposeInDouble()
     {
         // Seven constructs nested in the home planet: 8 parent links from the innermost one to the system frame.
         var headers = new List<ConstructHeaderRecord>();
-        var parent = Home;
+        var parent = _home;
         for (var i = 1; i <= 7; i++)
         {
             var id = new EntityId((ulong)i);
@@ -40,9 +40,9 @@ public class FrameGraphTests
         Assert.True(graph.TryGetWorldPose(FrameRef.Of(new EntityId(7)), out var world));
         Assert.InRange(Vector3D.Distance(expected.Position, world.Position), 0, 1e-9);
         Assert.InRange(Math.Abs(QuaternionD.Dot(expected.Rotation, world.Rotation)), 1 - 1e-12, 1 + 1e-12);
-        Assert.True(graph.TryGetWorldPose(Home, out var planet));
+        Assert.True(graph.TryGetWorldPose(_home, out var planet));
         Assert.Equal(PoseD.Identity, planet);
-        Assert.True(graph.TryGetWorldPose(System1, out var system));
+        Assert.True(graph.TryGetWorldPose(_system1, out var system));
         Assert.Equal(PoseD.Identity, system);
 
         // Relative pose and expression between two nested frames.
@@ -50,17 +50,17 @@ public class FrameGraphTests
         var direct = FrameMath.Compose(
             FrameMath.FromFloat(headers[3].Origin, headers[3].Rotation), FrameMath.FromFloat(headers[4].Origin, headers[4].Rotation));
         Assert.InRange(Vector3D.Distance(direct.Position, relative.Position), 0, 1e-9);
-        Assert.True(graph.TryExpress(FrameRef.Of(new EntityId(5)), new Vector3(1, 2, 3), Home, out var inPlanet));
+        Assert.True(graph.TryExpress(FrameRef.Of(new EntityId(5)), new Vector3(1, 2, 3), _home, out var inPlanet));
         Assert.True(graph.TryGetWorldPose(FrameRef.Of(new EntityId(5)), out var five));
         Assert.InRange(Vector3D.Distance(FrameMath.TransformPoint(five, new Vector3D(1, 2, 3)), inPlanet), 0, 1e-9);
 
         // Regions: the nearest planet or system ancestor.
         Assert.True(graph.TryGetRegion(FrameRef.Of(new EntityId(7)), out var region));
-        Assert.Equal(Home, region);
-        Assert.True(graph.TryGetRegion(Home, out region));
-        Assert.Equal(Home, region);
-        Assert.True(graph.TryGetRegion(System1, out region));
-        Assert.Equal(System1, region);
+        Assert.Equal(_home, region);
+        Assert.True(graph.TryGetRegion(_home, out region));
+        Assert.Equal(_home, region);
+        Assert.True(graph.TryGetRegion(_system1, out region));
+        Assert.Equal(_system1, region);
 
         // One link more than FrameGraph.MaxDepth is refused.
         headers.Add(Header(new EntityId(8), FrameRef.Of(new EntityId(7)), Vector3.One, Quaternion.Identity));
@@ -74,12 +74,12 @@ public class FrameGraphTests
     public void FrameGraph_ConstructInSystemFrame_UsesSystemAsRegion()
     {
         var ship = new EntityId(1);
-        var state = Build([Header(ship, System1, new Vector3(300_000f, 0f, 0f), Quaternion.Identity)]);
+        var state = Build([Header(ship, _system1, new Vector3(300_000f, 0f, 0f), Quaternion.Identity)]);
         var graph = new FrameGraph(new WorldStateFramePoses(state, new HomeOnlyPlacement(WorldFactory.HomePlanet)));
 
         Assert.True(graph.TryGetRegion(FrameRef.Of(ship), out var region));
-        Assert.Equal(System1, region);
-        Assert.True(graph.TryExpress(FrameRef.Of(ship), new Vector3(1, 0, 0), Home, out var inPlanet));
+        Assert.Equal(_system1, region);
+        Assert.True(graph.TryExpress(FrameRef.Of(ship), new Vector3(1, 0, 0), _home, out var inPlanet));
         Assert.Equal(new Vector3D(300_001, 0, 0), inPlanet);
     }
 
@@ -91,25 +91,25 @@ public class FrameGraphTests
         var b = FrameRef.Of(new EntityId(2));
         var orphan = FrameRef.Of(new EntityId(3));
         var source = new TableSource();
-        source.Add(System1, default);
-        source.Add(Home, System1);
+        source.Add(_system1, default);
+        source.Add(_home, _system1);
         source.Add(a, b);
         source.Add(b, a);
         source.Add(orphan, FrameRef.Of(new PlanetId(9)));
         var graph = new FrameGraph(source);
 
-        Assert.True(graph.TryGetWorldPose(Home, out _));
+        Assert.True(graph.TryGetWorldPose(_home, out _));
         Assert.False(graph.TryGetWorldPose(a, out _));
         Assert.False(graph.TryGetRegion(a, out _));
         Assert.False(graph.TryGetWorldPose(orphan, out _));
         Assert.False(graph.TryGetRegion(orphan, out _));
         Assert.False(graph.TryGetWorldPose(FrameRef.Of(new EntityId(42)), out _));
         Assert.False(graph.TryGetWorldPose(default, out _));
-        Assert.False(graph.TryRelative(Home, a, out _));
-        Assert.False(graph.TryExpress(a, Vector3.Zero, Home, out _));
+        Assert.False(graph.TryRelative(_home, a, out _));
+        Assert.False(graph.TryExpress(a, Vector3.Zero, _home, out _));
 
         // The world state source: unknown frames and other systems.
-        var state = Build([Header(new EntityId(1), Home, Vector3.One, Quaternion.Identity)]);
+        var state = Build([Header(new EntityId(1), _home, Vector3.One, Quaternion.Identity)]);
         var world = new FrameGraph(new WorldStateFramePoses(state, new HomeOnlyPlacement(WorldFactory.HomePlanet)));
         Assert.True(world.TryGetWorldPose(FrameRef.Of(new EntityId(1)), out _));
         Assert.False(world.TryGetWorldPose(FrameRef.Of(new EntityId(42)), out _));
@@ -134,7 +134,7 @@ public class FrameGraphTests
         var state = WorldFactory.CreateWith(WorldFactory.HomePlanetParams, new PlanetParams(new PlanetId(2), new SystemId(1), 3, "core:test/1"));
         var graph = new FrameGraph(new WorldStateFramePoses(state, new HomeOnlyPlacement(WorldFactory.HomePlanet)));
 
-        Assert.True(graph.TryGetWorldPose(Home, out _));
+        Assert.True(graph.TryGetWorldPose(_home, out _));
         Assert.False(graph.TryGetWorldPose(FrameRef.Of(new PlanetId(2)), out _));
 
         // The region of a planet frame does not need its placement.
@@ -146,7 +146,7 @@ public class FrameGraphTests
     public void FrameGraph_WorldPose_AllocatesZeroBytes()
     {
         var headers = new List<ConstructHeaderRecord>();
-        var parent = Home;
+        var parent = _home;
         for (var i = 1; i <= 6; i++)
         {
             var id = new EntityId((ulong)i);
