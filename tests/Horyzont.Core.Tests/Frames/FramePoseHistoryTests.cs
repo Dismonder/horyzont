@@ -159,6 +159,25 @@ public class FramePoseHistoryTests
         Assert.Equal(0.5 * ((0.5 * a * 27 * 27) + (0.5 * a * 36 * 36)), mixed.Position.X, 1e-9);
     }
 
+    [Fact]
+    public void FramePoseHistory_WithVelocities_VelocityStepAcrossGap_NoOvershoot()
+    {
+        // K5-26: the pulse drive steps the speed from 1 to 16 m/tick within a gap of 6 ticks (one lost snapshot). A cubic through
+        // those tangents would run up to a third faster than the ship ever flew; the history falls back to the straight line.
+        var history = new FramePoseHistory();
+        Assert.True(history.Record(new Tick(0), _ship, new PoseD(Vector3D.Zero, QuaternionD.Identity), new Vector3D(1, 0, 0)));
+        Assert.True(history.Record(new Tick(6), _ship, new PoseD(new Vector3D(81, 0, 0), QuaternionD.Identity), new Vector3D(16, 0, 0)));
+        Assert.True(history.TryGetWorldPose(_ship, 0, out var previous));
+        for (var tick = 0.25; tick <= 6; tick += 0.25)
+        {
+            Assert.True(history.TryGetWorldPose(_ship, tick, out var pose));
+            Assert.InRange(pose.Position.X - previous.Position.X, 0, (16 * 0.25) + 1e-9);
+            previous = pose;
+        }
+
+        Assert.Equal(81, previous.Position.X, 1e-9);
+    }
+
     private static PoseD PoseAt(ulong tick) =>
         new(new Vector3D(tick * 0.5, 1, -2), QuaternionD.FromAxisAngle(new Vector3D(0, 1, 0), tick * 0.01));
 }
