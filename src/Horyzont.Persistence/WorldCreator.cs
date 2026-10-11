@@ -2,6 +2,7 @@ using System.Globalization;
 
 using Horyzont.Core.Ids;
 using Horyzont.Core.Serialization;
+using Horyzont.Core.Space;
 using Horyzont.Core.World;
 using Horyzont.Persistence.Migrations;
 
@@ -77,7 +78,20 @@ public static class WorldCreator
             command.ExecuteNonQuery();
         }
 
+        if (world.StarSystem is { } system)
+        {
+            InsertStarSystem(connection, transaction, system);
+        }
+
         transaction.Commit();
+    }
+
+    internal static void InsertStarSystem(SqliteConnection connection, SqliteTransaction transaction, StarSystemParams system)
+    {
+        using var command = Sql.Command(connection, transaction, "INSERT INTO star_systems (system_id, params) VALUES ($id, $params);");
+        command.Parameters.AddWithValue("$id", Sql.ToDb(system.System.Value));
+        command.Parameters.AddWithValue("$params", StateCodec.EncodeStarSystemBlob(system));
+        command.ExecuteNonQuery();
     }
 
     internal static void InsertRegistry(SqliteConnection connection, SqliteTransaction transaction, string table, ushort id, string key)

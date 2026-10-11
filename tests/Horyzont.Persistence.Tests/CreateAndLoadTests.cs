@@ -42,7 +42,7 @@ public sealed class CreateAndLoadTests
 
         WorldCreator.Create(dir.WorldPath, world, WorldHarness.Options, time);
 
-        Assert.Equal(1L, RawDb.Long(dir.WorldPath, "PRAGMA user_version;"));
+        Assert.Equal((long)Migrations.MigrationRunner.All.Count, RawDb.Long(dir.WorldPath, "PRAGMA user_version;"));
         Assert.Equal("wal", RawDb.Scalar(dir.WorldPath, "PRAGMA journal_mode;"));
         Assert.Equal(-1L, RawDb.Long(dir.WorldPath, "SELECT value FROM meta WHERE key = 'galaxy_seed';"));
         Assert.Equal(0L, RawDb.Long(dir.WorldPath, "SELECT value FROM meta WHERE key = 'last_checkpoint_op_id';"));

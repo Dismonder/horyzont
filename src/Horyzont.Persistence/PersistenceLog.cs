@@ -16,6 +16,9 @@ internal static partial class PersistenceLog
     [LoggerMessage(EventId = 102, Level = LogLevel.Information, Message = "Registry {Table}: new key {Key} got id {Id}")]
     internal static partial void RegistryKeyAdded(ILogger logger, string table, string key, int id);
 
+    [LoggerMessage(EventId = 103, Level = LogLevel.Warning, Message = "World {Path} has no star system ({PlanetCount} planets); only the home planet is placed")]
+    internal static partial void NoStarSystem(ILogger logger, string path, int planetCount);
+
     [LoggerMessage(EventId = 110, Level = LogLevel.Critical, Message = "Persistence writer faulted; journal up to operation {DurableOpId} is durable, {Pending} entries wait in memory")]
     internal static partial void WriterFaulted(ILogger logger, Exception exception, ulong durableOpId, int pending);
 
