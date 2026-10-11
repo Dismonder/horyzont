@@ -5,9 +5,11 @@ using Godot;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
+using Horyzont.Core.World;
 using Horyzont.Core.World.Terrain;
 using Horyzont.Game.Client.Terrain;
 using Horyzont.Game.Planet;
+using Horyzont.Game.Planet.Generators;
 using Horyzont.Game.Terrain;
 using Horyzont.Persistence.Terrain;
 
@@ -33,6 +35,9 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
     private readonly SortedDictionary<ulong, PlanetTerrain> _planets = [];
     private readonly ClientTerrainViews _views = new();
     private readonly List<(DerivedLodRebuilder Rebuilder, Action Handler)> _reloads = [];
+    private readonly SortedDictionary<ulong, PlanetParams> _known = [];
+    private readonly SortedDictionary<ulong, (VoxelGenerator Generator, DerivedLodRebuilder? Rebuilder)> _generators = [];
+    private ITerrainBlockSource? _source;
     private string? _cacheDirectory;
     private DerivedTerrain? _derived;
 
@@ -114,23 +119,17 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
                 Path.Combine(_cacheDirectory, "terrain-derived.db"), settings.Time, settings.Loggers.CreateLogger<DerivedLodStore>()));
         }
 
-        // K5-22 replaces this guard with terrain activation: until then only the home planet (element 0 of the hello, K5-21
-        // decision 10) has terrain, otherwise every body would put a VoxelLodTerrain at the origin of the system (decision 11).
-        foreach (var planet in hello.Planets.Take(1))
+        // K5-22 decision 10: nodes are created on activation (ClientPlanetTerrains). The home planet (element 0 of the hello, K5-21
+        // decision 10) is activated at once, so the first body never waits for a selection.
+        _source = source;
+        foreach (var planet in hello.Planets)
         {
-            var terrain = PlanetTerrainFactory.Create(planet, _options, _material);
-            var rebuilder = _derived is not null && terrain.Generator is { } generator && Cache is not null ? _derived.Add(planet, Cache, generator) : null;
-            var stream = new TerrainStream(planet.Id, source, _codec, new DerivedLodCache(), _logger, rebuilder);
-            terrain.Stream = stream;
-            var node = new PlanetTerrain(planet.Id, terrain, stream);
-            _planets.Add(planet.Id.Value, node);
-            _parent.AddChild(node);
-            if (rebuilder is not null)
-            {
-                // Without it the engine keeps placeholders for the mipmaps it asked for while they were stale (as in the server terrain).
-                rebuilder.ReloadRequested += node.ReloadFromStream;
-                _reloads.Add((rebuilder, node.ReloadFromStream));
-            }
+            _known[planet.Id.Value] = planet;
+        }
+
+        if (hello.Planets.Count > 0)
+        {
+            Activate(hello.Planets[0].Id);
         }
 
         if (_derived is not null && Cache is not null)
@@ -157,6 +156,76 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
     {
         _planets.TryGetValue(planet.Value, out var terrain);
         return _views.TryViewOf(planet, terrain, out view);
+    }
+
+    /// <summary>Gets or sets the client frame nodes (K5-20); a terrain node goes under <c>Planet_&lt;id&gt;</c>, else under the terrain parent.</summary>
+    public Horyzont.Game.Frames.FrameNodes? FrameNodes { get; set; }
+
+    /// <inheritdoc />
+    public bool Activate(PlanetId planet)
+    {
+        if (TryGetNode(planet, out _))
+        {
+            return true;
+        }
+
+        if (_source is null || !_known.TryGetValue(planet.Value, out var parameters))
+        {
+            return false;
+        }
+
+        // The generator (graph compilation) and the mipmap rebuilder are made once per body and kept across activations.
+        if (!_generators.TryGetValue(planet.Value, out var made))
+        {
+            var generator = GeneratorProfiles.CreateGenerator(parameters);
+            made = (generator, _derived is not null && Cache is not null ? _derived.Add(parameters, Cache, generator) : null);
+            _generators.Add(planet.Value, made);
+        }
+
+        var terrain = PlanetTerrainFactory.Create(parameters, _options, _material, made.Generator);
+        var stream = new TerrainStream(planet, _source, _codec, new DerivedLodCache(), _logger, made.Rebuilder);
+        terrain.Stream = stream;
+        var node = new PlanetTerrain(planet, terrain, stream);
+        _planets[planet.Value] = node;
+        if (FrameNodes is not { } frames || !frames.Attach(node, FrameRef.Of(planet)))
+        {
+            _parent.AddChild(node);
+        }
+
+        if (made.Rebuilder is { } rebuilder)
+        {
+            // Without it the engine keeps placeholders for the mipmaps it asked for while they were stale (as in the server terrain).
+            rebuilder.ReloadRequested += node.ReloadFromStream;
+            _reloads.Add((rebuilder, node.ReloadFromStream));
+        }
+
+        return true;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>The disk cache of the blocks (K3-16) stays, so coming back is fast.</remarks>
+    public void Release(PlanetId planet)
+    {
+        if (!_planets.Remove(planet.Value, out var node))
+        {
+            return;
+        }
+
+        for (var i = _reloads.Count - 1; i >= 0; i--)
+        {
+            if (_reloads[i].Handler.Target == node)
+            {
+                _reloads[i].Rebuilder.ReloadRequested -= _reloads[i].Handler;
+                _reloads.RemoveAt(i);
+            }
+        }
+
+        if (GodotObject.IsInstanceValid(node))
+        {
+            node.Stream.Close();
+            node.GetParent()?.RemoveChild(node);
+            node.QueueFree();
+        }
     }
 
     /// <inheritdoc />
@@ -216,6 +285,9 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
 
         _planets.Clear();
         _views.Clear();
+        _known.Clear();
+        _generators.Clear();
+        _source = null;
         var derived = _derived;
         _derived = null;
         if (Cache is { } cache)

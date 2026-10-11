@@ -24,8 +24,12 @@ public sealed partial class GameComposition
     /// <summary>Gets the terrain tick governor of the server (decision 7); null without a server.</summary>
     public TerrainViewerThrottle? TerrainThrottle { get; private set; }
 
+    /// <summary>Gets the client side of terrain activation (decision 10); null without a client character.</summary>
+    public Horyzont.Game.Client.Terrain.ClientPlanetTerrains? ClientPlanets { get; private set; }
+
     partial void ConfigurePlanets()
     {
+        ConfigureClientPlanets();
         if (Server is not { } server || TerrainFactory is not { } factory)
         {
             return;
@@ -36,6 +40,26 @@ public sealed partial class GameComposition
             new TerrainTickGovernor(GameServerHooks.TickRate, _env.Loggers.CreateLogger<TerrainTickGovernor>()));
         server.AddTickParticipant(clock);
         server.AddTickParticipant(new PlanetTerrainsTicker(factory, ServerFrames, ServerFrameNodes, clock, TerrainThrottle, () => _characters?.Characters));
+    }
+
+    private void ConfigureClientPlanets()
+    {
+        if (ClientNode is not { } clientNode || LocalPlayer is not { } player)
+        {
+            return;
+        }
+
+        var planets = new Horyzont.Game.Client.Terrain.ClientPlanetTerrains { Name = "PlanetTerrains" };
+        planets.Initialize(
+            () => clientNode.TerrainProvider,
+            () => ClientStarSystem,
+            () => player.Planet,
+            () => player.Planet is { } planet && planet != default && ClientStarSystem is { } system && system.TryGetPose(planet, out var pose)
+                ? (true, pose.Position + Horyzont.Core.Frames.Vector3D.FromFloat(player.CameraOrigin))
+                : (false, default),
+            _env.Render);
+        clientNode.AddChild(planets);
+        ClientPlanets = planets;
     }
 
     private sealed class TickClock : IServerTickParticipant

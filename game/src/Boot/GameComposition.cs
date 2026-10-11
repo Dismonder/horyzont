@@ -543,7 +543,10 @@ public sealed partial class GameComposition
 
         if (Server is not null)
         {
-            ClientNode!.TerrainProvider = new SharedTerrainProvider(TerrainFactory!.Terrain!.Voxel);
+            var terrain = TerrainFactory!.Terrain!;
+            ClientNode!.TerrainProvider = new SharedTerrainProvider(
+                terrain.Voxel,
+                planet => terrain.Planets.TryGetGenerator(planet, out _) ? terrain.Planets.Acquire(planet, Horyzont.Server.Space.PlanetLeaseReason.External) : null);
             if (connectClient)
             {
                 Client.Connect(new InMemoryEndpoint("server"), _profile!.Identity, _profile.DisplayName, _launch.Password);

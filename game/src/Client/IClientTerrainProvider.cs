@@ -21,4 +21,16 @@ public interface IClientTerrainProvider
     /// <param name="view">The view when known.</param>
     /// <returns>Whether the planet has a terrain.</returns>
     bool TryGetPlanet(PlanetId planet, [NotNullWhen(true)] out IClientTerrainView? view);
+
+    /// <summary>
+    /// The client wants the terrain of a planet (K5-22 decision 10, <c>ClientPlanetTerrains</c>): a remote client creates its node, a host
+    /// holds the server terrain with a lease. Idempotent; main thread.
+    /// </summary>
+    /// <param name="planet">The planet.</param>
+    /// <returns>False for a planet unknown to the hello.</returns>
+    bool Activate(PlanetId planet);
+
+    /// <summary>The client no longer wants the terrain of a planet (a host only drops its lease; the server may keep it). Main thread.</summary>
+    /// <param name="planet">The planet.</param>
+    void Release(PlanetId planet);
 }
