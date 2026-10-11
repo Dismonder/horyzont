@@ -23,7 +23,7 @@ public sealed class ShipPredictionTests
     {
         var ground = new SphereGroundCollider().Add(Vector3D.Zero, FlightFixtures.Home.RadiusMeters);
         var prediction = new ShipPrediction(
-            (in ShipMotion motion, ShipStats s) => FlightFixtures.HomeEnvironment(motion),
+            ClientFlightEnvironment.InPlanet(FlightFixtures.Home, 0, FlightRules.Default),
             (in PoseD from, in PoseD to) => ground.Sweep(from, to, stats),
             FlightRules.Default,
             TickRate,
@@ -134,13 +134,86 @@ public sealed class ShipPredictionTests
     }
 
     [Fact]
-    public void ShipPrediction_OtherParentSeq_Dropped()
+    public void ShipPrediction_OlderParentSeq_Dropped()
     {
         var prediction = Create(FlightFixtures.Thirty());
         prediction.Step(1, _hover);
+        prediction.Rebase(2, Vector3D.Zero);
 
         Assert.False(prediction.Apply(From(1, prediction.Motion, new Vector3(3f, 0f, 0f)) with { ParentSeq = 1 }));
         Assert.Equal(1, prediction.Dropped);
+        Assert.False(prediction.HasHeld);
+    }
+
+    [Fact]
+    public void ShipPrediction_NewerParentSeq_HeldUntilReparent()
+    {
+        var prediction = Create(FlightFixtures.Thirty());
+        for (uint seq = 1; seq <= 20; seq++)
+        {
+            prediction.Step(seq, _hover);
+        }
+
+        var twin = Create(FlightFixtures.Thirty());
+        for (uint seq = 1; seq <= 14; seq++)
+        {
+            twin.Step(seq, _hover);
+        }
+
+        Assert.False(prediction.Apply(From(14, twin.Motion, new Vector3(2f, 0f, 0f)) with { ParentSeq = 1 }));
+        Assert.True(prediction.HasHeld);
+        Assert.Equal(0, prediction.Dropped);
+
+        prediction.Rebase(1, Vector3D.Zero);
+
+        Assert.False(prediction.HasHeld);
+        Assert.Equal(1, prediction.Corrections);
+        Assert.Equal(1u, prediction.ParentSeq);
+    }
+
+    [Fact]
+    public void ShipPrediction_NewerParentSeq_DroppedAfterOneSecond()
+    {
+        var prediction = Create(FlightFixtures.Thirty());
+        prediction.Step(1, _hover);
+        prediction.Apply(From(1, prediction.Motion) with { ParentSeq = 1 });
+        for (uint seq = 2; seq <= TickRate + 1; seq++)
+        {
+            prediction.Step(seq, _hover);
+            Assert.True(prediction.HasHeld);
+        }
+
+        prediction.Step(TickRate + 2, _hover);
+
+        Assert.False(prediction.HasHeld);
+        Assert.Equal(1, prediction.HeldExpired);
+        Assert.Equal(1, prediction.Dropped);
+    }
+
+    [Fact]
+    public void ShipPrediction_ZoneTransition_RingRebased()
+    {
+        var prediction = Create(FlightFixtures.Thirty());
+        var twin = Create(FlightFixtures.Thirty());
+        for (uint seq = 1; seq <= 20; seq++)
+        {
+            prediction.Step(seq, _climb);
+            if (seq <= 14)
+            {
+                twin.Step(seq, _climb);
+            }
+        }
+
+        var offset = new Vector3D(250, -40, 10);
+        var before = prediction.Motion.Pose.Position;
+        prediction.Rebase(1, offset, new Vector3(1f, 0f, 0f));
+
+        Assert.Equal(before + offset, prediction.Motion.Pose.Position);
+        var server = twin.Motion;
+        server.LinearVelocity += new Vector3(1f, 0f, 0f);
+        Assert.False(prediction.Apply(From(14, server, new Vector3(250f, -40f, 10f)) with { ParentSeq = 1 }));
+        Assert.Equal(0, prediction.Corrections);
+        Assert.Equal(0, prediction.Dropped);
     }
 
     [Fact]

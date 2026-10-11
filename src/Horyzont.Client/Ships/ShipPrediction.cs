@@ -1,3 +1,5 @@
+using System.Numerics;
+
 using Horyzont.Core.Frames;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Ships;
@@ -23,6 +25,9 @@ public sealed class ShipPrediction
     /// <summary>Seconds the render offset of a smaller correction takes to fade.</summary>
     public const float SmoothSeconds = 0.15f;
 
+    /// <summary>Seconds a correction with a newer <see cref="ShipCorrection.ParentSeq"/> waits for the reparent of the ship.</summary>
+    public const int HoldSeconds = 1;
+
     private const int LoggedInputs = 10;
 
     private readonly Entry[] _ring = new Entry[Capacity];
@@ -39,6 +44,9 @@ public sealed class ShipPrediction
     private double _horizontalCap = double.PositiveInfinity;
     private Vector3D _offset;
     private float _offsetLeft;
+    private ShipCorrection? _held;
+    private int _heldTicks;
+    private readonly int _holdTicks;
 
     /// <summary>Creates the prediction.</summary>
     /// <param name="environment">Environment of a motion without the server-only inputs (gate, launch block, cap).</param>
@@ -57,6 +65,7 @@ public sealed class ShipPrediction
         _sweep = sweep;
         _rules = rules;
         _dt = 1f / tickRate;
+        _holdTicks = tickRate * HoldSeconds;
         _logger = logger;
     }
 
@@ -78,6 +87,12 @@ public sealed class ShipPrediction
     /// <summary>Gets the number of corrections dropped for an older or unknown frame.</summary>
     public int Dropped { get; private set; }
 
+    /// <summary>Gets the number of corrections held for a reparent that never came (dropped after <see cref="HoldSeconds"/>).</summary>
+    public int HeldExpired { get; private set; }
+
+    /// <summary>Gets a value indicating whether a correction waits for the reparent of the ship.</summary>
+    public bool HasHeld => _held is not null;
+
     /// <summary>Gets the largest position error of the last correction (metres).</summary>
     public double LastError { get; private set; }
 
@@ -95,6 +110,55 @@ public sealed class ShipPrediction
         Array.Clear(_ring);
         _offset = default;
         _offsetLeft = 0f;
+        _held = null;
+        _heldTicks = 0;
+    }
+
+    /// <summary>
+    /// Re-expresses the prediction after a zone transition of the ship (its <c>EntityReparentOp</c>): the state and every ring entry
+    /// move by <paramref name="offset"/> (frames share their axes in EA), velocities by <paramref name="velocityOffset"/>. A held
+    /// correction of the new frame is applied right away.
+    /// </summary>
+    /// <param name="parentSeq">Reparent counter of the ship in the new frame.</param>
+    /// <param name="offset">Position of the old frame origin in the new frame.</param>
+    /// <param name="velocityOffset">Velocity of the old frame in the new frame.</param>
+    public void Rebase(uint parentSeq, in Vector3D offset, Vector3 velocityOffset = default)
+    {
+        if (!_hasState)
+        {
+            return;
+        }
+
+        Shift(ref _motion, offset, velocityOffset);
+        for (var i = 0; i < _ring.Length; i++)
+        {
+            ref var entry = ref _ring[i];
+            if (entry.Used)
+            {
+                var motion = entry.Motion;
+                Shift(ref motion, offset, velocityOffset);
+                entry = entry with { Motion = motion };
+            }
+        }
+
+        ParentSeq = parentSeq;
+        if (_held is { } held)
+        {
+            _held = null;
+            _heldTicks = 0;
+            if (held.ParentSeq == parentSeq)
+            {
+                Apply(held);
+            }
+            else if (held.ParentSeq < parentSeq)
+            {
+                Dropped++;
+            }
+            else
+            {
+                _held = held;
+            }
+        }
     }
 
     /// <summary>Steps the prediction with the input of slot <paramref name="seq"/>; the velocity responds in this very step.</summary>
@@ -111,6 +175,14 @@ public sealed class ShipPrediction
         ref var entry = ref _ring[seq % Capacity];
         entry = new Entry(seq, control, _motion, true);
         _newest = seq;
+        if (_held is not null && ++_heldTicks > _holdTicks)
+        {
+            _held = null;
+            _heldTicks = 0;
+            HeldExpired++;
+            Dropped++;
+        }
+
         // Float ticks do not sum exactly to SmoothSeconds: a remainder below half a tick ends the fade.
         _offsetLeft -= _dt;
         if (_offsetLeft < _dt * 0.5f)
@@ -128,9 +200,25 @@ public sealed class ShipPrediction
     public bool Apply(ShipCorrection correction)
     {
         ArgumentNullException.ThrowIfNull(correction);
-        if (!_hasState || Stats is null || correction.ParentSeq != ParentSeq)
+        if (!_hasState || Stats is null || correction.ParentSeq < ParentSeq)
         {
             Dropped++;
+            return false;
+        }
+
+        if (correction.ParentSeq > ParentSeq)
+        {
+            // The ship was reparented on the server before this state; the reparent op has not arrived yet (decision 16).
+            if (_held is null || _held.ParentSeq <= correction.ParentSeq)
+            {
+                if (_held is null)
+                {
+                    _heldTicks = 0;
+                }
+
+                _held = correction;
+            }
+
             return false;
         }
 
@@ -188,9 +276,18 @@ public sealed class ShipPrediction
     /// <returns>The render pose in the parent frame.</returns>
     public PoseD RenderPose() => new(_motion.Pose.Position + (_offset * (_offsetLeft / SmoothSeconds)), _motion.Pose.Rotation);
 
+    private static void Shift(ref ShipMotion motion, in Vector3D offset, Vector3 velocityOffset)
+    {
+        motion.Pose = new PoseD(motion.Pose.Position + offset, motion.Pose.Rotation);
+        motion.LinearVelocity += velocityOffset;
+    }
+
     private void StepOnce(in ShipControl control)
     {
-        var environment = _environment(_motion, Stats!) with { Gate = _gate, LaunchBlock = _launchBlock, HorizontalSpeedCap = _horizontalCap };
+        // The same chain as ShipFlightSystem.StepShip with a pilot: no autoland, environment, launch guard result, step, contact.
+        _motion.Flags &= ~ShipFlightFlags.Autoland;
+        var environment = ClientFlightEnvironment.Complete(
+            _environment(_motion, Stats!), ref _motion, Stats!, _rules, _gate, _horizontalCap, _launchBlock == ShipLaunchBlock.PersonInHull, control);
         var from = _motion.Pose;
         ShipFlightModel.Step(ref _motion, control, Stats!, environment, _rules, _dt);
         if (from != _motion.Pose)
