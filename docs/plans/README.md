@@ -253,7 +253,7 @@ Podbijają `ProtocolVersion` do (main przy scaleniu) + 1: K5-20, K5-21, K5-22, K
 | Typ | Kanał | Od klienta | Od serwera | Właściciel |
 | --- | --- | --- | --- | --- |
 | 30 `ShipInputBatch` | zawodny | `InGame` (`IsGameMessageFromClient`) | — | K5-25 |
-| 31 `ShipStatus` | zawodny | — | `InGame` | K5-26 |
+| 31 `ShipStatus` | zawodny | — | `Loading`, `InGame` | K5-26 |
 | 32 `StarSystemState` | `ReliableOrdered` | — | `Loading`, `InGame` | K5-21 |
 | 33 `MarkersState` | `ReliableOrdered` | — | `Loading`, `InGame` | K5-27 |
 | 34 `ShipCorrection` | zawodny | — | `InGame` | K5-25 |
@@ -342,6 +342,7 @@ Kolejność K5: (wykonawcy dopisują tu po scaleniu: pakiet, PR, `ProtocolVersio
 - K5-21 — PR #30, `ProtocolVersion` = 9 (main 8 po K5-20 + 1, D4; scalenie K5-20 i `origin/main`).
 - K5-22 — PR #31, `ProtocolVersion` = 10 (main 9 po K5-21 + 1, D4; scalenie K5-21 i `origin/main`). Kroki 9 (część benchmarku) i 10 wstrzymane do scalenia K4-19.
 - K5-24 — PR: (numer przy otwarciu), `ProtocolVersion` = 11 (main 10 po K5-22 + 1, D4; scalenie gałęzi K5-22 i `origin/main`; op 21 `ShipFuelAdd`, intencja 13 `Refuel`, odmowa 39 `ShipNotParked`, blob 12 `ShipState`).
+- K5-26 — PR: (numer przy otwarciu), `ProtocolVersion` = 13 (main 12 po K5-27 + 1, D4; scalenie `origin/main` z K5-27; komunikat 31 `ShipStatus`, fotel w `EntitySpawn.KindData` gracza).
 - K5-27 — PR: (numer przy otwarciu), `ProtocolVersion` = 12 (main 11 po K5-24 + 1, D4; scalenie `origin/main` z K5-22 i K5-24; wiadomość 33, op 22/23, intencje 14/15, odmowa 36, blob 11).
 
 ## Szablon planu pakietu

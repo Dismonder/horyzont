@@ -45,6 +45,40 @@ public static class FlightEnvironments
         };
     }
 
+    /// <summary>
+    /// Surroundings in the frame of <paramref name="planet"/> with the altitude over the surface of the nearest body of
+    /// <paramref name="system"/> (spec 02:77), as <see cref="InSystem"/> gives it at the same point: near a zone boundary another
+    /// body can be nearer than the own planet, and the speed limit must not change when the ship is reparented (K5-26 review).
+    /// Frames in EA are stationary and share the axes of the system frame.
+    /// </summary>
+    /// <param name="planet">The planet.</param>
+    /// <param name="bodyIndex">Body index of the planet (0 without a star system).</param>
+    /// <param name="local">Position of the ship in the planet frame.</param>
+    /// <param name="rules">Rules.</param>
+    /// <param name="system">The star system, or null for the own planet alone.</param>
+    /// <returns>The environment.</returns>
+    public static FlightEnvironment InPlanet(PlanetParams planet, int bodyIndex, in Vector3D local, FlightRules rules, StarSystemModel? system)
+    {
+        var environment = InPlanet(planet, bodyIndex, local, rules);
+        if (system is null || !system.TryGetBody(planet.Id, out var own))
+        {
+            return environment;
+        }
+
+        var point = own.Position + local;
+        var altitude = environment.Altitude;
+        for (var i = 0; i < system.BodyCount; i++)
+        {
+            var body = system.GetBody(i);
+            if (body.Planet != planet.Id)
+            {
+                altitude = Math.Min(altitude, Math.Max(0, Vector3D.Distance(point, body.Position) - body.RadiusMeters - rules.SurfaceClearanceMeters));
+            }
+        }
+
+        return environment with { Altitude = altitude };
+    }
+
     /// <summary>Surroundings in the system frame: the nearest body over its surface, gravity of the zone, no drag.</summary>
     /// <param name="system">The star system.</param>
     /// <param name="position">Position of the ship in the system frame.</param>

@@ -101,7 +101,7 @@ internal sealed class ReplicationRig : IAsyncDisposable
         var rig = new ServerRig(time: time, createWorld: createWorld, conditions: conditions, configure: configure);
         var characters = new FakeCharacters();
         var binder = new EntityReplicationBinder(
-            runtime => new ServerReplicationSource(runtime.State, characters), rig.Time, rig.Log, snapshotBudget, 500f, sendBudget);
+            runtime => new ServerReplicationSource(runtime.State, characters), rig.Time, rig.Log, snapshotBudget, sendBudget: sendBudget);
         binder.Register(rig.Runtime);
         await rig.StartAsync();
         return new ReplicationRig(rig, characters, binder);
@@ -153,6 +153,34 @@ internal sealed class ReplicationRig : IAsyncDisposable
             id, FrameRef.Of(WorldFactory.HomePlanet), origin, rotation ?? Quaternion.Identity, new CellPos(0, 0, 0), Stone));
         SetMode(id, ConstructMode.Ship);
         return id;
+    }
+
+    /// <summary>
+    /// K5-26: a one-block ship in any frame of the world (a planet or the star system): created on the home planet, switched to ship
+    /// mode, then reparented (another frame) or moved (the home planet) to <paramref name="origin"/>.
+    /// </summary>
+    public EntityId AddShipIn(FrameRef frame, Vector3 origin)
+    {
+        var home = FrameRef.Of(Runtime.State.HomePlanet);
+        var id = Runtime.State.EntityIds.PeekNext();
+        Runtime.Simulation.ApplyServerOperation(new ConstructCreateOp(id, home, new Vector3(0, 4010, 0), Quaternion.Identity, new CellPos(0, 0, 0), Stone));
+        SetMode(id, ConstructMode.Ship);
+        MoveShip(id, frame, origin);
+        return id;
+    }
+
+    /// <summary>Moves a ship: kinematics within its frame, a reparent into another frame.</summary>
+    public void MoveShip(EntityId ship, FrameRef frame, Vector3 origin)
+    {
+        Assert.True(Runtime.State.Constructs.TryGet(ship, out var construct));
+        if (construct.Parent == frame)
+        {
+            Assert.True(Runtime.Simulation.UpdateConstructKinematics(ship, frame, construct.ParentSeq, origin, construct.Rotation));
+        }
+        else
+        {
+            Runtime.Simulation.ApplyServerOperation(new EntityReparentOp(ship, frame, construct.ParentSeq + 1, origin, construct.Rotation, Vector3.Zero, null));
+        }
     }
 
     public void SetMode(EntityId construct, ConstructMode mode) =>

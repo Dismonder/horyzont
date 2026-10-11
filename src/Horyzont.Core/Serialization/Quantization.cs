@@ -8,6 +8,12 @@ public static class Quantization
     private const float InvSqrt2 = 0.70710678f;
     private const float Sqrt2 = 1.41421356f;
 
+    /// <summary>
+    /// Upper bound of the angle between a unit rotation and its <see cref="PackRotation"/> form, in radians: three components
+    /// rounded to steps of √2/1023 and the fourth rebuilt from them (|Δq| ≤ √3·step, angle ≈ 2·|Δq|). No format change (K5-26).
+    /// </summary>
+    public const double RotationQuantumRadians = 2 * 1.7320508075688772 * 1.4142135623730951 / 1023;
+
     /// <summary>Quantizes a movement axis to -127..127.</summary>
     /// <param name="v">Axis value, nominally -1..1.</param>
     /// <returns>The quantized axis.</returns>

@@ -18,7 +18,7 @@ public sealed class EntityReplicationBinder : IServerTickParticipant, IServerPla
     private readonly ISnapshotBudget _snapshotBudget;
     private readonly TimeProvider _time;
     private readonly ILoggerFactory _loggers;
-    private readonly float _viewRange;
+    private readonly ReplicationRanges _ranges;
     private ServerRuntime? _runtime;
     private EntityReplication? _replication;
 
@@ -27,11 +27,11 @@ public sealed class EntityReplicationBinder : IServerTickParticipant, IServerPla
     /// <param name="time">Clock of the budgets and the resync limit.</param>
     /// <param name="loggers">Loggers.</param>
     /// <param name="snapshotBudget">Snapshot byte budget; the fixed 1150 bytes when null.</param>
-    /// <param name="viewRange">Interest distance in metres (the session's <c>InterestRadiusMeters</c>).</param>
+    /// <param name="ranges">Interest distances by region and kind; <see cref="ReplicationRanges.Default"/> when null (K5-26).</param>
     /// <param name="sendBudget">Reliable budget; the default 27 000 B/s token bucket when null.</param>
     public EntityReplicationBinder(
         Func<ServerRuntime, IEntityReplicationSource?> sourceFactory, TimeProvider time, ILoggerFactory loggers, ISnapshotBudget? snapshotBudget = null,
-        float viewRange = 500f, IReplicationSendBudget? sendBudget = null)
+        ReplicationRanges? ranges = null, IReplicationSendBudget? sendBudget = null)
     {
         ArgumentNullException.ThrowIfNull(sourceFactory);
         ArgumentNullException.ThrowIfNull(time);
@@ -39,7 +39,7 @@ public sealed class EntityReplicationBinder : IServerTickParticipant, IServerPla
         _sourceFactory = sourceFactory;
         _time = time;
         _loggers = loggers;
-        _viewRange = viewRange;
+        _ranges = ranges ?? ReplicationRanges.Default;
         _snapshotBudget = snapshotBudget ?? new FixedSnapshotBudget();
         SendBudget = sendBudget ?? new TokenBucketReplicationBudget(time);
     }
@@ -91,7 +91,7 @@ public sealed class EntityReplicationBinder : IServerTickParticipant, IServerPla
 
         _replication = new EntityReplication(
             runtime.Session, runtime.Simulation, source, _snapshotBudget, SendBudget, _time, _loggers.CreateLogger<EntityReplication>(),
-            _viewRange, player => !runtime.IsLocalPlayer(player));
+            _ranges, player => !runtime.IsLocalPlayer(player));
         return _replication;
     }
 }

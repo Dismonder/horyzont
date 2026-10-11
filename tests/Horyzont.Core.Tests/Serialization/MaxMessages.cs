@@ -165,6 +165,8 @@ public static class MaxMessages
             new ServerStatus(true, 2, Text(ProtocolConstants.MaxRejectDetailBytes)),
             new JoinUnavailable(1, Text(ProtocolConstants.MaxRejectDetailBytes)),
             new StarSystemState(MaxStarSystem()),
+            new ShipStatus(new EntityId(ulong.MaxValue), new Tick(ulong.MaxValue), float.MaxValue, float.MaxValue, float.MaxValue,
+                (Horyzont.Core.Ships.Flight.ShipFlightFlags)0xFF, Horyzont.Core.Ships.ShipLaunchBlock.FuelReserve),
             new MarkersState(MaxMarkers()),
         ];
     }

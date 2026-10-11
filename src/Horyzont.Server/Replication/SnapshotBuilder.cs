@@ -15,6 +15,7 @@ public sealed class SnapshotBuilder(ISnapshotBudget budget)
     private readonly EntityState[] _full = new EntityState[22];
     private readonly List<EntityId> _stale = [];
     private readonly int[] _order = new int[22];
+    private readonly int[] _chain = new int[8];
     private SnapshotCandidate[] _candidates = [];
 
     /// <summary>Copies the visible set. Capacity changes allocate only when the interest set grows.</summary>
@@ -126,8 +127,11 @@ public sealed class SnapshotBuilder(ISnapshotBudget budget)
             }
         }
 
-        // Order: own body, starved entities, then distance over age (K3-14 policy); exact sizes are re-checked while writing.
+        // Order: own body and the constructs of its frame chain (K5-26 decision 6: a passenger's ship is in every snapshot, and its
+        // frames take the first places of the frame table), starved entities, then distance over age (K3-14 policy); exact sizes are
+        // re-checked while writing.
         var ownState = own >= 0 ? connection.Entities[own] : default;
+        var chainCount = own >= 0 ? FindChain(connection, ownState.Frame.Frame) : 0;
         if (_candidates.Length < connection.Count)
         {
             _candidates = new SnapshotCandidate[Math.Max(connection.Count, _candidates.Length * 2)];
@@ -140,7 +144,7 @@ public sealed class SnapshotBuilder(ISnapshotBudget budget)
                 ? Vector3.Distance(entity.State.Position, ownState.State.Position)
                 : float.PositiveInfinity;
             var rounds = (int)Math.Min(int.MaxValue, connection.SentCount - connection.LastSent[entity.Id]);
-            _candidates[i] = new SnapshotCandidate(entity.Id, distance, EntityCost(entity, baseline, i == own), rounds, i == own);
+            _candidates[i] = new SnapshotCandidate(entity.Id, distance, EntityCost(entity, baseline, i == own), rounds, i == own || InChain(i, chainCount));
         }
 
         var selectedCount = SnapshotSchedulingPolicy.Select(
@@ -177,7 +181,7 @@ public sealed class SnapshotBuilder(ISnapshotBudget budget)
             var entityBytes = FieldBytes(delta);
             if (size + frameBytes + entityBytes > limit)
             {
-                if (selected == own)
+                if (selected == own || InChain(selected, chainCount))
                 {
                     return 0;
                 }
@@ -216,6 +220,47 @@ public sealed class SnapshotBuilder(ISnapshotBudget budget)
         budget.Debit(player, encoded);
         return encoded;
 
+    }
+
+    /// <summary>Indices of the constructs of a frame chain present in the visible set, nearest first (at most 8).</summary>
+    private int FindChain(Connection connection, FrameRef frame)
+    {
+        var count = 0;
+        while (count < _chain.Length && frame.Kind == FrameKind.Construct)
+        {
+            var found = -1;
+            for (var i = 0; i < connection.Count; i++)
+            {
+                if (connection.Entities[i].Kind == EntityKind.Construct && connection.Entities[i].Id.Value == frame.Id)
+                {
+                    found = i;
+                    break;
+                }
+            }
+
+            if (found < 0)
+            {
+                break;
+            }
+
+            _chain[count++] = found;
+            frame = connection.Entities[found].Frame.Frame;
+        }
+
+        return count;
+    }
+
+    private bool InChain(int index, int chainCount)
+    {
+        for (var i = 0; i < chainCount; i++)
+        {
+            if (_chain[i] == index)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>Releases one disconnected recipient's history.</summary>
