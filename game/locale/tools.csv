@@ -34,6 +34,7 @@ REJECT_SERVER_READ_ONLY,Server is read only,Serwer tylko do odczytu
 REJECT_NO_COCKPIT,No cockpit,Brak kokpitu
 REJECT_SHIP_ANCHORED,A block is stuck in the ground,Blok tkwi w ziemi
 REJECT_NO_ENGINE,No engine,Brak silnika
+REJECT_SHIP_NOT_PARKED,The ship is not parked,Statek nie stoi na postoju
 SHIP_TOGGLE,Ship mode,Tryb statku
 SHIP_MODE,Mode,Tryb
 SHIP_MODE_SHIP,Ship,Statek

@@ -32,4 +32,7 @@ public enum BlockFunctionKind : byte
 
     /// <summary>A door; <c>FunctionState</c> 0 is closed.</summary>
     Door = 9,
+
+    /// <summary>A refuel station: refuels a parked ship nearby for free until subproject 3 (K5-24).</summary>
+    RefuelStation = 10,
 }

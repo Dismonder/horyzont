@@ -19,6 +19,7 @@ internal static class IntentResolver
             BlockState.Create(place.BlockTypeId, place.Orientation)),
         RemoveBlockIntent remove => new BlockClearOp(remove.Construct, remove.Cell),
         ShipModeIntent ship => ResolveShipMode(state, ship),
+        RefuelIntent refuel => new ShipFuelAddOp(refuel.Ship, facts.Amount, facts.Amount),
         _ => throw new InvalidOperationException($"Intent {intent.GetType().Name} passed validation but has no resolution."),
     };
 

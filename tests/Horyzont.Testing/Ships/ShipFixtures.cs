@@ -21,11 +21,11 @@ public readonly record struct ShipBlock(string Key, CellPos Cell, byte Orientati
 /// </summary>
 public static class ShipFixtures
 {
-    /// <summary>Block type keys in registry order (ids 1 … 17); core:missing is 18.</summary>
+    /// <summary>Block type keys in registry order (ids 1 … 18); core:missing is 19.</summary>
     public static readonly string[] BlockKeys =
     [
         "core:stone_block", "core:wood_planks", "core:metal_plate", "core:stone_slab", "core:stone_slope",
-        Cockpit, Seat, NavStation, Engine, Stabilizer, FuelTank, Cargo, LandingGear, PulseDrive, Hull, Window, Door,
+        Cockpit, Seat, NavStation, Engine, Stabilizer, FuelTank, Cargo, LandingGear, PulseDrive, Hull, Window, Door, RefuelStation,
     ];
 
     /// <summary>Cockpit.</summary>
@@ -63,6 +63,9 @@ public static class ShipFixtures
 
     /// <summary>Door.</summary>
     public const string Door = "core:ship_door";
+
+    /// <summary>Refuel station (K5-24).</summary>
+    public const string RefuelStation = "core:ship_refuel_station";
 
     /// <summary>Entity id of the fixture construct.</summary>
     public static readonly EntityId ConstructId = new(1);
@@ -179,6 +182,7 @@ public static class ShipFixtures
             (Hull, 200f, BlockFunction.None),
             (Window, 150f, BlockFunction.None),
             (Door, 200f, BlockFunction.Door),
+            (RefuelStation, 1500f, BlockFunction.RefuelStation),
             (BlockTypeRegistry.MissingKey, BlockContentTable.MissingMassKg, BlockFunction.None),
         };
         var result = new Dictionary<string, BlockTypeDef>(StringComparer.Ordinal);

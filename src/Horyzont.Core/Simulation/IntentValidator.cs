@@ -3,9 +3,11 @@ using System.Numerics;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Ships;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
+using Horyzont.Core.World.Ships;
 using Horyzont.Core.World.Terrain;
 
 namespace Horyzont.Core.Simulation;
@@ -18,6 +20,9 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
 {
     /// <summary>Distance from a cell centre to its corner, rounded up.</summary>
     private const float CellReachSlack = 0.87f;
+
+    /// <summary>A tank with less than this much room is full for a refuel (K5-24 decision 14).</summary>
+    private const float RefuelFullMargin = 0.5f;
     private const float SightEpsilon = 1e-3f;
 
     /// <summary>Corners of a block are probed this far inside the cell, so a block that only touches the ground is not embedded.</summary>
@@ -70,6 +75,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             PlaceBlockIntent { Target: TerrainTarget target } place => ValidatePlaceOnTerrain(place, target, hasPlanet, playerPlanet, eye, out facts),
             RemoveBlockIntent remove => ValidateRemove(remove, hasPlanet, playerPlanet, eye, out facts),
             ShipModeIntent ship => ValidateShipMode(ship, hasPlanet, playerPlanet, eye, out facts),
+            RefuelIntent refuel => ValidateRefuel(refuel, hasPlanet, playerPlanet, eye, out facts),
             _ => RejectReason.InvalidParameters,
         };
     }
@@ -78,7 +84,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
     internal static TokenBucket? BucketFor(Intent intent, PlayerBuckets buckets) => intent switch
     {
         TerrainToolIntent => buckets.Terrain,
-        PlaceBlockIntent or RemoveBlockIntent or ShipModeIntent => buckets.Blocks,
+        PlaceBlockIntent or RemoveBlockIntent or ShipModeIntent or RefuelIntent => buckets.Blocks,
         _ => null,
     };
 
@@ -103,6 +109,9 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             case ShipModeIntent ship:
                 rayOrigin = ship.RayOrigin;
                 return Geometry.IsFinite(ship.RayOrigin) && Geometry.IsDirection(ship.RayDirection) && Enum.IsDefined(ship.TargetMode);
+            case RefuelIntent refuel:
+                rayOrigin = refuel.RayOrigin;
+                return Geometry.IsFinite(refuel.RayOrigin) && Geometry.IsDirection(refuel.RayDirection);
             default:
                 return false;
         }
@@ -428,10 +437,96 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
                 return anchor;
             }
         }
+        else if (!IsParked(construct.Id))
+        {
+            // K5-23 P7, K5-24 decision 15: only a parked ship becomes static.
+            return RejectReason.ShipNotParked;
+        }
 
         facts = new IntentFacts(planet, cellCenter, Quaternion.Identity, cell);
         return RejectReason.None;
     }
+
+    /// <summary>
+    /// K5-24 decision 14 (order of the checks): the station on the planet of the player, an occupied station cell, the refuel station
+    /// function, reach and line of sight like a cockpit, a parked ship within <see cref="GameRules.RefuelRangeMeters"/> of the
+    /// station on the same planet, a tank not already full. The facts carry the tank capacity (the resolution fills the tank).
+    /// </summary>
+    private RejectReason ValidateRefuel(RefuelIntent intent, bool hasPlanet, PlanetId playerPlanet, Vector3 eye, out IntentFacts facts)
+    {
+        facts = default;
+        if (!state.Constructs.TryGet(intent.Station, out var station))
+        {
+            return RejectReason.UnknownConstruct;
+        }
+
+        if (!hasPlanet || !state.TryResolvePlanet(station.Parent, out var planet) || planet != playerPlanet)
+        {
+            return RejectReason.WrongPlanet;
+        }
+
+        var cell = intent.StationCell;
+        if (!cell.IsInBounds)
+        {
+            return RejectReason.CellOutOfBounds;
+        }
+
+        var block = station.GetBlock(cell);
+        if (block.IsEmpty)
+        {
+            return RejectReason.CellEmpty;
+        }
+
+        if (content.Get(block.TypeId).Function.Kind != BlockFunctionKind.RefuelStation)
+        {
+            return RejectReason.InvalidParameters;
+        }
+
+        var cellCenter = ToPlanet(station, CellCenter(cell));
+        if (Vector3.Distance(eye, cellCenter) > rules.ReachMeters + CellReachSlack)
+        {
+            return RejectReason.OutOfReach;
+        }
+
+        if (!HasLineOfSight(planet, eye, cellCenter, station.Id, cell))
+        {
+            return RejectReason.NoLineOfSight;
+        }
+
+        if (!state.Constructs.TryGet(intent.Ship, out var ship))
+        {
+            return RejectReason.UnknownConstruct;
+        }
+
+        if (ship.Mode != ConstructMode.Ship || ship.Id == station.Id)
+        {
+            return RejectReason.InvalidParameters;
+        }
+
+        if (!IsParked(ship.Id))
+        {
+            return RejectReason.ShipNotParked;
+        }
+
+        var stats = ShipStatsCalculator.Compute(ship, content);
+        if (!state.TryResolvePlanet(ship.Parent, out var shipPlanet) || shipPlanet != planet
+            || Vector3.Distance(ToPlanet(ship, stats.CenterOfMass), cellCenter) - stats.BoundingRadius > rules.RefuelRangeMeters)
+        {
+            return RejectReason.OutOfReach;
+        }
+
+        var fuel = state.ShipStates.TryGet(ship.Id, out var record) ? record.Fuel : 0f;
+        if (!(fuel < stats.FuelCapacity - RefuelFullMargin))
+        {
+            return RejectReason.InvalidParameters;
+        }
+
+        facts = new IntentFacts(planet, cellCenter, Quaternion.Identity, cell, stats.FuelCapacity);
+        return RejectReason.None;
+    }
+
+    /// <summary>A ship without a flight state has never moved since the switch, so it stands parked.</summary>
+    private bool IsParked(EntityId ship) => !state.ShipStates.TryGet(ship, out var record) || (record.Flags & ShipStateFlags.Parked) != 0;
 
     /// <summary>Engines present, the terrain around the construct loaded and no block embedded in it.</summary>
     private RejectReason CheckSwitchToShip(PlanetId planet, Construct construct)
