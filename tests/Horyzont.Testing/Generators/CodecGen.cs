@@ -433,7 +433,8 @@ public static class CodecGen
              [new TerrainSyncEntry(new TerrainBlockKey(new PlanetId(1), 0, x, 0, 0), seq, hash)])),
         (from seq in VarU32
          from position in Vector
-         select (Message)new TerrainView(new PlanetId(1), Math.Max(1u, seq), position, 2048, position, 64)));
+         select (Message)new TerrainView(new PlanetId(1), Math.Max(1u, seq), position, 2048, position, 64)),
+        Full64.Select(seed => (Message)new StarSystemState(Horyzont.Core.Space.StarSystemGenesis.CreateWorldBodies(seed, "core:planet/1").System)));
 
     /// <summary>Client hello messages.</summary>
     public static Gen<ClientHello> ClientHello { get; } =

@@ -1,11 +1,13 @@
 using System.Numerics;
 
 using Horyzont.Core.Checkpoints;
+using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
+using Horyzont.Core.Space;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -159,6 +161,20 @@ public static class MaxMessages
                 Enumerable.Range(0, 1024).Select(i => new TerrainSyncEntry(
                     new TerrainBlockKey(new PlanetId(ulong.MaxValue), 0, int.MinValue + i, int.MinValue, int.MinValue), uint.MaxValue, ulong.MaxValue)).ToArray()),
             new TerrainView(new PlanetId(ulong.MaxValue), uint.MaxValue, new Vector3(float.MaxValue), 16384, new Vector3(float.MinValue), 16384),
+            new StarSystemState(MaxStarSystem()),
         ];
+    }
+    /// <summary>The largest star system: eight bodies with the largest ids and coordinates (about 560 B, README Y5).</summary>
+    public static StarSystemParams MaxStarSystem()
+    {
+        var home = new PlanetId(ulong.MaxValue);
+        var bodies = new List<BodyPlacement> { new(home, 0, PoseD.Identity) };
+        for (byte k = 1; k < StarSystemRules.MaxBodies; k++)
+        {
+            bodies.Add(new BodyPlacement(
+                new PlanetId(ulong.MaxValue - k), k, new PoseD(new Vector3D(double.MaxValue, double.MinValue, double.MaxValue), QuaternionD.Identity)));
+        }
+
+        return new StarSystemParams(new SystemId(ulong.MaxValue), byte.MaxValue, home, float.MaxValue, bodies);
     }
 }
