@@ -37,14 +37,14 @@ public sealed class MarkerHashTests
         Assert.NotEqual(StateHasher.Hash(new SimFixture().State), removed);
     }
 
+    private const ulong PreMarkerDefaultWorldHash = 17523897430694564880;
+
     [Fact]
     public void StateHasher_NoMarkersEver_HashUnchanged()
     {
-        // Without markers the section is absent, so hashes of worlds from before K5-27 stay valid
-        // (the frozen DeterminismTests golden hashes prove it against the pre-K5-27 value).
-        var a = StateHasher.Hash(WorldFactory.CreateDefault());
-        var b = StateHasher.Hash(WorldFactory.CreateDefault());
-        Assert.Equal(a, b);
+        // Without markers the section is absent, so hashes of worlds from before K5-27 stay valid. The constant is the hash of
+        // WorldFactory.CreateDefault() recorded before K5-21 and K5-27 touched StateHasher (same value as in StarSystemHashTests).
+        Assert.Equal(PreMarkerDefaultWorldHash, StateHasher.Hash(WorldFactory.CreateDefault()));
         Assert.Equal(1ul, WorldFactory.CreateDefault().MarkerIds.NextValue);
     }
 
