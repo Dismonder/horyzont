@@ -6,7 +6,7 @@ namespace Horyzont.Core.Ships.Flight;
 
 /// <summary>
 /// Response to a collision of a sweep (K5-24 decision 9, P8): the ship stops at the safe fraction, the velocity into the normal is
-/// removed (inelastic), the tangential velocity is multiplied by the friction; ground under the gear at a low speed parks the ship.
+/// removed (inelastic; the rotation of the step is kept — the engine sweep only translates), the tangential velocity is multiplied by the friction; ground under the gear at a low speed parks the ship.
 /// Blocks are never destroyed. Shared by the server flight and the test colliders.
 /// </summary>
 public static class ShipContact
@@ -28,7 +28,7 @@ public static class ShipContact
 
         var fraction = Math.Clamp(hit.Fraction, 0, 1);
         var to = motion.Pose;
-        motion.Pose = new PoseD(from.Position + ((to.Position - from.Position) * fraction), from.Rotation);
+        motion.Pose = new PoseD(from.Position + ((to.Position - from.Position) * fraction), to.Rotation);
         var v = Vector3D.FromFloat(motion.LinearVelocity);
         var n = hit.Normal;
         var into = Vector3D.Dot(v, n);
