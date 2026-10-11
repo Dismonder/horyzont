@@ -23,6 +23,12 @@ public sealed class PlanetSurfaceSampler
     /// <summary>Stride of the refining ray, in metres (error bound of the result).</summary>
     public const float FineStrideMeters = 0.125f;
 
+    /// <summary>Coarse stride for impostor vertices, in metres.</summary>
+    public const float ImpostorCoarseStrideMeters = 4f;
+
+    /// <summary>Fine stride for impostor vertices, in metres.</summary>
+    public const float ImpostorFineStrideMeters = 0.25f;
+
     private const float Overshoot = 2f;
 
     private readonly VoxelGeneratorGraph _graph;
@@ -42,27 +48,40 @@ public sealed class PlanetSurfaceSampler
         _bottom = planet.RadiusMeters - PlanetGeneratorV1.MaxReliefMeters - Overshoot;
     }
 
+    /// <summary>Gets the generator graph the sampler reads.</summary>
+    public VoxelGeneratorGraph Graph => _graph;
+
     /// <summary>Gets the planet.</summary>
     public PlanetParams Planet { get; }
 
     /// <summary>Radius of the surface along a direction from the planet centre (planet frame).</summary>
     /// <param name="direction">The direction (any length &gt; 0).</param>
     /// <returns>The radius; <c>R − MaxRelief</c> when the ray finds nothing (should not happen for this generator).</returns>
-    public float SurfaceRadius(NumVector3 direction)
+    public float SurfaceRadius(NumVector3 direction) => SurfaceRadius(direction, CoarseStrideMeters, FineStrideMeters);
+
+    /// <summary>
+    /// Radius of the surface with other strides (impostors use <see cref="ImpostorCoarseStrideMeters"/> and
+    /// <see cref="ImpostorFineStrideMeters"/>: a coarse stride under the 6 m of rock above the caves still lands in the rock under the surface).
+    /// </summary>
+    /// <param name="direction">The direction (any length &gt; 0).</param>
+    /// <param name="coarseStride">Stride of the first ray, in metres (at most 6 m).</param>
+    /// <param name="fineStride">Stride of the refining ray, in metres (error bound of the result).</param>
+    /// <returns>The radius; <c>R − MaxRelief</c> when the ray finds nothing.</returns>
+    public float SurfaceRadius(NumVector3 direction, float coarseStride, float fineStride)
     {
         var length = direction.Length();
         var up = length > 1e-6f && float.IsFinite(length) ? direction / length : NumVector3.UnitY;
         var godotUp = new Godot.Vector3(up.X, up.Y, up.Z);
-        var coarse = _graph.RaycastSdfApprox(godotUp * _top, godotUp * _bottom, CoarseStrideMeters);
+        var coarse = _graph.RaycastSdfApprox(godotUp * _top, godotUp * _bottom, coarseStride);
         if (coarse < 0f)
         {
             return Planet.RadiusMeters - PlanetGeneratorV1.MaxReliefMeters;
         }
 
         var hitRadius = _top - coarse;
-        var from = MathF.Min(hitRadius + CoarseStrideMeters, _top);
-        var to = MathF.Max(hitRadius - CoarseStrideMeters, _bottom);
-        var fine = _graph.RaycastSdfApprox(godotUp * from, godotUp * to, FineStrideMeters);
+        var from = MathF.Min(hitRadius + coarseStride, _top);
+        var to = MathF.Max(hitRadius - coarseStride, _bottom);
+        var fine = _graph.RaycastSdfApprox(godotUp * from, godotUp * to, fineStride);
         return fine < 0f ? hitRadius : from - fine;
     }
 

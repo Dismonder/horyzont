@@ -28,6 +28,9 @@ public sealed partial class GameComposition
     /// <summary>Gets the client side of terrain activation (decision 10); null without a client character.</summary>
     public Horyzont.Game.Client.Terrain.ClientPlanetTerrains? ClientPlanets { get; private set; }
 
+    /// <summary>Gets the impostors of the bodies (decision 12); null without a rendering client.</summary>
+    public Horyzont.Game.Planet.Impostors.PlanetImpostors? ClientImpostors { get; private set; }
+
     partial void ConfigurePlanets()
     {
         ConfigureClientPlanets();
@@ -61,6 +64,18 @@ public sealed partial class GameComposition
         clientNode.AddChild(planets);
         ClientPlanets = planets;
         player.PlanetTerrains = planets;
+        if (_env.Render)
+        {
+            // Decision 12: impostors of every body once the star system is known; the active body shows its voxel terrain instead.
+            var impostors = new Horyzont.Game.Planet.Impostors.PlanetImpostors { Name = "PlanetImpostors" };
+            impostors.Initialize(
+                () => ClientStarSystem?.Model is not null ? client?.Hello?.Planets : null,
+                () => ClientFrameNodes,
+                planet => planet == planets.Selection.Active ? 0f : 1f,
+                _env.Loggers.CreateLogger<Horyzont.Game.Planet.Impostors.PlanetImpostors>());
+            clientNode.AddChild(impostors);
+            ClientImpostors = impostors;
+        }
     }
 
     /// <summary>The own body and the camera in the frame of the body planet; the region planet is forced (decision 10).</summary>
