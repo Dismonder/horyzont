@@ -147,6 +147,8 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
             return;
         }
 
+        // The graph exists before the body (the server frame nodes pose planets from it), so the planet space has its planet node.
+        _ = Graph;
         if (!TryGetBodyPlanet(state.Frame, out var planetId, out var attached) || !_simulation.State.Planets.TryGet(planetId, out var planet))
         {
             _logger.SpawnRefused(player.Value, "the player is not on a planet");
