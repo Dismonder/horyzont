@@ -43,7 +43,7 @@ public sealed class ProtocolContractTests
             (MessageType.ConstructRemoved, 9), (MessageType.OperationApplied, 10), (MessageType.IntentSubmit, 11), (MessageType.IntentReply, 12),
             (MessageType.InputBatch, 13), (MessageType.Snapshot, 14), (MessageType.SnapshotAck, 15), (MessageType.EntitySpawn, 16),
             (MessageType.EntityDespawn, 17), (MessageType.Ping, 18), (MessageType.Pong, 19), (MessageType.Disconnect, 20), (MessageType.ResyncRequest, 21), (MessageType.ServerStatus, 22), (MessageType.JoinUnavailable, 23), (MessageType.TerrainSync, 24), (MessageType.TerrainView, 25),
-            (MessageType.StarSystemState, 32));
+            (MessageType.ShipStatus, 31), (MessageType.StarSystemState, 32));
         AssertValues((DeliveryChannel.ReliableOrdered, 0), (DeliveryChannel.Unreliable, 1));
         AssertValues((HandshakeRejectCode.WrongProtocol, 1), (HandshakeRejectCode.WrongBuild, 2), (HandshakeRejectCode.ServerFull, 3),
             (HandshakeRejectCode.BadPassword, 4), (HandshakeRejectCode.Banned, 5), (HandshakeRejectCode.AlreadyConnected, 6),
@@ -116,19 +116,20 @@ public sealed class ProtocolContractTests
     /// K5-21 adds StarSystemState (32) on the K5-20 stack: K5-20 + 1, recomputed as main + 1 when K5-21 merges.
     /// K5-22 changes the acceptance rule of TerrainView (another planet up to 4.4 R) on the K5-21 stack: K5-21 + 1 (P1, D4).
     /// K5-24 adds ShipFuelAddOp (21), RefuelIntent (13) and ShipNotParked (39) after K5-22 (main 10): 11.
+    /// K5-26 adds ShipStatus (31) and the seat in a player's EntitySpawn.KindData after K5-27 (12 in the merge queue): 13.
     /// A rebase onto a newer main updates this value, the constant and the package plan together.
     /// </summary>
     [Fact]
     public void ProtocolVersion_MatchesDocumentedMergeValue()
     {
-        Assert.Equal(11, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(13, ProtocolConstants.ProtocolVersion);
         Assert.Equal(0x3F, ProtocolConstants.InputButtonsMask);
     }
 
     [Fact]
     public void Constants_GoldenValues()
     {
-        Assert.Equal(11, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(13, ProtocolConstants.ProtocolVersion);
         Assert.Equal(262144, ProtocolConstants.MaxReliableMessageBytes);
         Assert.Equal(1150, ProtocolConstants.MaxUnreliableMessageBytes);
         Assert.Equal(32, ProtocolConstants.MaxDisplayNameBytes);
@@ -142,7 +143,7 @@ public sealed class ProtocolContractTests
     [Fact]
     public void MessageChannels_MapsEveryType()
     {
-        var unreliable = new[] { MessageType.InputBatch, MessageType.Snapshot, MessageType.SnapshotAck, MessageType.Ping, MessageType.Pong };
+        var unreliable = new[] { MessageType.InputBatch, MessageType.Snapshot, MessageType.SnapshotAck, MessageType.Ping, MessageType.Pong, MessageType.ShipStatus };
         foreach (var type in Enum.GetValues<MessageType>())
         {
             var expected = unreliable.Contains(type) ? DeliveryChannel.Unreliable : DeliveryChannel.ReliableOrdered;
@@ -188,6 +189,7 @@ public sealed class ProtocolContractTests
             new ServerStatus(true, 2, "Writer unavailable"),
             new JoinUnavailable(1, "Terrain mismatch"),
             new StarSystemState(Horyzont.Core.Space.StarSystemGenesis.CreateWorldBodies(1, "core:planet/1").System),
+            new ShipStatus(new EntityId(1), default, 1f, 2f, 3f, default, default),
         ];
 
         foreach (var message in messages)

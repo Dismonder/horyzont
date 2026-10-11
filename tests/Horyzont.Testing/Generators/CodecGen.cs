@@ -475,7 +475,19 @@ public static class CodecGen
          select (Message)new TerrainView(new PlanetId(1), Math.Max(1u, seq), position, 2048, position, 64)),
         ServerStatus.Select(m => (Message)m),
         JoinUnavailable.Select(m => (Message)m),
-        Full64.Select(seed => (Message)new StarSystemState(Horyzont.Core.Space.StarSystemGenesis.CreateWorldBodies(seed, "core:planet/1").System)));
+        Full64.Select(seed => (Message)new StarSystemState(Horyzont.Core.Space.StarSystemGenesis.CreateWorldBodies(seed, "core:planet/1").System)),
+        ShipStatus.Select(m => (Message)m));
+
+    /// <summary>Ship status messages (K5-26): any ship and tick, non-negative finite values, any flags, a defined launch block.</summary>
+    public static Gen<ShipStatus> ShipStatus { get; } =
+        from ship in EntityId
+        from tick in Tick
+        from fuel in PositiveFinite
+        from capacity in PositiveFinite
+        from limit in PositiveFinite
+        from flags in Gen.Choose(0, 255)
+        from block in Gen.Elements(Enum.GetValues<Horyzont.Core.Ships.ShipLaunchBlock>())
+        select new ShipStatus(ship, tick, fuel, capacity, limit, (Horyzont.Core.Ships.Flight.ShipFlightFlags)flags, block);
 
     /// <summary>Server status messages: any flag and reason, detail of 0 to the codec maximum in UTF-8 bytes.</summary>
     public static Gen<ServerStatus> ServerStatus { get; } =
