@@ -119,6 +119,19 @@ public static class OperationCodec
                 w.WriteQuaternion(sm.Rotation);
                 break;
 
+            case ShipFuelAddOp fa:
+                if (!IsFuelAmount(fa.Units, fa.Capacity))
+                {
+                    throw new ArgumentException($"Invalid ShipFuelAddOp units {fa.Units} or capacity {fa.Capacity}.", nameof(op));
+                }
+
+                w.WriteByte((byte)OperationKind.ShipFuelAdd);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteUInt64(fa.Construct.Value);
+                w.WriteSingle(fa.Units);
+                w.WriteSingle(fa.Capacity);
+                break;
+
             default:
                 throw new ArgumentException($"Unknown operation type {op.GetType().Name}.", nameof(op));
         }
@@ -130,7 +143,7 @@ public static class OperationCodec
     public static Operation Read(ref ByteReader r)
     {
         byte kindByte = r.ReadByte();
-        if (kindByte is < (byte)OperationKind.TerrainEdit or > (byte)OperationKind.EntityReparent and not (byte)OperationKind.ShipModeSet)
+        if (kindByte is < (byte)OperationKind.TerrainEdit or > (byte)OperationKind.EntityReparent and not ((byte)OperationKind.ShipModeSet or (byte)OperationKind.ShipFuelAdd))
         {
             throw new ProtocolViolationException($"Unknown operation kind {kindByte}.");
         }
@@ -227,8 +240,23 @@ public static class OperationCodec
                 var smRotation = r.ReadQuaternion();
                 return new ShipModeSetOp(smConstruct, (ConstructMode)smModeByte, smParent, smParentSeq, smOrigin, smRotation);
 
+            case OperationKind.ShipFuelAdd:
+                var faConstruct = new EntityId(r.ReadUInt64());
+                float faUnits = r.ReadSingle();
+                float faCapacity = r.ReadSingle();
+                if (!IsFuelAmount(faUnits, faCapacity))
+                {
+                    throw new ProtocolViolationException($"Invalid fuel units {faUnits} or capacity {faCapacity}.");
+                }
+
+                return new ShipFuelAddOp(faConstruct, faUnits, faCapacity);
+
             default:
                 throw new ProtocolViolationException($"Unhandled operation kind {kind}.");
         }
     }
+
+    /// <summary>Units finite and positive, capacity finite and non-negative (K5-24 decision 13).</summary>
+    private static bool IsFuelAmount(float units, float capacity) =>
+        float.IsFinite(units) && units > 0f && float.IsFinite(capacity) && capacity >= 0f;
 }

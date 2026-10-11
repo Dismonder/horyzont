@@ -340,6 +340,7 @@ public sealed class GoldenBytesTests
     [InlineData(OperationKind.PlayerLeave)]
     [InlineData(OperationKind.EntityReparent)]
     [InlineData(OperationKind.ShipModeSet)]
+    [InlineData(OperationKind.ShipFuelAdd)]
     public void OperationFrames_StartWithOperationKindAndVersionOne(OperationKind kind)
     {
         var sample = CodecGen.Operation.Sample(200, 20).First(o => o.Kind == kind);
