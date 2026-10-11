@@ -1,6 +1,7 @@
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Frames;
 using Horyzont.Core.Hashing;
+using Horyzont.Core.Ids;
 using Horyzont.Core.Space;
 using Horyzont.Core.World;
 using Horyzont.Testing;
@@ -35,6 +36,7 @@ public sealed class StarSystemHashTests
         Assert.NotEqual(withSystem, StateHasher.Hash(Build(created, null)));
         Assert.NotEqual(withSystem, StateHasher.Hash(Build(created, moved)));
         Assert.NotEqual(withSystem, StateHasher.Hash(Build(created, created.System with { SunCycleSeconds = 1801 })));
+        Assert.NotEqual(withSystem, StateHasher.Hash(Build(created, created.System with { System = new SystemId(created.System.System.Value + 1) })));
     }
 
     private static WorldState Build(GeneratedStarSystem created, StarSystemParams? system)
