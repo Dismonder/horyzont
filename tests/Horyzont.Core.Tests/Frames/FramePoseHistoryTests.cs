@@ -133,6 +133,32 @@ public class FramePoseHistoryTests
         }
     }
 
+    [Fact]
+    public void FramePoseHistory_WithVelocities_ConstantAccelerationAcrossGap_Exact()
+    {
+        // K5-26: x = 0.5·a·t² with a = 0.2 m/tick², sampled every 9 ticks (two lost snapshots): the Hermite curve is exact, a straight
+        // line between the samples is off by a·T²/8 ≈ 2 m in the middle.
+        var history = new FramePoseHistory();
+        var linear = new FramePoseHistory();
+        const double a = 0.2;
+        for (ulong t = 0; t <= 27; t += 9)
+        {
+            var pose = new PoseD(new Vector3D(0.5 * a * t * t, 0, 0), QuaternionD.Identity);
+            Assert.True(history.Record(new Tick(t), _ship, pose, new Vector3D(a * t, 0, 0)));
+            Assert.True(linear.Record(new Tick(t), _ship, pose));
+        }
+
+        Assert.True(history.TryGetWorldPose(_ship, 13.5, out var curve));
+        Assert.Equal(0.5 * a * 13.5 * 13.5, curve.Position.X, 1e-9);
+        Assert.True(linear.TryGetWorldPose(_ship, 13.5, out var chord));
+        Assert.True(Math.Abs(chord.Position.X - (0.5 * a * 13.5 * 13.5)) > 1.5);
+
+        // A sample without a velocity falls back to the straight line on both sides of it.
+        Assert.True(history.Record(new Tick(36), _ship, new PoseD(new Vector3D(0.5 * a * 36 * 36, 0, 0), QuaternionD.Identity)));
+        Assert.True(history.TryGetWorldPose(_ship, 31.5, out var mixed));
+        Assert.Equal(0.5 * ((0.5 * a * 27 * 27) + (0.5 * a * 36 * 36)), mixed.Position.X, 1e-9);
+    }
+
     private static PoseD PoseAt(ulong tick) =>
         new(new Vector3D(tick * 0.5, 1, -2), QuaternionD.FromAxisAngle(new Vector3D(0, 1, 0), tick * 0.01));
 }

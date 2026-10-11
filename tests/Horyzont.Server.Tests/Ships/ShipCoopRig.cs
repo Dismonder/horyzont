@@ -204,6 +204,15 @@ internal sealed class ShipCoopRig : IAsyncDisposable
 
     public bool IsFlying(EntityId ship) => Pilots.TryGetPhase(ship, out _);
 
+    /// <summary>Flight state of a ship for failure messages.</summary>
+    public string Describe(EntityId ship)
+    {
+        var construct = Ship(ship);
+        var phase = Pilots.TryGetPhase(ship, out var p) ? p.ToString() : "no pilot";
+        var status = Flight.TryGetStatus(ship, out var s) ? s.ToString() : "-";
+        return $"ship {ship.Value} {phase} in {construct.Parent.Kind}:{construct.Parent.Id} at {construct.Origin} seq {construct.ParentSeq} {status}";
+    }
+
     public bool IsParked(EntityId ship) =>
         Flight.TryGetStatus(ship, out var status) && (status.Flags & ShipFlightFlags.Parked) != 0;
 

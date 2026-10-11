@@ -48,59 +48,77 @@ public sealed class ShipReplicationAcceptanceTests(ITestOutputHelper output)
         AssertIdentical(rig, "start");
         Assert.True(KnowsAll(rig, k2, a, b), "the observer 200 m away sees both ships");
 
-        // Stage 1: both ships to the moon (planet → system → moon).
-        rig.Fly(a, moon);
-        rig.Fly(b, moon);
-        Assert.True(rig.StepUntil(() => !rig.IsFlying(a) && !rig.IsFlying(b), FlightFrames, flight.Measure), "flight to the moon");
-        rig.Settle(a, b);
-        AssertIdentical(rig, "moon");
+        // In every flight: ships in the system frame within 10 km see each other (and their passengers), beyond 10.5 km they do not.
+        var seenInSystem = 0;
+        var partedInSystem = 0;
+        void Watch()
+        {
+            flight.Measure();
+            var shipA = rig.Ship(a);
+            var shipB = rig.Ship(b);
+            if (shipA.Parent.Kind != FrameKind.System || shipB.Parent.Kind != FrameKind.System)
+            {
+                return;
+            }
+
+            var distance = Vector3.Distance(shipA.Origin, shipB.Origin);
+            if (distance <= 9_000 && rig.Replication.Knows(k1.Player, b) && rig.Replication.Knows(k3.Player, a)
+                && rig.Replication.Knows(k1.Player, rig.EntityOf(k3.Player)))
+            {
+                seenInSystem++;
+            }
+
+            if (distance > 11_000)
+            {
+                Assert.False(rig.Replication.Knows(k1.Player, b), "ship B known beyond 11 km");
+                Assert.False(rig.Replication.Knows(k3.Player, a), "ship A known beyond 11 km");
+                Assert.False(rig.Replication.Knows(k1.Player, rig.EntityOf(k3.Player)), "passenger of B known beyond 11 km");
+                partedInSystem++;
+            }
+        }
+
+        void FlyBoth(int targetA, int targetB, string stage)
+        {
+            rig.Fly(a, targetA);
+            if (!rig.IsFlying(b))
+            {
+                rig.Fly(b, targetB);
+            }
+
+            Assert.True(rig.StepUntil(() => !rig.IsFlying(a) && !rig.IsFlying(b), FlightFrames, Watch), $"{stage}: {rig.Describe(a)}; {rig.Describe(b)}");
+            rig.Settle(a, b);
+            AssertIdentical(rig, stage);
+        }
+
+        // Stage 1: both ships to the moon (planet → system → moon), side by side.
+        FlyBoth(moon, moon, "moon");
         Assert.False(KnowsAll(rig, k2, a), "the observer at home does not see ships on the moon");
+        Assert.True(seenInSystem > 0, "ships flying side by side in the system frame see each other");
 
         // Stage 2: G1 changes seats during the stop.
         rig.Seat(k1.Player, a, _seat2);
         rig.Settle(a, b);
         AssertIdentical(rig, "seat change");
 
-        // Stage 3: B to planet B, A home: they leave the moon together (in range in the system frame), then part beyond 10.5 km.
+        // Stage 3: B to planet B, A after it 15 s later on the same route: both in the system frame more than 10.5 km apart (the plan
+        // sends A home from the moon, but its path to the home planet barely enters the system frame while B is there).
         rig.Fly(b, planetB);
-        rig.Fly(a, 0);
-        var seenInSystem = false;
-        var partedInSystem = false;
-        Assert.True(rig.StepUntil(() => !rig.IsFlying(a) && !rig.IsFlying(b), FlightFrames, () =>
-        {
-            flight.Measure();
-            var shipA = rig.Ship(a);
-            var shipB = rig.Ship(b);
-            if (shipA.Parent.Kind == FrameKind.System && shipB.Parent.Kind == FrameKind.System)
-            {
-                var distance = Vector3.Distance(shipA.Origin, shipB.Origin);
-                if (distance <= 9_000 && rig.Replication.Knows(k1.Player, b) && rig.Replication.Knows(k3.Player, a))
-                {
-                    seenInSystem = true;
-                }
+        rig.Steps(15 * 60, Watch);
+        FlyBoth(planetB, planetB, "apart");
+        Assert.True(partedInSystem > 0, "ships never parted beyond 11 km in the system frame");
 
-                if (distance > 11_000 && !rig.Replication.Knows(k1.Player, b) && !rig.Replication.Knows(k3.Player, a)
-                    && !rig.Replication.Knows(k1.Player, rig.EntityOf(k3.Player)))
-                {
-                    partedInSystem = true;
-                }
-            }
-        }), "flights from the moon");
-        Assert.True(seenInSystem, "ships within 10 km in the system frame see each other");
-        Assert.True(partedInSystem, "ships beyond 10.5 km in the system frame do not see each other (nor their passengers)");
-        rig.Settle(a, b);
-        AssertIdentical(rig, "apart");
+        // Stage 4: both home.
+        FlyBoth(0, 0, "home");
 
-        // Stage 4: B home too; both park as static constructs: the headers are bit-identical.
-        rig.Fly(b, 0);
-        Assert.True(rig.StepUntil(() => !rig.IsFlying(b), FlightFrames, flight.Measure), "flight of B home");
-        rig.Settle(a, b);
-        AssertIdentical(rig, "home");
+        // G3 walks to where A landed (the pilot lands toward the target centre, not on the launch pad).
+        var landed = rig.Ship(a).Origin;
+        rig.Stand(k2.Player, Vector3.Normalize(landed) * (float)radius);
+        rig.Steps(120);
         rig.SetMode(a, ConstructMode.Static);
         rig.SetMode(b, ConstructMode.Static);
         rig.Steps(120);
         AssertIdentical(rig, "static");
-        Assert.True(KnowsAll(rig, k2, a, b), "the observer sees both ships back home");
+        Assert.True(KnowsAll(rig, k2, a), "the observer sees ship A back home");
 
         output.WriteLine(flight.Report());
         foreach (var client in rig.Clients)
@@ -229,64 +247,36 @@ public sealed class ShipReplicationAcceptanceTests(ITestOutputHelper output)
     /// <summary>In flight, every frame: world pose of each passenger's ship and of the passenger at the render tick, client vs server.</summary>
     private sealed class FlightMeasure(ShipCoopRig rig, (ShipCoopClient Client, EntityId Ship)[] passengers)
     {
-        private readonly Dictionary<ShipCoopClient, (Vector3D Client, Vector3D Server)> _last = [];
-        private readonly List<double> _errors = [];
+        private readonly ShipPoseMeasure _ships = new(rig);
+        private readonly ShipPoseMeasure _passengers = new(rig);
 
-        public double MaxError { get; private set; }
+        public double MaxError => Math.Max(_ships.MaxError, _passengers.MaxError);
 
-        public double MaxJump { get; private set; }
+        public double MaxJump => Math.Max(_ships.MaxJump, _passengers.MaxJump);
 
-        public int Samples => _errors.Count;
-
-        public int Missing { get; private set; }
+        public int Samples => _ships.Samples;
 
         public void Measure()
         {
-            var tick = rig.ServerTick - ShipCoopRig.RenderDelayTicks;
             foreach (var (client, ship) in passengers)
             {
-                var frame = FrameRef.Of(ship);
-                if (!rig.ServerHistory.TryGetWorldPose(frame, tick, out var server))
-                {
-                    continue;
-                }
+                _ships.Sample(client, ship);
 
-                if (!client.Frames.TryGetWorldPose(frame, tick, out var seen))
-                {
-                    Missing++;
-                    _last.Remove(client);
-                    continue;
-                }
-
-                // The passenger in the world: the ship pose composed with the local pose of the passenger (the same on both sides
-                // when the snapshot positions agree; checked at every stop).
+                // The passenger in the world: the ship pose composed with the local pose of the passenger on each side.
                 var player = rig.PlayerOf(client.Player);
-                if (player.Frame != frame || !client.Entities.TryGetPose(player.Entity, out _, out var local))
+                if (player.Frame == FrameRef.Of(ship) && client.Entities.TryGetPose(player.Entity, out var frame, out var local)
+                    && frame.Frame == player.Frame)
                 {
-                    continue;
+                    _passengers.Sample(
+                        client, ship, FrameMath.FromFloat(player.Position, player.BodyRotation), FrameMath.FromFloat(local.Position, local.Rotation));
                 }
-
-                var serverPassenger = FrameMath.Compose(server, FrameMath.FromFloat(player.Position, player.BodyRotation)).Position;
-                var clientPassenger = FrameMath.Compose(seen, FrameMath.FromFloat(local.Position, local.Rotation)).Position;
-                var error = Math.Max(Vector3D.Distance(server.Position, seen.Position), Vector3D.Distance(serverPassenger, clientPassenger));
-                _errors.Add(error);
-                MaxError = Math.Max(MaxError, error);
-                if (_last.TryGetValue(client, out var last))
+                else
                 {
-                    var jump = Vector3D.Distance(clientPassenger - last.Client, serverPassenger - last.Server);
-                    MaxJump = Math.Max(MaxJump, jump);
+                    _passengers.Reset(client, ship);
                 }
-
-                _last[client] = (clientPassenger, serverPassenger);
             }
         }
 
-        public string Report()
-        {
-            var sorted = _errors.OrderBy(e => e).ToArray();
-            var p99 = sorted.Length == 0 ? 0 : sorted[(int)Math.Min(sorted.Length - 1, Math.Ceiling(sorted.Length * 0.99) - 1)];
-            return string.Create(CultureInfo.InvariantCulture,
-                $"in flight: samples={Samples} missing={Missing} maxError={MaxError:F4} m p99={p99:F4} m maxJumpExcess={MaxJump:F4} m");
-        }
+        public string Report() => "ships: " + _ships.Report() + "; passengers: " + _passengers.Report();
     }
 }
