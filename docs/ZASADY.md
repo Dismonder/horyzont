@@ -29,6 +29,7 @@ Każda sesja pracy zaczyna się od przeczytania tego pliku i planu pakietu. Niej
 - Konwersja między Godotem (`double`) a ramą planety (`System.Numerics`, `float`) odbywa się wyłącznie przez `PlanetFrames` (`game/src/Shared/Frames/`, K2-11), z kontrolą skończoności. Nigdzie indziej nie rzutuje się wektorów ani kwaternionów Godota na `System.Numerics`.
 - Promień intencji narzędzi zawsze zaczyna się w oku liczonym wzorem serwera ze stóp (`AimRayBuilder.EyeFromFeet`), także w widoku z trzeciej osoby; wektory z Godota normalizuje się dopiero po konwersji do `float` (długość poza 1 ± 0,01 albo wartość nieskończona oznacza „nie wysyłaj”). Klient nie stosuje lokalnie edycji terenu, który dzieli z serwerem (solo i host): predykcja tylko przez `IEditPrediction` na osobnej kopii terenu zdalnego klienta (K3-16).
 - Gracz w dzienniku, zapisie i sieci to wewnętrzny `PlayerId`. Tożsamość platformy (`PlatformIdentity`, np. SteamID) służy tylko do łączenia z kontem, banów i administratorów.
+- Tożsamość Steam jest wiarygodna tylko przez endpoint Steam P2P: `HandshakeValidator` odrzuca (`IdentityMismatch`) zarówno SteamID różny od endpointu, jak i tożsamość Steam zgłoszoną przez UDP albo inny endpoint. Lokalny klient hosta i połączenia UDP używają tożsamości Dev. Metadane lobby Steam są informacyjne i nigdy nie zastępują handshake; endpoint P2P pochodzi z właściciela lobby, nie z identyfikatora lobby.
 
 ## 3. Kontrakty chronione
 
