@@ -69,6 +69,38 @@ public sealed class GodotShipColliderTests : EngineTestBase
         EngineAssert.Equal(hash, StateHasher.Hash(rig.World.State), "no block destroyed or changed");
     }
 
+    [EngineTest]
+    public async Task GodotShipCollider_YawIntoWallThenFlyAway_NotStuck()
+    {
+        using var rig = await Rig.Create(this);
+        var rules = new FlightRules();
+        var environment = new FlightEnvironment { Up = new Vector3D(0, 1, 0) };
+
+        // The hull (x 9 … 14) is 1 m from the wall at x = 15; a 45° yaw swings its far corner about 2 m into the wall.
+        var from = Pose(9, Height, 0);
+        var motion = new ShipMotion
+        {
+            Pose = new PoseD(from.Position, QuaternionD.FromAxisAngle(new Vector3D(0, 1, 0), Math.PI / 4)),
+            Flags = ShipFlightFlags.Assist,
+        };
+        var yaw = rig.Sweep(from, motion.Pose);
+        EngineAssert.True(yaw.Hit, "yawing the hull into the wall hits it");
+        ShipContact.Resolve(ref motion, from, yaw, environment, rules);
+
+        // Flying away along −X must move the ship: 10 steps of 0.5 m.
+        for (var i = 0; i < 10; i++)
+        {
+            var start = motion.Pose;
+            motion.Pose = new PoseD(start.Position + new Vector3D(-0.5, 0, 0), start.Rotation);
+            motion.LinearVelocity = new System.Numerics.Vector3(-30, 0, 0);
+            ShipContact.Resolve(ref motion, start, rig.Sweep(start, motion.Pose), environment, rules);
+        }
+
+        EngineAssert.True(motion.Pose.Position.X < 5, $"the ship flew away from the wall (x = {motion.Pose.Position.X:F2})");
+        var free = rig.Sweep(motion.Pose, new PoseD(motion.Pose.Position + new Vector3D(-0.5, 0, 0), motion.Pose.Rotation));
+        EngineAssert.True(!free.Hit, "the ship is clear of the wall");
+    }
+
     private static PoseD Pose(double x, double y, double z) => new(new Vector3D(x, y, z), QuaternionD.Identity);
 
     private sealed class Rig : IDisposable

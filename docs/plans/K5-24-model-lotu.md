@@ -322,3 +322,4 @@ Kolejność scalania K5: **(K5-23 ↔ K5-20) → K5-21 → {K5-22, K5-24, K5-27}
 **Poprawki po przeglądzie Opus (2026-10-11).**
 
 - Step 1 contract approved by Opus review (2026-10-11) with the op 21 varuint change: `ShipFuelAddOp` koduje `Construct` jako varuint (jak pozostałe operacje i intencja 13), złote bajty `15 01 05 00 00 7A 44 00 00 FA 44`; decyzja 13 zaktualizowana.
+- `ShipContact`: trafienie przy ułamku 0 (obrót końcowy nachodzi na przeszkodę już w pozycji startowej przesuwu silnika) zostawia obrót startowy — wcześniej statek po obrocie w kontakt utykał na stałe, także odlatując. Tarcie mnoży tylko prędkość styczną; składowa normalna oddalająca zostaje. Testy `ShipContactTests` (Core) i `GodotShipCollider_YawIntoWallThenFlyAway_NotStuck` (silnik, **nieuruchomiony lokalnie**).
