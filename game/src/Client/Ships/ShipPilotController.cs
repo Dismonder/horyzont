@@ -248,17 +248,7 @@ public sealed partial class ShipPilotController : Node, IClientSessionListener
 
     private void Rebase(EntityReparentOp op, ulong tick)
     {
-        var graph = _frames.Graph;
-        if (graph is not null && graph.TryGetWorldPose(_parent, tick, out var from) && graph.TryGetWorldPose(op.NewParent, tick, out var to))
-        {
-            // EA frames share their axes: the old origin seen from the new frame is a translation.
-            _pilot.OnShipReparent(op.Entity, op.NewParentSeq, from.Position - to.Position);
-        }
-        else
-        {
-            _pilot.Prediction.Clear();
-        }
-
+        _pilot.OnShipReparent(op, _parent, _frames.Graph, tick);
         _parent = op.NewParent;
         _sourceParent = default;
     }

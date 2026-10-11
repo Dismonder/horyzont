@@ -1,5 +1,6 @@
 using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
+using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Ships;
 using Horyzont.Core.Ships.Flight;
@@ -113,6 +114,35 @@ public sealed class ShipPilot
         }
 
         _prediction.Apply(correction);
+    }
+
+    /// <summary>
+    /// The reparent operation of the piloted ship arrived (zone transition): rebases the prediction by the origin of the old frame seen
+    /// from the new one at the tick of the operation, which applies a held correction of the new frame; without both frame poses the
+    /// prediction stops and the next correction starts it again.
+    /// </summary>
+    /// <param name="op">The reparent operation (ignored for another entity).</param>
+    /// <param name="oldParent">The frame the ship was in.</param>
+    /// <param name="history">Frame poses by tick; null before the frames arrive.</param>
+    /// <param name="tick">Server tick of the operation.</param>
+    /// <returns>True when the prediction was rebased.</returns>
+    public bool OnShipReparent(EntityReparentOp op, FrameRef oldParent, IFrameHistoryView? history, ulong tick)
+    {
+        ArgumentNullException.ThrowIfNull(op);
+        if (op.Entity != Ship || Ship == default)
+        {
+            return false;
+        }
+
+        if (history is not null && history.TryGetWorldPose(oldParent, tick, out var from) && history.TryGetWorldPose(op.NewParent, tick, out var to))
+        {
+            // EA frames share their axes: the old origin seen from the new frame is a translation.
+            OnShipReparent(op.Entity, op.NewParentSeq, from.Position - to.Position);
+            return true;
+        }
+
+        _prediction.Clear();
+        return false;
     }
 
     /// <summary>The ship was reparented (zone transition).</summary>

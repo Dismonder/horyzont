@@ -165,6 +165,57 @@ public sealed class SeatClientTests
     }
 
     [Fact]
+    public void ShipPilot_Rebase_AppliesHeldCorrectionOfNewFrame()
+    {
+        // Review 10: the reparent path of ShipPilotController (ShipPilot.OnShipReparent with the frame history) with a real pilot and
+        // prediction: a correction of the new frame (newer ParentSeq) waits, the reparent op rebases the ring and applies it.
+        var stats = FlightFixtures.Thirty();
+        var prediction = new ShipPrediction(
+            ClientFlightEnvironment.InPlanet(FlightFixtures.Home, 0, FlightRules.Default), (in PoseD _, in PoseD _) => ShipSweepResult.Free,
+            FlightRules.Default, 60, NullLogger.Instance);
+        var pilot = new ShipPilot(prediction, (_, _) => { });
+        var hover = new ShipControl(0, 0, 0, 0, 0, 0, ShipButtons.Assist);
+        var home = FrameRef.Of(WorldFactory.HomePlanet);
+        var zone = new FrameRef(FrameKind.System, 0);
+        var frames = new TwoFrames(home, new Vector3D(1000, 0, 0), zone);
+        pilot.Begin(ShipFixtures.ConstructId, stats);
+        pilot.Tick(1, hover);
+        var start = FlightFixtures.AboveHome(80);
+        FrameMath.TryToFloat(start.Pose, FrameKind.Planet, out var position, out var rotation);
+        pilot.OnCorrection(new ShipCorrection(
+            ShipFixtures.ConstructId, 1, 0, position, rotation, Vector3.Zero, Vector3.Zero, start.Fuel, start.Flags, ShipTerrainGate.Ready,
+            ShipLaunchBlock.None, float.PositiveInfinity));
+        var states = new ShipMotion[11];
+        for (uint t = 2; t <= 10; t++)
+        {
+            pilot.Tick(t, hover);
+            states[t] = prediction.Motion;
+        }
+
+        // Slot 6 in the new frame, 2 m off the prediction: held until the reparent arrives.
+        var slot = states[6];
+        Assert.True(FrameMath.TryToFloat(new PoseD(slot.Pose.Position + new Vector3D(1002, 0, 0), slot.Pose.Rotation), FrameKind.System, out var server, out var serverRotation));
+        var held = new ShipCorrection(
+            ShipFixtures.ConstructId, 6, 1, server, serverRotation, slot.LinearVelocity, slot.AngularVelocity, slot.Fuel,
+            slot.Flags, ShipTerrainGate.Ready, ShipLaunchBlock.None, float.PositiveInfinity);
+        pilot.OnCorrection(held);
+        Assert.True(prediction.HasHeld);
+        var before = prediction.Motion.Pose.Position;
+
+        var op = new EntityReparentOp(ShipFixtures.ConstructId, zone, 1, Vector3.Zero, Quaternion.Identity, Vector3.Zero, null);
+        Assert.True(pilot.OnShipReparent(op, home, frames, 10));
+
+        Assert.False(prediction.HasHeld);
+        Assert.Equal(1u, prediction.ParentSeq);
+        Assert.Equal(1, prediction.Corrections);
+        Assert.InRange(Vector3D.Distance(before + new Vector3D(1002, 0, 0), prediction.Motion.Pose.Position), 0, 0.01);
+
+        // Without the frame poses the prediction stops; the next correction starts it again.
+        Assert.False(pilot.OnShipReparent(op with { NewParentSeq = 2 }, zone, null, 11));
+        Assert.False(prediction.HasState);
+    }
+
+    [Fact]
     public void SeatView_SeatedWorldPose_ShipAtRenderTick_PilotPredictionInParent()
     {
         // K5-20 open item (5), decision 18: a seated body follows the ship at the render cursor (the remote passengers and the drawn
@@ -207,6 +258,16 @@ public sealed class SeatClientTests
         {
             pose = frame == ship ? ShipAt(tick) : PoseD.Identity;
             return frame == ship || frame == home;
+        }
+    }
+
+    /// <summary>The home planet at <c>planetAt</c> in the world, the zone frame at the world origin.</summary>
+    private sealed class TwoFrames(FrameRef home, Vector3D planetAt, FrameRef zone) : IFrameHistoryView
+    {
+        public bool TryGetWorldPose(FrameRef frame, double tick, out PoseD pose)
+        {
+            pose = frame == home ? new PoseD(planetAt, QuaternionD.Identity) : PoseD.Identity;
+            return frame == home || frame == zone;
         }
     }
 
