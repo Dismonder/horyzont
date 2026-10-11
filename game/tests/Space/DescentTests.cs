@@ -51,7 +51,7 @@ public class DescentTests
     [TestCase(Timeout = 3600000)]
     [TestCategory("Slow")]
     [RequireGodotRuntime]
-    public Task Descent8km_TwentyTrials_NoCollisionGapsAtTouchdown() => RunTrials(gated: false);
+    public async Task Descent8km_TwentyTrials_NoCollisionGapsAtTouchdown() => await RunTrials(gated: false);
 
     /// <summary>
     /// The descent gated by the flight readiness query (README Y11, <see cref="PlanetTerrainReadinessQueries.GetShipReadiness"/>): the probe
@@ -61,7 +61,7 @@ public class DescentTests
     [TestCase(Timeout = 3600000)]
     [TestCategory("Slow")]
     [RequireGodotRuntime]
-    public Task Descent8km_ReadinessGated_ReadyNeverWithoutCollision() => RunTrials(gated: true);
+    public async Task Descent8km_ReadinessGated_ReadyNeverWithoutCollision() => await RunTrials(gated: true);
 
     private static async Task RunTrials(bool gated)
     {
