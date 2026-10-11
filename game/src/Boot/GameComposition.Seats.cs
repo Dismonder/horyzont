@@ -9,8 +9,8 @@ namespace Horyzont.Game.Boot;
 
 /// <summary>
 /// Seats and piloting on the client (K5-25): the own seat (from the own reparents until K5-26 replicates it in <c>KindData</c>), the seat
-/// keys of the tools and the pilot loop. The own seated body follows the ship at the render cursor, the pilot its prediction
-/// (<see cref="ShipPilot.PoseOverride"/>, R7); the ship presentation of K5-26 must draw the ship from the same source.
+/// keys of the tools and the pilot loop. The own seated body follows the ship at the render cursor, the pilot too until K5-26 draws
+/// the piloted hull from its prediction (<see cref="ShipPilot.PoseOverride"/>, R7): body, camera and hull share one pose source.
 /// </summary>
 public sealed partial class GameComposition
 {
@@ -42,6 +42,11 @@ public sealed partial class GameComposition
         ClientNode!.AddChild(pilot);
         Client.AddListener(pilot);
         ShipPilot = pilot;
-        LocalPlayer.ShipPoseOverride = pilot.Pilot.PoseOverride;
+
+        // R7: the hull is still drawn from the render cursor (ConstructMirror), so the pilot body and camera use the render cursor too;
+        // with the prediction pose they would drift from the hull they sit in.
+        // TODO(K5-26): when the construct presentation draws the piloted hull from the prediction, set
+        // LocalPlayer.ShipPoseOverride = pilot.Pilot.PoseOverride here (one pose source for hull, body and camera).
+        LocalPlayer.ShipPoseOverride = null;
     }
 }
