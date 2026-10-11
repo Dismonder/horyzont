@@ -42,6 +42,10 @@ public sealed class ShipReplicationAcceptanceTests(ITestOutputHelper output)
         rig.Seat(k3.Player, b, _cockpit);
         rig.Stand(k2.Player, new Vector3((float)g3Feet.X, (float)g3Feet.Y, (float)g3Feet.Z));
         var flight = new FlightMeasure(rig, [(k1, a), (k3, b)]);
+        foreach (var client in rig.Clients)
+        {
+            client.SnapshotTicks.Own = rig.EntityOf(client.Player);
+        }
 
         // Stage 0: on the ground, everyone sees both ships and both passengers.
         rig.Settle(a, b);
@@ -123,10 +127,19 @@ public sealed class ShipReplicationAcceptanceTests(ITestOutputHelper output)
         output.WriteLine(flight.Report());
         foreach (var client in rig.Clients)
         {
+            var statuses = client.Client.Received.Count(m => m is Core.Protocol.Messages.ShipStatus);
             output.WriteLine(string.Create(CultureInfo.InvariantCulture,
-                $"{client.Client.Name}: resyncs={client.Resyncs} wrongFrame={client.Entities.WrongFrameApplied}"));
+                $"{client.Client.Name}: resyncs={client.Resyncs} wrongFrame={client.Entities.WrongFrameApplied} shipStatus={statuses} "
+                + $"snapshotBytes={Bytes<Core.Protocol.Messages.Snapshot>(client)} bulkBytes={Bytes<Core.Protocol.Messages.ConstructState>(client)} "
+                + $"inShipSnapshots={client.SnapshotTicks.InShip} withoutOwnShip={client.SnapshotTicks.OwnShipMissing}"));
             Assert.Equal(0, client.Entities.WrongFrameApplied);
+            Assert.Equal(0, client.SnapshotTicks.OwnShipMissing);
         }
+
+        // ShipStatus (31) reaches the passengers of both ships, never the observer on the planet.
+        Assert.Contains(k1.Client.Received, m => m is Core.Protocol.Messages.ShipStatus s && s.Ship == a);
+        Assert.Contains(k3.Client.Received, m => m is Core.Protocol.Messages.ShipStatus s && s.Ship == b);
+        Assert.DoesNotContain(k2.Client.Received, m => m is Core.Protocol.Messages.ShipStatus);
 
         Assert.True(flight.MaxError <= MaxFlightError, flight.Report());
         Assert.True(flight.MaxJump <= MaxJumpExcess, flight.Report());
@@ -167,6 +180,18 @@ public sealed class ShipReplicationAcceptanceTests(ITestOutputHelper output)
         rig.Steps(120);
         Assert.True(observer.Client.Received.Count(m => m is Core.Protocol.Messages.ConstructState s && s.Header.Id == ship) > states);
         AssertIdentical(rig, "returned");
+    }
+
+    private static long Bytes<T>(ShipCoopClient client)
+        where T : Core.Protocol.Messages.Message
+    {
+        var writer = new Core.Serialization.ByteWriter();
+        foreach (var message in client.Client.Received.OfType<T>())
+        {
+            Core.Serialization.MessageCodec.Write(writer, message);
+        }
+
+        return writer.Length;
     }
 
     private static bool KnowsAll(ShipCoopRig rig, ShipCoopClient client, params EntityId[] entities) =>
@@ -223,6 +248,15 @@ public sealed class ShipReplicationAcceptanceTests(ITestOutputHelper output)
                 Assert.Equal(player.Frame, frame.Frame);
                 Assert.Equal(player.ParentSeq, pose.ParentSeq);
                 Assert.True(Same(player.Position, pose.Position), $"{who}: player position {player.Position} vs {pose.Position}");
+                if (player.Seat is { } seat)
+                {
+                    Assert.True(client.Entities.TryGetSeat(player.Entity, out var copySeat), $"{who}: player {player.Player.Value} seat unknown");
+                    Assert.Equal(seat, copySeat);
+                }
+                else
+                {
+                    Assert.False(client.Entities.TryGetSeat(player.Entity, out _), $"{who}: player {player.Player.Value} seated on the client only");
+                }
             }
         }
     }

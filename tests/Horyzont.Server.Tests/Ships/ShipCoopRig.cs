@@ -392,8 +392,13 @@ internal sealed class ShipCoopClient
         Frames = new ClientFrames(Replication.Entities, Replication.Constructs, new WorldStatePlanetPlacement(world));
         Frames.OnServerHello(client.Hello!);
         Replication.Decoder.AddSink(Frames);
+        Replication.Decoder.AddSink(SnapshotTicks);
+        SnapshotTicks.IsShip = id => Constructs.TryGetConstruct(id, out var construct) && construct.Mode == ConstructMode.Ship;
         client.Observer = Replication.OnMessage;
     }
+
+    /// <summary>Gets the ticks of the full snapshots that carried each entity (the samples the client interpolates between).</summary>
+    public EntitySnapshotTicks SnapshotTicks { get; } = new();
 
     public RigClient Client { get; }
 
@@ -408,4 +413,79 @@ internal sealed class ShipCoopClient
     public ConstructMirror Constructs => Replication.Constructs!;
 
     public int Resyncs { get; private set; }
+}
+
+/// <summary>Ticks of the full snapshots a client applied, per entity they carried.</summary>
+internal sealed class EntitySnapshotTicks : IFullSnapshotSink
+{
+    private readonly Dictionary<EntityId, List<long>> _ticks = [];
+
+    /// <summary>Gets or sets the client's own entity, for <see cref="OwnShipMissing"/>.</summary>
+    public EntityId Own { get; set; }
+
+    /// <summary>Gets or sets whether a construct is a ship-mode construct on the client (static ones are not in snapshots).</summary>
+    public Func<EntityId, bool> IsShip { get; set; } = _ => true;
+
+    /// <summary>Gets the full snapshots that placed the own entity in a construct frame without that construct (expected 0).</summary>
+    public int OwnShipMissing { get; private set; }
+
+    /// <summary>Gets the full snapshots that placed the own entity in a construct frame.</summary>
+    public int InShip { get; private set; }
+
+    public void OnFullSnapshot(Snapshot full)
+    {
+        foreach (var entity in full.Entities)
+        {
+            if (entity.Entity == Own && entity.FrameIndex < full.Frames.Count && full.Frames[entity.FrameIndex].Frame.Kind == FrameKind.Construct)
+            {
+                var ship = new EntityId(full.Frames[entity.FrameIndex].Frame.Id);
+                if (IsShip(ship))
+                {
+                    InShip++;
+                    if (!full.Entities.Any(e => e.Entity == ship))
+                    {
+                        OwnShipMissing++;
+                    }
+                }
+            }
+
+            if (!_ticks.TryGetValue(entity.Entity, out var ticks))
+            {
+                _ticks[entity.Entity] = ticks = [];
+            }
+
+            var tick = (long)full.ServerTick.Value;
+            if (ticks.Count == 0 || ticks[^1] < tick)
+            {
+                ticks.Add(tick);
+            }
+        }
+    }
+
+    /// <summary>The snapshot ticks of an entity around <paramref name="tick"/>: the last at or before it, the first after it.</summary>
+    /// <returns>False without a sample at or before the tick; <paramref name="after"/> is null while the client extrapolates.</returns>
+    public bool TryGetBracket(EntityId entity, long tick, out long before, out long? after)
+    {
+        before = 0;
+        after = null;
+        if (!_ticks.TryGetValue(entity, out var ticks))
+        {
+            return false;
+        }
+
+        var at = ticks.BinarySearch(tick);
+        var index = at >= 0 ? at : ~at - 1;
+        if (index < 0)
+        {
+            return false;
+        }
+
+        before = ticks[index];
+        if (index + 1 < ticks.Count)
+        {
+            after = ticks[index + 1];
+        }
+
+        return true;
+    }
 }

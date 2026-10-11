@@ -11,6 +11,8 @@ namespace Horyzont.Server.Tests.Ships;
 /// server displacement around it. A render tick whose server path between the two bracketing snapshot ticks is not a straight line
 /// within <see cref="ChordTolerance"/> (the flight model changes speed within a snapshot interval, e.g. the pulse drive) cannot be
 /// reproduced by any interpolation of 20 Hz samples: its error is counted apart (<see cref="Nonlinear"/>), its jump is still checked.
+/// The bracketing ticks are those of the snapshots the client applied for the ship (K5-26): after a lost snapshot the client
+/// interpolates over the wider interval, and while it extrapolates the interval ends at the render tick.
 /// </summary>
 internal sealed class ShipPoseMeasure(ShipCoopRig rig)
 {
@@ -56,7 +58,7 @@ internal sealed class ShipPoseMeasure(ShipCoopRig rig)
         var serverPoint = serverLocal is { } sl ? FrameMath.Compose(server, sl).Position : server.Position;
         var clientPoint = clientLocal is { } cl ? FrameMath.Compose(seen, cl).Position : seen.Position;
         var error = Vector3D.Distance(serverPoint, clientPoint);
-        if (IsLinear(frame, tick, serverLocal))
+        if (IsLinear(client, ship, tick, serverLocal))
         {
             _errors.Add(error);
             if (error > MaxError)
@@ -89,7 +91,7 @@ internal sealed class ShipPoseMeasure(ShipCoopRig rig)
             {
                 MaxJump = excess;
                 WorstJump = string.Create(CultureInfo.InvariantCulture,
-                    $"tick {tick} {client.Client.Name} ship {ship.Value} moved {Vector3D.Distance(clientPoint, last):F2} allowed {allowed:F2} error {error:F2} linear {IsLinear(frame, tick, serverLocal)}");
+                    $"tick {tick} {client.Client.Name} ship {ship.Value} moved {Vector3D.Distance(clientPoint, last):F2} allowed {allowed:F2} error {error:F2} linear {IsLinear(client, ship, tick, serverLocal)}");
             }
         }
 
@@ -138,16 +140,34 @@ internal sealed class ShipPoseMeasure(ShipCoopRig rig)
         return (a + b - p - p).Length() * 3600;
     }
 
-    private bool IsLinear(FrameRef frame, long tick, PoseD? local)
+    private bool IsLinear(ShipCoopClient client, EntityId ship, long tick, PoseD? local)
     {
-        var start = tick - (tick % 3);
-        if (!TryServerPoint(frame, start, local, out var a) || !TryServerPoint(frame, start + 3, local, out var b)
+        var frame = FrameRef.Of(ship);
+        long start;
+        long end;
+        if (client.SnapshotTicks.TryGetBracket(ship, tick, out var before, out var after))
+        {
+            start = before;
+            end = after ?? tick;
+        }
+        else
+        {
+            start = tick - (tick % 3);
+            end = start + 3;
+        }
+
+        if (end <= start)
+        {
+            return true;
+        }
+
+        if (!TryServerPoint(frame, start, local, out var a) || !TryServerPoint(frame, end, local, out var b)
             || !TryServerPoint(frame, tick, local, out var p))
         {
             return false;
         }
 
-        var t = (tick - start) / 3.0;
+        var t = (tick - start) / (double)(end - start);
         return Vector3D.Distance(p, Vector3D.Lerp(a, b, t)) <= ChordTolerance;
     }
 }
