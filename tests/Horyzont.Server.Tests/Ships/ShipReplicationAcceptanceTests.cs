@@ -15,6 +15,9 @@ public sealed class ShipReplicationAcceptanceTests(ITestOutputHelper output)
 {
     private const double MaxFlightError = 0.5;
     private const double MaxJumpExcess = 0.5;
+    private const double MaxNonlinearShare = 0.005;
+    private const double MaxNonlinearError = 8;
+    private const double MaxMissingShare = 0.002;
     private const int FlightFrames = 60 * 60 * 4;
     private static readonly CellPos _seat1 = new(1, 2, 1);
     private static readonly CellPos _seat2 = new(3, 2, 1);
@@ -133,6 +136,7 @@ public sealed class ShipReplicationAcceptanceTests(ITestOutputHelper output)
                 + $"snapshotBytes={Bytes<Core.Protocol.Messages.Snapshot>(client)} bulkBytes={Bytes<Core.Protocol.Messages.ConstructState>(client)} "
                 + $"inShipSnapshots={client.SnapshotTicks.InShip} withoutOwnShip={client.SnapshotTicks.OwnShipMissing}"));
             Assert.Equal(0, client.Entities.WrongFrameApplied);
+            Assert.Equal(0, client.Resyncs);
             Assert.Equal(0, client.SnapshotTicks.OwnShipMissing);
         }
 
@@ -144,6 +148,9 @@ public sealed class ShipReplicationAcceptanceTests(ITestOutputHelper output)
         Assert.True(flight.MaxError <= MaxFlightError, flight.Report());
         Assert.True(flight.MaxJump <= MaxJumpExcess, flight.Report());
         Assert.True(flight.Samples > 1000, flight.Report());
+        Assert.True(flight.Nonlinear <= flight.Samples * MaxNonlinearShare, flight.Report());
+        Assert.True(flight.MaxNonlinearError <= MaxNonlinearError, flight.Report());
+        Assert.True(flight.Missing <= flight.Samples * MaxMissingShare, flight.Report());
     }
 
     [Fact]
@@ -288,7 +295,13 @@ public sealed class ShipReplicationAcceptanceTests(ITestOutputHelper output)
 
         public double MaxJump => Math.Max(_ships.MaxJump, _passengers.MaxJump);
 
-        public int Samples => _ships.Samples;
+        public int Samples => _ships.Samples + _passengers.Samples;
+
+        public int Nonlinear => _ships.Nonlinear + _passengers.Nonlinear;
+
+        public double MaxNonlinearError => Math.Max(_ships.MaxNonlinearError, _passengers.MaxNonlinearError);
+
+        public int Missing => _ships.Missing + _passengers.Missing;
 
         public void Measure()
         {
