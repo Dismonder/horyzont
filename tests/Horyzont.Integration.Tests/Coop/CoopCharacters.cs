@@ -25,6 +25,12 @@ internal sealed class CoopCharacters : IServerCharacterSource, IServerClientMess
     private ServerRuntime? _runtime;
     private OwnStateSender? _sender;
 
+    /// <summary>
+    /// Gets or sets a value indicating whether the characters send the own-state snapshots of phase A; off when the entity replication
+    /// of K3-15 sends the snapshots.
+    /// </summary>
+    public bool SendsOwnSnapshots { get; set; } = true;
+
     /// <summary>Gets the number of players with a body.</summary>
     public int Count => _characters.Count;
 
@@ -76,7 +82,10 @@ internal sealed class CoopCharacters : IServerCharacterSource, IServerClientMess
             }
         }
 
-        _sender?.Send(runtime.State.CurrentTick);
+        if (SendsOwnSnapshots)
+        {
+            _sender?.Send(runtime.State.CurrentTick);
+        }
     }
 
     /// <inheritdoc />

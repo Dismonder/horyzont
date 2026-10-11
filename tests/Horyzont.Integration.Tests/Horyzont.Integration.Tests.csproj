@@ -23,6 +23,7 @@
   <ItemGroup>
     <!-- The server side of a character in miniature (CoopCharacters) feeds the same snapshot sender the game uses. -->
     <Compile Include="../../game/src/Server/Characters/OwnStateSender.cs" Link="Game/OwnStateSender.cs" />
+    <Compile Include="../../game/src/Server/Replication/ServerReplicationSource.cs" Link="Game/ServerReplicationSource.cs" />
     <Compile Include="../../game/src/Server/Characters/IServerCharacterSource.cs" Link="Game/IServerCharacterSource.cs" />
     <Compile Include="../../game/src/Server/Characters/ServerCharacterState.cs" Link="Game/ServerCharacterState.cs" />
   </ItemGroup>

@@ -2,6 +2,7 @@ using System.Numerics;
 
 using Horyzont.Bots.Scripting;
 using Horyzont.Client.Movement;
+using Horyzont.Client.Replication;
 using Horyzont.Client.Session;
 using Horyzont.Client.Tools;
 using Horyzont.Core.Ids;
@@ -26,7 +27,7 @@ namespace Horyzont.Bots.Client;
 /// starts at the eye computed from the feet of the latest own state of the server (<see cref="AimRayBuilder.EyeFromFeet"/>). Only the
 /// <see cref="BotRole.Abuser"/> deliberately sends what the server must refuse. One call of <see cref="Tick"/> per physics tick.
 /// </summary>
-public sealed class BotClient : IClientSessionListener
+public sealed class BotClient : IClientSessionListener, IFullSnapshotSink
 {
     private static readonly MovementRules _movement = new();
 
@@ -68,11 +69,12 @@ public sealed class BotClient : IClientSessionListener
         _options = options;
         _time = time;
         _loggers = loggers ?? NullLoggerFactory.Instance;
-        _replica = replica ?? NoReplica.Instance;
+        _replica = replica ?? new NoReplica();
         _script = new BotScript(options.Seed, options.Role, options.Schedule);
         Runtime = new ClientRuntime(transport, new ClientOptions { BuildHash = options.BuildHash }, isHostLocal: false, time, _loggers);
         _sender = new RecordingSender(this, new SessionIntentSender(Runtime.Session));
         Runtime.AddListener(this);
+        _replica.Attach(Runtime.Session, this);
     }
 
     /// <summary>Gets the client runtime (session, hello).</summary>
@@ -127,6 +129,7 @@ public sealed class BotClient : IClientSessionListener
             return;
         }
 
+        _replica.OnFrame(_hasOwn ? _own.Planet : default, _own.Feet);
         if (state != ClientState.InGame || !_hasOwn || _tools is null || scriptTick < 0)
         {
             return;
@@ -175,12 +178,15 @@ public sealed class BotClient : IClientSessionListener
         _world.SetPlanets(hello.Planets);
         var pending = new PendingIntentTracker(NoEditPrediction.Instance, _loggers.CreateLogger<PendingIntentTracker>());
         _tools = new ToolController(_options.Rules, _world, _sender, pending, _blocks, _materials, _loggers.CreateLogger<ToolController>());
+        _world.UseConstructs(_replica.Replication is { Constructs: { } mirror } replication
+            ? new RemoteToolWorldView(hello, _world, mirror, replication.Entities)
+            : null);
         _sequencer.Reset();
         _clientTick = 0;
         _hasOwn = false;
-        _replica.Reset();
 
-        // The bot has no terrain to prepare: it is ready at once (phase A; later replicas send their cache report first).
+        // As the game client: the replica reports its terrain cache and first view, then the bot says ready at once.
+        _replica.Start(hello);
         Runtime.Session.SendReady();
         Stats.Joins++;
     }
@@ -203,7 +209,14 @@ public sealed class BotClient : IClientSessionListener
     public void OnMessage(Message message)
     {
         ArgumentNullException.ThrowIfNull(message);
-        if (message is Snapshot snapshot && _validator is not null && _validator.Validate(snapshot, out var own) == OwnStateVerdict.Accepted)
+        _replica.OnMessage(message);
+    }
+
+    /// <inheritdoc />
+    public void OnFullSnapshot(Snapshot full)
+    {
+        ArgumentNullException.ThrowIfNull(full);
+        if (_validator is not null && _validator.Validate(full, out var own) == OwnStateVerdict.Accepted)
         {
             _own = own;
             if (!_hasHome)
@@ -216,8 +229,6 @@ public sealed class BotClient : IClientSessionListener
             _world.SetFeet(own.Feet);
             Stats.Snapshots++;
         }
-
-        _replica.OnMessage(message);
     }
 
     /// <inheritdoc />
@@ -228,6 +239,7 @@ public sealed class BotClient : IClientSessionListener
         _hasOwn = false;
         _sent.Clear();
         _tools?.Pending.Clear();
+        _replica.OnDisconnected(code);
         _reconnectAt = _time.GetTimestamp() + (long)(_options.ReconnectDelay.TotalSeconds * _time.TimestampFrequency);
     }
 

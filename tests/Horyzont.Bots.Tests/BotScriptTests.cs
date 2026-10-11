@@ -47,9 +47,9 @@ public sealed class BotScriptTests
             }
         }
 
-        // Roughly 1 terrain edit per second and 1 block placement every other second in normal mode, well under the limits.
+        // Roughly 1 terrain edit and 1 block operation (placement and removal alternating) per second in normal mode, under the limits.
         Assert.InRange(terrain.Count, 500, 700);
-        Assert.InRange(blocks.Count, 250, 350);
+        Assert.InRange(blocks.Count, 500, 700);
         Assert.True(MaxInAnyWindow(terrain, BotSchedule.TicksPerSecond) <= rules.TerrainEditsPerSecond);
         Assert.True(MaxInAnyWindow(blocks, BotSchedule.TicksPerSecond) <= rules.BlockEditsPerSecond);
     }

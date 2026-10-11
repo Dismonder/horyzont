@@ -145,12 +145,13 @@ public sealed class BotScript
 
     private static BotAction NormalAction(long tick)
     {
-        // One terrain edit per second and one block placement every other second (the removals that would make up the second block operation need the construct mirror of K3-15), far under the limits of the rules.
+        // One terrain edit per second, a block placement every other second and a removal in the seconds between (a removal aims at the
+        // construct mirror of K3-15; without a mirror, or with no block under the aim, the tools send nothing), far under the limits.
         var second = tick / BotSchedule.TicksPerSecond;
         return (int)(tick % BotSchedule.TicksPerSecond) switch
         {
             0 => (second & 1) == 0 ? BotAction.Dig : BotAction.Fill,
-            30 when (second & 1) == 0 => BotAction.PlaceBlock,
+            30 => (second & 1) == 0 ? BotAction.PlaceBlock : BotAction.RemoveBlock,
             _ => BotAction.None,
         };
     }

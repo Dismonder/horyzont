@@ -9,5 +9,6 @@
     <ProjectReference Include="../Horyzont.Core/Horyzont.Core.csproj" />
     <ProjectReference Include="../Horyzont.Net/Horyzont.Net.csproj" />
     <ProjectReference Include="../Horyzont.Client/Horyzont.Client.csproj" />
+    <ProjectReference Include="../Horyzont.Persistence/Horyzont.Persistence.csproj" />
   </ItemGroup>
 </Project>

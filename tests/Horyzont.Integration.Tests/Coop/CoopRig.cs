@@ -1,6 +1,7 @@
 using System.Numerics;
 
 using Horyzont.Bots.Client;
+using Horyzont.Bots.Replicas;
 using Horyzont.Bots.Runner;
 using Horyzont.Bots.Scripting;
 using Horyzont.Core.Hashing;
@@ -45,12 +46,16 @@ internal sealed class CoopRig : IAsyncDisposable
     private InMemoryTransport _serverTransport;
     private readonly Queue<(DateTimeOffset At, OpId Last)> _opHistory = new();
     private readonly bool _expectsCrash;
+    private readonly bool _replicated;
     private long _frame;
     private int _spawned;
     private ServerRuntime? _server;
 
-    public CoopRig(string? dir = null, LinkConditions? conditions = null, IPersistenceFaults? faults = null, bool hashEveryOperation = false)
+    public CoopRig(
+        string? dir = null, LinkConditions? conditions = null, IPersistenceFaults? faults = null, bool hashEveryOperation = false,
+        bool replicated = false)
     {
+        _replicated = replicated;
         _ownsDir = dir is null;
         _dir = dir ?? Path.Combine(Path.GetTempPath(), "horyzont-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_dir);
@@ -70,6 +75,9 @@ internal sealed class CoopRig : IAsyncDisposable
     public CoopCharacters Characters { get; private set; }
 
     public FakeServerTerrainFactory Terrain { get; private set; }
+
+    /// <summary>Gets the entity and terrain replication of the server (phase B rigs); null otherwise.</summary>
+    public CoopReplication? Replication { get; private set; }
 
     public IReadOnlyList<BotClient> Bots => _bots;
 
@@ -116,7 +124,8 @@ internal sealed class CoopRig : IAsyncDisposable
                 Schedule = schedule ?? new BotSchedule(),
                 ReconnectDelay = reconnectDelay ?? TimeSpan.FromSeconds(2),
             },
-            transport, Time);
+            transport, Time,
+            _replicated ? new BotReplicaSet(new ConstructMirrorReplica(Time), new TerrainReplica(Path.Combine(_dir, "bots", "bot" + index), Time)) : null);
         _bots.Add(bot);
         return bot;
     }
@@ -233,6 +242,7 @@ internal sealed class CoopRig : IAsyncDisposable
         foreach (var bot in _bots)
         {
             bot.Runtime.Session.Disconnect();
+            (bot.Replica as IDisposable)?.Dispose();
         }
 
         _serverTransport.Dispose();
@@ -276,6 +286,15 @@ internal sealed class CoopRig : IAsyncDisposable
         runtime.AddClientMessageHandler(characters);
         runtime.AddTickParticipant(characters);
         runtime.AddPlayerObserver(characters);
+        Replication = null;
+        if (_replicated)
+        {
+            // Registered after the characters, as in the game: the movement of a tick runs before its snapshots are built.
+            characters.SendsOwnSnapshots = false;
+            Replication = new CoopReplication(characters, Time);
+            Replication.Register(runtime);
+        }
+
         return (runtime, characters, terrain);
     }
 

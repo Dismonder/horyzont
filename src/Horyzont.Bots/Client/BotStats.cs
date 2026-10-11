@@ -55,9 +55,13 @@ public sealed class BotStats
     /// <summary>Gets the answered intents in the order of the replies.</summary>
     public IReadOnlyList<IntentRecord> Records => _records;
 
+    /// <summary>Raised for every answered intent, after the counters were updated.</summary>
+    public event Action<IntentRecord>? Recorded;
+
     internal void Add(in IntentRecord record)
     {
         _records.Add(record);
+        Recorded?.Invoke(record);
         if (record.Reason == RejectReason.None)
         {
             Accepted++;

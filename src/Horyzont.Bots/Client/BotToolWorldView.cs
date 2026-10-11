@@ -14,10 +14,11 @@ namespace Horyzont.Bots.Client;
 /// (the server does the real hit test, so a bot at ground level aims at the ground it stands on). Constructs are known only when a
 /// replica is attached (K3-15); without one the bot builds on terrain only.
 /// </summary>
-public sealed class BotToolWorldView : IToolWorldView
+public sealed class BotToolWorldView : IToolWorldView, IRemoteTerrainRaycast
 {
     private PlanetParams[] _planets = [];
     private float _surfaceRadius;
+    private IToolWorldView? _constructs;
 
     /// <summary>Gets the radius of the ground sphere in metres; 0 before the first own state.</summary>
     public float SurfaceRadius => _surfaceRadius;
@@ -85,18 +86,25 @@ public sealed class BotToolWorldView : IToolWorldView
         return true;
     }
 
+    /// <summary>
+    /// Lets the construct queries go to a view over the mirrors of the bot (K3-15: <c>RemoteToolWorldView</c> with this view as its
+    /// terrain); null keeps a world without constructs.
+    /// </summary>
+    /// <param name="constructs">The view that answers construct and player queries.</param>
+    public void UseConstructs(IToolWorldView? constructs) => _constructs = constructs;
+
     /// <inheritdoc />
     public bool RaycastConstructs(PlanetId planet, Vector3 origin, Vector3 direction, float maxDistance, out ConstructHit hit)
     {
         hit = default;
-        return false;
+        return _constructs is not null && _constructs.RaycastConstructs(planet, origin, direction, maxDistance, out hit);
     }
 
     /// <inheritdoc />
     public bool TryGetConstruct(EntityId construct, [NotNullWhen(true)] out Construct? value)
     {
         value = null;
-        return false;
+        return _constructs is not null && _constructs.TryGetConstruct(construct, out value);
     }
 
     /// <inheritdoc />
@@ -104,12 +112,14 @@ public sealed class BotToolWorldView : IToolWorldView
     {
         origin = default;
         rotation = Quaternion.Identity;
-        return false;
+        return _constructs is not null && _constructs.TryGetConstructPose(construct, out origin, out rotation);
     }
 
     /// <inheritdoc />
-    public bool OverlapsConstruct(PlanetId planet, Vector3 center, Quaternion rotation, EntityId? skip) => false;
+    public bool OverlapsConstruct(PlanetId planet, Vector3 center, Quaternion rotation, EntityId? skip) =>
+        _constructs is not null && _constructs.OverlapsConstruct(planet, center, rotation, skip);
 
     /// <inheritdoc />
-    public int CopyOtherPlayerFeet(PlanetId planet, Span<Vector3> destination) => 0;
+    public int CopyOtherPlayerFeet(PlanetId planet, Span<Vector3> destination) =>
+        _constructs?.CopyOtherPlayerFeet(planet, destination) ?? 0;
 }
