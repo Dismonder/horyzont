@@ -157,7 +157,11 @@ public class ClientPlanetTerrainsTests
 
         public uint CollisionLayer => 1;
 
+        public float Blend { get; private set; }
+
         public void AddViewer(VoxelViewer viewer) => anchor.AddChild(viewer);
+
+        public void SetImpostorBlend(float impostorWeight) => Blend = impostorWeight;
 
         public void RemoveViewer(VoxelViewer viewer)
         {

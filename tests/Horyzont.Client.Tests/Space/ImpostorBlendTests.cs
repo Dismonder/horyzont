@@ -36,4 +36,34 @@ public sealed class ImpostorBlendTests
             Assert.Equal((int)Math.Round(16 * w), drawn);
         }
     }
+
+    [Fact]
+    public void ImpostorBlend_Quantize_SameDitherAsContinuous_17Levels()
+    {
+        var levels = new HashSet<float>();
+        for (var i = 0; i <= 1000; i++)
+        {
+            var weight = i / 1000f;
+            var quantized = ImpostorBlend.Quantize(weight);
+            levels.Add(quantized);
+            Assert.InRange(MathF.Abs(quantized - weight), 0f, (0.5f / 16f) + 1e-6f);
+
+            // The impostor draws exactly 16 · q of the 16 pixels of the Bayer tile (the terrain the others).
+            var drawn = 0;
+            for (var y = 0; y < 4; y++)
+            {
+                for (var x = 0; x < 4; x++)
+                {
+                    drawn += ImpostorBlend.ImpostorDraws(x, y, quantized) ? 1 : 0;
+                }
+            }
+
+            Assert.Equal((int)MathF.Round(quantized * 16f), drawn);
+        }
+
+        Assert.Equal(ImpostorBlend.Levels + 1, levels.Count);
+        Assert.Equal(0f, ImpostorBlend.Quantize(0f));
+        Assert.Equal(1f, ImpostorBlend.Quantize(1f));
+        Assert.Equal(1f, ImpostorBlend.Quantize(float.NaN));
+    }
 }

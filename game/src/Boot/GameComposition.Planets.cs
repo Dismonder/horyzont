@@ -66,15 +66,16 @@ public sealed partial class GameComposition
         player.PlanetTerrains = planets;
         if (_env.Render)
         {
-            // Decision 12: impostors of every body once the star system is known; the active body shows its voxel terrain instead.
+            // Decisions 12–13: impostors of every body once the star system is known, cross-faded with the voxel terrain of the wanted bodies.
             var impostors = new Horyzont.Game.Planet.Impostors.PlanetImpostors { Name = "PlanetImpostors" };
             impostors.Initialize(
                 () => ClientStarSystem?.Model is not null ? client?.Hello?.Planets : null,
                 () => ClientFrameNodes,
-                planet => planet == planets.Selection.Active ? 0f : 1f,
+                planets.ImpostorWeight,
                 _env.Loggers.CreateLogger<Horyzont.Game.Planet.Impostors.PlanetImpostors>());
             clientNode.AddChild(impostors);
             ClientImpostors = impostors;
+            planets.ImpostorReady = planet => impostors.TryGetImpostor(planet, out _);
         }
     }
 

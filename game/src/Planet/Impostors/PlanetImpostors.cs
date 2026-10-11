@@ -23,7 +23,7 @@ public sealed partial class PlanetImpostors : Node
     private Func<FrameNodes?> _nodes = static () => null;
     private Func<PlanetId, float> _blend = static _ => 1f;
     private ILogger _logger = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
-    private Material? _material;
+    private ShaderMaterial? _material;
 
     /// <summary>Wires the node.</summary>
     /// <param name="planets">The planets to build, or null while the star system is not known.</param>
@@ -103,9 +103,7 @@ public sealed partial class PlanetImpostors : Node
 
             if (impostor is not null)
             {
-                var blend = _blend(planet.Id);
-                impostor.Visible = blend > 0f;
-                impostor.SetInstanceShaderParameter("u_blend", blend);
+                impostor.Blend = _blend(planet.Id);
             }
         }
     }

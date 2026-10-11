@@ -5,6 +5,8 @@ shader_type spatial;
 
 uniform sampler2DArray u_textures : source_color, filter_linear_mipmap, repeat_enable;
 uniform float u_texture_scale = 0.25;
+// Share of the impostor in the cross-fade (K5-22 decision 13): the terrain discards the Bayer pixels the impostor draws.
+uniform float u_blend = 0.0;
 
 // Assigned by the voxel engine: neighbours of lower detail (layout 00000000 00000000 00000000 00xxyyzz).
 uniform int u_transition_mask;
@@ -43,6 +45,13 @@ vec4 decode_8bit_vec4(float v) {
 		float((i >> uint(24)) & uint(0xff)));
 }
 
+// 4 x 4 Bayer threshold at a pixel, the same as ImpostorBlend.ImpostorDraws (K5-22 decision 13).
+float bayer4(vec2 frag) {
+	const float m[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+	ivec2 p = ivec2(floor(frag)) & ivec2(3);
+	return (m[p.y * 4 + p.x] + 0.5) / 16.0;
+}
+
 vec3 get_triplanar_blend(vec3 world_normal) {
 	vec3 blending = abs(world_normal);
 	blending = max(blending, vec3(0.00001));
@@ -60,11 +69,18 @@ void vertex() {
 	VERTEX = get_transvoxel_position(VERTEX, CUSTOM0);
 	v_indices = decode_8bit_vec4(CUSTOM1.x);
 	v_weights = decode_8bit_vec4(CUSTOM1.y) / 255.0;
-	v_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	v_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	// K5-22 decision 14: triplanar coordinates in model space, never world or view. A mesh block of Voxel Tools sits at its origin in
+	// the terrain (identity basis, origin a multiple of 16 m), the terrain at the planet centre (planet frame), so the block-local vertex
+	// differs from the planet-frame one by a multiple of 16 m = 4 texture periods at u_texture_scale 0.25: seamless, exact far from
+	// the world origin (no float jitter about 110 km away).
+	v_pos = VERTEX;
+	v_normal = normalize(NORMAL);
 }
 
 void fragment() {
+	if (bayer4(FRAGCOORD.xy) < u_blend) {
+		discard;
+	}
 	vec3 blend = get_triplanar_blend(v_normal);
 	vec3 p = v_pos * u_texture_scale;
 	vec4 weights = v_weights;

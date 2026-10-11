@@ -25,6 +25,7 @@ public sealed partial class ClientPlanetTerrains : Node, ITerrainViewerSource
     private readonly ClientTerrainSelection _selection = new();
     private readonly SortedSet<ulong> _wanted = [];
     private readonly List<ulong> _drop = [];
+    private readonly Dictionary<ulong, float> _weights = [];
     private readonly ViewerSlot _visual = new("CameraTerrainViewer", visuals: true);
     private readonly ViewerSlot _collision = new("BodyCollisionViewer", visuals: false);
     private BodyInfo[] _bodies = [];
@@ -36,6 +37,16 @@ public sealed partial class ClientPlanetTerrains : Node, ITerrainViewerSource
     private PlanetId _viewPlanet;
     private NumVector3 _viewFeet;
     private bool _hasView;
+
+    /// <summary>
+    /// Gets or sets whether the impostor of a body is placed (decision 13): without it the terrain of the body is drawn whole (weight 0).
+    /// </summary>
+    public Func<PlanetId, bool> ImpostorReady { get; set; } = static _ => false;
+
+    /// <summary>The impostor share of a body for this frame (decision 13), quantized; 1 for a body without an active terrain.</summary>
+    /// <param name="planet">The body.</param>
+    /// <returns>The weight in [0, 1].</returns>
+    public float ImpostorWeight(PlanetId planet) => _weights.TryGetValue(planet.Value, out var weight) ? weight : 1f;
 
     /// <summary>Gets the selection (active and fading body).</summary>
     public ClientTerrainSelection Selection => _selection;
@@ -130,6 +141,7 @@ public sealed partial class ClientPlanetTerrains : Node, ITerrainViewerSource
         foreach (var planet in _drop)
         {
             _wanted.Remove(planet);
+            _weights.Remove(planet);
             _visual.RemoveIfOn(new PlanetId(planet));
             _collision.RemoveIfOn(new PlanetId(planet));
             provider.Release(new PlanetId(planet));
@@ -139,6 +151,27 @@ public sealed partial class ClientPlanetTerrains : Node, ITerrainViewerSource
         Want(provider, _selection.Active);
         Want(provider, _selection.Fading);
         UpdateViewers(provider, viewpoint, known);
+        UpdateBlend(provider, viewpoint);
+    }
+
+    /// <summary>Decision 13: the cross-fade weight of every wanted body from the camera altitude over it, applied to its terrain.</summary>
+    private void UpdateBlend(IClientTerrainProvider provider, in ClientViewpoint viewpoint)
+    {
+        foreach (var planet in _wanted)
+        {
+            var id = new PlanetId(planet);
+            var weight = 0f;
+            if (_render && ImpostorReady(id) && viewpoint.HasBody && TryToBody(viewpoint, id, viewpoint.Camera, out var eye, out var radius))
+            {
+                weight = ImpostorBlend.Quantize(ImpostorBlend.ImpostorWeight(eye.Length() - radius, radius));
+            }
+
+            _weights[planet] = weight;
+            if (provider.TryGetPlanet(id, out var view))
+            {
+                view.SetImpostorBlend(weight);
+            }
+        }
     }
 
     private void Want(IClientTerrainProvider provider, PlanetId planet)

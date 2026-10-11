@@ -23,6 +23,19 @@ public static class ImpostorBlend
         return (float)(t * t * (3.0 - (2.0 * t)));
     }
 
+    /// <summary>Distinct dither levels of the 4 × 4 Bayer tile (a weight shows as one of <c>Levels + 1</c> patterns).</summary>
+    public const int Levels = 16;
+
+    /// <summary>
+    /// The weight rounded to one of the <see cref="Levels"/> + 1 patterns the dither can show. The terrain material of a body is swapped
+    /// only when this level changes (Voxel Tools copies material parameters into every mesh block), and the impostor uses the same value,
+    /// so the two layers stay complementary.
+    /// </summary>
+    /// <param name="weight">The weight in [0, 1]; NaN counts as 1 (impostor only).</param>
+    /// <returns>The quantized weight.</returns>
+    public static float Quantize(float weight) =>
+        float.IsNaN(weight) ? 1f : MathF.Round(Math.Clamp(weight, 0f, 1f) * Levels) / Levels;
+
     /// <summary>Weight of the voxel terrain for a camera altitude (complement of <see cref="ImpostorWeight"/>).</summary>
     /// <param name="altitude">Camera altitude over R in metres.</param>
     /// <param name="radius">Surface radius R in metres.</param>
