@@ -21,6 +21,9 @@ public sealed class ServerFramesBinder(WorldStatePlacement? placement = null) : 
     /// <summary>Gets the frame transitions; null before the world runs.</summary>
     public FrameTransitions? Transitions => _transitions;
 
+    /// <summary>Gets the frame graph of the world; null before the world runs.</summary>
+    public FrameGraph? Graph => _transitions?.Graph;
+
     /// <summary>Registers the binder as a tick participant.</summary>
     /// <param name="runtime">The runtime.</param>
     public void Register(ServerRuntime runtime)
@@ -29,11 +32,16 @@ public sealed class ServerFramesBinder(WorldStatePlacement? placement = null) : 
         runtime.AddTickParticipant(this);
     }
 
-    /// <inheritdoc />
-    public void OnTick(ServerRuntime runtime)
+    /// <summary>
+    /// Creates the frames with the running world when they do not exist yet (participants of an earlier phase, such as the server
+    /// characters, reach the graph before the first compose step).
+    /// </summary>
+    /// <param name="runtime">The runtime whose world runs.</param>
+    /// <returns>The frame graph.</returns>
+    public FrameGraph EnsureWorld(ServerRuntime runtime)
     {
         ArgumentNullException.ThrowIfNull(runtime);
-        if (_history is null)
+        if (_transitions is null)
         {
             var state = runtime.State;
             var graph = new FrameGraph(new WorldStateFramePoses(state, (placement ?? HomeFirst)(state)));
@@ -41,7 +49,14 @@ public sealed class ServerFramesBinder(WorldStatePlacement? placement = null) : 
             _transitions = new FrameTransitions(runtime.Simulation, _history);
         }
 
-        _history.OnTick(runtime);
+        return _transitions.Graph;
+    }
+
+    /// <inheritdoc />
+    public void OnTick(ServerRuntime runtime)
+    {
+        EnsureWorld(runtime);
+        _history!.OnTick(runtime);
     }
 
     private static HomeOnlyPlacement HomeFirst(Horyzont.Core.World.WorldState state) =>
