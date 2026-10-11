@@ -8,6 +8,7 @@ using Horyzont.Core.Space;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
+using Horyzont.Core.World.Ships;
 
 namespace Horyzont.Core.Serialization;
 
@@ -577,6 +578,16 @@ public static class StateCodec
 
         return new TerrainBlockBlob(voxelFormat, blob[TerrainBlockHeaderBytes..].ToArray());
     }
+
+    /// <summary>Encodes the flight state of a ship as a SQLite blob (<see cref="BlobKind.ShipState"/>, 39 bytes).</summary>
+    /// <param name="record">The record; must be <see cref="ShipStateRecord.IsValid"/>.</param>
+    /// <returns>The blob.</returns>
+    public static byte[] EncodeShipStateBlob(in ShipStateRecord record) => throw new NotImplementedException();
+
+    /// <summary>Decodes a <see cref="BlobKind.ShipState"/> blob.</summary>
+    /// <param name="blob">The blob.</param>
+    /// <returns>The record.</returns>
+    public static ShipStateRecord DecodeShipStateBlob(ReadOnlySpan<byte> blob) => throw new NotImplementedException();
 
     private static void WriteDouble(ByteWriter w, double value) => w.WriteUInt64(BitConverter.DoubleToUInt64Bits(value));
 
