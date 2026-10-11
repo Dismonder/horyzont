@@ -1,5 +1,6 @@
 using Godot;
 
+using Horyzont.Client.Movement;
 using Horyzont.Client.Replication;
 using Horyzont.Client.Tools;
 using Horyzont.Core.Simulation;
@@ -61,9 +62,11 @@ public sealed partial class GameComposition
         }
 
         // Registered after the character binder, so the movement step of a tick runs before its snapshots are built.
+        // The snapshots draw on the per-client byte budget of K3-14 (20,480 B/s, 2,300 B burst) instead of the fixed 1,150 B.
+        MotionBudget = new MotionSnapshotBudget(_env.Time);
         _replicationBinder = new EntityReplicationBinder(
             runtime => _characters.Characters is { } characters ? new ServerReplicationSource(runtime.State, characters) : null,
-            _env.Time, _env.Loggers);
+            _env.Time, _env.Loggers, MotionBudget);
         _replicationBinder.Register(Server);
     }
 
@@ -88,8 +91,14 @@ public sealed partial class GameComposition
         Client.AddListener(replication);
         ClientReplication = replication;
 
+        // K3-14: the remote clock and rings are fed from the decoder (full states), not from the pass-through that it replaced.
+        RemoteMotion = new RemoteMotionSampleAdapter(_env.Time);
+        LocalPlayer.RemoteMotion = RemoteMotion;
+        replication.Decoder.AddSink(RemoteMotion);
+        Client.AddListener(RemoteMotion);
+
         var players = new RemotePlayers { Name = "RemotePlayers" };
-        players.Initialize(Client, replication.Entities, _env.Render, mirror);
+        players.Initialize(Client, replication.Entities, _env.Render, mirror, RemoteMotion);
         ClientNode.AddChild(players);
         RemotePlayers = players;
         if (mirror is null)

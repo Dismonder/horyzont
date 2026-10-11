@@ -39,6 +39,22 @@ public sealed partial class PlanetTerrain : Node3D
     /// <summary>The stream of the terrain.</summary>
     public TerrainStream Stream => _stream ?? throw new InvalidOperationException("This planet terrain node has no terrain.");
 
+    /// <summary>
+    /// Makes the engine load the whole terrain from the stream again (main thread), e.g. after mipmaps were rebuilt that it had
+    /// requested while they were stale. Reassigning the same stream is ignored by Voxel Tools, so it is detached for a moment.
+    /// Voxel Tools (v1.7) has no per-area reload for a block stream (<c>VoxelLodTerrain</c> binds no reload or invalidate method; its
+    /// <c>post_edit_area</c> is not exposed to scripts), so the reload is whole. The rebuilder bounds the cost: it asks at most every
+    /// <see cref="Horyzont.Persistence.Terrain.DerivedRebuildSchedule.MinReloadInterval"/>, as soon as a block the engine was turned away
+    /// from is rebuilt, and without waiting for the other dirty blocks (so continuing edits cannot hold it back).
+    /// </summary>
+    internal void ReloadFromStream()
+    {
+        var terrain = Terrain;
+        var stream = Stream;
+        terrain.Stream = null;
+        terrain.Stream = stream;
+    }
+
     /// <summary>The voxel tool used for edits, copies and reads (main thread).</summary>
     internal VoxelTool Tool => _tool ?? throw new InvalidOperationException("This planet terrain node has no terrain.");
 }

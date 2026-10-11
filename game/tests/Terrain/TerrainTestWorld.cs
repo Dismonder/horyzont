@@ -215,11 +215,17 @@ internal sealed class TerrainTestWorld : IAsyncDisposable
     public AppliedOperation Edit(Vector3 center, float radius, TerrainEditMode mode) => Sim.ApplyServerOperation(EditOp(center, radius, mode));
 
     /// <summary>Digest of every edited block as Voxel Tools holds it now; every such block must be loaded.</summary>
-    public ulong LiveDigest()
+    public ulong LiveDigest() => LiveDigest(State.TerrainVersions.All);
+
+    /// <summary>
+    /// Digest of the given blocks as Voxel Tools holds them now; a replica world passes the versions of the server, since the blocks it
+    /// receives are pasted into its terrain and never enter its own state.
+    /// </summary>
+    public ulong LiveDigest(IEnumerable<TerrainBlockVersion> versions)
     {
         var entries = new List<(TerrainBlockKey, uint, ulong)>();
         using var buffer = new VoxelBuffer();
-        foreach (var version in State.TerrainVersions.All)
+        foreach (var version in versions)
         {
             if (!Service.TryCopyBlock(version.Key, buffer))
             {

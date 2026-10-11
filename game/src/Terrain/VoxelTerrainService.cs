@@ -84,10 +84,11 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
     /// </summary>
     /// <param name="planet">The planet.</param>
     /// <param name="configured">Its terrain node, outside the tree and without a stream.</param>
+    /// <param name="derived">Persistent mipmaps of the edited blocks of the planet; null for session mipmaps only.</param>
     /// <returns>The planet terrain node.</returns>
     /// <exception cref="NotSupportedException">Voxel size other than 1 m or data block size other than <see cref="TerrainMath.BlockSize"/>.</exception>
     /// <exception cref="InvalidOperationException">Full load mode, a stream already set, a node in the tree, a known planet or a shut down service.</exception>
-    public PlanetTerrain AddPlanet(PlanetParams planet, VoxelLodTerrain configured)
+    public PlanetTerrain AddPlanet(PlanetParams planet, VoxelLodTerrain configured, DerivedLodRebuilder? derived = null)
     {
         EnsureMainThread();
         ArgumentNullException.ThrowIfNull(planet);
@@ -117,10 +118,15 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
             throw new InvalidOperationException($"Planet {planet.Id} cannot be added (known planet or service shut down).");
         }
 
-        var stream = new TerrainStream(planet.Id, _blocks, _codec, new DerivedLodCache(), _logger);
+        var stream = new TerrainStream(planet.Id, _blocks, _codec, new DerivedLodCache(), _logger, derived);
         configured.Stream = stream;
         var node = new PlanetTerrain(planet.Id, configured, stream);
         _planets.Add(planet.Id.Value, new Entry(planet, node));
+        if (derived is not null)
+        {
+            derived.ReloadRequested += node.ReloadFromStream;
+        }
+
         return node;
     }
 
@@ -197,81 +203,7 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
     {
         EnsureMainThread();
         hit = default;
-        if (!_planets.TryGetValue(planet.Value, out var entry) || !float.IsFinite(maxDistance) || maxDistance <= 0f
-            || !float.IsFinite(origin.X) || !float.IsFinite(origin.Y) || !float.IsFinite(origin.Z)
-            || !float.IsFinite(direction.X) || !float.IsFinite(direction.Y) || !float.IsFinite(direction.Z) || direction == Vector3.Zero)
-        {
-            return false;
-        }
-
-        var tool = entry.Node.Tool;
-        var o = TerrainVectors.ToGodot(origin);
-        var d = TerrainVectors.ToGodot(direction).Normalized();
-        double near = 0;
-        var sdfNear = Sample(tool, o);
-        double far;
-        double sdfFar;
-        if (sdfNear < 0)
-        {
-            far = 0;
-            sdfFar = sdfNear;
-        }
-        else
-        {
-            var steps = 0;
-            while (true)
-            {
-                if (++steps > TerrainEditSemantics.RaycastMaxSteps)
-                {
-                    return false;
-                }
-
-                // The sampled SDF is about the distance to the surface (in voxels of 1 m, divided by the edit SDF scale); the factor
-                // keeps the step short of it where the trilinear field is steeper than 1, the minimum step bounds the work.
-                var step = Math.Max(
-                    sdfNear * TerrainEditSemantics.RaycastSdfStepFactor / TerrainEditSemantics.SdfScale, TerrainEditSemantics.RaycastMinStepMeters);
-                far = Math.Min(near + step, maxDistance);
-                sdfFar = Sample(tool, o + (d * far));
-                if (sdfFar < 0)
-                {
-                    break;
-                }
-
-                if (far >= maxDistance)
-                {
-                    return false;
-                }
-
-                near = far;
-                sdfNear = sdfFar;
-            }
-
-            for (var i = 0; i < TerrainEditSemantics.RaycastBinarySearchIterations; i++)
-            {
-                var mid = 0.5 * (near + far);
-                var sdfMid = Sample(tool, o + (d * mid));
-                if (sdfMid < 0)
-                {
-                    far = mid;
-                    sdfFar = sdfMid;
-                }
-                else
-                {
-                    near = mid;
-                    sdfNear = sdfMid;
-                }
-            }
-        }
-
-        var distance = Math.Abs(sdfNear) < Math.Abs(sdfFar) ? near : far;
-        var point = o + (d * distance);
-        var gradient = new Godot.Vector3(
-            Sample(tool, point + Godot.Vector3.Right) - Sample(tool, point + Godot.Vector3.Left),
-            Sample(tool, point + Godot.Vector3.Up) - Sample(tool, point + Godot.Vector3.Down),
-            Sample(tool, point + Godot.Vector3.Back) - Sample(tool, point + Godot.Vector3.Forward));
-        var normal = gradient.LengthSquared() > 1e-12 ? TerrainVectors.ToCore(gradient.Normalized()) : -Vector3.Normalize(direction);
-        hit = new TerrainHit(TerrainVectors.ToCore(point), normal, (float)distance);
-        return true;
+        return _planets.TryGetValue(planet.Value, out var entry) && TerrainRaycaster.Raycast(entry.Node.Tool, origin, direction, maxDistance, out hit);
     }
 
     /// <inheritdoc />
@@ -343,19 +275,7 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
             throw new InvalidOperationException($"Terrain edit at {edit.Center} on planet {edit.Planet}: its blocks are not editable; nothing changed.");
         }
 
-        var center = TerrainVectors.ToGodot(edit.Center);
-        tool.Channel = TerrainChannels.Sdf;
-        tool.Mode = edit.Mode == TerrainEditMode.Add ? VoxelTool.ModeEnum.Add : VoxelTool.ModeEnum.Remove;
-        tool.SdfScale = TerrainEditSemantics.SdfScale;
-        tool.SdfStrength = TerrainEditSemantics.SdfStrength;
-        tool.DoSphere(center, edit.Radius);
-        if (edit.Mode == TerrainEditMode.Add)
-        {
-            tool.Channel = TerrainChannels.Material;
-            tool.Value = texture;
-            tool.DoSphere(center, edit.Radius + TerrainEditSemantics.MaterialSphereRadiusOffset);
-            tool.Channel = TerrainChannels.Sdf;
-        }
+        TerrainSphereEdit.Apply(tool, edit.Mode, TerrainVectors.ToGodot(edit.Center), edit.Radius, texture);
 
         for (var i = 0; i < versions.Count; i++)
         {
@@ -363,7 +283,14 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
             tool.Copy(BlockOrigin(key), _copy, TerrainChannels.UsedChannelsMask);
             _blocks.Record(key, versions[i].Version, _codec.Encode(_copy));
         }
+
+        EditApplied?.Invoke(versions);
     }
+
+    /// <summary>
+    /// Raised on the main thread after <see cref="ApplyEdit"/> changed and recorded blocks (K3-16: the mipmaps above them are stale).
+    /// </summary>
+    public event Action<IReadOnlyList<TerrainBlockVersion>>? EditApplied;
 
     /// <summary>
     /// Stops the streams of all planets, then closes <see cref="ServerTerrainBlocks"/> and waits for its reads. Only when this
@@ -445,26 +372,6 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
         var end = BlockOrigin(max) + new Vector3I(TerrainMath.BlockSize, TerrainMath.BlockSize, TerrainMath.BlockSize);
         return new Aabb(origin, end - origin);
     }
-
-    private static double Sample(VoxelTool tool, Godot.Vector3 p)
-    {
-        var x0 = Math.Floor(p.X);
-        var y0 = Math.Floor(p.Y);
-        var z0 = Math.Floor(p.Z);
-        var fx = p.X - x0;
-        var fy = p.Y - y0;
-        var fz = p.Z - z0;
-        var x = (int)x0;
-        var y = (int)y0;
-        var z = (int)z0;
-        var c00 = Lerp(tool.GetVoxelF(new Vector3I(x, y, z)), tool.GetVoxelF(new Vector3I(x + 1, y, z)), fx);
-        var c10 = Lerp(tool.GetVoxelF(new Vector3I(x, y + 1, z)), tool.GetVoxelF(new Vector3I(x + 1, y + 1, z)), fx);
-        var c01 = Lerp(tool.GetVoxelF(new Vector3I(x, y, z + 1)), tool.GetVoxelF(new Vector3I(x + 1, y, z + 1)), fx);
-        var c11 = Lerp(tool.GetVoxelF(new Vector3I(x, y + 1, z + 1)), tool.GetVoxelF(new Vector3I(x + 1, y + 1, z + 1)), fx);
-        return Lerp(Lerp(c00, c10, fy), Lerp(c01, c11, fy), fz);
-    }
-
-    private static double Lerp(double a, double b, double t) => a + ((b - a) * t);
 
     private bool IsBlockAreaEditable(Entry entry, Vector3 center, float extent)
     {

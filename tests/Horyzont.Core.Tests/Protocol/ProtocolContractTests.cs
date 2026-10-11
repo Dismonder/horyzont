@@ -42,7 +42,7 @@ public sealed class ProtocolContractTests
             (MessageType.TerrainCacheReport, 5), (MessageType.TerrainBlockData, 6), (MessageType.TerrainChecksums, 7), (MessageType.ConstructState, 8),
             (MessageType.ConstructRemoved, 9), (MessageType.OperationApplied, 10), (MessageType.IntentSubmit, 11), (MessageType.IntentReply, 12),
             (MessageType.InputBatch, 13), (MessageType.Snapshot, 14), (MessageType.SnapshotAck, 15), (MessageType.EntitySpawn, 16),
-            (MessageType.EntityDespawn, 17), (MessageType.Ping, 18), (MessageType.Pong, 19), (MessageType.Disconnect, 20), (MessageType.ResyncRequest, 21));
+            (MessageType.EntityDespawn, 17), (MessageType.Ping, 18), (MessageType.Pong, 19), (MessageType.Disconnect, 20), (MessageType.ResyncRequest, 21), (MessageType.TerrainSync, 24), (MessageType.TerrainView, 25));
         AssertValues((DeliveryChannel.ReliableOrdered, 0), (DeliveryChannel.Unreliable, 1));
         AssertValues((HandshakeRejectCode.WrongProtocol, 1), (HandshakeRejectCode.WrongBuild, 2), (HandshakeRejectCode.ServerFull, 3),
             (HandshakeRejectCode.BadPassword, 4), (HandshakeRejectCode.Banned, 5), (HandshakeRejectCode.AlreadyConnected, 6),
@@ -115,14 +115,14 @@ public sealed class ProtocolContractTests
     [Fact]
     public void ProtocolVersion_MatchesDocumentedMergeValue()
     {
-        Assert.Equal(5, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(6, ProtocolConstants.ProtocolVersion);
         Assert.Equal(0x3F, ProtocolConstants.InputButtonsMask);
     }
 
     [Fact]
     public void Constants_GoldenValues()
     {
-        Assert.Equal(5, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(6, ProtocolConstants.ProtocolVersion);
         Assert.Equal(262144, ProtocolConstants.MaxReliableMessageBytes);
         Assert.Equal(1150, ProtocolConstants.MaxUnreliableMessageBytes);
         Assert.Equal(32, ProtocolConstants.MaxDisplayNameBytes);
@@ -177,6 +177,8 @@ public sealed class ProtocolContractTests
             new Pong(1, default),
             new Disconnect(DisconnectCode.Normal),
             new ResyncRequest(new EntityId(1)),
+            new TerrainSync(1, 0, new PlanetId(1), default, 0, true, []),
+            new TerrainView(new PlanetId(1), 1, Vector3.Zero, 2048, Vector3.Zero, 64),
         ];
 
         foreach (var message in messages)
