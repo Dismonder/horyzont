@@ -59,6 +59,7 @@ public sealed partial class GameComposition
         ClientNode!.AddChild(nodes);
         ClientFrameNodes = nodes;
         LocalPlayer.FrameNodes = nodes;
+        _ownTerrain?.FrameNodes = nodes;
         DayNight?.FrameNodes = nodes;
         Tools?.FrameNodes = nodes;
     }

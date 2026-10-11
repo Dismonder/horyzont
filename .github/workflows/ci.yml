@@ -51,6 +51,9 @@ jobs:
       - name: Format
         run: dotnet format Horyzont.sln --verify-no-changes --no-restore
 
+      - name: Self-test of the frame difference tool (K5-22)
+        run: python -I tools/space/frame_diff.py --self-test
+
   game:
     # Needs the engine from engine.yml on main: the build-and-test runners above have no engine packages.
     name: game (${{ matrix.os }})

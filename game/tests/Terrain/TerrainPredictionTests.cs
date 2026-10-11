@@ -194,6 +194,7 @@ public sealed class TerrainPredictionTests
                 [.. server.State.Materials.Entries]);
             var terrain = new OwnTerrainProvider(scene.Root, PlanetTerrainOptions.Server, null, NullLogger.Instance);
             terrain.Prepare(hello);
+            terrain.Activate(WorldFactory.HomePlanet);
             terrain.TryGetNode(WorldFactory.HomePlanet, out var node);
             node!.AddChild(new VoxelViewer
             {

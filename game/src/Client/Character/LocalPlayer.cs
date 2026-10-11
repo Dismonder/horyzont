@@ -14,9 +14,9 @@ using Horyzont.Core.Simulation;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Terrain;
 using Horyzont.Game.Character;
+using Horyzont.Game.Client.Terrain;
 using Horyzont.Game.Frames;
 using Horyzont.Game.Physics;
-using Horyzont.Game.Server.Characters;
 
 using Horyzont.Net.Session;
 
@@ -75,8 +75,6 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     private PlayerBody? _body;
     private GroundProbe? _probe;
     private IClientTerrainView? _terrain;
-    private VoxelViewer? _visualViewer;
-    private VoxelViewer? _collisionViewer;
     private Snapshot? _pending;
     private bool _render;
     private bool _devAllowed;
@@ -88,7 +86,6 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     private bool _snapCamera;
     private float _tickSeconds = 1f / 60f;
     private uint _clientTick;
-    private uint _visualDistance;
     private NumVector3 _cameraOrigin;
     private NumVector3 _cameraDirection = -NumVector3.UnitZ;
     private CameraMode _cameraMode = CameraMode.ThirdPerson;
@@ -103,23 +100,17 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     /// <summary>Gets or sets world readiness; K2 is always ready.</summary>
     public IClientWorldReadiness WorldReadiness { get; set; } = AlwaysReadyWorld.Instance;
 
+    /// <summary>
+    /// Gets or sets the client terrain activation (K5-22 decision 10), which owns the terrain viewers of the client (the visual one at
+    /// the camera, the collision one at the feet); <see cref="TryGetViewers"/> and <see cref="VisualViewer"/> delegate to it.
+    /// </summary>
+    public ClientPlanetTerrains? PlanetTerrains { get; set; }
+
     /// <inheritdoc />
     public bool TryGetViewers(out TerrainViewers viewers)
     {
         viewers = default;
-        if (_planet is not { } planet || (_visualViewer is null && _collisionViewer is null))
-        {
-            return false;
-        }
-
-        var visual = _visualViewer;
-        var collision = _collisionViewer;
-        var space = SpaceOf(planet);
-        viewers = new TerrainViewers(
-            planet.Id,
-            visual is null ? default : space.ToPlanetLocal(visual.GlobalPosition), visual?.ViewDistance ?? 0,
-            collision is null ? default : space.ToPlanetLocal(collision.GlobalPosition), collision?.ViewDistance ?? 0);
-        return true;
+        return PlanetTerrains is { } terrains && terrains.TryGetViewers(out viewers);
     }
 
     /// <summary>Gets the number of corrections (a mismatch with the server) since the connection or the last <see cref="ResetStatistics"/>.</summary>
@@ -156,7 +147,7 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     public DevFlyCamera? DevCamera => _dev;
 
     /// <summary>Gets the viewer that streams the visible terrain around the camera; null before the body exists or without rendering.</summary>
-    public VoxelViewer? VisualViewer => _visualViewer;
+    public VoxelViewer? VisualViewer => PlanetTerrains?.VisualViewer;
 
     /// <summary>Corrections in a row while the dev flight is on after which the client assumes the server refuses the flight.</summary>
     public const int DevFlyRefusalCorrections = 4;
@@ -671,7 +662,9 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     {
         var hello = _hello!;
         _planet = hello.Planets.FirstOrDefault(p => p.Id == own.Planet);
-        if (_planet is null || _clientNode?.TerrainProvider is not { } provider || !provider.TryGetPlanet(own.Planet, out var terrain))
+        // K5-22: terrain nodes exist on demand; the planet of the own body is activated before the body needs its collisions.
+        if (_planet is null || _clientNode?.TerrainProvider is not { } provider || !provider.Activate(own.Planet)
+            || !provider.TryGetPlanet(own.Planet, out var terrain))
         {
             return false;
         }
@@ -692,31 +685,9 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         _monitor!.Snap();
         _snapCamera = true;
 
-        if (_render)
-        {
-            _visualDistance = ViewDistanceFor(0f);
-            _visualViewer = new VoxelViewer { ViewDistance = _visualDistance, RequiresVisuals = true, RequiresCollisions = false };
-            terrain.AddViewer(_visualViewer);
-        }
-
-        if (!_clientNode.Runtime.IsHostLocal)
-        {
-            // A remote client builds its own collisions around the body; a host shares the collisions of the server (spec: the host does not duplicate them).
-            _collisionViewer = new VoxelViewer { ViewDistance = (uint)ServerCharacters.ServerViewerDistance, RequiresVisuals = false, RequiresCollisions = true };
-            terrain.AddViewer(_collisionViewer);
-        }
-
         _logger!.OwnBodyCreated(own.Feet.X, own.Feet.Y, own.Feet.Z, own.Mode);
         return true;
     }
-
-    private static uint ViewDistanceFor(float altitude) => altitude switch
-    {
-        < 300f => 2048u,
-        < 1500f => 4096u,
-        < 3000f => 8192u,
-        _ => 16384u,
-    };
 
     private void UpdateCamera(in LocalInputSample sample, bool devCameraActive)
     {
@@ -770,7 +741,6 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         if (_dev is { IsActive: true })
         {
             rig.Apply(SpaceOf(planet), _dev.Position, _dev.Direction, _dev.Up, teleport);
-            FollowViewers(planet, _dev.Position, body.Feet);
             return;
         }
 
@@ -781,28 +751,6 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         // With no correction the pose equals the physical one already resolved by UpdateCamera: skip the second arm ray.
         var origin = uncorrected && _cameraMode == CameraMode.ThirdPerson && resolvedOrigin is { } reused ? reused : rig.ResolvePresentation(SpaceOf(planet), Eye, pose.Origin);
         rig.Apply(SpaceOf(planet), origin, pose.Direction, _smoother.Up, teleport);
-        FollowViewers(planet, origin, body.Feet);
-    }
-
-    private void FollowViewers(PlanetParams planet, NumVector3 cameraOrigin, NumVector3 feet)
-    {
-        if (_visualViewer is { } visual)
-        {
-            var altitude = cameraOrigin.Length() - planet.RadiusMeters;
-            var distance = ViewDistanceFor(altitude);
-            if (distance != _visualDistance)
-            {
-                _visualDistance = distance;
-                visual.ViewDistance = distance;
-            }
-
-            visual.GlobalPosition = SpaceOf(planet).ToGodot(cameraOrigin);
-        }
-
-        if (_collisionViewer is { } collision)
-        {
-            collision.GlobalPosition = SpaceOf(planet).ToGodot(feet);
-        }
     }
 
     private void OnDevToggle()
@@ -841,17 +789,6 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         _presentation.Reset();
         _hasParent = false;
         _attached = null;
-        foreach (var viewer in new[] { _visualViewer, _collisionViewer })
-        {
-            if (viewer is not null && IsInstanceValid(viewer))
-            {
-                _terrain?.RemoveViewer(viewer);
-                viewer.QueueFree();
-            }
-        }
-
-        _visualViewer = null;
-        _collisionViewer = null;
         if (_body is not null && IsInstanceValid(_body))
         {
             RemoveChild(_body);

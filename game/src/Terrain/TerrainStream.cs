@@ -237,6 +237,10 @@ public sealed partial class TerrainStream : VoxelStreamScript
     }
 #endif
 
+    /// <summary>Test seam (K5-22 <c>Readiness_StreamFault_Faulted</c>): records a load error as a failed block read would.</summary>
+    /// <param name="key">The block.</param>
+    internal void ReportErrorForTest(TerrainBlockKey key) => ReportError(key);
+
     private void ReportError(TerrainBlockKey key)
     {
         Interlocked.Increment(ref _errorCount);

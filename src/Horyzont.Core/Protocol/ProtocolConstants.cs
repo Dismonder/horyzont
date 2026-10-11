@@ -3,8 +3,8 @@ namespace Horyzont.Core.Protocol;
 /// <summary>Limits of the network protocol and of the persisted formats.</summary>
 public static class ProtocolConstants
 {
-    /// <summary>Protocol version; bumped by every change of a message format. 2: RejectReason.ServerReadOnly (K2-10). 3: InputButtons.DevFly and the 0x3F button mask (K2-11). 6: ship-mode constructs in snapshots (K5-20; main 5 after K3-16 + 1 per D4). 7: StarSystemState (K5-21). K5-23 (ShipModeSetOp, ShipModeIntent, reject reasons 30, 31, 37) merged into the K5-24 stack keeps the higher stack value; D4 recomputes it as main + 1 per package at merge. 8: ShipFuelAddOp, RefuelIntent, reject reason 39 (K5-24 on the K5-21 + K5-23 stack).</summary>
-    public const ushort ProtocolVersion = 8;
+    /// <summary>Protocol version; bumped by every change of a message format. 2: RejectReason.ServerReadOnly (K2-10). 3: InputButtons.DevFly and the 0x3F button mask (K2-11). 6: ship-mode constructs in snapshots (K5-20; main 5 after K3-16 + 1 per D4). 7: StarSystemState (K5-21). K5-23 (ShipModeSetOp, ShipModeIntent, reject reasons 30, 31, 37) and K5-22 (8: TerrainView of another planet up to 4.4 R) merged into the K5-24 stack keep the highest stack value (8); D4 recomputes it as main + 1 per package at merge. 9: ShipFuelAddOp, RefuelIntent, reject reason 39 (K5-24 on the K5-21 + K5-22 + K5-23 stack).</summary>
+    public const ushort ProtocolVersion = 9;
 
     /// <summary>Maximum entries per terrain manifest page (K3-16).</summary>
     public const int MaxTerrainSyncEntries = 1024;

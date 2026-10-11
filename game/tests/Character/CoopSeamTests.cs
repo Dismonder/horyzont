@@ -28,6 +28,8 @@ public class CoopSeamTests
         AssertThat(await fixture.WaitInGame()).IsTrue();
         var player = composition.LocalPlayer!;
         AssertThat(await fixture.WaitUntil(() => player.IsActive, 180)).IsTrue();
+        // K5-22: the viewers live in ClientPlanetTerrains, which places them on its next frame.
+        AssertThat(await fixture.WaitUntil(() => player.TryGetViewers(out _), 30)).IsTrue();
         var hello = composition.Client!.Hello!;
         AssertThat(composition.ServerCharacters!.TryGetState(hello.YourPlayer, out var server)).IsTrue();
         composition.ServerNode!.SetPhysicsProcess(false);

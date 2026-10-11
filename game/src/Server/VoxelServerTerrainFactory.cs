@@ -3,6 +3,7 @@ using Godot;
 using Horyzont.Core.World;
 using Horyzont.Game.Planet;
 using Horyzont.Game.Planet.Rendering;
+using Horyzont.Game.Server.Terrain;
 using Horyzont.Game.Terrain;
 using Horyzont.Persistence.Terrain;
 using Horyzont.Server;
@@ -63,7 +64,7 @@ public sealed partial class VoxelServerTerrainFactory : IServerTerrainFactory
     internal int FailedStoreCount => _failedStores.Count;
 
     /// <summary>Test seam for failure during a later planet's construction.</summary>
-    internal Func<PlanetParams, PlanetTerrainOptions, Material?, VoxelLodTerrain> CreatePlanet { get; init; } = PlanetTerrainFactory.Create;
+    internal Func<PlanetParams, PlanetTerrainOptions, Material?, VoxelLodTerrain>? CreatePlanet { get; init; }
 
     /// <summary>Test seam for stopping an actual store read before construction fails.</summary>
     internal Action<TerrainBlockStore>? StoreCreated { get; init; }
@@ -77,7 +78,7 @@ public sealed partial class VoxelServerTerrainFactory : IServerTerrainFactory
         ArgumentException.ThrowIfNullOrEmpty(worldPath);
         ArgumentNullException.ThrowIfNull(state);
         var store = new TerrainBlockStore(worldPath);
-        var nodes = new List<PlanetTerrain>();
+        ServerPlanetTerrains? planets = null;
         VoxelTerrainService? service = null;
         ServerTerrainBlocks? blocks = null;
         DerivedTerrain? derived = null;
@@ -90,41 +91,38 @@ public sealed partial class VoxelServerTerrainFactory : IServerTerrainFactory
             _material ??= _options.Render ? PlanetTerrainMaterial.Create() : null;
             derived = new DerivedTerrain(new DerivedLodStore(
                 Path.Combine(Path.GetDirectoryName(Path.GetFullPath(worldPath))!, DerivedDatabaseName), _time, _loggers.CreateLogger<DerivedLodStore>()));
-            foreach (var planet in state.Planets.All)
+            // K5-22: generators and mipmap rebuilders once per body; terrain nodes only for active planets (the home planet now).
+            var parent = _parent as Node3D ?? throw new InvalidOperationException("The server terrain parent must be a Node3D.");
+            var custom = CreatePlanet;
+            var derivedTerrain = derived;
+            var blockSource = blocks;
+            planets = new ServerPlanetTerrains(
+                service,
+                state,
+                (planet, generator) => derivedTerrain.Add(planet, blockSource, generator),
+                parent,
+                (planet, generator) => custom is not null ? custom(planet, _options, _material) : PlanetTerrainFactory.Create(planet, _options, _material, generator),
+                _loggers.CreateLogger<ServerPlanetTerrains>())
             {
-                if (planet.Id != state.HomePlanet)
-                {
-                    // K5-22 replaces this guard with terrain activation: until then only the home planet has terrain (K5-21
-                    // decision 11), otherwise every body would put a VoxelLodTerrain at the origin of the system.
-                    continue;
-                }
-
-                var configured = CreatePlanet(planet, _options, _material);
-                var rebuilder = configured.Generator is { } generator ? derived.Add(planet, blocks, generator) : null;
-                var node = service.AddPlanet(planet, configured, rebuilder);
-                nodes.Add(node);
-                PlanetCreated?.Invoke(node);
-            }
-
-            // Build every planet before any stream can enter the scene tree.
-            foreach (var node in nodes)
-            {
-                _parent.AddChild(node);
-            }
+                Created = PlanetCreated,
+            };
+            planets.ActivateHome();
 
             // After a restart the mipmaps above every edited block are checked against their fingerprint and rebuilt where they differ.
             derived.Invalidate(state.TerrainVersions.All);
             service.EditApplied += derived.Invalidate;
-            Terrain = new VoxelServerTerrain(service, blocks, store, nodes, _time, derived);
+            Terrain = new VoxelServerTerrain(service, blocks, store, planets, _time, derived);
             return Terrain;
         }
         catch
         {
-            foreach (var node in nodes)
+            if (service is not null)
             {
-                node.GetParent()?.RemoveChild(node);
-                node.Stream.Close();
-                node.QueueFree();
+                // Every node the planet terrains made: out of the tree, stream closed, freed.
+                foreach (var planet in state.Planets.All)
+                {
+                    service.RemovePlanet(planet.Id);
+                }
             }
 
             _failedStores.Add(store);

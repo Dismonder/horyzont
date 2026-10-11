@@ -44,7 +44,7 @@ public class VoxelServerTerrainFactoryTests
         var simulation = new ServerSimulation(state, new FakeTerrainService(), new InMemoryJournal(), new GameRules(), NullLogger<ServerSimulation>.Instance);
         simulation.ApplyServerOperation(new TerrainEditOp(first.Id, TerrainShape.Sphere, new System.Numerics.Vector3(0, 4000, 0), 1, TerrainEditMode.Remove, 0));
         var key = state.TerrainVersions.All.First().Key;
-        var expected = new InvalidOperationException("Second planet creation failed");
+        var expected = new InvalidOperationException("Planet terrain creation failed");
         Task<int>? reading = null;
         TerrainStream? stream = null;
         TerrainBlockStore? storeForCleanup = null;
@@ -64,9 +64,6 @@ public class VoxelServerTerrainFactoryTests
                     }
                 }));
             },
-            CreatePlanet = (planet, options, material) => planet.Id == second.Id
-                ? throw expected
-                : PlanetTerrainFactory.Create(planet, options, material),
             PlanetCreated = node =>
             {
                 stream = node.Stream;
@@ -82,6 +79,9 @@ public class VoxelServerTerrainFactoryTests
                 {
                     throw new TimeoutException("The first planet did not enter its read");
                 }
+
+                // K5-22: only the home planet gets a node at start, so the construction fails right after it was made.
+                throw expected;
             },
         };
 

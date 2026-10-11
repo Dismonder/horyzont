@@ -11,13 +11,55 @@ public sealed class SharedTerrainProvider : IClientTerrainProvider
 {
     private readonly VoxelTerrainService _service;
     private readonly ClientTerrainViews _views = new();
+    private readonly Func<PlanetId, IDisposable?>? _acquire;
+    private readonly SortedDictionary<ulong, IDisposable> _leases = [];
 
     /// <summary>Creates the provider over the terrain service of the server.</summary>
     /// <param name="service">The terrain service of the server.</param>
-    internal SharedTerrainProvider(VoxelTerrainService service)
+    /// <param name="acquire">Takes a lease on a server planet terrain (K5-22: <c>ServerPlanetTerrains.Acquire</c>); null = no leases.</param>
+    internal SharedTerrainProvider(VoxelTerrainService service, Func<PlanetId, IDisposable?>? acquire = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         _service = service;
+        _acquire = acquire;
+    }
+
+    /// <summary>Creates the provider of a host over the running server terrain, holding planets with <c>External</c> leases (K5-22).</summary>
+    /// <param name="terrain">The server terrain.</param>
+    /// <returns>The provider.</returns>
+    public static SharedTerrainProvider Over(Horyzont.Game.Server.VoxelServerTerrain terrain)
+    {
+        ArgumentNullException.ThrowIfNull(terrain);
+        return new SharedTerrainProvider(
+            terrain.Voxel,
+            planet => terrain.Planets.TryGetGenerator(planet, out _) ? terrain.Planets.Acquire(planet, Horyzont.Server.Space.PlanetLeaseReason.External) : null);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>The host keeps one terrain instance: the node lives while the server <b>or</b> the client wants it (K5-22 decision 10).</remarks>
+    public bool Activate(PlanetId planet)
+    {
+        if (_leases.ContainsKey(planet.Value))
+        {
+            return true;
+        }
+
+        if (_acquire?.Invoke(planet) is not { } lease)
+        {
+            return _service.TryGetPlanet(planet, out _);
+        }
+
+        _leases.Add(planet.Value, lease);
+        return true;
+    }
+
+    /// <inheritdoc />
+    public void Release(PlanetId planet)
+    {
+        if (_leases.Remove(planet.Value, out var lease))
+        {
+            lease.Dispose();
+        }
     }
 
     /// <inheritdoc />
