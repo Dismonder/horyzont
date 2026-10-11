@@ -7,6 +7,7 @@ using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.World.Terrain;
+using Horyzont.Game.Frames;
 using Horyzont.Net.Session;
 using Horyzont.Server;
 
@@ -65,6 +66,12 @@ public sealed partial class ToolNode : Node, IClientSessionListener
 
     /// <summary>Gets the planet of the local player (the frame of <see cref="Preview"/>).</summary>
     public Horyzont.Core.Ids.PlanetId Planet => _player?.Planet ?? default;
+
+    /// <summary>Gets the space of the planet frame of <see cref="Preview"/> (through the planet node, K5-20).</summary>
+    public PlanetSpace Space => FrameNodes.PlanetSpaceOf(Planet);
+
+    /// <summary>Gets or sets the frame nodes of the client (K5-20): planet-frame values go through the planet node; null = identity.</summary>
+    public FrameNodes? FrameNodes { get; set; }
 
     /// <summary>Gets the current tool settings (defaults before the hello).</summary>
     public ToolSettings? Settings => Controller?.Settings;

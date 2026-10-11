@@ -46,6 +46,9 @@ public sealed partial class RemotePlayers : Node3D, IClientSessionListener
     /// <summary>Gets or sets the client frames (K5-20): rings rebase across reparents and players in construct frames are shown.</summary>
     public Horyzont.Client.Frames.ClientFrames? Frames { get; set; }
 
+    /// <summary>Gets or sets the frame nodes of the client (K5-20): planet-frame values go through the planet node; null = identity.</summary>
+    public FrameNodes? FrameNodes { get; set; }
+
     /// <summary>Gives the node its dependencies; call before it enters the tree.</summary>
     /// <param name="client">Client runtime whose hello and disconnect drive the node.</param>
     /// <param name="mirror">Mirror of the entities.</param>
@@ -132,8 +135,8 @@ public sealed partial class RemotePlayers : Node3D, IClientSessionListener
             return;
         }
 
-        node.Position = PlanetFrames.ToGodot(planet, position);
-        node.Basis = PlanetFrames.ToGodotBasis(planet, rotation);
+        var space = FrameNodes.PlanetSpaceOf(planet);
+        node.GlobalTransform = new Transform3D(space.ToGodotBasis(rotation), space.ToGodot(position));
     }
 
     private void OnSpawned(EntitySpawn spawn)
@@ -155,7 +158,7 @@ public sealed partial class RemotePlayers : Node3D, IClientSessionListener
             if (_render && _motion is not null)
             {
                 var ring = new RemoteMotionBuffer(frames: Frames);
-                var view = new RemotePlayerPresentation { Name = $"Player_{spawn.Entity.Value}" };
+                var view = new RemotePlayerPresentation { Name = $"Player_{spawn.Entity.Value}", FrameNodes = FrameNodes };
                 view.Initialize(ring, _motion.Clock, Frames);
                 _motion.Register(spawn.Entity, ring);
                 _rings[spawn.Entity] = ring;

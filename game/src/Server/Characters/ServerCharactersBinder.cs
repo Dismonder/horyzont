@@ -4,7 +4,9 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Motion;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Simulation;
+using Horyzont.Game.Frames;
 using Horyzont.Server;
+using Horyzont.Server.Frames;
 
 using Microsoft.Extensions.Logging;
 
@@ -29,6 +31,8 @@ public sealed class ServerCharactersBinder : IServerTickParticipant, IServerPlay
     private readonly ILoggerFactory _loggers;
     private readonly Func<PlanetId, System.Numerics.Vector3, bool>? _constructsReady;
     private ServerRuntime? _runtime;
+    private readonly ServerFramesBinder? _frames;
+    private readonly FrameNodes? _frameNodes;
     private ServerCharacters? _characters;
     private OwnStateSender? _sender;
 
@@ -40,9 +44,11 @@ public sealed class ServerCharactersBinder : IServerTickParticipant, IServerPlay
     /// <param name="devFlightAllowed">Whether the dev flight button is honoured.</param>
     /// <param name="loggers">Loggers.</param>
     /// <param name="constructsReady">Readiness of asynchronous construct collisions around a saved position.</param>
+    /// <param name="frames">The server frames (K5-20): the graph the attached bodies are posed with.</param>
+    /// <param name="frameNodes">The frame nodes of the server (planet nodes).</param>
     public ServerCharactersBinder(
         Node parent, VoxelServerTerrainFactory terrainFactory, GameRules rules, MovementRules movement, bool devFlightAllowed, ILoggerFactory loggers,
-        Func<PlanetId, System.Numerics.Vector3, bool>? constructsReady = null)
+        Func<PlanetId, System.Numerics.Vector3, bool>? constructsReady = null, ServerFramesBinder? frames = null, FrameNodes? frameNodes = null)
     {
         ArgumentNullException.ThrowIfNull(parent);
         ArgumentNullException.ThrowIfNull(terrainFactory);
@@ -56,6 +62,8 @@ public sealed class ServerCharactersBinder : IServerTickParticipant, IServerPlay
         _devFlightAllowed = devFlightAllowed;
         _loggers = loggers;
         _constructsReady = constructsReady;
+        _frames = frames;
+        _frameNodes = frameNodes;
     }
 
     /// <summary>Gets the characters once the world has started; null before.</summary>
@@ -109,7 +117,8 @@ public sealed class ServerCharactersBinder : IServerTickParticipant, IServerPlay
         var terrain = _terrainFactory.Terrain ?? throw new InvalidOperationException("The server terrain does not exist yet.");
         _characters = new ServerCharacters(
             runtime.Simulation, new SessionInputSource(runtime.Session), terrain.Voxel, _rules, _movement, _devFlightAllowed,
-            _loggers.CreateLogger<ServerCharacters>(), constructsReady: _constructsReady);
+            _loggers.CreateLogger<ServerCharacters>(), constructsReady: _constructsReady,
+            frames: _frames is { } frames ? () => frames.EnsureWorld(runtime) : null, frameNodes: _frameNodes);
         _parent.AddChild(_characters);
         _sender = new OwnStateSender(runtime.Session, runtime.Simulation, _characters);
         return _characters;

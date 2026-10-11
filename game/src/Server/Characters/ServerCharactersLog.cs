@@ -1,4 +1,6 @@
+using Horyzont.Core.Ids;
 using Horyzont.Core.Motion;
+using Horyzont.Server.Frames;
 
 using Microsoft.Extensions.Logging;
 
@@ -33,4 +35,7 @@ internal static partial class ServerCharactersLog
 
     [LoggerMessage(EventId = 9309, Level = LogLevel.Debug, Message = "Character of player {Player} stands on the ground after {Ticks} ticks, mode {Mode}")]
     internal static partial void Grounded(this ILogger logger, ulong player, int ticks, MovementMode mode);
+
+    [LoggerMessage(EventId = 9310, Level = LogLevel.Information, Message = "Character of player {Player} follows a reparent to {Kind} {Frame} (seq {Seq}): {Action}")]
+    internal static partial void FrameChanged(this ILogger logger, ulong player, FrameKind kind, ulong frame, uint seq, CharacterFrameAction action);
 }

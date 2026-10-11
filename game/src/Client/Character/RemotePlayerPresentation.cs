@@ -27,6 +27,9 @@ public sealed partial class RemotePlayerPresentation : Node3D
         });
     }
 
+    /// <summary>Gets or sets the frame nodes of the client (K5-20): planet-frame values go through the planet node; null = identity.</summary>
+    public FrameNodes? FrameNodes { get; set; }
+
     /// <summary>Attaches the lifecycle owner's ring and the shared session clock.</summary>
     /// <param name="buffer">Ring registered in the full snapshot adapter.</param>
     /// <param name="clock">Single session interpolation clock.</param>
@@ -65,8 +68,8 @@ public sealed partial class RemotePlayerPresentation : Node3D
         }
 
         Visible = true;
-        var planet = new PlanetId(sample.Frame.Id);
-        GlobalTransform = new Transform3D(PlanetFrames.ToGodotBasis(planet, sample.Rotation), PlanetFrames.ToGodot(planet, sample.Position));
+        var planet = FrameNodes.PlanetSpaceOf(new PlanetId(sample.Frame.Id));
+        GlobalTransform = new Transform3D(planet.ToGodotBasis(sample.Rotation), planet.ToGodot(sample.Position));
     }
 
     /// <inheritdoc />

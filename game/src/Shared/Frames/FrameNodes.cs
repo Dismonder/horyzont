@@ -2,6 +2,7 @@ using Godot;
 
 using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
+using Horyzont.Core.World;
 
 using NumVector3 = System.Numerics.Vector3;
 
@@ -20,8 +21,18 @@ public sealed partial class FrameNodes : Node3D
     private readonly Dictionary<FrameRef, Node3D> _frames = [];
     private readonly List<(Node3D Node, FrameRef Frame)> _pending = [];
     private IFramePoseSource? _source;
+    private Func<IFramePoseSource?>? _sourceFactory;
     private FrameGraph? _graph;
     private Func<FrameRef, PoseD?>? _worldAt;
+
+    /// <summary>Process priority of a node that composes every rendered frame: before the content placed in frames (K5-20, client frame order).</summary>
+    public const int ComposePriority = -100;
+
+    /// <summary>Gets or sets a value indicating whether the node runs <see cref="Compose"/> itself every rendered frame (the client side).</summary>
+    public bool AutoCompose { get; set; }
+
+    /// <summary>Gets a value indicating whether the frame source exists.</summary>
+    public bool HasSource => Source is not null;
 
     /// <summary>Gets the number of reparents waiting for <see cref="Compose"/>.</summary>
     public int PendingReparents => _pending.Count;
@@ -35,6 +46,28 @@ public sealed partial class FrameNodes : Node3D
         _source = source;
         _graph = new FrameGraph(source);
         _worldAt = worldAt;
+    }
+
+    /// <summary>Sets a frame source that appears later (the client graph exists from the first server hello, the server graph with the world).</summary>
+    /// <param name="source">The source once it exists; null before.</param>
+    /// <param name="worldAt">Optional world pose of a frame for this frame of rendering.</param>
+    public void Initialize(Func<IFramePoseSource?> source, Func<FrameRef, PoseD?>? worldAt = null)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        _sourceFactory = source;
+        _worldAt = worldAt;
+    }
+
+    /// <inheritdoc />
+    public override void _Ready() => ProcessPriority = ComposePriority;
+
+    /// <inheritdoc />
+    public override void _Process(double delta)
+    {
+        if (AutoCompose)
+        {
+            Compose();
+        }
     }
 
     /// <summary>The node of a frame, created under its parent frame node when missing.</summary>
@@ -100,22 +133,24 @@ public sealed partial class FrameNodes : Node3D
         }
     }
 
+    /// <summary>The space of a planet frame: conversions through the planet node (identity while the planet has no node).</summary>
+    /// <param name="planet">The planet.</param>
+    /// <param name="parameters">Parameters of the planet (its gravity); optional.</param>
+    /// <returns>The space.</returns>
+    public PlanetSpace SpaceOf(PlanetId planet, PlanetParams? parameters = null) =>
+        new(planet, TryGetNode(FrameRef.Of(planet), out var node) ? node : null, parameters);
+
     /// <summary>A global Godot position in the frame of a planet (through the planet node, then <see cref="PlanetFrames"/>).</summary>
     /// <param name="planet">The planet.</param>
     /// <param name="global">Global Godot position.</param>
     /// <returns>The planet-frame position.</returns>
-    public NumVector3 ToPlanetLocal(PlanetId planet, Godot.Vector3 global) =>
-        PlanetFrames.ToPlanetLocal(planet, TryGetNode(FrameRef.Of(planet), out var node) ? node.GlobalTransform.AffineInverse() * global : global);
+    public NumVector3 ToPlanetLocal(PlanetId planet, Godot.Vector3 global) => SpaceOf(planet).ToPlanetLocal(global);
 
     /// <summary>A planet-frame position as a global Godot position.</summary>
     /// <param name="planet">The planet.</param>
     /// <param name="local">Planet-frame position.</param>
     /// <returns>The global Godot position.</returns>
-    public Godot.Vector3 ToGlobal(PlanetId planet, NumVector3 local)
-    {
-        var position = PlanetFrames.ToGodot(planet, local);
-        return TryGetNode(FrameRef.Of(planet), out var node) ? node.GlobalTransform * position : position;
-    }
+    public Godot.Vector3 ToGlobal(PlanetId planet, NumVector3 local) => SpaceOf(planet).ToGodot(local);
 
     private bool TryGetNode(FrameRef frame, int depth, out Node3D node)
     {
@@ -125,7 +160,7 @@ public sealed partial class FrameNodes : Node3D
         }
 
         node = null!;
-        if (_source is null || depth <= 0 || !_source.TryGetParent(frame, out var parentFrame))
+        if (Source is not { } source || depth <= 0 || !source.TryGetParent(frame, out var parentFrame))
         {
             return false;
         }
@@ -150,7 +185,7 @@ public sealed partial class FrameNodes : Node3D
     private bool TryGetLocalTransform(FrameRef frame, out Transform3D local)
     {
         local = Transform3D.Identity;
-        if (_source is null || !_source.TryGetLocalPose(frame, out var parent, out var pose))
+        if (Source is not { } source || !source.TryGetLocalPose(frame, out var parent, out var pose))
         {
             return false;
         }
@@ -165,6 +200,20 @@ public sealed partial class FrameNodes : Node3D
         return true;
     }
 
+    private IFramePoseSource? Source
+    {
+        get
+        {
+            if (_source is null && _sourceFactory?.Invoke() is { } source)
+            {
+                _source = source;
+                _graph = new FrameGraph(source);
+            }
+
+            return _source;
+        }
+    }
+
     private bool TryWorld(FrameRef frame, out PoseD pose)
     {
         pose = PoseD.Identity;
@@ -177,4 +226,16 @@ public sealed partial class FrameNodes : Node3D
         FrameKind.Planet => $"Planet_{frame.Id}",
         _ => $"Construct_{frame.Id}",
     };
+}
+
+/// <summary>Planet spaces from an optional <see cref="FrameNodes"/> (no nodes = the planet in identity).</summary>
+public static class FrameNodesSpaces
+{
+    /// <summary>The space of a planet frame.</summary>
+    /// <param name="nodes">The frame nodes of the side; null before they exist.</param>
+    /// <param name="planet">The planet.</param>
+    /// <param name="parameters">Parameters of the planet; optional.</param>
+    /// <returns>The space.</returns>
+    public static PlanetSpace PlanetSpaceOf(this FrameNodes? nodes, PlanetId planet, PlanetParams? parameters = null) =>
+        nodes is not null && GodotObject.IsInstanceValid(nodes) ? nodes.SpaceOf(planet, parameters) : new PlanetSpace(planet, null, parameters);
 }

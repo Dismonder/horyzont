@@ -1,5 +1,6 @@
 using Godot;
 
+using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Motion;
 using Horyzont.Core.Protocol;
@@ -7,9 +8,11 @@ using Horyzont.Core.Simulation;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Terrain;
 using Horyzont.Game.Character;
+using Horyzont.Game.Frames;
 using Horyzont.Game.Physics;
 using Horyzont.Game.Terrain;
 using Horyzont.Server;
+using Horyzont.Server.Frames;
 
 using Microsoft.Extensions.Logging;
 
@@ -25,6 +28,12 @@ namespace Horyzont.Game.Server.Characters;
 /// and <c>ServerSimulation.AdvanceTick</c> (through <see cref="IServerTickParticipant"/>), because the order of
 /// <c>_PhysicsProcess</c> calls must not matter on the server. Every body carries a <see cref="VoxelViewer"/> that builds the terrain
 /// collision around it without meshes.
+/// <para>
+/// Frames (K5-20, decision 15; review K5, B2): the body follows every reparent of its player in the next tick (the reparent counter of
+/// the simulation differs from the one the body follows). A player in a construct frame has an attached body (frozen, no collision,
+/// posed each tick as frame ∘ local pose; its kinematics are not written); back in the frame of the body planet it walks again from the
+/// pose of the operation; on another planet the body and its viewer are spawned there anew (the path of a normal spawn).
+/// </para>
 /// </summary>
 public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, IServerPlayerObserver, IServerCharacterSource
 {
@@ -47,10 +56,13 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
     private readonly bool _devFlightAllowed;
     private readonly Func<PlanetParams, NumVector3, NumVector3> _rescue;
     private readonly Func<PlanetId, NumVector3, bool> _constructsReady;
+    private readonly Func<FrameGraph?>? _frames;
+    private readonly FrameNodes? _frameNodes;
     private readonly ILogger<ServerCharacters> _logger;
     private readonly List<Slot> _ordered = [];
     private readonly Dictionary<PlayerId, Slot> _byPlayer = [];
     private readonly float _tickSeconds;
+    private FrameGraph? _ownGraph;
 
     /// <summary>Creates the node; add it to the server tree before the first <see cref="Spawn"/>.</summary>
     /// <param name="simulation">The simulation whose player kinematics are written.</param>
@@ -62,10 +74,12 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
     /// <param name="logger">Logger.</param>
     /// <param name="rescue">Feet position above the surface for a direction from the planet centre (the rescue from below the core); the generator of the planet by default.</param>
     /// <param name="constructsReady">Whether collision at the saved pose is installed, including asynchronous construct meshing.</param>
+    /// <param name="frames">The frame graph of the server (K5-20); by default a graph over the world with the first planet in identity.</param>
+    /// <param name="frameNodes">The frame nodes of the server; planet-frame values of the bodies go through the planet nodes (identity without).</param>
     public ServerCharacters(
         ServerSimulation simulation, IInputSource inputs, VoxelTerrainService terrain, GameRules rules, MovementRules movement,
         bool devFlightAllowed, ILogger<ServerCharacters> logger, Func<PlanetParams, NumVector3, NumVector3>? rescue = null,
-        Func<PlanetId, NumVector3, bool>? constructsReady = null)
+        Func<PlanetId, NumVector3, bool>? constructsReady = null, Func<FrameGraph?>? frames = null, FrameNodes? frameNodes = null)
     {
         ArgumentNullException.ThrowIfNull(simulation);
         ArgumentNullException.ThrowIfNull(inputs);
@@ -81,11 +95,17 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
         _devFlightAllowed = devFlightAllowed;
         _rescue = rescue ?? SpawnLocator.AboveSurface;
         _constructsReady = constructsReady ?? ((_, _) => true);
+        _frames = frames;
+        _frameNodes = frameNodes;
         _logger = logger;
         _tickSeconds = 1f / rules.TickRate;
         Name = "Characters";
         SetPhysicsProcess(false);
     }
+
+    /// <summary>Gets the frame graph the attached bodies are posed with.</summary>
+    public FrameGraph Graph => _frames?.Invoke() ?? (_ownGraph ??= new FrameGraph(new WorldStateFramePoses(
+        _simulation.State, new HomeOnlyPlacement(_simulation.State.Planets.All.Count > 0 ? _simulation.State.Planets.All[0].Id : default))));
 
     /// <summary>Gets the number of bodies.</summary>
     public int Count => _ordered.Count;
@@ -127,7 +147,7 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
             return;
         }
 
-        if (state.Frame.Kind != FrameKind.Planet || !_simulation.State.Planets.TryGet(new PlanetId(state.Frame.Id), out var planet))
+        if (!TryGetBodyPlanet(state.Frame, out var planetId, out var attached) || !_simulation.State.Planets.TryGet(planetId, out var planet))
         {
             _logger.SpawnRefused(player.Value, "the player is not on a planet");
             return;
@@ -139,16 +159,30 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
             return;
         }
 
+        var space = _frameNodes.PlanetSpaceOf(planet.Id, planet);
         var body = PlayerBody.Instantiate();
-        body.Configure(planet, _rules, _movement, _devFlightAllowed, CollisionLayers.ServerBodies, _tickSeconds);
+        body.Configure(space, _rules, _movement, _devFlightAllowed, CollisionLayers.ServerBodies, _tickSeconds);
         body.SetVisualVisible(false);
         body.Name = $"Body_{player.Value}";
         AddChild(body);
-        body.Place(state.Position, NumVector3.Zero, NumQuaternion.Normalize(state.BodyRotation), MovementMode.Frozen, false);
+        var character = new Slot(player, planet, body, new GroundProbe(space, SpawnSupport.CollisionMask))
+        {
+            LastPitch = state.Pitch,
+            Seq = state.ParentSeq,
+        };
+        if (attached)
+        {
+            body.SetAttached(true);
+            PoseAttached(character, state);
+        }
+        else
+        {
+            body.Place(state.Position, NumVector3.Zero, NumQuaternion.Normalize(state.BodyRotation), MovementMode.Frozen, false);
+        }
+
         var viewer = new VoxelViewer { ViewDistance = (uint)ServerViewerDistance, RequiresVisuals = false, RequiresCollisions = true };
         body.AddChild(viewer);
 
-        var character = new Slot(player, planet, body, new GroundProbe(planet.Id, SpawnSupport.CollisionMask)) { LastPitch = state.Pitch };
         var index = _ordered.FindIndex(other => other.Player.Value > player.Value);
         _ordered.Insert(index < 0 ? _ordered.Count : index, character);
         _byPlayer.Add(player, character);
@@ -207,6 +241,15 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
         }
 
         var body = character.Body;
+        if (body.Attached || simulated.ParentSeq != character.Seq)
+        {
+            // Attached, or a reparent the body follows next tick: the pose is the local pose of the simulation, in its frame.
+            state = new ServerCharacterState(
+                character.Planet.Id, simulated.Frame, simulated.ParentSeq, simulated.Position, NumQuaternion.Normalize(simulated.BodyRotation),
+                character.LastPitch, NumVector3.Zero, MovementMode.Frozen, character.LastSeq);
+            return true;
+        }
+
         state = new ServerCharacterState(
             character.Planet.Id, simulated.Frame, simulated.ParentSeq, body.Feet, body.BodyRotation, character.LastPitch, body.PlanetVelocity,
             body.Mode, character.LastSeq);
@@ -220,7 +263,20 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
             return;
         }
 
+        if (simulated.ParentSeq != c.Seq && FollowReparent(c, simulated))
+        {
+            return;
+        }
+
         var body = c.Body;
+        if (body.Attached)
+        {
+            // No movement of its own: inputs are consumed (their sequence is acknowledged) and the body follows its frame.
+            ReadInput(c, out _);
+            PoseAttached(c, simulated);
+            return;
+        }
+
         if (c.Resync)
         {
             // The simulation refused the last kinematics (a stale frame or a bad pose): go back to what it holds and find the ground again.
@@ -325,10 +381,68 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
         return true;
     }
 
+    private bool TryGetBodyPlanet(FrameRef frame, out PlanetId planet, out bool attached)
+    {
+        attached = false;
+        planet = default;
+        if (frame.Kind == FrameKind.Planet)
+        {
+            planet = new PlanetId(frame.Id);
+            return true;
+        }
+
+        if (frame.Kind == FrameKind.Construct && Graph.TryGetRegion(frame, out var region) && region.Kind == FrameKind.Planet)
+        {
+            planet = new PlanetId(region.Id);
+            attached = true;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Follows a reparent of the player (decision 15).</summary>
+    /// <returns>True when the slot was replaced (a spawn on another planet) and the tick of the old slot ends.</returns>
+    private bool FollowReparent(Slot c, PlayerState simulated)
+    {
+        var action = CharacterFrames.Decide(Graph, c.Planet.Id, c.Seq, simulated.Frame, simulated.ParentSeq, out _);
+        _logger.FrameChanged(c.Player.Value, simulated.Frame.Kind, simulated.Frame.Id, simulated.ParentSeq, action);
+        c.Seq = simulated.ParentSeq;
+        var body = c.Body;
+        switch (action)
+        {
+            case CharacterFrameAction.Walk:
+                body.SetAttached(false);
+                body.Place(simulated.Position, NumVector3.Zero, NumQuaternion.Normalize(simulated.BodyRotation), MovementMode.Frozen, false);
+                c.FrozenTicks = 0;
+                return false;
+            case CharacterFrameAction.Respawn:
+                // The body, its viewer and probes belong to the old planet: the normal spawn path makes them on the new one.
+                _byPlayer.Remove(c.Player);
+                _ordered.Remove(c);
+                Release(c);
+                Spawn(c.Player);
+                return true;
+            default:
+                // Attach (and the unsupported frames, which keep the body still where the graph cannot pose it).
+                body.SetAttached(true);
+                return false;
+        }
+    }
+
+    private void PoseAttached(Slot c, PlayerState simulated)
+    {
+        if (CharacterFrames.TryAttachedWorldPose(Graph, simulated.Frame, simulated.Position, simulated.BodyRotation, out var world))
+        {
+            c.Body.PlaceAttached(GodotFrames.ToGodot(world));
+        }
+    }
+
     private void Publish(Slot c)
     {
-        if (!_simulation.State.Players.TryGet(c.Player, out var simulated))
+        if (!_simulation.State.Players.TryGet(c.Player, out var simulated) || c.Body.Attached || simulated.ParentSeq != c.Seq)
         {
+            // An attached body has a constant local pose; a pending reparent is followed first.
             return;
         }
 
@@ -383,5 +497,7 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
         public float LastYaw { get; set; }
 
         public float LastPitch { get; set; }
+
+        public uint Seq { get; set; }
     }
 }

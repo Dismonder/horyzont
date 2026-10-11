@@ -22,7 +22,7 @@ public sealed class GroundProbe
     /// <summary>How far above the feet the ray starts (metres), so feet slightly inside the surface still find it.</summary>
     public const float StartAbove = 1f;
 
-    private readonly PlanetId _planet;
+    private readonly PlanetSpace _space;
     private readonly uint _mask;
     private PhysicsRayQueryParameters3D? _query;
 
@@ -30,8 +30,16 @@ public sealed class GroundProbe
     /// <param name="planet">The planet whose frame positions are in.</param>
     /// <param name="mask">Collision layers to search; terrain only by default for existing terrain readiness callers.</param>
     public GroundProbe(PlanetId planet, uint mask = CollisionLayers.TerrainMask)
+        : this(new PlanetSpace(planet), mask)
     {
-        _planet = planet;
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="GroundProbe"/> class in the space of a planet frame (K5-20).</summary>
+    /// <param name="space">The planet frame whose positions are given (rays go through the planet node).</param>
+    /// <param name="mask">Collision layers to search.</param>
+    public GroundProbe(PlanetSpace space, uint mask = CollisionLayers.TerrainMask)
+    {
+        _space = space;
         _mask = mask;
     }
 
@@ -49,8 +57,8 @@ public sealed class GroundProbe
 
         // One query object per probe; the dictionary IntersectRay returns is allocated by the engine API and cannot be avoided.
         var query = _query ??= new PhysicsRayQueryParameters3D { CollisionMask = _mask };
-        query.From = PlanetFrames.ToGodot(_planet, feet + (up * startAbove));
-        query.To = PlanetFrames.ToGodot(_planet, feet - (up * below));
+        query.From = _space.ToGodot(feet + (up * startAbove));
+        query.To = _space.ToGodot(feet - (up * below));
         var hit = world.DirectSpaceState.IntersectRay(query);
         if (hit.Count == 0)
         {
@@ -58,7 +66,7 @@ public sealed class GroundProbe
             return false;
         }
 
-        ground = PlanetFrames.ToPlanetLocal(_planet, hit["position"].AsVector3());
+        ground = _space.ToPlanetLocal(hit["position"].AsVector3());
         return true;
     }
 }
