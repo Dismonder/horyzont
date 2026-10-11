@@ -920,23 +920,8 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
     /// Y9 (K5-25 decision 3): the eye of the actor in the frame of its planet. A seated player has the seated eye of its seat block
     /// expressed through the construct chain; a frame without a planet (the system frame) gives false.
     /// </summary>
-    private bool TryGetActor(PlayerState player, out PlanetId planet, out Vector3 eye)
-    {
-        if (player.Seat is { } seat && player.Frame.Kind == FrameKind.Construct && state.Constructs.TryGet(new EntityId(player.Frame.Id), out var seatConstruct))
-        {
-            var local = SeatPose.Eye(seat, seatConstruct.GetBlock(seat).Orientation, rules.Seats);
-            return state.TryToPlanetFrame(player.Frame, local, out planet, out eye);
-        }
-
-        if (!state.TryToPlanetFrame(player.Frame, player.Position, out planet, out var feet))
-        {
-            eye = default;
-            return false;
-        }
-
-        eye = feet + (TerrainMath.UpAt(feet) * rules.EyeHeight);
-        return true;
-    }
+    private bool TryGetActor(PlayerState player, out PlanetId planet, out Vector3 eye) =>
+        IntentActor.TryGetEye(state, rules, player, out planet, out eye);
 
     private bool SphereHitsPlayer(PlanetId planet, Vector3 center, float radius)
     {

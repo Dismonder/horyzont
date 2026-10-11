@@ -63,6 +63,19 @@ public sealed class RemoteMotionBufferTests
     }
 
     [Fact]
+    public void Push_GlidingWithinItsVelocity_NotATeleport()
+    {
+        var buffer = new RemoteMotionBuffer();
+        var glide = new Vector3(25f, -6f, 0f);
+        buffer.Push(Sample(100) with { MotionFlags = (byte)MovementMode.Gliding, Velocity = glide });
+        buffer.Push(Sample(112, 5f) with { MotionFlags = (byte)MovementMode.Gliding, Velocity = glide });
+        Assert.Equal(2, buffer.Count);
+
+        buffer.Push(Sample(115, 30f) with { MotionFlags = (byte)MovementMode.Gliding, Velocity = glide });
+        Assert.Equal(1, buffer.Count);
+    }
+
+    [Fact]
     public void AdvanceClock_JitterAndDelayedSnapshot_NeverMovesRenderTimeBackwards()
     {
         var time = new FakeTimeProvider();

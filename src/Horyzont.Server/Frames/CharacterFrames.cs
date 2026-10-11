@@ -2,6 +2,7 @@ using System.Numerics;
 
 using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
+using Horyzont.Core.Ships;
 
 namespace Horyzont.Server.Frames;
 
@@ -22,6 +23,12 @@ public enum CharacterFrameAction : byte
 
     /// <summary>A frame the server bodies do not support (the system frame, P6, or an unknown frame): the body is left as it is.</summary>
     Unsupported = 4,
+
+    /// <summary>
+    /// Ejected from a construct into the frame of the body planet with a velocity (K5-25 decision 19, R4): the body glides from the
+    /// pose of the operation with that velocity, without the frozen ground wait (the ship gate keeps the terrain under it ready).
+    /// </summary>
+    Glide = 5,
 }
 
 /// <summary>
@@ -67,7 +74,30 @@ public static class CharacterFrames
     }
 
     /// <summary>
-    /// Where a new body of a player in <paramref name="frame"/> lives, by the same rules as <see cref="Decide"/>: a planet frame is that
+    /// <see cref="Decide(FrameGraph, PlanetId, uint, FrameRef, uint, out PlanetId)"/> for a body that was in <paramref name="previousFrame"/>
+    /// and an ejection velocity of the reparent: a walk back to the body planet from a construct frame with a velocity above
+    /// <see cref="EjectRules.GlideMinSpeed"/> is <see cref="CharacterFrameAction.Glide"/> (the rule of <see cref="EjectRules.StartsGlide"/>).
+    /// </summary>
+    /// <param name="graph">The frame graph of the world.</param>
+    /// <param name="bodyPlanet">The planet the body lives on.</param>
+    /// <param name="bodySeq">The reparent counter the body follows.</param>
+    /// <param name="previousFrame">Kind of the frame the body followed so far.</param>
+    /// <param name="frame">The frame of the player in the simulation.</param>
+    /// <param name="seq">The reparent counter of the player in the simulation.</param>
+    /// <param name="ejectVelocity">Velocity of the reparent in the new frame (zero when none was recorded).</param>
+    /// <param name="planet">Receives the planet the body must live on.</param>
+    /// <returns>The action.</returns>
+    public static CharacterFrameAction Decide(
+        FrameGraph graph, PlanetId bodyPlanet, uint bodySeq, FrameKind previousFrame, FrameRef frame, uint seq, Vector3 ejectVelocity, out PlanetId planet)
+    {
+        var action = Decide(graph, bodyPlanet, bodySeq, frame, seq, out planet);
+        return action == CharacterFrameAction.Walk && previousFrame == FrameKind.Construct && ejectVelocity.Length() > EjectRules.GlideMinSpeed
+            ? CharacterFrameAction.Glide
+            : action;
+    }
+
+    /// <summary>
+    /// Where a new body of a player in <paramref name="frame"/> lives, by the same rules as <see cref="Decide(FrameGraph, PlanetId, uint, FrameRef, uint, out PlanetId)"/>: a planet frame is that
     /// planet; a construct frame is attached on the planet of its region, or on <paramref name="fallback"/> when the region is the
     /// system frame (a ship between planets: the body stays on its last planet, posed globally anyway).
     /// </summary>

@@ -18,7 +18,8 @@ namespace Horyzont.Server.Console;
 /// <summary>
 /// Executes the commands of the server console (save, stop, players, kick, help) on the main thread. With development commands
 /// enabled (the <c>--dev</c> launch flag) it also knows <c>dev-op</c>, which the smoke test uses to change the world, and <c>frame</c>
-/// (K5-20: list frames, reparent an entity keeping its world pose) when frame transitions are available.
+/// (K5-20: list frames, reparent an entity keeping its world pose) when frame transitions are available, and <c>seat</c>
+/// (K5-25: seat intents on behalf of a player, <see cref="SeatCommands"/>).
 /// </summary>
 public sealed class ConsoleCommandProcessor
 {
@@ -83,6 +84,7 @@ public sealed class ConsoleCommandProcessor
             "ship" => Ship(parts),
             "dev-op" when _devCommands => DevOp(),
             "frame" when _devCommands && _frames is not null => Frame(parts),
+            "seat" when _devCommands && _runtime.RuntimeState is ServerRuntimeState.Running => SeatCommands.Execute(_runtime.Simulation, parts),
             _ => Help,
         };
     }

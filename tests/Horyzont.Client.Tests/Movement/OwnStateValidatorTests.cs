@@ -180,6 +180,19 @@ public sealed class OwnStateValidatorTests
     }
 
     [Fact]
+    public void OwnStateValidator_GlidingAccepted()
+    {
+        var logger = new ListLogger<OwnStateValidator>();
+        var validator = Validator(logger);
+
+        var verdict = validator.Validate(Snap(entities: State(velocity: new Vector3(5f, -6f, 0f), motion: (byte)MovementMode.Gliding)), out var state);
+
+        Assert.Equal(OwnStateVerdict.Accepted, verdict);
+        Assert.Equal(MovementMode.Gliding, state.Mode);
+        Assert.DoesNotContain(logger.Entries, e => e.EventId == 9104);
+    }
+
+    [Fact]
     public void OwnStateValidator_UnknownMotionFlagsLog_IsRateLimited()
     {
         var logger = new ListLogger<OwnStateValidator>();
