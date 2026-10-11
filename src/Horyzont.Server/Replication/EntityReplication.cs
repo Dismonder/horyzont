@@ -48,6 +48,9 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
     private readonly Dictionary<EntityId, int> _index = [];
     private readonly List<EntityId> _entered = [];
     private readonly List<EntityId> _left = [];
+    private readonly List<EntityId> _withdrawn = [];
+    private readonly LifecycleOrder _parentsFirst;
+    private readonly LifecycleOrder _childrenFirst;
     private readonly byte[] _frame = new byte[1150];
     private ReplicationEntity[] _entities = new ReplicationEntity[64];
     private ReplicationEntity[] _visible = new ReplicationEntity[64];
@@ -115,6 +118,8 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         _snapshots = new SnapshotBuilder(snapshotBudget);
         _constructs = new ConstructStateSender(session, simulation.State, sendBudget, logger);
         _frames = frames ?? new FrameGraph(new WorldStateFramePoses(simulation.State, NoPlanetPlacement.Instance));
+        _parentsFirst = new LifecycleOrder(this, childrenFirst: false);
+        _childrenFirst = new LifecycleOrder(this, childrenFirst: true);
         _simulation.Applied += OnApplied;
     }
 
@@ -325,6 +330,10 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
             }
 
             _session.Interest.GetChanges(player, _entered, _left);
+
+            // K5-26 decision 3: children leave before their parents and parents enter before their children (by frame depth, then id).
+            _left.Sort(_childrenFirst);
+            _entered.Sort(_parentsFirst);
             for (var j = 0; j < _left.Count; j++)
             {
                 Leave(player, state, _left[j]);
@@ -414,12 +423,20 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         }
 
         // The client still holds these entities: withdraw them, or they stay as ghosts (collision, raycast) until the body returns.
+        // Children before their parents (K5-26 decision 3).
+        _withdrawn.Clear();
         foreach (var pair in state.Known)
         {
             if (!state.Removed.Contains(pair.Key))
             {
-                _session.Send(player, new EntityDespawn(pair.Key));
+                _withdrawn.Add(pair.Key);
             }
+        }
+
+        _withdrawn.Sort(_childrenFirst);
+        for (var i = 0; i < _withdrawn.Count; i++)
+        {
+            _session.Send(player, new EntityDespawn(_withdrawn[i]));
         }
 
         state.Known.Clear();
@@ -654,6 +671,45 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         {
             pose = PoseD.Identity;
             return false;
+        }
+    }
+
+    /// <summary>Depth of an entity's frame chain in this round: 0 in a planet or system frame, one more per construct frame.</summary>
+    private int FrameDepth(EntityId id)
+    {
+        if (!_index.TryGetValue(id, out var index))
+        {
+            return 0;
+        }
+
+        var frame = _entities[index].Frame.Frame;
+        var depth = 0;
+        while (depth < 8 && frame.Kind == FrameKind.Construct)
+        {
+            depth++;
+            if (!_simulation.State.Constructs.TryGet(new EntityId(frame.Id), out var construct))
+            {
+                break;
+            }
+
+            frame = construct.Parent;
+        }
+
+        return depth;
+    }
+
+    /// <summary>Orders lifecycle changes by frame depth (parents first, or children first), then by id; allocation-free.</summary>
+    private sealed class LifecycleOrder(EntityReplication owner, bool childrenFirst) : IComparer<EntityId>
+    {
+        public int Compare(EntityId x, EntityId y)
+        {
+            var byDepth = owner.FrameDepth(x).CompareTo(owner.FrameDepth(y));
+            if (byDepth != 0)
+            {
+                return childrenFirst ? -byDepth : byDepth;
+            }
+
+            return x.Value.CompareTo(y.Value);
         }
     }
 
