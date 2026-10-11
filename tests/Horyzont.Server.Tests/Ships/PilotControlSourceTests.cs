@@ -215,6 +215,22 @@ public sealed class PilotControlSourceTests
     }
 
     [Fact]
+    public void PilotControlSource_NewPilot_StartsFromNeutralControls()
+    {
+        var (rig, first) = Piloted();
+        var thrust = new ShipControl(50, 60, 70, 10, 20, 30, ShipButtons.None);
+        rig.Inputs.Add(first, 1, thrust);
+        Assert.Equal(thrust, Take(rig, 1));
+
+        rig.StandAt(first, new System.Numerics.Vector3(2.5f, 3f, 3.5f));
+        var second = rig.Join(2);
+        rig.Sit(second, SeatRig.Cockpit);
+        rig.Inputs.Add(second, 5, C(5)); // anchored on slot 3: slots 3 and 4 never arrived
+
+        Assert.Equal(new ShipControl(0, 0, 0, 0, 0, 0, ShipButtons.Assist | ShipButtons.LandingGear), Take(rig, 2));
+    }
+
+    [Fact]
     public void PilotControlSource_NonPilotInputs_DroppedCountedNotPilot()
     {
         var (rig, _) = Piloted();

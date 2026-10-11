@@ -27,6 +27,9 @@ public sealed class PilotControlSource : IShipControlSource
 
     private const ulong LogIntervalTicks = 600;
 
+    /// <summary>The controls a new pilot starts from until its first input: no thrust, gear down, assist on.</summary>
+    private static readonly ShipControl Neutral = new(0, 0, 0, 0, 0, 0, ShipButtons.Assist | ShipButtons.LandingGear);
+
     private readonly ServerSimulation _simulation;
     private readonly ShipStatsCache _stats;
     private readonly IShipInputSource _inputs;
@@ -89,10 +92,11 @@ public sealed class PilotControlSource : IShipControlSource
 
         if (slots.Player != pilot.Player || !slots.Anchored && slots.HasLast)
         {
-            // A new pilot (or a pilot back after a gap): anchor again on its newest input.
+            // A new pilot (or a pilot back after a gap): anchor again on its newest input; earlier controls do not carry over.
             slots.Player = pilot.Player;
             slots.Anchored = false;
             slots.HasLast = false;
+            slots.Last = Neutral;
         }
 
         if (!slots.Anchored && !Anchor(slots))
