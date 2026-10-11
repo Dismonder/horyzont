@@ -375,25 +375,25 @@ public sealed class ServerTerrainReplicator : IServerClientMessageHandler, IServ
             return;
         }
 
-        if (_host.TryGetFeet(player.Player, out var planet, out var feet))
+        switch (_host.GetFeet(player.Player, view.Planet, out var feet, out var extraTolerance))
         {
-            if (planet != view.Planet)
-            {
-                RejectView(player, "another planet than the character");
+            case TerrainFeet.TooFar:
+                RejectView(player, "too far from the planet");
                 return;
-            }
+            case TerrainFeet.Found:
+                if (Vector3.Distance(view.CollisionPosition, feet) > TerrainReplicationPolicy.ViewerTolerance + extraTolerance)
+                {
+                    RejectView(player, "collision viewer far from the character");
+                    return;
+                }
 
-            if (Vector3.Distance(view.CollisionPosition, feet) > TerrainReplicationPolicy.ViewerTolerance)
-            {
-                RejectView(player, "collision viewer far from the character");
-                return;
-            }
+                if (!_host.FreeCameraAllowed && Vector3.Distance(view.VisualPosition, feet) > TerrainReplicationPolicy.ViewerTolerance)
+                {
+                    RejectView(player, "visual viewer far from the character");
+                    return;
+                }
 
-            if (!_host.FreeCameraAllowed && Vector3.Distance(view.VisualPosition, feet) > TerrainReplicationPolicy.ViewerTolerance)
-            {
-                RejectView(player, "visual viewer far from the character");
-                return;
-            }
+                break;
         }
 
         // Without a character (none spawned yet, or a server without characters) the position cannot be checked; the distances and

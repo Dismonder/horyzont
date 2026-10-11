@@ -55,6 +55,8 @@ public sealed partial class GameComposition
         var binder = new ServerTerrainReplicatorBinder(
             TerrainFactory, _characters, TerrainSendBudget, freeCamera, _env.Time, _env.Loggers,
             BuildInfo.ComputeBuildHash(GeneratorProfiles.BuildHashComponent).ToString("X16", System.Globalization.CultureInfo.InvariantCulture));
+        var frames = ServerFrames;
+        binder.Frames = () => frames?.Graph;
         binder.Register(Server);
         TerrainReplication = binder;
     }

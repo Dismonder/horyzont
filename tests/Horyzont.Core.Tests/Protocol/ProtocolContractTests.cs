@@ -88,19 +88,20 @@ public sealed class ProtocolContractTests
     /// Gate decision D4: the value on main plus one. K2-10 raised it from 1 to 2; K2-11 adds <see cref="InputButtons.DevFly"/> and
     /// the 0x3F button mask and raises it to 3. K5-20 raises it for ship-mode constructs in snapshots (semantics only, main + 1).
     /// K5-21 adds StarSystemState (32) on the K5-20 stack: K5-20 + 1, recomputed as main + 1 when K5-21 merges.
+    /// K5-22 changes the acceptance rule of TerrainView (another planet up to 4.4 R) on the K5-21 stack: K5-21 + 1 (P1, D4).
     /// A rebase onto a newer main updates this value, the constant and the package plan together.
     /// </summary>
     [Fact]
     public void ProtocolVersion_MatchesDocumentedMergeValue()
     {
-        Assert.Equal(7, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(8, ProtocolConstants.ProtocolVersion);
         Assert.Equal(0x3F, ProtocolConstants.InputButtonsMask);
     }
 
     [Fact]
     public void Constants_GoldenValues()
     {
-        Assert.Equal(7, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(8, ProtocolConstants.ProtocolVersion);
         Assert.Equal(262144, ProtocolConstants.MaxReliableMessageBytes);
         Assert.Equal(1150, ProtocolConstants.MaxUnreliableMessageBytes);
         Assert.Equal(32, ProtocolConstants.MaxDisplayNameBytes);
