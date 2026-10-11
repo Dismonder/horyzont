@@ -32,7 +32,8 @@ namespace Horyzont.Game.Server.Characters;
 /// Frames (K5-20, decision 15; review K5, B2): the body follows every reparent of its player in the next tick (the reparent counter of
 /// the simulation differs from the one the body follows). A player in a construct frame has an attached body (frozen, no collision,
 /// posed each tick as frame ∘ local pose; its kinematics are not written); back in the frame of the body planet it walks again from the
-/// pose of the operation; on another planet the body and its viewer are spawned there anew (the path of a normal spawn).
+/// pose of the operation; on another planet the body and its viewer are spawned there anew (the path of a normal spawn; a refused
+/// spawn, e.g. a planet without terrain, is retried every tick until the player can have a body again).
 /// </para>
 /// </summary>
 public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, IServerPlayerObserver, IServerCharacterSource
@@ -61,6 +62,7 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
     private readonly ILogger<ServerCharacters> _logger;
     private readonly List<Slot> _ordered = [];
     private readonly Dictionary<PlayerId, Slot> _byPlayer = [];
+    private readonly List<PlayerId> _pending = [];
     private readonly Dictionary<PlayerId, PlanetId> _lastPlanets = [];
     private readonly float _tickSeconds;
     private FrameGraph? _ownGraph;
@@ -111,6 +113,9 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
     /// <summary>Gets the number of bodies.</summary>
     public int Count => _ordered.Count;
 
+    /// <summary>Gets the number of online players whose spawn was refused and is retried every tick (e.g. a planet without terrain yet).</summary>
+    public int PendingCount => _pending.Count;
+
     /// <summary>Gets the tick of the latest <see cref="Step"/>.</summary>
     public Tick LastTick { get; private set; }
 
@@ -133,19 +138,36 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
     /// <inheritdoc />
     public void OnPlayerLeaving(PlayerId player, DisconnectCode reason) => Despawn(player);
 
-    /// <summary>Creates the body of a player from the pose in the simulation; it stays frozen until the terrain collision exists.</summary>
+    /// <summary>
+    /// Creates the body of a player from the pose in the simulation; it stays frozen until the terrain collision exists. A refused
+    /// spawn of an online player (not on a planet, a planet without terrain) is retried every tick, so the body comes back as soon
+    /// as the player can have one (a reparent back, the terrain of the planet appearing).
+    /// </summary>
     /// <param name="player">The online player.</param>
     public void Spawn(PlayerId player)
     {
+        if (!TrySpawn(player, log: true) && !_pending.Contains(player)
+            && _simulation.State.Players.TryGet(player, out var state) && state.IsOnline)
+        {
+            _pending.Add(player);
+        }
+    }
+
+    private bool TrySpawn(PlayerId player, bool log)
+    {
         if (_byPlayer.ContainsKey(player))
         {
-            return;
+            return true;
         }
 
         if (!_simulation.State.Players.TryGet(player, out var state) || !state.IsOnline)
         {
-            _logger.SpawnRefused(player.Value, "the player is not online");
-            return;
+            if (log)
+            {
+                _logger.SpawnRefused(player.Value, "the player is not online");
+            }
+
+            return false;
         }
 
         // The graph exists before the body (the server frame nodes pose planets from it), so the planet space has its planet node.
@@ -153,14 +175,22 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
         if (!CharacterFrames.TrySpawnPlanet(graph, state.Frame, FallbackPlanet(player), out var planetId, out var attached)
             || !_simulation.State.Planets.TryGet(planetId, out var planet))
         {
-            _logger.SpawnRefused(player.Value, "the player is not on a planet");
-            return;
+            if (log)
+            {
+                _logger.SpawnRefused(player.Value, "the player is not on a planet");
+            }
+
+            return false;
         }
 
         if (!_terrain.TryGetPlanet(planet.Id, out _))
         {
-            _logger.SpawnRefused(player.Value, "the planet has no terrain");
-            return;
+            if (log)
+            {
+                _logger.SpawnRefused(player.Value, "the planet has no terrain");
+            }
+
+            return false;
         }
 
         var space = _frameNodes.PlanetSpaceOf(planet.Id, planet);
@@ -192,6 +222,7 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
         _byPlayer.Add(player, character);
         _lastPlanets[player] = planet.Id;
         _logger.Spawned(player.Value, state.Position.X, state.Position.Y, state.Position.Z);
+        return true;
     }
 
     /// <summary>The planet a body in a ship between planets stays on: its last planet, or the home planet.</summary>
@@ -206,10 +237,23 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
         return planets.Count > 0 ? planets[0].Id : default;
     }
 
+    private void RetryPending()
+    {
+        for (var i = _pending.Count - 1; i >= 0; i--)
+        {
+            var player = _pending[i];
+            if (!_simulation.State.Players.TryGet(player, out var state) || !state.IsOnline || TrySpawn(player, log: false))
+            {
+                _pending.RemoveAt(i);
+            }
+        }
+    }
+
     /// <summary>Writes the last kinematics of a player and removes the body and its viewer. Call before <c>PlayerLeaveOp</c>.</summary>
     /// <param name="player">The player; unknown players are ignored.</param>
     public void Despawn(PlayerId player)
     {
+        _pending.Remove(player);
         if (!_byPlayer.Remove(player, out var character))
         {
             return;
@@ -232,6 +276,8 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
         {
             Despawn(_ordered[0].Player);
         }
+
+        _pending.Clear();
     }
 
     /// <summary>One tick for every body, in ascending player id order.</summary>
@@ -239,9 +285,20 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
     public void Step(Tick tick)
     {
         LastTick = tick;
+        if (_pending.Count > 0)
+        {
+            RetryPending();
+        }
+
         for (var i = 0; i < _ordered.Count; i++)
         {
-            StepOne(_ordered[i]);
+            var character = _ordered[i];
+            StepOne(character);
+            if (!_byPlayer.ContainsKey(character.Player))
+            {
+                // A respawn on another planet was refused (pending): the slot is gone and the next body moved into this index.
+                i--;
+            }
         }
     }
 

@@ -88,6 +88,20 @@ public class ServerCharactersFrameTests
         AssertThat(rig.Log.Count(9310)).IsEqual(1);
         AssertThat(rig.Log.Count(9303)).IsEqual(1);
         AssertThat(rig.Characters.GetNodeOrNull($"Body_{player.Value}") is null || rig.Characters.GetNode($"Body_{player.Value}").IsQueuedForDeletion()).IsTrue();
+
+        // The refused spawn is retried every tick (logged once): back on a planet with terrain, the body exists again.
+        AssertThat(rig.Characters.PendingCount).IsEqual(1);
+        AssertThat(await rig.WaitTicks(3)).IsTrue();
+        AssertThat(rig.Log.Count(9303)).IsEqual(1);
+        rig.Sim.State.Players.TryGet(player, out state);
+        rig.Sim.ApplyServerOperation(new EntityReparentOp(
+            state!.Entity, FrameRef.Of(TerrainTestWorld.Planet.Id), state.ParentSeq + 1, feet, state.BodyRotation, Vector3.Zero, null));
+        AssertThat(await rig.WaitTicks(2)).IsTrue();
+        AssertThat(rig.Characters.Count).IsEqual(1);
+        AssertThat(rig.Characters.PendingCount).IsEqual(0);
+        AssertThat(rig.Characters.TryGetState(player, out var back)).IsTrue();
+        AssertThat(back.Planet).IsEqual(TerrainTestWorld.Planet.Id);
+        AssertThat(await rig.WaitUnfrozenAsync(player)).IsTrue();
     }
 
     [TestCase(Timeout = 240000)]
@@ -117,6 +131,7 @@ public class ServerCharactersFrameTests
         rig.Characters.Despawn(player);
         rig.Characters.Spawn(player);
         AssertThat(rig.Characters.Count).IsEqual(1);
+        AssertThat(rig.Characters.PendingCount).IsEqual(0);
         var body = rig.BodyOf(player);
         AssertThat(body.Attached).IsTrue();
         AssertThat(await rig.WaitTicks(2)).IsTrue();
