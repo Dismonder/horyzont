@@ -30,6 +30,8 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
     private readonly TerrainBlockCodec _codec;
     private readonly TerrainMaterialMap _materials;
     private readonly ILogger<VoxelTerrainService> _logger;
+    private static readonly Variant _loadedKey = "loaded";
+    private static readonly Variant _collisionActiveKey = "collision_active";
     private readonly SortedDictionary<ulong, Entry> _planets = [];
     private readonly List<TerrainBlockKey> _keys = [];
     private readonly List<TerrainBlockKey> _corner = new(1);
@@ -160,9 +162,10 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
 
     /// <summary>
     /// Readiness of the terrain of a planet in a sphere (K5-22 decision 6, README Y11): <c>Ready</c> only when every LOD 0 block in the
-    /// box of the sphere is loaded and its mesh, with the collision shape, applied (<see cref="VoxelLodTerrain.IsAreaMeshed"/>; Voxel
-    /// Tools marks a mesh block up to date in the same main-thread call that sets its collider while the collision update delay is 0).
-    /// A sphere entirely above <paramref name="clearRadius"/> is ready as soon as the node exists. Main thread; allocation-free.
+    /// box of the sphere is loaded, meshed (<see cref="VoxelLodTerrain.IsAreaMeshed"/>) and its collider is in the physics space. Voxel
+    /// Tools marks a mesh block up to date in the main-thread call that builds its collider (collision update delay 0), but builds it
+    /// disabled until all 8 blocks under its LOD 1 parent loaded; <see cref="TerrainColliderConfirmations"/> checks the colliders.
+    /// A sphere entirely above <paramref name="clearRadius"/> is ready as soon as the node exists. Main thread; allocation-free except when a block first enters a queried box (one probe per block).
     /// </summary>
     /// <param name="planet">The planet.</param>
     /// <param name="center">Centre in the planet frame.</param>
@@ -206,7 +209,19 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
             return PlanetTerrainReadiness.Ready;
         }
 
-        return terrain.IsAreaMeshed(box, 0) ? PlanetTerrainReadiness.Ready : PlanetTerrainReadiness.Streaming;
+        if (!terrain.IsAreaMeshed(box, 0))
+        {
+            return PlanetTerrainReadiness.Streaming;
+        }
+
+        // Meshed is not enough: Voxel Tools builds a LOD 0 collider disabled and enables it only once all 8 blocks under its LOD 1
+        // parent loaded (TerrainColliderConfirmations).
+        var blocks = TerrainBlockBox.OfVoxelArea(
+            TerrainVectors.ToCore(box.Position), TerrainVectors.ToCore(box.Size), (int)terrain.GetMeshBlockSize());
+        var probe = new ColliderProbe(terrain);
+        return entry.Colliders.AllActive(blocks, Engine.GetProcessFrames(), ref probe)
+            ? PlanetTerrainReadiness.Ready
+            : PlanetTerrainReadiness.Streaming;
     }
 
     /// <summary>The terrain node of a planet. Main thread.</summary>
@@ -478,5 +493,23 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
         public PlanetTerrain Node { get; } = node;
 
         public bool FaultLogged { get; set; }
+
+        /// <summary>Gets the LOD 0 colliders confirmed active by readiness queries.</summary>
+        public TerrainColliderConfirmations Colliders { get; } = new();
+    }
+
+    /// <summary>Reads the collider of a LOD 0 mesh block of Voxel Tools (a block without surface has no mesh block).</summary>
+    private readonly struct ColliderProbe(VoxelLodTerrain terrain) : ITerrainColliderProbe
+    {
+        public TerrainBlockCollider Probe(int x, int y, int z)
+        {
+            using var info = terrain.DebugGetMeshBlockInfo(new Godot.Vector3(x, y, z), 0);
+            if (!info.TryGetValue(_loadedKey, out var loaded) || !loaded.AsBool())
+            {
+                return TerrainBlockCollider.Absent;
+            }
+
+            return info.TryGetValue(_collisionActiveKey, out var active) && active.AsBool() ? TerrainBlockCollider.Active : TerrainBlockCollider.Disabled;
+        }
     }
 }

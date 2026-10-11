@@ -9,7 +9,8 @@ namespace Horyzont.Server.Space;
 /// it through its terrain gate (adapter <c>PlanetTerrainShipGate</c>) with <see cref="PlanetTerrainReadinessQueries.GetShipReadiness"/>
 /// on a <see cref="ShipTerrainQuery"/> (the sphere of <see cref="TerrainColumn"/> and, near the terrain, the sweep box of
 /// <see cref="TerrainSweep"/>; Opus review of K5-22).
-/// Main thread only (it reads the terrain nodes); allocation-free.
+/// Main thread only (it reads the terrain nodes); allocation-free in steady state (a LOD 0 block is probed once when it first enters a
+/// queried box, <see cref="TerrainColliderConfirmations"/>).
 /// </summary>
 public interface IPlanetTerrainReadiness
 {
