@@ -101,6 +101,39 @@ public sealed class ShipStatusSenderTests
         Assert.Equal(8_000, sent);
     }
 
+    [Fact]
+    public void ShipStatusSender_PlayerInStaticConstructFrame_NoStatus()
+    {
+        // K5-26 review: the source knows a status for every construct, the sender still skips a construct that is not a ship.
+        using var transport = new CopyingTransport();
+        var world = WorldFactory.CreateWithStarSystem(0);
+        var simulation = new ServerSimulation(world, new FakeTerrainService(), new InMemoryJournal(), new GameRules(), NullLogger<ServerSimulation>.Instance);
+        var session = new ServerSession(transport, new ServerOptions { BuildHash = 1 },
+            new GameServerHooks(simulation, () => true, NullLogger<GameServerHooks>.Instance), new FakeTimeProvider());
+        session.Poll(new Tick(1));
+        var players = session.PlayersInGame;
+        var home = FrameRef.Of(world.HomePlanet);
+        for (var i = 0; i < 2; i++)
+        {
+            var construct = world.EntityIds.PeekNext();
+            simulation.ApplyServerOperation(new ConstructCreateOp(
+                construct, home, new Vector3(10f * i, 4010, 0), Quaternion.Identity, new CellPos(0, 0, 0), BlockState.Create(1, 0)));
+            Assert.True(world.Constructs.TryGet(construct, out var created));
+            if (i == 0)
+            {
+                simulation.ApplyServerOperation(TestShips.ModeOp(created!, ConstructMode.Ship));
+            }
+
+            Assert.True(world.Players.TryGet(players[i], out var player));
+            simulation.ApplyServerOperation(new EntityReparentOp(
+                player!.Entity, FrameRef.Of(construct), player.ParentSeq + 1, new Vector3(0.5f, 1, 0.5f), Quaternion.Identity, Vector3.Zero, null));
+            Assert.Equal(FrameRef.Of(construct), player.Frame);
+            Assert.Equal(i == 0 ? ConstructMode.Ship : ConstructMode.Static, created!.Mode);
+        }
+
+        Assert.Equal(1, new ShipStatusSender(() => new FixedStatus()).Send(session, world));
+    }
+
     private sealed class FixedStatus : IShipStatusSource
     {
         public bool TryGetStatus(EntityId ship, out ShipFlightStatus status)

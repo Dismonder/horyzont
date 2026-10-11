@@ -178,6 +178,31 @@ public class FramePoseHistoryTests
         Assert.Equal(81, previous.Position.X, 1e-9);
     }
 
+    [Fact]
+    public void FramePoseHistory_WithVelocities_HermiteThenStraightLine_ContinuousAtSampleBoundary()
+    {
+        // K5-26 review: the segment 0–3 follows the Hermite curve (constant acceleration), the next one 3–6 falls back to the straight
+        // line (a velocity step); lookups on both sides of the shared sample at tick 3 meet in its pose, with no jump between them.
+        var history = new FramePoseHistory();
+        const double a = 0.2;
+        Assert.True(history.Record(new Tick(0), _ship, new PoseD(Vector3D.Zero, QuaternionD.Identity), Vector3D.Zero));
+        Assert.True(history.Record(new Tick(3), _ship, new PoseD(new Vector3D(0.5 * a * 9, 0, 0), QuaternionD.Identity), new Vector3D(a * 3, 0, 0)));
+        Assert.True(history.Record(new Tick(6), _ship, new PoseD(new Vector3D(40.9, 0, 0), QuaternionD.Identity), new Vector3D(16, 0, 0)));
+
+        Assert.True(history.TryGetWorldPose(_ship, 1.5, out var curve));
+        Assert.Equal(0.5 * a * 1.5 * 1.5, curve.Position.X, 1e-9);
+        Assert.True(history.TryGetWorldPose(_ship, 4.5, out var line));
+        Assert.Equal((0.9 + 40.9) / 2, line.Position.X, 1e-9);
+
+        const double epsilon = 1e-6;
+        Assert.True(history.TryGetWorldPose(_ship, 3 - epsilon, out var before));
+        Assert.True(history.TryGetWorldPose(_ship, 3, out var at));
+        Assert.True(history.TryGetWorldPose(_ship, 3 + epsilon, out var after));
+        Assert.Equal(0.9, at.Position.X, 1e-12);
+        Assert.InRange(at.Position.X - before.Position.X, 0, (a * 3 * epsilon) + 1e-9);
+        Assert.InRange(after.Position.X - at.Position.X, 0, (40 / 3.0 * epsilon) + 1e-9);
+    }
+
     private static PoseD PoseAt(ulong tick) =>
         new(new Vector3D(tick * 0.5, 1, -2), QuaternionD.FromAxisAngle(new Vector3D(0, 1, 0), tick * 0.01));
 }
