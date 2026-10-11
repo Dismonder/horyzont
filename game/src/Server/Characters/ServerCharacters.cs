@@ -61,6 +61,7 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
     private readonly ILogger<ServerCharacters> _logger;
     private readonly List<Slot> _ordered = [];
     private readonly Dictionary<PlayerId, Slot> _byPlayer = [];
+    private readonly Dictionary<PlayerId, PlanetId> _lastPlanets = [];
     private readonly float _tickSeconds;
     private FrameGraph? _ownGraph;
 
@@ -148,8 +149,9 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
         }
 
         // The graph exists before the body (the server frame nodes pose planets from it), so the planet space has its planet node.
-        _ = Graph;
-        if (!TryGetBodyPlanet(state.Frame, out var planetId, out var attached) || !_simulation.State.Planets.TryGet(planetId, out var planet))
+        var graph = Graph;
+        if (!CharacterFrames.TrySpawnPlanet(graph, state.Frame, FallbackPlanet(player), out var planetId, out var attached)
+            || !_simulation.State.Planets.TryGet(planetId, out var planet))
         {
             _logger.SpawnRefused(player.Value, "the player is not on a planet");
             return;
@@ -188,7 +190,20 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
         var index = _ordered.FindIndex(other => other.Player.Value > player.Value);
         _ordered.Insert(index < 0 ? _ordered.Count : index, character);
         _byPlayer.Add(player, character);
+        _lastPlanets[player] = planet.Id;
         _logger.Spawned(player.Value, state.Position.X, state.Position.Y, state.Position.Z);
+    }
+
+    /// <summary>The planet a body in a ship between planets stays on: its last planet, or the home planet.</summary>
+    private PlanetId FallbackPlanet(PlayerId player)
+    {
+        if (_lastPlanets.TryGetValue(player, out var last))
+        {
+            return last;
+        }
+
+        var planets = _simulation.State.Planets.All;
+        return planets.Count > 0 ? planets[0].Id : default;
     }
 
     /// <summary>Writes the last kinematics of a player and removes the body and its viewer. Call before <c>PlayerLeaveOp</c>.</summary>
@@ -381,26 +396,6 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
         c.FrozenTicks = 0;
         Publish(c);
         return true;
-    }
-
-    private bool TryGetBodyPlanet(FrameRef frame, out PlanetId planet, out bool attached)
-    {
-        attached = false;
-        planet = default;
-        if (frame.Kind == FrameKind.Planet)
-        {
-            planet = new PlanetId(frame.Id);
-            return true;
-        }
-
-        if (frame.Kind == FrameKind.Construct && Graph.TryGetRegion(frame, out var region) && region.Kind == FrameKind.Planet)
-        {
-            planet = new PlanetId(region.Id);
-            attached = true;
-            return true;
-        }
-
-        return false;
     }
 
     /// <summary>Follows a reparent of the player (decision 15).</summary>

@@ -71,6 +71,30 @@ public sealed class CharacterFramesTests
     }
 
     [Fact]
+    public void CharacterFrames_SpawnPlanet_AgreesWithDecide()
+    {
+        var rig = new FrameRig();
+        Assert.True(CharacterFrames.TrySpawnPlanet(rig.Graph, FrameRef.Of(_other), _home, out var planet, out var attached));
+        Assert.Equal((_other, false), (planet, attached));
+        Assert.True(CharacterFrames.TrySpawnPlanet(rig.Graph, FrameRef.Of(TestShips.Moving), _other, out planet, out attached));
+        Assert.Equal((_home, true), (planet, attached));
+        Assert.False(CharacterFrames.TrySpawnPlanet(rig.Graph, FrameRef.Of(new SystemId(1)), _home, out _, out _));
+        Assert.False(CharacterFrames.TrySpawnPlanet(rig.Graph, FrameRef.Of(new EntityId(999)), _home, out _, out _));
+    }
+
+    [Fact]
+    public void CharacterFrames_SpawnInShipInSystemRegion_AttachedOnTheFallbackPlanet()
+    {
+        // Decide attaches a body to a ship in the system frame on its planet; a spawn there (reconnect) uses the last/home planet.
+        var rig = new FrameRig();
+        rig.Tick(3);
+        Assert.True(rig.Transitions.TryReparent(TestShips.Moving, FrameRef.Of(new SystemId(1)), null, out _, out var failure), failure.ToString());
+        Assert.True(CharacterFrames.TrySpawnPlanet(rig.Graph, FrameRef.Of(TestShips.Moving), _other, out var planet, out var attached));
+        Assert.Equal((_other, true), (planet, attached));
+        Assert.False(CharacterFrames.TrySpawnPlanet(rig.Graph, FrameRef.Of(TestShips.Moving), default, out _, out _));
+    }
+
+    [Fact]
     public void CharacterFrames_PlayerInConstructFrame_WorldPoseFollowsTheShip()
     {
         var rig = new FrameRig();

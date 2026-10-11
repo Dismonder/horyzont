@@ -66,6 +66,36 @@ public static class CharacterFrames
         }
     }
 
+    /// <summary>
+    /// Where a new body of a player in <paramref name="frame"/> lives, by the same rules as <see cref="Decide"/>: a planet frame is that
+    /// planet; a construct frame is attached on the planet of its region, or on <paramref name="fallback"/> when the region is the
+    /// system frame (a ship between planets: the body stays on its last planet, posed globally anyway).
+    /// </summary>
+    /// <param name="graph">The frame graph of the world.</param>
+    /// <param name="frame">The frame of the player in the simulation.</param>
+    /// <param name="fallback">The last planet of the body, or the home planet; default when there is none.</param>
+    /// <param name="planet">Receives the planet of the body.</param>
+    /// <param name="attached">Receives whether the body is attached to a construct frame.</param>
+    /// <returns>False for the system frame, an unknown frame or a ship in the system frame without a fallback.</returns>
+    public static bool TrySpawnPlanet(FrameGraph graph, FrameRef frame, PlanetId fallback, out PlanetId planet, out bool attached)
+    {
+        ArgumentNullException.ThrowIfNull(graph);
+        planet = default;
+        attached = false;
+        switch (frame.Kind)
+        {
+            case FrameKind.Planet:
+                planet = new PlanetId(frame.Id);
+                return true;
+            case FrameKind.Construct when graph.TryGetRegion(frame, out var region):
+                planet = region.Kind == FrameKind.Planet ? new PlanetId(region.Id) : fallback;
+                attached = true;
+                return planet != default;
+            default:
+                return false;
+        }
+    }
+
     /// <summary>The world pose of an attached body: the frame pose composed with the local pose of the player.</summary>
     /// <param name="graph">The frame graph.</param>
     /// <param name="frame">The frame of the player.</param>
