@@ -4,6 +4,7 @@ using System.Text;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Simulation;
+using Horyzont.Core.Space;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -24,6 +25,7 @@ public sealed class WorldStateBuilder
     private readonly List<ConstructChunkRecord> _chunks = [];
     private readonly List<PlayerRecord> _players = [];
     private readonly List<TerrainBlockVersion> _terrain = [];
+    private StarSystemParams? _starSystem;
     private OpId _lastOpId;
     private Tick _tick;
     private ulong _nextEntityId = 1;
@@ -58,6 +60,19 @@ public sealed class WorldStateBuilder
     {
         ArgumentNullException.ThrowIfNull(planet);
         _planets.Add(planet);
+    }
+
+    /// <summary>Sets the star system (K5-21); checked against the planets in <see cref="Build"/>.</summary>
+    /// <param name="system">The star system.</param>
+    public void SetStarSystem(StarSystemParams system)
+    {
+        ArgumentNullException.ThrowIfNull(system);
+        if (_starSystem is not null)
+        {
+            throw new InvalidDataException("Duplicate star system.");
+        }
+
+        _starSystem = system;
     }
 
     /// <summary>Adds a block type registry entry.</summary>
@@ -130,6 +145,11 @@ public sealed class WorldStateBuilder
         foreach (var planet in _planets)
         {
             state.Planets.Add(planet);
+        }
+
+        if (_starSystem is not null)
+        {
+            state.SetStarSystem(_starSystem);
         }
 
         foreach (var entry in _blockTypes)

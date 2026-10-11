@@ -2,6 +2,7 @@ using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Space;
 using Horyzont.Core.World;
+using Horyzont.Testing;
 
 namespace Horyzont.Core.Tests.Space;
 
@@ -144,6 +145,59 @@ public sealed class StarSystemGenesisTests
             Assert.Equal(created.Bodies[(int)k].Id, created.System.Bodies[(int)k].Planet);
             Assert.Equal(k, created.System.Bodies[(int)k].BodyIndex);
         }
+    }
+
+    [Fact]
+    public void PreparePlayerJoin_FourBodies_SpawnsOnHomePlanet()
+    {
+        // A seed whose moon, planet B or C sorts before the home planet in the registry.
+        WorldState? state = null;
+        for (ulong seed = 0; state is null; seed++)
+        {
+            var candidate = WorldFactory.CreateWithStarSystem(seed);
+            if (candidate.Planets.All[0].Id != candidate.HomePlanet)
+            {
+                state = candidate;
+            }
+        }
+
+        var fixture = new SimFixture(state: state);
+        var join = fixture.Sim.PreparePlayerJoin(new PlatformIdentity(IdentityPlatform.Dev, 1), "player");
+
+        Assert.Equal(FrameRef.Of(state.HomePlanet), join.Frame);
+        Assert.Equal(state.StarSystem!.HomePlanet, state.HomePlanet);
+    }
+
+    [Fact]
+    public void WorldStatePlanetPlacement_StarSystemPosesAndHomeOnlyWithout()
+    {
+        var state = WorldFactory.CreateWithStarSystem(3);
+        var placement = new WorldStatePlanetPlacement(state);
+        foreach (var body in state.StarSystem!.Bodies)
+        {
+            Assert.True(placement.TryGetPose(body.Planet, out var pose));
+            Assert.Equal(body.Pose, pose);
+        }
+
+        Assert.False(placement.TryGetPose(new PlanetId(5), out _));
+
+        var old = WorldFactory.CreateDefault();
+        var oldPlacement = new WorldStatePlanetPlacement(old);
+        Assert.Equal(WorldFactory.HomePlanet, old.HomePlanet);
+        Assert.True(oldPlacement.TryGetPose(WorldFactory.HomePlanet, out var home));
+        Assert.Equal(PoseD.Identity, home);
+        Assert.False(oldPlacement.TryGetPose(new PlanetId(5), out _));
+    }
+
+    [Fact]
+    public void CreateNew_StarSystemBodyMissing_Throws()
+    {
+        var created = StarSystemGenesis.CreateWorldBodies(9, Profile);
+        Assert.Throws<ArgumentException>(() => WorldState.CreateNew(
+            WorldFactory.DefaultWorldId, 9, created.System, created.Bodies.Take(3), [WorldFactory.StoneBlockKey], ["stone"]));
+        var state = WorldState.CreateNew(WorldFactory.DefaultWorldId, 9, created.System, created.Bodies, [WorldFactory.StoneBlockKey], ["stone"]);
+        Assert.Same(created.System, state.StarSystem);
+        Assert.Equal(created.Bodies[0].Id, state.HomePlanet);
     }
 
     private static double Radius(GeneratedStarSystem created, int index) => created.Bodies[index].RadiusMeters;

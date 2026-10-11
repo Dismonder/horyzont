@@ -1,9 +1,10 @@
 using Horyzont.Core.Ids;
+using Horyzont.Core.Space;
 using Horyzont.Core.World;
 
 namespace Horyzont.Testing;
 
-/// <summary>Worlds for tests, created only through the public <see cref="WorldState.CreateNew"/>.</summary>
+/// <summary>Worlds for tests, created only through the public <c>WorldState.CreateNew</c>.</summary>
 public static class WorldFactory
 {
     public const string StoneBlockKey = "core:stone_block";
@@ -20,4 +21,11 @@ public static class WorldFactory
     /// <summary>Default registries with the given planets.</summary>
     public static WorldState CreateWith(params PlanetParams[] planets) =>
         WorldState.CreateNew(DefaultWorldId, 42, planets, [StoneBlockKey], ["stone", "dirt"]);
+
+    /// <summary>Default registries with the four bodies of <see cref="StarSystemGenesis.CreateWorldBodies"/> (K5-21) and their star system.</summary>
+    public static WorldState CreateWithStarSystem(ulong seed)
+    {
+        var created = StarSystemGenesis.CreateWorldBodies(seed, HomePlanetParams.GeneratorProfile);
+        return WorldState.CreateNew(DefaultWorldId, seed, created.System, created.Bodies, [StoneBlockKey], ["stone", "dirt"]);
+    }
 }

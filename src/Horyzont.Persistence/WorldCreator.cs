@@ -12,7 +12,7 @@ namespace Horyzont.Persistence;
 /// <summary>Creates the file of a new world: schema, meta, registries and planets.</summary>
 public static class WorldCreator
 {
-    /// <summary>Writes a world made by <see cref="WorldState.CreateNew"/> to a new file.</summary>
+    /// <summary>Writes a world made by <c>WorldState.CreateNew</c> to a new file.</summary>
     /// <param name="path">World file; must not exist. The directory is created when missing.</param>
     /// <param name="world">The new world: no operations, constructs, players or terrain versions.</param>
     /// <param name="options">Persistence options (the game version is stored).</param>
