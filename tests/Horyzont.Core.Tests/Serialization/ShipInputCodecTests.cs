@@ -66,9 +66,10 @@ public sealed class ShipInputCodecTests
         Assert.Equal(DeliveryChannel.Unreliable, MessageChannels.For(MessageType.ShipCorrection));
         Assert.Equal(34, (byte)MessageType.ShipCorrection);
 
-        // 73 B of payload with a two-byte ship id (R12): type and version are not counted.
+        // With a two-byte ship id: 75 B of message payload as R13 counts it (type and format version included, transport header
+        // excluded) = 2 B type and version + 73 B body (R12).
         var wide = Kit.Encode(correction with { Ship = new EntityId(300) });
-        Assert.Equal(73, wide.Length - 2);
+        Assert.Equal(75, wide.Length);
         Assert.Equal(12.5f, ((ShipCorrection)MessageCodec.Read(Kit.Encode(Correction(12.5f)))).HorizontalSpeedCap);
     }
 
