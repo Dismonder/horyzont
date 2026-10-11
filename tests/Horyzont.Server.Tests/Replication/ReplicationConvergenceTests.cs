@@ -244,22 +244,31 @@ public sealed class ReplicationConvergenceTests
         }
 
         var id = rig.AddConstruct(new Vector3(10, 4000, 10), cells);
-        var slowest = TimeSpan.Zero;
+
+        // Work per tick instead of wall-clock time (docs/ZASADY.md, point 8): planning is bounded, so the first part leaves only after
+        // ceil(chunks / PlanChunksPerPump) ticks, and no tick sends more than MaxPartsPerPump parts.
         var ticks = 0;
+        var firstBulkTick = -1;
+        var mostPartsInTick = 0;
         while (ticks < 1200 && !alice.Constructs.TryGetConstruct(id, out _))
         {
-            var started = System.Diagnostics.Stopwatch.GetTimestamp();
+            var partsBefore = gate.BulkParts;
             rig.Step();
-            var took = System.Diagnostics.Stopwatch.GetElapsedTime(started);
-            slowest = took > slowest ? took : slowest;
             ticks++;
+            var parts = gate.BulkParts - partsBefore;
+            mostPartsInTick = Math.Max(mostPartsInTick, parts);
+            if (firstBulkTick < 0 && parts > 0)
+            {
+                firstBulkTick = ticks;
+            }
         }
 
         rig.Step(10);
         Assert.True(alice.Constructs.TryGetConstruct(id, out var copy));
         Assert.Equal(Digest(rig.Runtime.State.Constructs.All.Single(c => c.Id == id)), Digest(copy!));
         Assert.Equal(0, alice.Resyncs);
-        Assert.InRange(slowest.TotalMilliseconds, 0, 100);
+        Assert.InRange(firstBulkTick, (cells.Length + ConstructStateSender.PlanChunksPerPump - 1) / ConstructStateSender.PlanChunksPerPump, 1200);
+        Assert.InRange(mostPartsInTick, 1, ConstructStateSender.MaxPartsPerPump);
         Assert.True(gate.BulkBytes > 0);
     }
 
