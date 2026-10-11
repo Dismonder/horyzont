@@ -94,6 +94,17 @@ public sealed class ShipInputCodecTests
     }
 
     [Fact]
+    public void MessageCodec_ShipCorrection_FlagsByte_EveryBitDefined()
+    {
+        // The reader cannot refuse undefined flight flag bits because there are none; a ninth flag or a freed bit must add the check.
+        var all = Enum.GetValues<ShipFlightFlags>().Aggregate(ShipFlightFlags.None, (a, f) => a | f);
+        Assert.Equal(0xFF, (byte)all);
+        var hex = CorrectionHex.Replace("00 00 C8 42  09  00  02", "00 00 C8 42  FF  00  02", StringComparison.Ordinal);
+        Assert.NotEqual(CorrectionHex, hex);
+        Assert.Equal(all, ((ShipCorrection)MessageCodec.Read(Kit.Hex(hex))).Flags);
+    }
+
+    [Fact]
     public void MessageCodec_ShipCorrection_RejectsDamagedPose()
     {
         // Rotation (0, 0, 0, 2): not normalized.
