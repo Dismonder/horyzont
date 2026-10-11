@@ -25,11 +25,12 @@ public sealed class SeatIntentTests
     private static readonly SeatRules _rules = SeatRules.Default;
 
     /// <summary>The ship (ship mode, parked) standing on the terrain at x = z = 0 and a player in front of its cockpit.</summary>
-    internal static (SimFixture F, PlayerId P) Rig(IEnumerable<ShipBlock>? extra = null, float height = 0f, ConstructMode mode = ConstructMode.Ship)
+    internal static (SimFixture F, PlayerId P) Rig(
+        IEnumerable<ShipBlock>? extra = null, float height = 0f, ConstructMode mode = ConstructMode.Ship, GameRules? rules = null)
     {
         var blocks = ShipFixtures.Thirty.Concat(extra ?? []).ToArray();
         var state = ShipFixtures.CreateWorld(blocks, new Vector3(0, 4000 + height, 0), mode);
-        var f = new SimFixture(state: state, content: ShipFixtures.ContentFor(state));
+        var f = new SimFixture(rules: rules, state: state, content: ShipFixtures.ContentFor(state));
         var player = f.Join();
         f.MovePlayer(player, new Vector3(2.5f, 4000f, -2f));
         return (f, player);
@@ -163,6 +164,18 @@ public sealed class SeatIntentTests
         Assert.True(result.IsAccepted, result.Reason.ToString());
         Assert.Equal(_nav, f.PlayerOf(p).Seat);
         Assert.Equal(2u, f.PlayerOf(p).ParentSeq);
+    }
+
+    [Fact]
+    public void SeatEnterIntent_SeatedSightBudgetExhausted_NoLineOfSight()
+    {
+        // The sight ray from the cockpit eye to the navigator seat crosses the own cockpit cell: one step through it uses up a budget
+        // of one step, and an unfinished walk must not count as a clear line.
+        var (f, p) = Rig(rules: new GameRules { Seats = SeatRules.Default with { SightSteps = 1 } });
+        Assert.True(f.Sim.Submit(p, Enter(f, p, _cockpit)).IsAccepted);
+        var eye = new Vector3(2.5f, 4000f + 3.25f, 0.5f);
+
+        AssertRejected(f, p, Enter(f, p, _nav, eye), RejectReason.NoLineOfSight);
     }
 
     [Fact]

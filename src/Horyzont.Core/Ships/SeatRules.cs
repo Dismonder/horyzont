@@ -30,6 +30,9 @@ public sealed record SeatRules
     /// <summary>Seat persons in the hull on free passenger or navigator seats at a launch attempt (P2).</summary>
     public bool AutoSeatOnLaunch { get; init; } = true;
 
+    /// <summary>Most steps of a sight ray through the seat cell of a seated actor; a walk that runs out has no line of sight.</summary>
+    public int SightSteps { get; init; } = 64;
+
     /// <summary>Input slots the server keeps between the newest received pilot input and the consumed one (R1).</summary>
     public int InputDelayTicks { get; init; } = 2;
 

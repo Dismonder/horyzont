@@ -26,9 +26,8 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
     private const float RefuelFullMargin = 0.5f;
     private const float SightEpsilon = 1e-3f;
 
-    /// <summary>Step of the sight ray through the seat cell of a seated actor, metres; at most <see cref="MaxSightSteps"/> steps.</summary>
+    /// <summary>Step of the sight ray through the seat cell of a seated actor, metres; at most <see cref="SeatRules.SightSteps"/> steps.</summary>
     private const float SeatSightStep = 0.05f;
-    private const int MaxSightSteps = 64;
 
     /// <summary>Corners of a block are probed this far inside the cell, so a block that only touches the ground is not embedded.</summary>
     private const float AnchorInset = 0.1f;
@@ -879,17 +878,20 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
         var seatCell = actor?.Seat ?? default;
         var travelled = 0f;
         var reach = distance;
-        for (var step = 0; step < MaxSightSteps; step++)
+        var walked = false;
+        for (var step = 0; step < rules.Seats.SightSteps; step++)
         {
             var left = distance - travelled;
             if (!ConstructRaycast.Raycast(state.Constructs, FrameRef.Of(planet), eye + (direction * travelled), direction, left + SightEpsilon, out var hit))
             {
+                walked = true;
                 break;
             }
 
             if (hit.Construct == construct && hit.Cell == cell)
             {
                 reach = MathF.Min(travelled + hit.Distance, distance);
+                walked = true;
                 break;
             }
 
@@ -898,6 +900,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
                 travelled += hit.Distance + SeatSightStep;
                 if (travelled >= distance)
                 {
+                    walked = true;
                     break;
                 }
 
@@ -909,7 +912,13 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
                 return false;
             }
 
+            walked = true;
             break;
+        }
+
+        if (!walked)
+        {
+            return false; // the step budget ran out inside the seat cell: no proof of a clear line
         }
 
         return !terrain.Raycast(planet, eye, direction, reach, out var terrainHit)
