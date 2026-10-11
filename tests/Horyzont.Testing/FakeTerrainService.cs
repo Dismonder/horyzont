@@ -93,6 +93,29 @@ public sealed class FakeTerrainService(float surfaceRadius = 4000f, float voxelS
         }
     }
 
+    /// <summary>
+    /// Answers <see cref="TrySampleSolid"/> for tests with their own terrain shape (flat ground, a hill); null = the sphere of
+    /// <see cref="SurfaceRadius"/>. Only called for points in loaded areas.
+    /// </summary>
+    public Func<PlanetId, Vector3, bool>? SolidModel { get; set; }
+
+    /// <summary>Counts the calls of <see cref="TrySampleSolid"/>.</summary>
+    public int SolidSamples { get; private set; }
+
+    /// <inheritdoc />
+    public bool TrySampleSolid(PlanetId planet, Vector3 position, out bool solid)
+    {
+        SolidSamples++;
+        solid = false;
+        if (!IsAreaLoaded(planet, position, 0f))
+        {
+            return false;
+        }
+
+        solid = SolidModel?.Invoke(planet, position) ?? position.LengthSquared() < SurfaceRadius * SurfaceRadius;
+        return true;
+    }
+
     /// <summary>Current data of a block: memory, then <see cref="BlockSource"/>, else empty (generator output).</summary>
     public byte[] GetBlockData(TerrainBlockKey key) =>
         _blocks.TryGetValue(key, out var data) ? data : BlockSource?.Invoke(key) ?? [];

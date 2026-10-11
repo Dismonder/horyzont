@@ -33,6 +33,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             PlayerJoinOp op => CheckPlayerJoin(op),
             PlayerLeaveOp op => CheckPlayerLeave(op),
             EntityReparentOp op => CheckReparent(op),
+            ShipModeSetOp op => CheckShipModeSet(op),
             _ => $"Unknown operation {operation.GetType().Name}.",
         } ?? string.Empty;
         return failure.Length == 0;
@@ -83,6 +84,11 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 break;
             case EntityReparentOp op:
                 ApplyReparent(op);
+                break;
+            case ShipModeSetOp op:
+                state.Constructs.TryGet(op.Construct, out var switched);
+                switched!.SetMode(op.Mode, op.Origin, op.Rotation);
+                constructChanges = [new ConstructChange(switched.Id, switched.Version, false)];
                 break;
             default:
                 throw new InvalidOperationException($"Unknown operation {operation.GetType().Name}.");
@@ -349,6 +355,31 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         }
 
         return null;
+    }
+
+    private string? CheckShipModeSet(ShipModeSetOp op)
+    {
+        if (!state.Constructs.TryGet(op.Construct, out var construct))
+        {
+            return "unknown construct";
+        }
+
+        if (op.Mode is not (ConstructMode.Static or ConstructMode.Ship) || op.Mode == construct.Mode)
+        {
+            return "mode unknown or unchanged";
+        }
+
+        if (op.Parent != construct.Parent || op.ParentSeq != construct.ParentSeq)
+        {
+            return "parent or ParentSeq differ";
+        }
+
+        if (op.Mode == ConstructMode.Static && op.Parent.Kind != FrameKind.Planet)
+        {
+            return "a static construct exists only in a planet frame";
+        }
+
+        return IsPose(op.Origin, op.Rotation) ? null : "invalid pose";
     }
 
     private bool IsSelfOrDescendant(FrameRef frame, EntityId construct)

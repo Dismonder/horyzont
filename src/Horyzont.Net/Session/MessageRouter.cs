@@ -27,7 +27,7 @@ internal static class MessageRouter
     private static bool IsKnownType(byte type) => type switch
     {
         1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10
-            or 11 or 12 or 13 or 14 or 15 or 16 or 17 or 18 or 19 or 20 or 21 or 24 or 25 or 32 => true,
+            or 11 or 12 or 13 or 14 or 15 or 16 or 17 or 18 or 19 or 20 or 21 or 22 or 23 or 24 or 25 or 32 => true,
         _ => false,
     };
 
@@ -44,7 +44,7 @@ internal static class MessageRouter
     /// <summary>Whether the client accepts <paramref name="type"/> from the server in <paramref name="state"/>.</summary>
     public static bool IsAllowedFromServer(ClientState state, MessageType type) => state switch
     {
-        ClientState.AwaitingServerHello => type is MessageType.ServerHello or MessageType.HandshakeReject or MessageType.Disconnect,
+        ClientState.AwaitingServerHello => type is MessageType.ServerHello or MessageType.HandshakeReject or MessageType.JoinUnavailable or MessageType.Disconnect,
         ClientState.Loading or ClientState.InGame => type == MessageType.Disconnect || IsGameMessageFromServer(type),
         _ => false,
     };
@@ -52,7 +52,7 @@ internal static class MessageRouter
     /// <summary>Server-to-client types the game sends itself (not handshake or session control).</summary>
     public static bool IsGameMessageFromServer(MessageType type) => type is MessageType.TerrainSync or MessageType.TerrainBlockData or MessageType.ConstructState
         or MessageType.ConstructRemoved or MessageType.OperationApplied or MessageType.IntentReply or MessageType.Snapshot
-        or MessageType.EntitySpawn or MessageType.EntityDespawn or MessageType.Pong or MessageType.StarSystemState;
+        or MessageType.EntitySpawn or MessageType.EntityDespawn or MessageType.Pong or MessageType.ServerStatus or MessageType.StarSystemState;
 
     /// <summary>Client-to-server types the game sends itself through <see cref="ClientSession.Send"/>.</summary>
     public static bool IsGameMessageFromClient(MessageType type) =>

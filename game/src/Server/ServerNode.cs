@@ -16,18 +16,24 @@ public sealed partial class ServerNode : Node
 
     private ServerRuntime? _runtime;
     private DedicatedConsole? _console;
+    private TimeProvider _time = TimeProvider.System;
 
     /// <summary>Gets the server runtime.</summary>
     public ServerRuntime Runtime => _runtime ?? throw new InvalidOperationException("ServerNode.Initialize was not called.");
 
+    /// <summary>Gets the wall time of the latest <c>Runtime.Tick()</c> in milliseconds; <see cref="double.NaN"/> before the first tick. Measured outside the simulation, for the developer HUD.</summary>
+    public double LastTickMilliseconds { get; private set; } = double.NaN;
+
     /// <summary>Gives the node its dependencies.</summary>
     /// <param name="runtime">The server runtime (not started yet; ticks before the start do nothing).</param>
     /// <param name="console">The console of a dedicated server; null otherwise.</param>
-    public void Initialize(ServerRuntime runtime, DedicatedConsole? console)
+    /// <param name="time">Clock of the tick duration; the system clock when null.</param>
+    public void Initialize(ServerRuntime runtime, DedicatedConsole? console, TimeProvider? time = null)
     {
         ArgumentNullException.ThrowIfNull(runtime);
         _runtime = runtime;
         _console = console;
+        _time = time ?? TimeProvider.System;
     }
 
     /// <inheritdoc />
@@ -46,6 +52,8 @@ public sealed partial class ServerNode : Node
     public override void _PhysicsProcess(double delta)
     {
         _console?.Pump();
+        var started = _time.GetTimestamp();
         _runtime!.Tick();
+        LastTickMilliseconds = _time.GetElapsedTime(started).TotalMilliseconds;
     }
 }

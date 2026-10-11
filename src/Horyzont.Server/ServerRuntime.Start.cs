@@ -1,11 +1,15 @@
 using Horyzont.Core.Ids;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Simulation;
+using Horyzont.Core.World;
+using Horyzont.Core.World.Blocks;
+using Horyzont.Core.World.Terrain;
 using Horyzont.Net.Session;
 using Horyzont.Persistence;
 using Horyzont.Persistence.Backup;
 using Horyzont.Persistence.Terrain;
 using Horyzont.Persistence.Writing;
+using Horyzont.Server.Ships;
 
 using Microsoft.Extensions.Logging;
 
@@ -154,7 +158,7 @@ public sealed partial class ServerRuntime
             sink = decorate(sink);
         }
 
-        _simulation = new ServerSimulation(loaded.State, _terrain.Service, sink, _options.Rules, _loggers.CreateLogger<ServerSimulation>());
+        _simulation = CreateSimulation(loaded.State, _terrain.Service, sink);
 
         // 5. Replay (terrain areas are loaded before their edits).
         try
@@ -225,18 +229,26 @@ public sealed partial class ServerRuntime
     {
         _readOnlyStart = true;
         _logger.StartedReadOnly(message);
-        _simulation = new ServerSimulation(_worldState!, _terrain!.Service, new RefusingJournalSink(), _options.Rules, _loggers.CreateLogger<ServerSimulation>());
+        _simulation = CreateSimulation(_worldState!, _terrain!.Service, new RefusingJournalSink());
         StartSession();
         RuntimeState = ServerRuntimeState.SafeMode;
         _logger.Running(_worldState!.Id.Value, RuntimeState);
         return new WorldStartResult.StartedReadOnly(ReadOnlyReason.TerrainSemanticsMismatch, message);
     }
 
+    private ServerSimulation CreateSimulation(WorldState state, ITerrainService terrain, IJournalSink sink)
+    {
+        var content = BlockContentTable.Create(state.BlockTypes, _options.BlockDefinitions);
+        var simulation = new ServerSimulation(state, terrain, sink, _options.Rules, _loggers.CreateLogger<ServerSimulation>(), content);
+        _shipStats = new ShipStatsCache(simulation);
+        return simulation;
+    }
+
     private void StartSession()
     {
         var hooks = new GameServerHooks(
             _simulation!, () => RuntimeState == ServerRuntimeState.Running, _loggers.CreateLogger<GameServerHooks>(), [.. _playerObservers],
-            _options.NewPlayerSpawn, [.. _clientMessageHandlers]);
+            _options.NewPlayerSpawn, [.. _clientMessageHandlers], () => CurrentStatus);
         _session = new ServerSession(_transport, _options.ServerOptions, hooks, _time, _loggers.CreateLogger<ServerSession>());
         foreach (var endpoint in _options.Listen)
         {

@@ -95,9 +95,10 @@ internal sealed class ReplicationRig : IAsyncDisposable
 
     public static async Task<ReplicationRig> StartAsync(
         Func<WorldState>? createWorld = null, ISnapshotBudget? snapshotBudget = null, FakeTimeProvider? time = null,
-        IReplicationSendBudget? sendBudget = null, LinkConditions? conditions = null)
+        IReplicationSendBudget? sendBudget = null, LinkConditions? conditions = null,
+        Func<ServerRuntimeOptions, ServerRuntimeOptions>? configure = null)
     {
-        var rig = new ServerRig(time: time, createWorld: createWorld, conditions: conditions);
+        var rig = new ServerRig(time: time, createWorld: createWorld, conditions: conditions, configure: configure);
         var characters = new FakeCharacters();
         var binder = new EntityReplicationBinder(
             runtime => new ServerReplicationSource(runtime.State, characters), rig.Time, rig.Log, snapshotBudget, 500f, sendBudget);
@@ -142,8 +143,8 @@ internal sealed class ReplicationRig : IAsyncDisposable
     }
 
     /// <summary>
-    /// Creates a one-block construct and switches it to ship mode in place (a runtime starts only from a fresh world, so a ship header
-    /// cannot be loaded; K5-23's ShipModeSetOp will replace <see cref="TestShips.ForceMode"/>).
+    /// Creates a one-block construct and switches it to ship mode in place with a <c>ShipModeSetOp</c> (a runtime starts only from
+    /// a fresh world, so a ship header cannot be loaded).
     /// </summary>
     public EntityId AddShip(Vector3 origin, Quaternion? rotation = null)
     {
@@ -155,8 +156,8 @@ internal sealed class ReplicationRig : IAsyncDisposable
     }
 
     public void SetMode(EntityId construct, ConstructMode mode) =>
-        TestShips.ForceMode(
-            Runtime.State.Constructs.TryGet(construct, out var found) ? found! : throw new InvalidOperationException("Unknown construct."), mode);
+        Runtime.Simulation.ApplyServerOperation(TestShips.ModeOp(
+            Runtime.State.Constructs.TryGet(construct, out var found) ? found! : throw new InvalidOperationException("Unknown construct."), mode));
 
     public void Step(int frames = 1) => Rig.StepMany(frames);
 

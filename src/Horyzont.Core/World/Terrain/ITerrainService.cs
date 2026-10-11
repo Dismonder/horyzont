@@ -30,6 +30,13 @@ public interface ITerrainService
     /// <returns>True when the terrain was hit.</returns>
     bool Raycast(PlanetId planet, Vector3 origin, Vector3 direction, float maxDistance, out TerrainHit hit);
 
+    /// <summary>Whether a point lies inside solid terrain (SDF below zero); used to detect ship blocks embedded in the ground.</summary>
+    /// <param name="planet">Planet.</param>
+    /// <param name="position">Point in the planet frame.</param>
+    /// <param name="solid">True when the point is inside the terrain; false otherwise or when the answer is unknown.</param>
+    /// <returns>False when the area is not loaded (no answer: never read as "not embedded"); true when <paramref name="solid"/> is valid.</returns>
+    bool TrySampleSolid(PlanetId planet, Vector3 position, out bool solid);
+
     /// <summary>
     /// Applies an edit; deterministic for the same inputs. Called after the block versions were bumped, so an implementation
     /// that stores block data can pair every block it changes with its new version.

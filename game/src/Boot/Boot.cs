@@ -1,6 +1,9 @@
 using Godot;
 
+using Horyzont.Client.Steam;
+using Horyzont.Client.UI;
 using Horyzont.Game.Logging;
+using Horyzont.Game.UI;
 using Horyzont.Server;
 
 using Microsoft.Extensions.Logging;
@@ -16,14 +19,16 @@ public partial class Boot : Node
     public const int ExitFaulted = 70;
 
     private const string Usage =
-        "Horyzont modes (after --): --solo [--world <id>] [--dev-speed <1-64>] [--screenshot <png> [--screenshot-after <s>]] | --host [--world <id>] [--port 27015] [--bind <ipv4>] [--password <text>] | --connect <host:port> [--password <text>] [--dev]"
+        "Horyzont modes (after --; without a mode the menu opens): --solo [--world <id>] [--dev-speed <1-64>] [--screenshot <png> [--screenshot-after <s>]] | --host [--world <id>] [--port 27015] [--bind <ipv4>] [--password <text>] | --connect <host:port> [--password <text>] [--dev]"
+        + " | +connect_lobby <id> [--password <text>] (Steam) | --host/--connect [--steam] [--steam-app-id <id>] [--lobby-visibility private|friends|public]"
         + " | --server --config <server.json> [--data-dir <dir>] [--restore-latest-backup] [--dev] | --write-default-config <path>";
 
     private ILoggerFactory? _loggers;
 
     public override void _Ready()
     {
-        var args = OS.GetCmdlineUserArgs();
+        // Steam starts the game with "+connect_lobby <id>" outside the user arguments; only that pair is taken over.
+        var args = LaunchOptions.WithConnectLobby(OS.GetCmdlineArgs(), OS.GetCmdlineUserArgs());
         if (DevModes.TryRun(this, args))
         {
             return;
@@ -47,6 +52,13 @@ public partial class Boot : Node
             return;
         }
 
+        if (DisplayServer.GetName() != "headless")
+        {
+            StartMenu(args);
+            return;
+        }
+
+        // Headless and dedicated processes never create controls: without a mode there is nothing to do.
         GD.Print(Usage);
         GetTree().Quit(0);
     }
@@ -75,6 +87,41 @@ public partial class Boot : Node
         }
 
         return LoggerFactory.Create(builder => builder.SetMinimumLevel(LogLevel.Information).AddProvider(new GodotLoggerProvider(file, LogLevel.Information, TimeProvider.System)));
+    }
+
+    /// <summary>No mode on the command line: the menu decides. No world, transport or runtime exists until the player asks for one.</summary>
+    private void StartMenu(string[] args)
+    {
+        var userDir = ProjectSettings.GlobalizePath("user://");
+        var executableDir = Path.GetDirectoryName(OS.GetExecutablePath()) ?? ".";
+        _loggers = CreateLoggers(new LaunchOptions { Mode = ServerProcessMode.Solo }, userDir, executableDir);
+        var env = new GameEnvironment
+        {
+            Time = TimeProvider.System,
+            Loggers = _loggers,
+            UserDataDir = userDir,
+            ExecutableDir = executableDir,
+            Render = true,
+            DevBuild = OS.IsDebugBuild(),
+        };
+        IUiLobbyService? lobby = null;
+        Func<bool>? platformShutdown = null;
+        if (LaunchOptions.WantsMenuSteam(args, System.Environment.GetEnvironmentVariable("SteamAppId"), out var appId))
+        {
+            // X8: the services belong to the process, not to a session. The SDK is shut down by the UI coordinator at quit, after the last
+            // session released its transports; the lifetime node keeps the callbacks running between sessions.
+            var steam = GameComposition.CreatePlatformServices(env, appId);
+            var lifetime = new SteamLifetime { Name = "SteamLifetime" };
+            lifetime.Initialize(steam);
+            AddChild(lifetime);
+            env = env with { Platform = steam };
+            lobby = new SteamUiLobbyService(steam.Lobby);
+            platformShutdown = steam.TryShutdown;
+        }
+
+        var ui = new GameUiCoordinator { Name = "Ui" };
+        ui.Initialize(env, lobby, platformShutdown);
+        AddChild(ui);
     }
 
     private async Task RunGameAsync(string[] args)
@@ -115,6 +162,23 @@ public partial class Boot : Node
             RegisterSignals = true,
         };
 
+        if (launch.EnableSteam)
+        {
+            var steam = GameComposition.CreatePlatformServices(env, launch.SteamAppId);
+            if (launch.ConnectLobbyId is not null && !steam.Available)
+            {
+                GD.PrintErr("STEAM UNAVAILABLE: +connect_lobby needs a running Steam client.");
+                steam.TryShutdown();
+                GetTree().Quit(ExitFaulted);
+                return;
+            }
+
+            var lifetime = new SteamLifetime { Name = "SteamLifetime" };
+            lifetime.Initialize(steam);
+            AddChild(lifetime);
+            env = env with { Platform = steam, ProcessCleanup = steam.TryShutdown };
+        }
+
         GameComposition composition;
         try
         {
@@ -123,6 +187,7 @@ public partial class Boot : Node
         catch (ArgumentException ex)
         {
             GD.PrintErr($"ARGUMENT ERROR: {ex.Message}");
+            env.Platform?.TryShutdown();
             GetTree().Quit(DevModes.ExitBadArguments);
             return;
         }
@@ -132,6 +197,8 @@ public partial class Boot : Node
         {
             if (await composition.StartAsync(CancellationToken.None) is { } exit)
             {
+                // StartAsync released the transports of a world that did not start, so the lobby is left and the SDK may stop.
+                env.Platform?.TryShutdown();
                 GetTree().Quit(exit);
             }
         }
@@ -141,6 +208,9 @@ public partial class Boot : Node
         {
             GD.PrintErr($"START FAILED: {ex}");
             composition.Release();
+
+            // Release disposed the transports and left the lobby (it throws otherwise, and the SDK then stays up).
+            env.Platform?.TryShutdown();
             GetTree().Quit(ExitFaulted);
         }
     }

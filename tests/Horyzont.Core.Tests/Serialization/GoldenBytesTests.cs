@@ -58,6 +58,16 @@ public sealed class GoldenBytesTests
     // RemoveBlock code = 3, version 1, Construct 5, Cell (0, 0, 0).
     private const string RemoveBlockHex = "03 01  05  00 00 00";
 
+    // ShipModeSet = 20 (0x14), version 1, Construct 5, Mode Ship = 1, Parent Planet(2) id 9, ParentSeq 0,
+    // Origin (1.0, -2.0, 0.5) = 3F800000 C0000000 3F000000 little-endian, Rotation identity = X, Y, Z zero floats and W = 1.0 (00 00 80 3F).
+    private const string ShipModeSetHex =
+        "14 01  05  01  02 09  00  00 00 80 3F  00 00 00 C0  00 00 00 3F  00 00 00 00 00 00 00 00 00 00 00 00 00 00 80 3F";
+
+    // ShipMode intent code = 10 (0x0A), version 1, Construct 5, Cell (1, -1, 0) = 02 01 00, TargetMode Ship = 1,
+    // RayOrigin (1, 2, 3) = 3F800000 40000000 40400000, RayDirection (0, 0, 1) = 00000000 00000000 3F800000.
+    private const string ShipModeIntentHex =
+        "0A 01  05  02 01 00  01  00 00 80 3F  00 00 00 40  00 00 40 40  00 00 00 00  00 00 00 00  00 00 80 3F";
+
     // Blob: ConstructChunk = 3, version 1, RLE: 1 run, length 4096 = 80 20, block 0.
     private const string EmptyChunkBlobHex = "03 01  01  80 20  00 00 00 00";
 
@@ -126,6 +136,24 @@ public sealed class GoldenBytesTests
     [Fact]
     public void HandshakeReject_DecodesHandComputedBytes() =>
         DeepAssert.Equal(new HandshakeReject(HandshakeRejectCode.WrongBuild, "old"), MessageCodec.Read(Kit.Hex(HandshakeRejectHex)));
+
+    // ServerStatus = 22 (0x16), version 1, ReadOnly true = 01, Reason 2, Detail "x": length 1, 78.
+    private const string ServerStatusHex = "16 01  01  02  01 78";
+
+    // JoinUnavailable = 23 (0x17), version 1, Reason 3, Detail "é" (UTF-8 C3 A9): length 2.
+    private const string JoinUnavailableHex = "17 01  03  02 C3 A9";
+
+    [Fact]
+    public void ServerStatus_EncodesToHandComputedBytes() => Assert.Equal(Kit.Hex(ServerStatusHex), Kit.Encode(new ServerStatus(true, 2, "x")));
+
+    [Fact]
+    public void ServerStatus_DecodesHandComputedBytes() => DeepAssert.Equal(new ServerStatus(true, 2, "x"), MessageCodec.Read(Kit.Hex(ServerStatusHex)));
+
+    [Fact]
+    public void JoinUnavailable_EncodesToHandComputedBytes() => Assert.Equal(Kit.Hex(JoinUnavailableHex), Kit.Encode(new JoinUnavailable(3, "é")));
+
+    [Fact]
+    public void JoinUnavailable_DecodesHandComputedBytes() => DeepAssert.Equal(new JoinUnavailable(3, "é"), MessageCodec.Read(Kit.Hex(JoinUnavailableHex)));
 
     public static Snapshot GoldenSnapshot() =>
         new(
@@ -202,6 +230,27 @@ public sealed class GoldenBytesTests
 
         Assert.Equal(Kit.Hex(RemoveBlockHex), Kit.Encode(intent));
         DeepAssert.Equal(intent, Kit.DecodeIntent(Kit.Hex(RemoveBlockHex)));
+    }
+
+    [Fact]
+    public void OperationCodec_ShipModeSet_Golden()
+    {
+        var op = new ShipModeSetOp(
+            new EntityId(5), ConstructMode.Ship, FrameRef.Of(new PlanetId(9)), 0, new Vector3(1f, -2f, 0.5f), Quaternion.Identity);
+
+        Assert.Equal(Kit.Hex(ShipModeSetHex), Kit.Encode(op));
+        DeepAssert.Equal(op, Kit.DecodeOperation(Kit.Hex(ShipModeSetHex)));
+        Assert.Equal(OperationKind.ShipModeSet, op.Kind);
+        Assert.Equal(20, (byte)op.Kind);
+    }
+
+    [Fact]
+    public void IntentCodec_ShipModeIntent_Golden()
+    {
+        var intent = new ShipModeIntent(new EntityId(5), new CellPos(1, -1, 0), ConstructMode.Ship, new Vector3(1f, 2f, 3f), new Vector3(0f, 0f, 1f));
+
+        Assert.Equal(Kit.Hex(ShipModeIntentHex), Kit.Encode(intent));
+        DeepAssert.Equal(intent, Kit.DecodeIntent(Kit.Hex(ShipModeIntentHex)));
     }
 
     [Fact]
@@ -308,6 +357,7 @@ public sealed class GoldenBytesTests
     [InlineData(OperationKind.PlayerJoin)]
     [InlineData(OperationKind.PlayerLeave)]
     [InlineData(OperationKind.EntityReparent)]
+    [InlineData(OperationKind.ShipModeSet)]
     public void OperationFrames_StartWithOperationKindAndVersionOne(OperationKind kind)
     {
         var sample = CodecGen.Operation.Sample(200, 20).First(o => o.Kind == kind);
