@@ -337,6 +337,8 @@ Testy `game/tests/Frames|Space|Ships|Terrain|Planet|Navigation` szeregowo na jed
 
 Kolejność K5: (wykonawcy dopisują tu po scaleniu: pakiet, PR, `ProtocolVersion`).
 
+- K5-20 — PR #26, `ProtocolVersion` = 8 (main 7 po K5-23 + 1, D4; scalenie `origin/main` z K3-17, K3-18 i K5-23).
+
 ## Szablon planu pakietu
 
 Każdy plan ma te same części: nagłówek (kto, zależności, gałąź), cel w jednym zdaniu, kontekst do przeczytania, zakres i poza zakresem, projekt (pliki, kontrakty, decyzje), testy akceptacyjne, kroki z polami wyboru, odbiór i pułapki. Wykonawca odhacza kroki w tym pliku w ramach swojego PR.

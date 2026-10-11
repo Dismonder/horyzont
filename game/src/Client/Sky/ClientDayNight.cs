@@ -30,6 +30,9 @@ public sealed partial class ClientDayNight : Node, IClientSessionListener
     private int _tickRate = 60;
     private ulong _tick;
 
+    /// <summary>Gets or sets the frame nodes of the client (K5-20): planet-frame values go through the planet node; null = identity.</summary>
+    public FrameNodes? FrameNodes { get; set; }
+
     /// <summary>Creates the node.</summary>
     /// <param name="view">The local player, for the up and the height of the camera; null for none.</param>
     /// <param name="authoritativeTick">The tick of the server in the same process (solo and host); null for a remote client.</param>
@@ -139,6 +142,6 @@ public sealed partial class ClientDayNight : Node, IClientSessionListener
         _environment.BackgroundEnergyMultiplier = skyEnergy;
         _environment.AmbientLightEnergy = Mathf.Lerp(0.04f, 1f, Daylight);
         _sun!.LightEnergy = 1.4f * Daylight;
-        _environment.SkyRotation = new Basis(new Quaternion(Vector3.Up, PlanetFrames.ToGodotDirection(planet.Id, up))).GetEuler();
+        _environment.SkyRotation = new Basis(new Quaternion(Vector3.Up, FrameNodes.PlanetSpaceOf(planet.Id).ToGodotDirection(up))).GetEuler();
     }
 }

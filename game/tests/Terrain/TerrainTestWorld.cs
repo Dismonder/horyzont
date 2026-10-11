@@ -115,15 +115,16 @@ internal sealed class TerrainTestWorld : IAsyncDisposable
         return Path.Combine(dir, "world.db");
     }
 
-    public static WorldState NewWorldState() =>
-        WorldState.CreateNew(WorldFactory.DefaultWorldId, 42, [Planet], [WorldFactory.StoneBlockKey], TerrainMaterials.Keys);
+    public static WorldState NewWorldState(params PlanetParams[] morePlanets) =>
+        WorldState.CreateNew(WorldFactory.DefaultWorldId, 42, [Planet, .. morePlanets], [WorldFactory.StoneBlockKey], TerrainMaterials.Keys);
 
     public static Task<TerrainTestWorld> CreateAsync(
-        EngineTestScene scene, TerrainBufferOptions? options = null, IPersistenceFaults? faults = null, Func<VoxelGenerator>? generator = null)
+        EngineTestScene scene, TerrainBufferOptions? options = null, IPersistenceFaults? faults = null, Func<VoxelGenerator>? generator = null,
+        PlanetParams[]? morePlanets = null)
     {
         var time = new FakeTimeProvider();
         var path = NewPath();
-        WorldCreator.Create(path, NewWorldState(), Options, time);
+        WorldCreator.Create(path, NewWorldState(morePlanets ?? []), Options, time);
         return OpenAsync(scene, path, options, faults, time, generator: generator);
     }
 

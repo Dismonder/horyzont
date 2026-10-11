@@ -15,6 +15,7 @@ using Horyzont.Net.Transport;
 using Horyzont.Server.Replication;
 using Horyzont.Server.Tests.Support;
 using Horyzont.Testing;
+using Horyzont.Testing.Ships;
 
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
@@ -116,6 +117,13 @@ public sealed class EntityReplicationLifecycleTests
         var replication = new EntityReplication(session, simulation, source, new FixedSnapshotBudget(), new TokenBucketReplicationBudget(time),
             time, NullLogger<EntityReplication>.Instance);
         var players = session.PlayersInGame;
+
+        // K5-20: a moving ship in the snapshots and a player in its frame (interest through the frame graph).
+        var ship = simulation.State.EntityIds.PeekNext();
+        simulation.ApplyServerOperation(new ConstructCreateOp(
+            ship, FrameRef.Of(WorldFactory.HomePlanet), new Vector3(0, 4010, 0), Quaternion.Identity, new CellPos(0, 0, 0), BlockState.Create(1, 0)));
+        Assert.True(simulation.State.Constructs.TryGet(ship, out var shipConstruct));
+        simulation.ApplyServerOperation(TestShips.ModeOp(shipConstruct!, ConstructMode.Ship));
         var acks = new SnapshotAck[players.Count][];
         for (var i = 0; i < acks.Length; i++)
         {
@@ -131,11 +139,16 @@ public sealed class EntityReplicationLifecycleTests
         void Round(ulong tick)
         {
             x += 0.001f;
+            Assert.True(simulation.UpdateConstructKinematics(ship, FrameRef.Of(WorldFactory.HomePlanet), 0, new Vector3(x, 4010, 0), Quaternion.Identity));
             for (var i = 0; i < players.Count; i++)
             {
-                characters.States[players[i]] = new ServerCharacterState(
-                    WorldFactory.HomePlanet, FrameRef.Of(WorldFactory.HomePlanet), 0, new Vector3(x + i, 4000, 0), Quaternion.Identity, 0,
-                    Vector3.UnitX, MovementMode.Walking, 0);
+                characters.States[players[i]] = i == 0
+                    ? new ServerCharacterState(
+                        WorldFactory.HomePlanet, FrameRef.Of(ship), 0, new Vector3(0.5f, 1, 0.5f), Quaternion.Identity, 0, Vector3.Zero,
+                        MovementMode.Walking, 0)
+                    : new ServerCharacterState(
+                        WorldFactory.HomePlanet, FrameRef.Of(WorldFactory.HomePlanet), 0, new Vector3(x + i, 4000, 0), Quaternion.Identity, 0,
+                        Vector3.UnitX, MovementMode.Walking, 0);
             }
 
             replication.Step(new Tick(tick));

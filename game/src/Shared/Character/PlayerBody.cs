@@ -30,8 +30,10 @@ public sealed partial class PlayerBody : CharacterBody3D
     /// <summary>Speed (m/s) with which a walking body is pressed into the floor so the engine keeps the floor contact and its snap.</summary>
     public const float FloorPressMetersPerSecond = 0.05f;
 
-    private PlanetId _planet;
+    private PlanetSpace _space;
     private PlanetParams? _planetParams;
+    private uint _layer;
+    private uint _mask;
     private MovementRules _movement = new();
     private bool _devFlightAllowed;
     private float _tickSeconds = 1f / 60f;
@@ -40,7 +42,13 @@ public sealed partial class PlayerBody : CharacterBody3D
     private MeshInstance3D? _visual;
 
     /// <summary>Gets the planet whose frame the body lives in.</summary>
-    public PlanetId Planet => _planet;
+    public PlanetId Planet => _space.Planet;
+
+    /// <summary>Gets the space of the planet frame the body lives in (conversions through the planet node, K5-20).</summary>
+    public PlanetSpace Space => _space;
+
+    /// <summary>Gets a value indicating whether the body is attached to a construct frame: kinematic, without collision, posed by its owner.</summary>
+    public bool Attached { get; private set; }
 
     /// <summary>Gets the movement mode after the last step.</summary>
     public MovementMode Mode => _mode;
@@ -49,20 +57,20 @@ public sealed partial class PlayerBody : CharacterBody3D
     public bool OnFloor { get; private set; }
 
     /// <summary>Gets the feet position in the planet frame.</summary>
-    public NumVector3 Feet => PlanetFrames.ToPlanetLocal(_planet, GlobalPosition);
+    public NumVector3 Feet => _space.ToPlanetLocal(GlobalPosition);
 
     /// <summary>Gets the velocity in the planet frame.</summary>
-    public NumVector3 PlanetVelocity => PlanetFrames.ToPlanetLocalDirection(_planet, Velocity);
+    public NumVector3 PlanetVelocity => _space.ToPlanetLocalDirection(Velocity);
 
     /// <summary>Gets the normalized body rotation in the planet frame.</summary>
-    public NumQuaternion BodyRotation => PlanetFrames.ToNumerics(_planet, GlobalBasis);
+    public NumQuaternion BodyRotation => _space.ToNumerics(GlobalBasis);
 
     /// <summary>Instantiates the scene body.</summary>
-    /// <returns>A body that still needs <see cref="Configure"/>.</returns>
+    /// <returns>A body that still needs <see cref="Configure(PlanetSpace, GameRules, MovementRules, bool, int, float)"/>.</returns>
     public static PlayerBody Instantiate() =>
         (GD.Load<PackedScene>(ScenePath) ?? throw new InvalidOperationException($"Scene {ScenePath} not found.")).Instantiate<PlayerBody>();
 
-    /// <summary>Sets the rules, the planet and the collision layers; call once before the body enters the tree.</summary>
+    /// <summary>Sets the rules, the planet and the collision layers with the planet standing in identity (tests, no frame nodes).</summary>
     /// <param name="planet">The planet (its parameters give the gravity).</param>
     /// <param name="rules">Capsule size.</param>
     /// <param name="movement">Movement rules.</param>
@@ -72,16 +80,34 @@ public sealed partial class PlayerBody : CharacterBody3D
     public void Configure(PlanetParams planet, GameRules rules, MovementRules movement, bool devFlightAllowed, int layer, float tickSeconds)
     {
         ArgumentNullException.ThrowIfNull(planet);
+        Configure(new PlanetSpace(planet.Id, null, planet), rules, movement, devFlightAllowed, layer, tickSeconds);
+    }
+
+    /// <summary>
+    /// Sets the frame space, the rules and the collision layers; call once before the body enters the tree. A walking body lives in a
+    /// planet frame (K5-20, decision 18): its global values go through the planet node; a body in a construct frame is attached.
+    /// </summary>
+    /// <param name="space">The space of the planet frame, with the planet parameters (the gravity of the motor).</param>
+    /// <param name="rules">Capsule size.</param>
+    /// <param name="movement">Movement rules.</param>
+    /// <param name="devFlightAllowed">Whether the dev flight button is honoured.</param>
+    /// <param name="layer">The layer number of the body (<see cref="CollisionLayers.ServerBodies"/> or <see cref="CollisionLayers.ClientBodies"/>).</param>
+    /// <param name="tickSeconds">Length of a tick; the step the physics engine takes must equal it.</param>
+    public void Configure(PlanetSpace space, GameRules rules, MovementRules movement, bool devFlightAllowed, int layer, float tickSeconds)
+    {
+        var planet = space.Parameters ?? throw new ArgumentException("The space of a walking body needs the planet parameters.", nameof(space));
         ArgumentNullException.ThrowIfNull(rules);
         ArgumentNullException.ThrowIfNull(movement);
-        _planet = planet.Id;
+        _space = space;
         _planetParams = planet;
         _movement = movement;
         _devFlightAllowed = devFlightAllowed;
         _tickSeconds = tickSeconds;
         _visualHeight = rules.PlayerCapsuleHeight * 0.5f;
-        CollisionLayer = 1u << (layer - 1);
-        CollisionMask = CollisionLayers.TerrainMask | CollisionLayers.ConstructsMask;
+        _layer = 1u << (layer - 1);
+        _mask = CollisionLayers.TerrainMask | CollisionLayers.ConstructsMask;
+        CollisionLayer = _layer;
+        CollisionMask = _mask;
 
         // Kinematic movement on a sphere: up_direction is set every tick, so no global "up" exists for the engine.
         MotionMode = MotionModeEnum.Grounded;
@@ -125,7 +151,7 @@ public sealed partial class PlayerBody : CharacterBody3D
 
         var rotation = NumQuaternion.Normalize(rotationOffset * BodyRotation);
         var centre = Feet + positionOffset + NumVector3.Transform(NumVector3.UnitY * _visualHeight, rotation);
-        visual.GlobalTransform = new Transform3D(PlanetFrames.ToGodotBasis(_planet, rotation), PlanetFrames.ToGodot(_planet, centre));
+        visual.GlobalTransform = new Transform3D(_space.ToGodotBasis(rotation), _space.ToGodot(centre));
     }
 
     /// <summary>Puts the body at a state without moving through the world: spawn, teleport, a correction by the server.</summary>
@@ -137,9 +163,9 @@ public sealed partial class PlayerBody : CharacterBody3D
     /// <param name="resetInterpolation">Whether this is a visible discontinuity rather than a replay placement.</param>
     public void Place(NumVector3 feet, NumVector3 velocity, NumQuaternion rotation, MovementMode mode, bool onFloor, bool resetInterpolation = true)
     {
-        GlobalPosition = PlanetFrames.ToGodot(_planet, feet);
-        GlobalBasis = PlanetFrames.ToGodotBasis(_planet, rotation);
-        Velocity = PlanetFrames.ToGodotDirection(_planet, velocity);
+        GlobalPosition = _space.ToGodot(feet);
+        GlobalBasis = _space.ToGodotBasis(rotation);
+        Velocity = _space.ToGodotDirection(velocity);
         UpDirection = GlobalBasis.Y;
         _mode = mode;
         OnFloor = onFloor;
@@ -147,6 +173,29 @@ public sealed partial class PlayerBody : CharacterBody3D
         {
             ResetPhysicsInterpolation();
         }
+    }
+
+    /// <summary>
+    /// Attaches the body to a construct frame or lets it go (K5-20, decision 15): an attached body is frozen and has no collision (a body
+    /// inside a hull must not collide with a flying ship); its owner poses it with <see cref="PlaceAttached"/>.
+    /// </summary>
+    /// <param name="attached">Whether the body is attached.</param>
+    public void SetAttached(bool attached)
+    {
+        Attached = attached;
+        CollisionLayer = attached ? 0u : _layer;
+        CollisionMask = attached ? 0u : _mask;
+        Velocity = Vector3.Zero;
+        _mode = MovementMode.Frozen;
+        OnFloor = false;
+    }
+
+    /// <summary>Poses an attached body in the Godot world (the frame pose composed with the local pose of the player).</summary>
+    /// <param name="global">The global transform of the feet.</param>
+    public void PlaceAttached(Transform3D global)
+    {
+        GlobalTransform = global;
+        UpDirection = GlobalBasis.Y;
     }
 
     /// <summary>Sets the mode without moving the body (the server unfreezes a body this way).</summary>
@@ -164,8 +213,8 @@ public sealed partial class PlayerBody : CharacterBody3D
         var planet = _planetParams ?? throw new InvalidOperationException("PlayerBody.Configure was not called.");
         var context = new MotorContext(Feet, PlanetVelocity, OnFloor, _mode, planet, _devFlightAllowed);
         var output = CharacterMotor.Step(input, context, _movement, _tickSeconds);
-        GlobalBasis = PlanetFrames.ToGodotBasis(_planet, output.BodyRotation);
-        UpDirection = PlanetFrames.ToGodotDirection(_planet, output.Up);
+        GlobalBasis = _space.ToGodotBasis(output.BodyRotation);
+        UpDirection = _space.ToGodotDirection(output.Up);
         var desired = output.DesiredVelocity;
         if (output.Mode is MovementMode.Walking or MovementMode.Sprinting)
         {
@@ -174,7 +223,7 @@ public sealed partial class PlayerBody : CharacterBody3D
             desired += output.Up * (-FloorPressMetersPerSecond - NumVector3.Dot(desired, output.Up));
         }
 
-        Velocity = PlanetFrames.ToGodotDirection(_planet, desired);
+        Velocity = _space.ToGodotDirection(desired);
         _mode = output.Mode;
         if (output.Mode != MovementMode.Frozen)
         {
@@ -183,8 +232,8 @@ public sealed partial class PlayerBody : CharacterBody3D
 
             // The state is what the network carries (float32): round the engine's doubles to it, so the server body and a client body
             // that starts from a snapshot hold bit-identical states and make the same contact decisions at the millimetre level.
-            GlobalPosition = PlanetFrames.ToGodot(_planet, Feet);
-            Velocity = PlanetFrames.ToGodotDirection(_planet, PlanetVelocity);
+            GlobalPosition = _space.ToGodot(Feet);
+            Velocity = _space.ToGodotDirection(PlanetVelocity);
         }
 
         OnFloor = output.Mode != MovementMode.DevFlying && IsOnFloor();

@@ -18,6 +18,27 @@ public sealed class ConstructTests
     }
 
     [Fact]
+    public void ConstructStore_StructureVersion_ChangesOnAddAndRemoveOnly()
+    {
+        var state = WorldFactory.CreateDefault();
+        var store = state.Constructs;
+        var start = store.StructureVersion;
+        var created = store.Create(new EntityId(1), FrameRef.Of(WorldFactory.HomePlanet), Vector3.Zero, Quaternion.Identity);
+        var afterCreate = store.StructureVersion;
+        Assert.NotEqual(start, afterCreate);
+
+        created.SetBlock(new CellPos(0, 0, 0), BlockState.Create(1, 0));
+        Assert.Equal(afterCreate, store.StructureVersion);
+
+        store.Load(new EntityId(2), FrameRef.Of(WorldFactory.HomePlanet), 0, ConstructMode.Ship, Vector3.Zero, Quaternion.Identity, 0);
+        var afterLoad = store.StructureVersion;
+        Assert.NotEqual(afterCreate, afterLoad);
+
+        store.Remove(new EntityId(1));
+        Assert.NotEqual(afterLoad, store.StructureVersion);
+    }
+
+    [Fact]
     public void SetBlock_SetAndClear_TracksVersionCountAndChunks()
     {
         var construct = NewConstruct();

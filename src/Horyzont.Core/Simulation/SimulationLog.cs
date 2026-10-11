@@ -15,4 +15,7 @@ internal static partial class SimulationLog
 
     [LoggerMessage(EventId = 3, Level = LogLevel.Error, Message = "A subscriber of Applied failed for operation {OpId}; the operation stays applied and journaled")]
     internal static partial void AppliedSubscriberFailed(ILogger logger, Exception exception, ulong opId);
+
+    [LoggerMessage(EventId = 4, Level = LogLevel.Warning, Message = "Kinematics of construct {ConstructId} rejected: non-finite or non-normalized values")]
+    internal static partial void ConstructKinematicsRejected(ILogger logger, ulong constructId);
 }

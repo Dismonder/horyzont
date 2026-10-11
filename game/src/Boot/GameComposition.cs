@@ -16,6 +16,7 @@ using Horyzont.Game.Client.Character;
 using Horyzont.Game.Client.Sky;
 using Horyzont.Game.Client.Tools;
 using Horyzont.Game.Constructs;
+using Horyzont.Game.Frames;
 using Horyzont.Game.Planet;
 using Horyzont.Game.Planet.Generators;
 using Horyzont.Game.Planet.Rendering;
@@ -28,6 +29,7 @@ using Horyzont.Net.Transport.Udp;
 using Horyzont.Persistence.Backup;
 using Horyzont.Server;
 using Horyzont.Server.Console;
+using Horyzont.Server.Frames;
 
 using Microsoft.Extensions.Logging;
 
@@ -213,6 +215,8 @@ public sealed partial class GameComposition
         // started with --dev too (ServerHello does not carry the permission); the server has to run with --dev as well.
         var devFlight = launch.Mode is ProcessMode.DedicatedServer or ProcessMode.Client ? launch.Dev : env.DevBuild;
         ServerCharactersBinder? characters = null;
+        ServerFramesBinder? serverFrames = null;
+        FrameNodes? serverFrameNodes = null;
         LocalPlayer? localPlayer = null;
         ClientDayNight? dayNight = null;
         HostConstructs? constructs = null;
@@ -315,9 +319,11 @@ public sealed partial class GameComposition
             constructs = new HostConstructs(serverNode!, catalog, env.Render, loggers, env.Time);
             constructs.Register(server);
 
+            (serverFrames, serverFrameNodes) = RegisterServerFrames(server, serverNode!);
             if (env.Characters)
             {
-                characters = new ServerCharactersBinder(serverNode!, factory, rules, movement, devFlight, loggers, constructs.AreSpawnCollisionsReady);
+                characters = new ServerCharactersBinder(
+                    serverNode!, factory, rules, movement, devFlight, loggers, constructs.AreSpawnCollisionsReady, serverFrames, serverFrameNodes);
                 characters.Register(server);
             }
 
@@ -326,7 +332,7 @@ public sealed partial class GameComposition
             {
                 console = new DedicatedConsole(
                     new ConsoleInputPump(env.ConsoleInput, loggers.CreateLogger<ConsoleInputPump>()),
-                    new ConsoleCommandProcessor(server, loggers.CreateLogger<ConsoleCommandProcessor>(), launch.Dev),
+                    new ConsoleCommandProcessor(server, loggers.CreateLogger<ConsoleCommandProcessor>(), launch.Dev, () => serverFrames.Transitions),
                     env.Print);
             }
 
@@ -379,6 +385,8 @@ public sealed partial class GameComposition
             client.AddListener(composition._fullSnapshots);
         }
 
+        composition.ServerFrames = serverFrames;
+        composition.ServerFrameNodes = serverFrameNodes;
         composition.ConfigureReplication();
         composition.ConfigureTerrainReplication();
         composition.ConfigureMotion();

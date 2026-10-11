@@ -1,7 +1,6 @@
 using Godot;
 
 using Horyzont.Client;
-using Horyzont.Core.Ids;
 using Horyzont.Game.Frames;
 using Horyzont.Game.Physics;
 
@@ -66,10 +65,10 @@ public sealed partial class CameraRig : Node3D
     /// <param name="eye">The eye (start of the arm).</param>
     /// <param name="wanted">Where the camera would be without obstacles.</param>
     /// <returns>The camera point after the collision.</returns>
-    public NumVector3 ResolveArm(PlanetId planet, NumVector3 eye, NumVector3 wanted)
+    public NumVector3 ResolveArm(PlanetSpace planet, NumVector3 eye, NumVector3 wanted)
     {
-        var from = PlanetFrames.ToGodot(planet, eye);
-        var to = PlanetFrames.ToGodot(planet, wanted);
+        var from = planet.ToGodot(eye);
+        var to = planet.ToGodot(wanted);
         if (from.DistanceSquaredTo(to) < 1e-6)
         {
             return wanted;
@@ -89,7 +88,7 @@ public sealed partial class CameraRig : Node3D
         var back = (from - point).Normalized();
         var distance = from.DistanceTo(point);
         var pulled = distance <= ArmMargin ? from : point + (back * ArmMargin);
-        return PlanetFrames.ToPlanetLocal(planet, pulled);
+        return planet.ToPlanetLocal(pulled);
     }
 
     /// <summary>Constrains a smoothed FPP or TPP camera from the physical aim eye.</summary>
@@ -97,7 +96,7 @@ public sealed partial class CameraRig : Node3D
     /// <param name="physicalEye">Unsmoothed eye used by tools.</param>
     /// <param name="visualOrigin">Wanted presentation position, including the correction.</param>
     /// <returns>A camera position on the eye side of the first wall.</returns>
-    public NumVector3 ResolvePresentation(PlanetId planet, NumVector3 physicalEye, NumVector3 visualOrigin) =>
+    public NumVector3 ResolvePresentation(PlanetSpace planet, NumVector3 physicalEye, NumVector3 visualOrigin) =>
         ResolveArm(planet, physicalEye, visualOrigin);
 
     /// <summary>Places the camera.</summary>
@@ -106,17 +105,17 @@ public sealed partial class CameraRig : Node3D
     /// <param name="direction">Unit viewing direction.</param>
     /// <param name="up">Unit up of the camera (the roll follows it).</param>
     /// <param name="teleport">Whether the camera jumps instead of moving (no physics interpolation across the jump).</param>
-    public void Apply(PlanetId planet, NumVector3 origin, NumVector3 direction, NumVector3 up, bool teleport)
+    public void Apply(PlanetSpace planet, NumVector3 origin, NumVector3 direction, NumVector3 up, bool teleport)
     {
-        var look = PlanetFrames.ToGodotDirection(planet, direction);
-        var roll = PlanetFrames.ToGodotDirection(planet, up);
+        var look = planet.ToGodotDirection(direction);
+        var roll = planet.ToGodotDirection(up);
         if (Mathf.Abs(look.Normalized().Dot(roll.Normalized())) > 0.9999)
         {
             // Looking straight along the up (a pole of the pitch range): any perpendicular reference keeps the basis valid.
             roll = Mathf.Abs(look.Normalized().Dot(Vector3.Right)) < 0.9 ? Vector3.Right : Vector3.Forward;
         }
 
-        Camera.GlobalTransform = new Transform3D(Basis.LookingAt(look, roll), PlanetFrames.ToGodot(planet, origin));
+        Camera.GlobalTransform = new Transform3D(Basis.LookingAt(look, roll), planet.ToGodot(origin));
         if (teleport)
         {
             Camera.ResetPhysicsInterpolation();

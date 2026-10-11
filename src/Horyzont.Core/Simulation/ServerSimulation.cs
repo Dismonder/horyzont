@@ -5,6 +5,7 @@ using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
+using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Terrain;
 
 using Microsoft.Extensions.Logging;
@@ -272,6 +273,36 @@ public sealed class ServerSimulation
         state.Position = position;
         state.BodyRotation = bodyRotation;
         state.Pitch = pitch;
+        return true;
+    }
+
+    /// <summary>
+    /// Movement of a ship-mode construct frame, outside the journal, in its parent frame (K5-20 decision 6). False for a construct that
+    /// is unknown or not in <see cref="ConstructMode.Ship"/>, when the frame and ParentSeq are not current, and for bad values (logged,
+    /// previous pose kept). The state hash skips the pose of ship constructs; the checkpoint stores it.
+    /// </summary>
+    /// <param name="construct">The construct.</param>
+    /// <param name="frame">Frame the values are in.</param>
+    /// <param name="parentSeq">Reparent counter the values belong to.</param>
+    /// <param name="origin">Corner of cell (0,0,0) in <paramref name="frame"/>.</param>
+    /// <param name="rotation">Normalized rotation to <paramref name="frame"/>.</param>
+    /// <returns>True when the pose was stored.</returns>
+    public bool UpdateConstructKinematics(EntityId construct, FrameRef frame, uint parentSeq, Vector3 origin, Quaternion rotation)
+    {
+        EnsureNotFaulted();
+        if (!State.Constructs.TryGet(construct, out var state) || state.Mode != ConstructMode.Ship || state.Parent != frame
+            || state.ParentSeq != parentSeq)
+        {
+            return false;
+        }
+
+        if (!OperationApplier.IsPose(origin, rotation))
+        {
+            SimulationLog.ConstructKinematicsRejected(_logger, construct.Value);
+            return false;
+        }
+
+        state.SetPose(origin, rotation);
         return true;
     }
 

@@ -105,13 +105,13 @@ public class MotionPresentationTests
         var planet = new PlanetId(1);
         var eye = new NumVector3(0, 4001.6f, 0);
         var wanted = eye + new NumVector3(0.2f, 0, 3);
-        var resolved = rig.ResolvePresentation(planet, eye, wanted);
+        var resolved = rig.ResolvePresentation(new PlanetSpace(planet), eye, wanted);
         AssertThat(resolved.Z).IsLess(1f);
         AssertThat(eye).IsEqual(new NumVector3(0, 4001.6f, 0));
-        var fpp = rig.ResolvePresentation(planet, eye, eye + NumVector3.UnitZ * 1.2f);
+        var fpp = rig.ResolvePresentation(new PlanetSpace(planet), eye, eye + NumVector3.UnitZ * 1.2f);
         AssertThat(fpp.Z).IsLess(1f);
         // Pole-aligned viewing directions must produce a finite camera basis after smoothing.
-        rig.Apply(planet, fpp, NumVector3.UnitY, NumVector3.UnitY, false);
+        rig.Apply(new PlanetSpace(planet), fpp, NumVector3.UnitY, NumVector3.UnitY, false);
         AssertThat(rig.Camera.GlobalBasis.IsFinite()).IsTrue();
         rig.ToggleBodyMode();
         AssertThat(rig.BodyMode).IsEqual(Horyzont.Client.CameraMode.FirstPerson);

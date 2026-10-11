@@ -2,7 +2,6 @@ using Godot;
 
 using Horyzont.Client.Tools;
 using Horyzont.Core.Intents;
-using Horyzont.Game.Frames;
 
 namespace Horyzont.Game.Client.Tools;
 
@@ -48,7 +47,7 @@ public sealed partial class TerrainToolPreview : MeshInstance3D
         }
 
         Visible = true;
-        GlobalPosition = PlanetFrames.ToGodot(_tools.Planet, preview.Center);
+        GlobalPosition = _tools.Space.ToGodot(preview.Center);
         Scale = Vector3.One * preview.Radius;
         if (preview.Hint != _shownHint)
         {

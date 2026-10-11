@@ -91,6 +91,9 @@ public sealed partial class GameComposition
         Client.AddListener(replication);
         ClientReplication = replication;
 
+        // K5-20: the frame history is fed before the rings, so a reparent rebases samples with the frame poses of the same snapshot.
+        ConfigureClientFrames(replication, mirror);
+
         // K3-14: the remote clock and rings are fed from the decoder (full states), not from the pass-through that it replaced.
         RemoteMotion = new RemoteMotionSampleAdapter(_env.Time);
         LocalPlayer.RemoteMotion = RemoteMotion;
@@ -99,6 +102,8 @@ public sealed partial class GameComposition
 
         var players = new RemotePlayers { Name = "RemotePlayers" };
         players.Initialize(Client, replication.Entities, _env.Render, mirror, RemoteMotion);
+        players.Frames = ClientFrames;
+        players.FrameNodes = ClientFrameNodes;
         ClientNode.AddChild(players);
         RemotePlayers = players;
         if (mirror is null)
@@ -117,6 +122,7 @@ public sealed partial class GameComposition
     {
         var scene = GD.Load<PackedScene>(ToolsScene) ?? throw new InvalidOperationException($"Scene {ToolsScene} not found.");
         var tools = scene.Instantiate<ToolNode>();
+        tools.FrameNodes = ClientFrameNodes;
         var prediction = new ConstructPrediction(mirror, () => tools.Ticks);
         BlockPrediction = prediction;
         tools.Initialize(
@@ -130,7 +136,7 @@ public sealed partial class GameComposition
             tools.AddChild(new TerrainToolPreview(tools));
             tools.AddChild(new BlockGhostPreview(tools));
             tools.AddChild(new ToolHud(tools));
-            var overlay = new PredictedBlocksView { Name = "PredictedBlocks" };
+            var overlay = new PredictedBlocksView { Name = "PredictedBlocks", FrameNodes = ClientFrameNodes };
             overlay.Initialize(prediction, mirror, LocalPlayer!);
             clientNode.AddChild(overlay);
         }

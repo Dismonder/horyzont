@@ -2,7 +2,6 @@ using Godot;
 
 using Horyzont.Client.Tools;
 using Horyzont.Core.Intents;
-using Horyzont.Game.Frames;
 
 namespace Horyzont.Game.Client.Tools;
 
@@ -50,8 +49,8 @@ public sealed partial class BlockGhostPreview : MeshInstance3D
         }
 
         Visible = true;
-        var planet = _tools.Planet;
-        GlobalTransform = new Transform3D(PlanetFrames.ToGodotBasis(planet, preview.Rotation), PlanetFrames.ToGodot(planet, preview.Center));
+        var planet = _tools.Space;
+        GlobalTransform = new Transform3D(planet.ToGodotBasis(preview.Rotation), planet.ToGodot(preview.Center));
         if (preview.Hint != _shownHint)
         {
             _shownHint = preview.Hint;

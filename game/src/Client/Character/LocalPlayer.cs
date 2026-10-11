@@ -2,6 +2,7 @@ using Godot;
 
 using Horyzont.Client;
 using Horyzont.Client.Camera;
+using Horyzont.Client.Frames;
 using Horyzont.Client.Movement;
 using Horyzont.Client.Replication;
 using Horyzont.Client.Session;
@@ -48,6 +49,8 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     private readonly PresentationCorrection _presentation = new();
     private uint _parentSeq;
     private bool _hasParent;
+    private ClientFrames? _frames;
+    private OwnState? _attached;
     private long _smallCorrections;
     private long _largeCorrections;
     private float _maxPresentationOffset;
@@ -94,6 +97,9 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     /// <summary>Gets or sets where the input of each tick comes from (the keyboard and mouse reader; tests script it).</summary>
     public ILocalInputSource InputSource { get; set; } = new NoInput();
 
+    /// <summary>Gets or sets the frame nodes of the client (K5-20): planet-frame values go through the planet node; null = identity.</summary>
+    public FrameNodes? FrameNodes { get; set; }
+
     /// <summary>Gets or sets world readiness; K2 is always ready.</summary>
     public IClientWorldReadiness WorldReadiness { get; set; } = AlwaysReadyWorld.Instance;
 
@@ -108,10 +114,11 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
 
         var visual = _visualViewer;
         var collision = _collisionViewer;
+        var space = SpaceOf(planet);
         viewers = new TerrainViewers(
             planet.Id,
-            visual is null ? default : PlanetFrames.ToPlanetLocal(planet.Id, visual.GlobalPosition), visual?.ViewDistance ?? 0,
-            collision is null ? default : PlanetFrames.ToPlanetLocal(planet.Id, collision.GlobalPosition), collision?.ViewDistance ?? 0);
+            visual is null ? default : space.ToPlanetLocal(visual.GlobalPosition), visual?.ViewDistance ?? 0,
+            collision is null ? default : space.ToPlanetLocal(collision.GlobalPosition), collision?.ViewDistance ?? 0);
         return true;
     }
 
@@ -342,6 +349,8 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
             return;
         }
 
+        FollowAttachedFrame();
+
         _clientTick++;
         var sample = InputSource.Take();
         var devCameraActive = _dev is { IsActive: true };
@@ -377,6 +386,20 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         return MotorInput.Neutral(lastYaw, lastPitch);
     }
 
+    /// <summary>
+    /// Gives the client frames (K5-20): with them the own body follows a construct frame it is attached to (frozen, no input sent)
+    /// and a reparent does not snap the camera unless the pose really moved.
+    /// </summary>
+    /// <param name="frames">Client frames of the session.</param>
+    public void AttachFrames(ClientFrames frames)
+    {
+        ArgumentNullException.ThrowIfNull(frames);
+        _frames = frames;
+    }
+
+    /// <summary>Gets a value indicating whether the own body is attached to a construct frame (K5-20).</summary>
+    public bool IsAttached => _attached is not null;
+
     /// <inheritdoc />
     public override void _Process(double delta)
     {
@@ -403,6 +426,12 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         var feet = body.Feet;
         var up = TerrainMath.UpAt(feet);
         orientation.Advance(up, sample.MouseYaw, sample.MousePitch);
+        if (_attached is not null)
+        {
+            // Attached to a construct frame: the server ignores own motion, so none is predicted or sent (K5-20).
+            return;
+        }
+
         var buttons = sample.Buttons | (_devFlyOn && _devAllowed ? InputButtons.DevFly : InputButtons.None);
         var wire = new PlayerInput(_clientTick, sample.MoveX, sample.MoveY, orientation.YawFor(up), orientation.Pitch, buttons);
         var motor = ValidMotor(wire, _movement, ref _lastYaw, ref _lastPitch);
@@ -449,16 +478,24 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         }
 
         _pending = null;
-        if (_validator is null || _validator.Validate(snapshot, out var own) != OwnStateVerdict.Accepted)
+        if (_validator is null || _validator.Validate(snapshot, out var own, _frames?.Graph?.Graph) != OwnStateVerdict.Accepted)
         {
             return;
         }
 
         var parentChanged = _hasParent && (_planet?.Id != own.Planet || _parentSeq != own.ParentSeq);
+        var before = _body is { } previous && _orientation is { } view ? Capture(previous, view.Pitch) : default;
+        var rebase = parentChanged && _frames is not null && _body is not null && _planet?.Id == own.Planet;
         if (parentChanged)
         {
+            // Predictions of the old frame are void. With client frames the body stays in planet coordinates across a reparent
+            // on the same planet, so the presentation only smooths the difference (K5-20, decision 14).
             _buffer!.Clear();
-            _presentation.Reset();
+            if (!rebase)
+            {
+                _presentation.Reset();
+            }
+
             if (_planet?.Id != own.Planet)
             {
                 ReleaseWorld();
@@ -468,18 +505,54 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         _parentSeq = own.ParentSeq;
         _hasParent = true;
         _serverMode = own.Mode;
-        if (_body is null && !CreateBody(own))
+        if (_body is null)
         {
-            return;
+            // A session that starts attached to a construct (reconnect while saved in a ship) creates the body in planet space.
+            var initial = own;
+            if (OwnFrames.IsAttached(own))
+            {
+                if (_frames?.Graph is not { } frameGraph || !OwnFrames.TryToPlanet(frameGraph, own, own.ServerTick.Value, out var planetFeet, out var planetRotation))
+                {
+                    return;
+                }
+
+                initial = own with { Feet = planetFeet, Rotation = planetRotation, Velocity = NumVector3.Zero, Mode = MovementMode.Frozen };
+            }
+
+            if (!CreateBody(initial))
+            {
+                return;
+            }
         }
 
         var body = _body!;
+        if (OwnFrames.IsAttached(own))
+        {
+            if (_frames?.Graph is not { } graph || !OwnFrames.TryToPlanet(graph, own, own.ServerTick.Value, out var feet, out var rotation))
+            {
+                return;
+            }
+
+            _attached = own;
+            body.Place(feet, NumVector3.Zero, rotation, MovementMode.Frozen, false);
+            ReconcileReparent(rebase, before, body);
+            return;
+        }
+
+        _attached = null;
+
         var open = WorldReadiness.IsReady && (own.Mode == MovementMode.DevFlying || body.OnFloor || _probe!.TryFindGround(body.GetWorld3D(), own.Feet, GateDepthMeters, out _));
         if (own.LastProcessedInputSeq == 0 || own.Mode == MovementMode.Frozen || !open || parentChanged)
         {
             // The server has not moved the body yet (or the terrain under it is not here yet): follow it, do not predict.
             _buffer!.Reconcile(own, _orientation!.Pitch, false);
             body.Place(own.Feet, own.Velocity, own.Rotation, own.Mode, OnFloorOf(own.Mode));
+            if (rebase)
+            {
+                ReconcileReparent(rebase, before, body);
+                return;
+            }
+
             _presentation.Reset();
             _snapCamera = true;
             return;
@@ -511,6 +584,30 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
             default:
                 break;
         }
+    }
+
+    private void ReconcileReparent(bool rebase, in PredictedState before, PlayerBody body)
+    {
+        if (!rebase)
+        {
+            return;
+        }
+
+        _presentation.Reconcile(before, Capture(body, _orientation!.Pitch), false);
+        _snapCamera |= _presentation.Snapped;
+    }
+
+    private void FollowAttachedFrame()
+    {
+        // The frame at the tick of the newest own state (its newest pose past the history): the same time base as an unattached
+        // body that follows the server, so attaching and leaving do not jump (K5-20 step 11, own-entity measurement).
+        if (_attached is not { } own || _frames?.Graph is not { } graph
+            || !OwnFrames.TryToPlanet(graph, own, own.ServerTick.Value, out var feet, out var rotation))
+        {
+            return;
+        }
+
+        _body!.Place(feet, NumVector3.Zero, rotation, MovementMode.Frozen, false, false);
     }
 
     private void NoteCorrectionWhileFlying()
@@ -567,6 +664,9 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         }
     }
 
+    /// <summary>The space of the planet frame of the own body (through the planet node of <see cref="FrameNodes"/>).</summary>
+    private PlanetSpace SpaceOf(PlanetParams planet) => _body is { } body && body.Planet == planet.Id ? body.Space : FrameNodes.PlanetSpaceOf(planet.Id, planet);
+
     private bool CreateBody(OwnState own)
     {
         var hello = _hello!;
@@ -579,13 +679,14 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         _terrain = terrain;
         _dev?.SetPlanetRadius(_planet.RadiusMeters);
         var body = PlayerBody.Instantiate();
-        body.Configure(_planet, _rules, _movement, _devAllowed, CollisionLayers.ClientBodies, _tickSeconds);
+        var space = FrameNodes.PlanetSpaceOf(_planet.Id, _planet);
+        body.Configure(space, _rules, _movement, _devAllowed, CollisionLayers.ClientBodies, _tickSeconds);
         body.Name = "OwnBody";
         body.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off;
         AddChild(body);
         body.Place(own.Feet, own.Velocity, own.Rotation, own.Mode, OnFloorOf(own.Mode));
         _body = body;
-        _probe = new GroundProbe(own.Planet);
+        _probe = new GroundProbe(space);
         _orientation!.Reset(own.Rotation, 0f);
         _smoother.Snap(TerrainMath.UpAt(own.Feet));
         _monitor!.Snap();
@@ -639,7 +740,7 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         {
             _cameraMode = rig.BodyMode;
             var pose = CameraRigMath.Compute(feet, orientation.BodyRotation, orientation.Pitch, _smoother.Up, _cameraMode, TppOffsets.Default, _rules);
-            origin = _cameraMode == CameraMode.ThirdPerson ? rig.ResolveArm(planet.Id, Eye, pose.Origin) : pose.Origin;
+            origin = _cameraMode == CameraMode.ThirdPerson ? rig.ResolveArm(SpaceOf(planet), Eye, pose.Origin) : pose.Origin;
             direction = pose.Direction;
         }
 
@@ -668,7 +769,7 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         rig.Camera.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off;
         if (_dev is { IsActive: true })
         {
-            rig.Apply(planet.Id, _dev.Position, _dev.Direction, _dev.Up, teleport);
+            rig.Apply(SpaceOf(planet), _dev.Position, _dev.Direction, _dev.Up, teleport);
             FollowViewers(planet, _dev.Position, body.Feet);
             return;
         }
@@ -678,8 +779,8 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
             _smoother.Up, _cameraMode, TppOffsets.Default, _rules);
         var uncorrected = _presentation.PositionOffset == NumVector3.Zero && _presentation.RotationOffset == NumQuaternion.Identity;
         // With no correction the pose equals the physical one already resolved by UpdateCamera: skip the second arm ray.
-        var origin = uncorrected && _cameraMode == CameraMode.ThirdPerson && resolvedOrigin is { } reused ? reused : rig.ResolvePresentation(planet.Id, Eye, pose.Origin);
-        rig.Apply(planet.Id, origin, pose.Direction, _smoother.Up, teleport);
+        var origin = uncorrected && _cameraMode == CameraMode.ThirdPerson && resolvedOrigin is { } reused ? reused : rig.ResolvePresentation(SpaceOf(planet), Eye, pose.Origin);
+        rig.Apply(SpaceOf(planet), origin, pose.Direction, _smoother.Up, teleport);
         FollowViewers(planet, origin, body.Feet);
     }
 
@@ -695,12 +796,12 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
                 visual.ViewDistance = distance;
             }
 
-            visual.GlobalPosition = PlanetFrames.ToGodot(planet.Id, cameraOrigin);
+            visual.GlobalPosition = SpaceOf(planet).ToGodot(cameraOrigin);
         }
 
         if (_collisionViewer is { } collision)
         {
-            collision.GlobalPosition = PlanetFrames.ToGodot(planet.Id, feet);
+            collision.GlobalPosition = SpaceOf(planet).ToGodot(feet);
         }
     }
 
@@ -739,6 +840,7 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     {
         _presentation.Reset();
         _hasParent = false;
+        _attached = null;
         foreach (var viewer in new[] { _visualViewer, _collisionViewer })
         {
             if (viewer is not null && IsInstanceValid(viewer))

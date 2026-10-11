@@ -27,6 +27,9 @@ public sealed partial class PredictedBlocksView : Node3D
     /// <summary>Gets the number of cubes currently drawn.</summary>
     public int BoxCount => _boxes.Count;
 
+    /// <summary>Gets or sets the frame nodes of the client (K5-20): planet-frame values go through the planet node; null = identity.</summary>
+    public FrameNodes? FrameNodes { get; set; }
+
     /// <summary>Gives the node its dependencies; call before it enters the tree.</summary>
     /// <param name="prediction">The overlay to draw.</param>
     /// <param name="mirror">Mirror whose construct poses place the cubes.</param>
@@ -88,7 +91,7 @@ public sealed partial class PredictedBlocksView : Node3D
             _boxes.Add(box);
         }
 
-        var planet = _player!.Planet;
+        var planet = FrameNodes.PlanetSpaceOf(_player!.Planet);
         for (var i = 0; i < entries.Count; i++)
         {
             var entry = entries[i];
@@ -113,8 +116,7 @@ public sealed partial class PredictedBlocksView : Node3D
             var center = origin + NumVector3.Transform(new NumVector3(entry.Cell.X + 0.5f, entry.Cell.Y + 0.5f, entry.Cell.Z + 0.5f), rotation);
             _boxes[i].Visible = true;
             _boxes[i].MaterialOverride = entry.Block.IsEmpty ? _remove : _place;
-            _boxes[i].Position = PlanetFrames.ToGodot(planet, center);
-            _boxes[i].Basis = PlanetFrames.ToGodotBasis(planet, rotation);
+            _boxes[i].GlobalTransform = new Transform3D(planet.ToGodotBasis(rotation), planet.ToGodot(center));
         }
     }
 

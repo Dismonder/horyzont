@@ -168,6 +168,17 @@ public sealed class Construct
     }
 
     /// <summary>
+    /// Moves a ship-mode construct within its parent frame outside the journal (K5-20, <c>ServerSimulation.UpdateConstructKinematics</c>);
+    /// marks the header changed so the checkpoint stores the pose.
+    /// </summary>
+    internal void SetPose(Vector3 origin, Quaternion rotation)
+    {
+        Origin = origin;
+        Rotation = rotation;
+        _tracker.MarkConstruct(Id);
+    }
+
+    /// <summary>
     /// Switches the construct mode and sets the pose in the same parent frame. Bumps <see cref="Version"/> by one, like a block
     /// operation, so observers with a live link receive the operation instead of a retransfer.
     /// </summary>

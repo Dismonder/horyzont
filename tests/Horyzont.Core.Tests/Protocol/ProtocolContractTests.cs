@@ -110,19 +110,20 @@ public sealed class ProtocolContractTests
     /// <summary>
     /// K3: every package that changes Protocol/ or Serialization/ sets main + 1 and updates this test and Constants_GoldenValues.
     /// Gate decision D4: the value on main plus one. K2-10 raised it from 1 to 2; K2-11 adds <see cref="InputButtons.DevFly"/> and
-    /// the 0x3F button mask and raises it to 3. A rebase onto a newer main updates this value, the constant and the K2-11 plan together.
+    /// the 0x3F button mask and raises it to 3. K5-20 raises it for ship-mode constructs in snapshots (semantics only, main + 1).
+    /// A rebase onto a newer main updates this value, the constant and the package plan together.
     /// </summary>
     [Fact]
     public void ProtocolVersion_MatchesDocumentedMergeValue()
     {
-        Assert.Equal(7, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(8, ProtocolConstants.ProtocolVersion);
         Assert.Equal(0x3F, ProtocolConstants.InputButtonsMask);
     }
 
     [Fact]
     public void Constants_GoldenValues()
     {
-        Assert.Equal(7, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(8, ProtocolConstants.ProtocolVersion);
         Assert.Equal(262144, ProtocolConstants.MaxReliableMessageBytes);
         Assert.Equal(1150, ProtocolConstants.MaxUnreliableMessageBytes);
         Assert.Equal(32, ProtocolConstants.MaxDisplayNameBytes);

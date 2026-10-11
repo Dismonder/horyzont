@@ -2,6 +2,7 @@ using System.Numerics;
 
 using FsCheck.Xunit;
 
+using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.World.Constructs;
@@ -112,6 +113,32 @@ public sealed class BlockOverlapTests
         Assert.True(BlockOverlap.OverlapsConstruct(state.Constructs, frame, inside, Quaternion.Identity, skip: new EntityId(1)));
         Assert.False(BlockOverlap.OverlapsConstruct(state.Constructs, frame, beside, Quaternion.Identity, skip: null));
         Assert.False(BlockOverlap.OverlapsConstruct(state.Constructs, frame, inside, Quaternion.Identity, skip: new EntityId(2)));
+    }
+
+    [Fact]
+    public void BlockOverlap_NonNestedPlacement_GoldenCasesUnchanged()
+    {
+        // K5-20: depth 1 keeps the float pose bit for bit; deeper nesting composes in double through FrameGraph and narrows once.
+        var state = WorldFactory.CreateDefault();
+        var frame = FrameRef.Of(WorldFactory.HomePlanet);
+        var rotation = Quaternion.CreateFromYawPitchRoll(0.31f, -0.2f, 0.07f);
+        var outer = state.Constructs.Create(new EntityId(1), frame, new Vector3(2400.567f, 3011.3f, -1387.65f), rotation);
+        var middle = state.Constructs.Create(new EntityId(2), FrameRef.Of(outer.Id), new Vector3(3.25f, 1f, -7f), rotation);
+        var inner = state.Constructs.Create(new EntityId(3), FrameRef.Of(middle.Id), new Vector3(-2f, 0.5f, 4f), rotation);
+
+        Assert.True(BlockOverlap.TryGetConstructPose(state.Constructs, outer, frame, out var origin, out var turned));
+        Assert.Equal(outer.Origin, origin);
+        Assert.Equal(outer.Rotation, turned);
+
+        var graph = new FrameGraph(new WorldStateFramePoses(state, new HomeOnlyPlacement(WorldFactory.HomePlanet)));
+        Assert.True(graph.TryRelative(frame, FrameRef.Of(inner.Id), out var expected));
+        Assert.True(FrameMath.TryToFloat(expected, FrameKind.Planet, out var expectedOrigin, out var expectedRotation));
+        Assert.True(BlockOverlap.TryGetConstructPose(state.Constructs, inner, frame, out origin, out turned));
+        Assert.Equal(expectedOrigin, origin);
+        Assert.Equal(expectedRotation, turned);
+
+        // A construct whose chain does not reach the frame has no pose there.
+        Assert.False(BlockOverlap.TryGetConstructPose(state.Constructs, inner, FrameRef.Of(new PlanetId(2)), out _, out _));
     }
 
     [Fact]

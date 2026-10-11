@@ -1,5 +1,6 @@
 using System.Numerics;
 
+using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Motion;
 using Horyzont.Core.Protocol.Messages;
@@ -27,6 +28,7 @@ public sealed class OwnStateValidator
     private readonly PlanetId[] _planets;
     private readonly ILogger _logger;
     private bool _hasAccepted;
+    private PlanetId _lastPlanet;
     private uint _lastSnapshotId;
     private Tick _lastTick;
     private uint _lastAck;
@@ -78,12 +80,16 @@ public sealed class OwnStateValidator
     /// <summary>Validates the own-character state in a snapshot.</summary>
     /// <param name="snapshot">The snapshot.</param>
     /// <param name="state">The state when the verdict is <see cref="OwnStateVerdict.Accepted"/>.</param>
+    /// <param name="frames">
+    /// Client frame graph: resolves the planet of a construct frame when no state has been accepted yet in this session (reconnect
+    /// while attached to a construct); null when the client has no frames.
+    /// </param>
     /// <returns>The verdict.</returns>
-    public OwnStateVerdict Validate(Snapshot snapshot, out OwnState state)
+    public OwnStateVerdict Validate(Snapshot snapshot, out OwnState state, FrameGraph? frames = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         state = default;
-        var verdict = Check(snapshot, out var entity, out var planet);
+        var verdict = Check(snapshot, frames, out var entity, out var planet);
         if (verdict != OwnStateVerdict.Accepted)
         {
             if (_rejected++ % LogEvery == 0)
@@ -104,18 +110,20 @@ public sealed class OwnStateValidator
         }
 
         _hasAccepted = true;
+        _lastPlanet = planet;
         _lastSnapshotId = snapshot.SnapshotId;
         _lastTick = snapshot.ServerTick;
         _lastAck = snapshot.LastProcessedInputSeq;
         state = new OwnState(
             planet, entity.ParentSeq, entity.Position, entity.Rotation, entity.Velocity, mode, snapshot.LastProcessedInputSeq,
-            snapshot.SnapshotId, snapshot.ServerTick);
+            snapshot.SnapshotId, snapshot.ServerTick)
+        { Frame = snapshot.Frames[entity.FrameIndex].Frame };
         return OwnStateVerdict.Accepted;
     }
 
     private static bool IsFinite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
 
-    private OwnStateVerdict Check(Snapshot snapshot, out EntityState entity, out PlanetId planet)
+    private OwnStateVerdict Check(Snapshot snapshot, FrameGraph? frames, out EntityState entity, out PlanetId planet)
     {
         planet = default;
         entity = default;
@@ -146,12 +154,33 @@ public sealed class OwnStateValidator
         }
 
         var frame = snapshot.Frames[entity.FrameIndex].Frame;
-        if (frame.Kind != FrameKind.Planet || Array.IndexOf(_planets, new PlanetId(frame.Id)) < 0)
+        if (frame.Kind == FrameKind.Construct && frame.Id != 0)
+        {
+            // Attached to a construct (K5-20): the values are in its frame, the body stays with the last planet; the first state of a
+            // session (reconnect while attached) takes the planet of the construct's region.
+            if (_hasAccepted)
+            {
+                planet = _lastPlanet;
+            }
+            else if (frames is not null && frames.TryGetRegion(frame, out var region) && region.Kind == FrameKind.Planet
+                && Array.IndexOf(_planets, new PlanetId(region.Id)) >= 0)
+            {
+                planet = new PlanetId(region.Id);
+            }
+            else
+            {
+                return OwnStateVerdict.UnknownPlanet;
+            }
+        }
+        else if (frame.Kind != FrameKind.Planet || Array.IndexOf(_planets, new PlanetId(frame.Id)) < 0)
         {
             return OwnStateVerdict.UnknownPlanet;
         }
+        else
+        {
+            planet = new PlanetId(frame.Id);
+        }
 
-        planet = new PlanetId(frame.Id);
         var rotation = entity.Rotation;
         var length = rotation.Length();
         if (!IsFinite(entity.Position) || !IsFinite(entity.Velocity) || !float.IsFinite(length))
