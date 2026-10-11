@@ -6,7 +6,8 @@ namespace Horyzont.Core.Frames;
 /// World poses of moving frames over the last <see cref="HistoryTicks"/> ticks (500 ms at 60 Hz, K5-20 decision 9): a fixed number
 /// of frame slots, each a ring of samples. Lookups interpolate position linearly and rotation spherically between recorded ticks;
 /// between two samples that both carry a velocity (K5-26: ship snapshots) the position follows the cubic Hermite curve, which is exact
-/// for a constant acceleration across lost snapshots. Allocation-free after construction. Main thread only.
+/// for a constant acceleration across lost snapshots, unless the curve would run faster than its tangents and chord (a speed change
+/// within the gap), where the straight line is used. Allocation-free after construction. Main thread only.
 /// </summary>
 public sealed class FramePoseHistory : IFrameHistoryView
 {
@@ -21,6 +22,9 @@ public sealed class FramePoseHistory : IFrameHistoryView
     private readonly int[] _free;
     private readonly ulong[] _ticks;
     private readonly PoseD[] _poses;
+    // Speed of the Hermite curve above the fastest tangent or chord that counts as an overshoot (K5-26).
+    private const double OvershootTolerance = 1.02;
+
     private readonly Vector3D[] _velocities;
     private readonly bool[] _hasVelocity;
     private readonly int[] _head;
@@ -156,6 +160,7 @@ public sealed class FramePoseHistory : IFrameHistoryView
                 var span = laterTick - sampleTick;
                 var t = (tick - sampleTick) / span;
                 var position = _hasVelocity[index] && _hasVelocity[later]
+                    && !Overshoots(_poses[index].Position, _velocities[index] * span, _poses[later].Position, _velocities[later] * span)
                     ? Hermite(_poses[index].Position, _velocities[index] * span, _poses[later].Position, _velocities[later] * span, t)
                     : Vector3D.Lerp(_poses[index].Position, _poses[later].Position, t);
                 pose = new PoseD(position, QuaternionD.Slerp(_poses[index].Rotation, _poses[later].Rotation, t));
@@ -163,6 +168,29 @@ public sealed class FramePoseHistory : IFrameHistoryView
             }
 
             later = index;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Whether the Hermite curve would run faster than both of its tangents and the chord (K5-26): the speed changed within the gap
+    /// (the pulse drive), so the curve cannot follow it and would jump ahead; the straight line never exceeds the mean speed.
+    /// </summary>
+    private static bool Overshoots(in Vector3D p0, in Vector3D m0, in Vector3D p1, in Vector3D m1)
+    {
+        var chord = p1 - p0;
+        var limit = Math.Max(Math.Max(m0.Length(), m1.Length()), chord.Length()) * OvershootTolerance;
+        for (var k = 1; k < 8; k++)
+        {
+            var t = k / 8.0;
+
+            // Derivative of the Hermite curve.
+            var velocity = (chord * (6 * t * (1 - t))) + (m0 * ((3 * t * t) - (4 * t) + 1)) + (m1 * ((3 * t * t) - (2 * t)));
+            if (velocity.Length() > limit)
+            {
+                return true;
+            }
         }
 
         return false;
