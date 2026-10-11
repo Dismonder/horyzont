@@ -2,6 +2,7 @@ using Godot;
 
 using Horyzont.Client.Diagnostics;
 using Horyzont.Client.Session;
+using Horyzont.Client.Steam;
 using Horyzont.Client.UI;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
@@ -48,6 +49,8 @@ public sealed partial class GameUiCoordinator : Node, IGameplayInputGate
     private Control _retrySave = null!;
     private GameComposition? _current;
     private LaunchOptions? _lastLaunch;
+    private ulong _steamLobby;
+    private bool _friendsShown;
     private SessionListener? _listener;
     private GameHudMetricsSource? _metrics;
     private Task? _launchTask;
@@ -204,7 +207,6 @@ public sealed partial class GameUiCoordinator : Node, IGameplayInputGate
         {
             _menu.OpenJoin();
             _join.Prepare(_lobby.Available);
-            RefreshFriends();
         };
         _main.QuitPressed += () => _quit!.RequestStop();
 
@@ -215,7 +217,7 @@ public sealed partial class GameUiCoordinator : Node, IGameplayInputGate
         _join.BackPressed += _menu.Cancel;
         _join.ConnectRequested += (host, port, password) => LaunchRemote(host, port, password);
         _join.SteamJoinRequested += id => _lobby.Join(id);
-        _join.SteamPasswordEntered += _ => ShowLobbyError(UiLobbyError.Unavailable);
+        _join.SteamPasswordEntered += LaunchSteamClient;
 
         _loading.CancelPressed += _menu.Cancel;
 
@@ -251,6 +253,7 @@ public sealed partial class GameUiCoordinator : Node, IGameplayInputGate
         _lobby.JoinConfirmationRequested += id => _menu.OfferInvite(id);
         _lobby.Failed += ShowLobbyError;
         _lobby.ConnectRequested += OnLobbyConnectRequested;
+        _lobby.FriendsChanged += RefreshFriends;
     }
 
     private void OpenWorlds(UiLaunchMode mode)
@@ -297,6 +300,12 @@ public sealed partial class GameUiCoordinator : Node, IGameplayInputGate
     {
         var mode = _menu.Mode == UiLaunchMode.Host ? ServerProcessMode.Host : ServerProcessMode.Solo;
         var launch = new LaunchOptions { Mode = mode, WorldId = world, GalaxySeed = seed ?? DevModeArguments.DefaultGalaxySeed };
+        if (mode == ServerProcessMode.Host && _worlds.UseSteam && _lobby.Available && _env.Platform is not null)
+        {
+            // The session binder of K3-17 adds the P2P transport and publishes the lobby once the world runs.
+            launch = launch with { EnableSteam = true, LobbyVisibility = SteamUiLobbyService.MapVisibility(_worlds.Visibility) };
+        }
+
         BeginLaunch(launch);
     }
 
@@ -336,6 +345,12 @@ public sealed partial class GameUiCoordinator : Node, IGameplayInputGate
 
         _current = composition;
         _startFailed = false;
+        if (_env.Platform is { } platform)
+        {
+            // Any session, Steam or not, makes an invite ask first instead of leaving the world under the player.
+            platform.SessionActive = true;
+        }
+
         Attach(composition);
         AddChild(composition.Root);
         try
@@ -372,10 +387,6 @@ public sealed partial class GameUiCoordinator : Node, IGameplayInputGate
 
             composition.ConnectLocalClient();
             _menu.CompleteStart(Failure(UiStartKind.Started, string.Empty));
-            if (launch.Mode == ServerProcessMode.Host && _worlds.UseSteam && _lobby.Available)
-            {
-                _lobby.Host(_worlds.Visibility, 8);
-            }
         }
         catch (OperationCanceledException)
         {
@@ -494,6 +505,11 @@ public sealed partial class GameUiCoordinator : Node, IGameplayInputGate
         Detach();
         var root = _current.Root;
         _current = null;
+        if (_env.Platform is { } platform)
+        {
+            platform.SessionActive = false;
+        }
+
         _startFailed = false;
         _launchTask = null;
         if (root.GetParent() is { } parent)
@@ -529,16 +545,58 @@ public sealed partial class GameUiCoordinator : Node, IGameplayInputGate
         }
     }
 
-    private void OnLobbyConnectRequested(ulong host, bool passwordRequired)
+    private void OnLobbyConnectRequested(ulong lobbyId, bool passwordRequired)
     {
-        // The Steam transport endpoint belongs to the lobby package (K3-17); until it is merged the request cannot be served.
-        UiLog.LobbyConnectNotSupported(_logger, host, passwordRequired);
-        ShowLobbyError(UiLobbyError.Unavailable);
+        // A lobby passed every check outside of a session (a friend picked in the menu, or an accepted invite).
+        if (_menu.State is MenuState.Main or MenuState.Worlds)
+        {
+            _menu.OpenJoin();
+        }
+
+        if (_menu.State != MenuState.Join)
+        {
+            UiLog.LobbyConnectIgnored(_logger, lobbyId, _menu.State);
+            return;
+        }
+
+        _steamLobby = lobbyId;
+        if (passwordRequired)
+        {
+            _join.PrepareSteamPassword();
+            return;
+        }
+
+        LaunchSteamClient(string.Empty);
+    }
+
+    private void LaunchSteamClient(string password)
+    {
+        var lobbyId = _steamLobby;
+        if (lobbyId == 0 || _env.Platform is null)
+        {
+            ShowLobbyError(UiLobbyError.Unavailable);
+            return;
+        }
+
+        _steamLobby = 0;
+
+        // The session joins the lobby again through its own binder, which needs the controller idle.
+        _lobby.Leave();
+        BeginLaunch(new LaunchOptions
+        {
+            Mode = ServerProcessMode.Client,
+            EnableSteam = true,
+            ConnectLobbyId = lobbyId,
+            Password = password,
+        });
     }
 
     private void ShowLobbyError(UiLobbyError error)
     {
-        if (_menu.State is MenuState.Main or MenuState.Worlds or MenuState.Join)
+        // A Steam client has nothing to wait for once its lobby failed (its session ends itself); a host keeps its world.
+        var clientLost = _menu.State is MenuState.Loading or MenuState.Playing or MenuState.Pause
+            && _lastLaunch is { Mode: ServerProcessMode.Client, EnableSteam: true };
+        if (clientLost || _menu.State is MenuState.Main or MenuState.Worlds or MenuState.Join)
         {
             _menu.Fail("ui.lobby_failed", error.ToString());
         }
@@ -595,6 +653,7 @@ public sealed partial class GameUiCoordinator : Node, IGameplayInputGate
         _error.Visible = state == MenuState.Error || (_menu.Confirmation == UiConfirmation.Invite && state is MenuState.Playing or MenuState.Pause);
         _pause.Visible = state == MenuState.Pause && _menu.Confirmation == UiConfirmation.None;
         _main.SetStartsEnabled(!_menu.StartsBlocked);
+        SetFriendsShown(state == MenuState.Join);
         if (state is MenuState.Worlds or MenuState.Join)
         {
             _worlds.SetBusy(false);
@@ -637,6 +696,17 @@ public sealed partial class GameUiCoordinator : Node, IGameplayInputGate
 
         _banner.Visible = _menu.ShowWriterBanner;
         _retrySave.Visible = _menu.CanSave;
+    }
+
+    private void SetFriendsShown(bool shown)
+    {
+        if (shown == _friendsShown)
+        {
+            return;
+        }
+
+        _friendsShown = shown;
+        _lobby.SetFriendsVisible(shown);
     }
 
     private void RecaptureMouse()
@@ -695,6 +765,6 @@ internal static partial class UiLog
     [LoggerMessage(EventId = 9306, Level = LogLevel.Warning, Message = "lobby failure {Error} during a session; the game goes on")]
     internal static partial void LobbyFailedInSession(ILogger logger, UiLobbyError error);
 
-    [LoggerMessage(EventId = 9305, Level = LogLevel.Warning, Message = "lobby connect request for host {Host} (password required: {PasswordRequired}) needs the Steam transport")]
-    internal static partial void LobbyConnectNotSupported(ILogger logger, ulong host, bool passwordRequired);
+    [LoggerMessage(EventId = 9305, Level = LogLevel.Warning, Message = "lobby {Lobby} was joined while the menu was in state {State}; the connection is dropped")]
+    internal static partial void LobbyConnectIgnored(ILogger logger, ulong lobby, MenuState state);
 }

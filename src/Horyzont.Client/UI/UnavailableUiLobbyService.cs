@@ -28,6 +28,13 @@ public sealed class UnavailableUiLobbyService : IUiLobbyService
     }
 
     /// <inheritdoc />
+    public event Action? FriendsChanged
+    {
+        add { }
+        remove { }
+    }
+
+    /// <inheritdoc />
     public bool Available => false;
 
     /// <inheritdoc />
@@ -49,6 +56,11 @@ public sealed class UnavailableUiLobbyService : IUiLobbyService
 
     /// <inheritdoc />
     public int CopyFriends(Span<UiLobbyFriend> into) => 0;
+
+    /// <inheritdoc />
+    public void SetFriendsVisible(bool visible)
+    {
+    }
 
     /// <inheritdoc />
     public void ConfirmJoin(ulong lobbyId)

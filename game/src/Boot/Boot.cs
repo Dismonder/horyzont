@@ -1,5 +1,7 @@
 using Godot;
 
+using Horyzont.Client.Steam;
+using Horyzont.Client.UI;
 using Horyzont.Game.Logging;
 using Horyzont.Game.UI;
 using Horyzont.Server;
@@ -52,7 +54,7 @@ public partial class Boot : Node
 
         if (DisplayServer.GetName() != "headless")
         {
-            StartMenu();
+            StartMenu(args);
             return;
         }
 
@@ -88,7 +90,7 @@ public partial class Boot : Node
     }
 
     /// <summary>No mode on the command line: the menu decides. No world, transport or runtime exists until the player asks for one.</summary>
-    private void StartMenu()
+    private void StartMenu(string[] args)
     {
         var userDir = ProjectSettings.GlobalizePath("user://");
         var executableDir = Path.GetDirectoryName(OS.GetExecutablePath()) ?? ".";
@@ -102,8 +104,23 @@ public partial class Boot : Node
             Render = true,
             DevBuild = OS.IsDebugBuild(),
         };
+        IUiLobbyService? lobby = null;
+        Func<bool>? platformShutdown = null;
+        if (LaunchOptions.WantsMenuSteam(args, System.Environment.GetEnvironmentVariable("SteamAppId"), out var appId))
+        {
+            // X8: the services belong to the process, not to a session. The SDK is shut down by the UI coordinator at quit, after the last
+            // session released its transports; the lifetime node keeps the callbacks running between sessions.
+            var steam = GameComposition.CreatePlatformServices(env, appId);
+            var lifetime = new SteamLifetime { Name = "SteamLifetime" };
+            lifetime.Initialize(steam);
+            AddChild(lifetime);
+            env = env with { Platform = steam };
+            lobby = new SteamUiLobbyService(steam.Lobby);
+            platformShutdown = steam.TryShutdown;
+        }
+
         var ui = new GameUiCoordinator { Name = "Ui" };
-        ui.Initialize(env, lobby: null, platformShutdown: null);
+        ui.Initialize(env, lobby, platformShutdown);
         AddChild(ui);
     }
 

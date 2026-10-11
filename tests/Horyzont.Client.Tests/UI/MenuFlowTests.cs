@@ -287,6 +287,8 @@ public sealed class MenuFlowTests
 
         public event Action<ulong, bool>? ConnectRequested;
 
+        public event Action? FriendsChanged;
+
         public void RaiseInvite(ulong id) => JoinConfirmationRequested?.Invoke(id);
 
         public void Host(UiLobbyVisibility visibility, int capacity) => StateChanged?.Invoke(UiLobbyState.Hosting);
@@ -300,6 +302,8 @@ public sealed class MenuFlowTests
         public void Leave() => Failed?.Invoke(UiLobbyError.Cancelled);
 
         public int CopyFriends(Span<UiLobbyFriend> into) => 0;
+
+        public void SetFriendsVisible(bool visible) => FriendsChanged?.Invoke();
 
         public void ConfirmJoin(ulong lobbyId)
         {
