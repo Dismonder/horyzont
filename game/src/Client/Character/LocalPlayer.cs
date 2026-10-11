@@ -131,6 +131,12 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     /// <summary>Gets or sets the session's remote full-snapshot sink, supplied by composition.</summary>
     public RemoteMotionSampleAdapter? RemoteMotion { get; set; }
 
+    /// <summary>Gets or sets the own seat (K5-25); a seated body follows its ship at the render cursor (decision 18).</summary>
+    public Horyzont.Client.Ships.IOwnSeatSource? OwnSeat { get; set; }
+
+    /// <summary>Gets or sets the pose of the own piloted ship (the prediction, K5-25 R7); null without a pilot loop.</summary>
+    public Horyzont.Client.Ships.IClientShipPoseOverride? ShipPoseOverride { get; set; }
+
     /// <summary>Gets the largest position error (metres) of an acknowledgement that matched.</summary>
     public float MaxAckPositionError { get; private set; }
 
@@ -604,13 +610,43 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     {
         // The frame at the tick of the newest own state (its newest pose past the history): the same time base as an unattached
         // body that follows the server, so attaching and leaving do not jump (K5-20 step 11, own-entity measurement).
-        if (_attached is not { } own || _frames?.Graph is not { } graph
-            || !OwnFrames.TryToPlanet(graph, own, own.ServerTick.Value, out var feet, out var rotation))
+        if (_attached is not { } own || _frames?.Graph is not { } graph)
+        {
+            return;
+        }
+
+        if (!TrySeatedToPlanet(graph, own, out var feet, out var rotation)
+            && !OwnFrames.TryToPlanet(graph, own, own.ServerTick.Value, out feet, out rotation))
         {
             return;
         }
 
         _body!.Place(feet, NumVector3.Zero, rotation, MovementMode.Frozen, false, false);
+    }
+
+    /// <summary>
+    /// K5-20 open item 5, K5-25 decision 18: a seated body (and the camera on it) follows the ship at the render cursor like the remote
+    /// passengers and the drawn ship, the pilot its prediction; a standing attached body keeps the newest-state time base of K5-20.
+    /// </summary>
+    private bool TrySeatedToPlanet(ClientFrameGraph graph, OwnState own, out NumVector3 feet, out NumQuaternion rotation)
+    {
+        feet = default;
+        rotation = NumQuaternion.Identity;
+        if (OwnSeat is null || !OwnSeat.TryGetOwnSeat(out var ship, out _) || own.Frame != FrameRef.Of(ship)
+            || RemoteMotion is not { } motion)
+        {
+            return false;
+        }
+
+        var tick = motion.Clock.RenderTick;
+        if (!Horyzont.Client.Ships.SeatView.TryGetSeatedWorldPose(graph, graph, own, ShipPoseOverride, tick, out var world)
+            || !graph.TryGetWorldPose(FrameRef.Of(own.Planet), tick, out var planet))
+        {
+            return false;
+        }
+
+        return Horyzont.Core.Frames.FrameMath.TryToFloat(
+            Horyzont.Core.Frames.FrameMath.Relative(planet, world), FrameKind.Planet, out feet, out rotation);
     }
 
     private void NoteCorrectionWhileFlying()

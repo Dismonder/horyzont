@@ -164,6 +164,52 @@ public sealed class SeatClientTests
         Assert.False(pilot.PoseOverride.TryGetPose(ShipFixtures.ConstructId, out _));
     }
 
+    [Fact]
+    public void SeatView_SeatedWorldPose_ShipAtRenderTick_PilotPredictionInParent()
+    {
+        // K5-20 open item (5), decision 18: a seated body follows the ship at the render cursor (the remote passengers and the drawn
+        // ship use the same time), not at the tick of the newest own state; the pilot follows its prediction instead.
+        var ship = FrameRef.Of(ShipFixtures.ConstructId);
+        var home = FrameRef.Of(WorldFactory.HomePlanet);
+        var frames = new ShipOnPlanet(ship, home);
+        var seat = new Vector3(2.5f, 2f, 0.5f);
+        var own = new Horyzont.Client.Movement.OwnState(WorldFactory.HomePlanet, 1, seat, Quaternion.Identity, Vector3.Zero, Horyzont.Core.Motion.MovementMode.Frozen, 0, 1, new Tick(200))
+        {
+            Frame = ship,
+        };
+
+        Assert.True(SeatView.TryGetSeatedWorldPose(frames, frames, own, null, 190.5, out var passenger));
+        var expected = FrameMath.TransformPoint(ShipOnPlanet.ShipAt(190.5), Vector3D.FromFloat(seat));
+        Assert.InRange(Vector3D.Distance(expected, passenger.Position), 0, 1e-9);
+
+        var predicted = new PoseD(new Vector3D(500, 4000, 0), QuaternionD.Identity);
+        Assert.True(SeatView.TryGetSeatedWorldPose(frames, frames, own, new FixedPose(ShipFixtures.ConstructId, predicted), 190.5, out var pilot));
+        Assert.InRange(Vector3D.Distance(predicted.Position + Vector3D.FromFloat(seat), pilot.Position), 0, 1e-9);
+
+        Assert.False(SeatView.TryGetSeatedWorldPose(frames, frames, own with { Frame = home }, null, 190.5, out _));
+    }
+
+    private sealed class ShipOnPlanet(FrameRef ship, FrameRef home) : IFramePoseSource, IFrameHistoryView
+    {
+        public static PoseD ShipAt(double tick) =>
+            new(new Vector3D(2 * tick, 4000, 0), QuaternionD.FromAxisAngle(new Vector3D(0, 1, 0), 0.004 * tick));
+
+        public bool TryGetParent(FrameRef frame, out FrameRef parent) => TryGetLocalPose(frame, out parent, out _);
+
+        public bool TryGetLocalPose(FrameRef frame, out FrameRef parent, out PoseD poseInParent)
+        {
+            poseInParent = frame == ship ? ShipAt(200) : PoseD.Identity;
+            parent = frame == ship ? home : default;
+            return frame == ship || frame == home;
+        }
+
+        public bool TryGetWorldPose(FrameRef frame, double tick, out PoseD pose)
+        {
+            pose = frame == ship ? ShipAt(tick) : PoseD.Identity;
+            return frame == ship || frame == home;
+        }
+    }
+
     private sealed class FixedPose(EntityId ship, PoseD pose) : IClientShipPoseOverride
     {
         public bool TryGetPose(EntityId id, out PoseD value)

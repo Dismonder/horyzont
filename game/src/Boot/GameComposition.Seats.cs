@@ -9,8 +9,8 @@ namespace Horyzont.Game.Boot;
 
 /// <summary>
 /// Seats and piloting on the client (K5-25): the own seat (from the own reparents until K5-26 replicates it in <c>KindData</c>), the seat
-/// keys of the tools and the pilot loop. The pose override of the own ship (<see cref="ShipPilot.PoseOverride"/>, R7) waits for the ship
-/// presentation of K5-26.
+/// keys of the tools and the pilot loop. The own seated body follows the ship at the render cursor, the pilot its prediction
+/// (<see cref="ShipPilot.PoseOverride"/>, R7); the ship presentation of K5-26 must draw the ship from the same source.
 /// </summary>
 public sealed partial class GameComposition
 {
@@ -25,6 +25,7 @@ public sealed partial class GameComposition
         var own = new OwnSeat();
         Client!.AddListener(own);
         OwnSeat = own;
+        LocalPlayer!.OwnSeat = own;
         if (Tools is { } tools)
         {
             tools.OwnSeat = own;
@@ -41,5 +42,6 @@ public sealed partial class GameComposition
         ClientNode!.AddChild(pilot);
         Client.AddListener(pilot);
         ShipPilot = pilot;
+        LocalPlayer.ShipPoseOverride = pilot.Pilot.PoseOverride;
     }
 }
