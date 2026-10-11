@@ -289,7 +289,7 @@ public sealed class ShipFlightSystem : IServerTickParticipant, IShipStatusSource
         if (ship.Parent.Kind == FrameKind.Planet && _simulation.State.Planets.TryGet(new PlanetId(ship.Parent.Id), out var planet))
         {
             var index = _model is { } model && model.TryGetBody(planet.Id, out var body) ? body.BodyIndex : 0;
-            environment = FlightEnvironments.InPlanet(planet, index, com, _rules);
+            environment = FlightEnvironments.InPlanet(planet, index, com, _rules, _model);
             var gate = _gate.Query(ship.Id, planet.Id, motion, stats, out var cap);
             environment = environment with { Gate = gate, HorizontalSpeedCap = cap };
         }

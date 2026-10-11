@@ -105,7 +105,7 @@ public static class TransitSim
             var body = model.GetBody(i);
             if (Vector3D.Distance(point, body.Position) <= StarSystemRules.ZoneExitFactor * body.RadiusMeters)
             {
-                return FlightEnvironments.InPlanet(generated.Bodies[i], i, point - body.Position, rules);
+                return FlightEnvironments.InPlanet(generated.Bodies[i], i, point - body.Position, rules, model);
             }
         }
 
