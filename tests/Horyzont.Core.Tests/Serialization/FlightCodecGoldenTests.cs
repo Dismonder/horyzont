@@ -15,8 +15,8 @@ namespace Horyzont.Core.Tests.Serialization;
 /// <summary>K5-24 contract bytes (decisions 1, 12, 13, 14, 16): operation 21, intent 13, reject reason 39 and the enum values.</summary>
 public sealed class FlightCodecGoldenTests
 {
-    // ShipFuelAdd = 21 (0x15), version 1, Construct u64 5, Units 1000.0 = 447A0000, Capacity 2000.0 = 44FA0000 (little-endian).
-    private const string ShipFuelAddHex = "15 01  05 00 00 00 00 00 00 00  00 00 7A 44  00 00 FA 44";
+    // ShipFuelAdd = 21 (0x15), version 1, Construct varuint 5, Units 1000.0 = 447A0000, Capacity 2000.0 = 44FA0000 (little-endian).
+    private const string ShipFuelAddHex = "15 01  05  00 00 7A 44  00 00 FA 44";
 
     // Refuel intent code = 13 (0x0D), version 1, Ship 5, Station 7 (varuint like every intent id), Cell (1, -1, 0) = 02 01 00,
     // RayOrigin (1, 2, 3), RayDirection (0, 0, 1).
@@ -38,13 +38,13 @@ public sealed class FlightCodecGoldenTests
     }
 
     [Theory]
-    [InlineData("15 01  05 00 00 00 00 00 00 00  00 00 C0 7F  00 00 FA 44")] // Units NaN
-    [InlineData("15 01  05 00 00 00 00 00 00 00  00 00 00 00  00 00 FA 44")] // Units 0
-    [InlineData("15 01  05 00 00 00 00 00 00 00  00 00 80 BF  00 00 FA 44")] // Units -1
-    [InlineData("15 01  05 00 00 00 00 00 00 00  00 00 7A 44  00 00 80 FF")] // Capacity -inf
-    [InlineData("15 01  05 00 00 00 00 00 00 00  00 00 7A 44  00 00 80 BF")] // Capacity -1
-    [InlineData("15 02  05 00 00 00 00 00 00 00  00 00 7A 44  00 00 FA 44")] // version 2
-    [InlineData("15 01  05 00 00 00 00 00 00 00  00 00 7A 44  00 00 FA")] // truncated
+    [InlineData("15 01  05  00 00 C0 7F  00 00 FA 44")] // Units NaN
+    [InlineData("15 01  05  00 00 00 00  00 00 FA 44")] // Units 0
+    [InlineData("15 01  05  00 00 80 BF  00 00 FA 44")] // Units -1
+    [InlineData("15 01  05  00 00 7A 44  00 00 80 FF")] // Capacity -inf
+    [InlineData("15 01  05  00 00 7A 44  00 00 80 BF")] // Capacity -1
+    [InlineData("15 02  05  00 00 7A 44  00 00 FA 44")] // version 2
+    [InlineData("15 01  05  00 00 7A 44  00 00 FA")] // truncated
     public void OperationCodec_ShipFuelAdd_RejectsDamaged(string hex) => Kit.AssertOperationViolation(hex);
 
     [Fact]

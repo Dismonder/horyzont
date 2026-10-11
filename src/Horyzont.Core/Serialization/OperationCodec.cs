@@ -127,7 +127,7 @@ public static class OperationCodec
 
                 w.WriteByte((byte)OperationKind.ShipFuelAdd);
                 w.WriteByte(CurrentFormatVersion);
-                w.WriteUInt64(fa.Construct.Value);
+                w.WriteVarUInt(fa.Construct.Value);
                 w.WriteSingle(fa.Units);
                 w.WriteSingle(fa.Capacity);
                 break;
@@ -241,7 +241,7 @@ public static class OperationCodec
                 return new ShipModeSetOp(smConstruct, (ConstructMode)smModeByte, smParent, smParentSeq, smOrigin, smRotation);
 
             case OperationKind.ShipFuelAdd:
-                var faConstruct = new EntityId(r.ReadUInt64());
+                var faConstruct = new EntityId(r.ReadVarUInt());
                 float faUnits = r.ReadSingle();
                 float faCapacity = r.ReadSingle();
                 if (!IsFuelAmount(faUnits, faCapacity))
