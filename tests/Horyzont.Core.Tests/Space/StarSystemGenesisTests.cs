@@ -185,8 +185,11 @@ public sealed class StarSystemGenesisTests
         return string.Join(" | ", parts);
     }
 
-    // Filled after the first green run (plan step 1); approved in the PR.
-    private const string GoldenSeed0 = "";
-    private const string GoldenSeed1 = "";
-    private const string GoldenSeedDeadBeef = "";
+    // Recorded on the first green run (plan step 1, 2026-10-11); approved in the PR.
+    private const string GoldenSeed0 =
+        "0:2E2B5A8C103350A6 R=4000 g=411CF5C3 at=1000 core=400 pos=0,0,0 | 1:EA4B78A5F188551A R=1590 g=3FCF5C29 at=600 core=150 pos=-7055,-317,-16708 | 2:78AFCEC55DBADC15 R=3360 g=410028F6 at=1000 core=300 pos=-17621,3591,-47817 | 3:6A5E709DE901D079 R=4920 g=41368F5C at=1500 core=500 pos=48569,-6470,96780";
+    private const string GoldenSeed1 =
+        "0:01ECEA9B9410CE40 R=4000 g=411CF5C3 at=1000 core=400 pos=0,0,0 | 1:8E564A0BF39F228B R=1570 g=3FCF5C29 at=600 core=150 pos=-5246,-206,-17296 | 2:14FB37B657812472 R=3370 g=4109999A at=1000 core=300 pos=-40621,-2655,29681 | 3:84B85AACF4646291 R=4740 g=41340000 at=1500 core=500 pos=-91766,4226,-58885";
+    private const string GoldenSeedDeadBeef =
+        "0:E9F2FC3E0BA1007A R=4000 g=411CF5C3 at=1000 core=400 pos=0,0,0 | 1:986B48A107D9EF5E R=1470 g=3FCF5C29 at=600 core=150 pos=-17675,546,-5104 | 2:D3199E641814B58D R=3250 g=410B0A3D at=1000 core=300 pos=-321,2648,-48966 | 3:96C5F252C3088796 R=4840 g=413C7AE1 at=1500 core=500 pos=105159,688,-26987";
 }

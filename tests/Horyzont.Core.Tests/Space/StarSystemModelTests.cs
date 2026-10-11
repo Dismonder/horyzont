@@ -1,5 +1,7 @@
 using Horyzont.Core.Frames;
+using Horyzont.Core.Ids;
 using Horyzont.Core.Space;
+using Horyzont.Core.World;
 
 namespace Horyzont.Core.Tests.Space;
 
@@ -35,7 +37,7 @@ public sealed class StarSystemModelTests
         Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
         Assert.True(double.IsFinite(sink));
 
-        static double Step(StarSystemModel model, World.PlanetParams moon, Vector3D[] points, int i)
+        static double Step(StarSystemModel model, PlanetParams moon, Vector3D[] points, int i)
         {
             var p = points[i % points.Length];
             var found = model.TryFindZone(p, out var index, out var distance) ? index + distance : 0;
@@ -99,6 +101,6 @@ public sealed class StarSystemModelTests
         Assert.Equal(Vector3D.Zero, model.GravityAt(between));
         Assert.True(model.TryGetBody(created.Bodies[2].Id, out var info));
         Assert.Equal(created.System.Bodies[2].Pose.Position, info.Position);
-        Assert.False(model.TryGetBody(new Ids.PlanetId(12345), out _));
+        Assert.False(model.TryGetBody(new PlanetId(12345), out _));
     }
 }
