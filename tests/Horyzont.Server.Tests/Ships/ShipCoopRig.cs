@@ -99,6 +99,7 @@ internal sealed class ShipCoopRig : IAsyncDisposable
         var flight = new ShipFlightHost(
             runtime => new BodyCollider(runtime, model), _ => new ReadyGate(), dev: true, 60, rig.Log.CreateLogger<ShipFlightHost>());
         rig.Runtime.AddTickParticipant(flight);
+        rig.Runtime.AddTickParticipant(new ShipStatusSender(() => flight.Flight));
         var zones = new ServerZoneTransitions(
             () => frames.EnsureWorld(rig.Runtime) is not null ? frames.Transitions : null, 60, rig.Log.CreateLogger<ServerZoneTransitions>());
         ServerZoneTransitions.RegisterFramesPhase(rig.Runtime, zones, null);
