@@ -89,6 +89,36 @@ public sealed class OwnFramesTests
         Assert.Equal(1u, inShip.ParentSeq);
         Assert.Equal(OwnStateVerdict.UnknownPlanet, validator.Validate(Snap(4, 103, FrameRef.Of(new SystemId(1)), 2, Vector3.Zero), out _));
     }
+
+    [Fact]
+    public void OwnStateValidator_FirstStateInConstructFrame_PlanetFromFrameRegion()
+    {
+        // Reconnecting while saved in a ship: nothing accepted yet, the planet comes from the region of the construct frame.
+        var graph = new FrameGraph(new ShipOnHome());
+        var validator = new OwnStateValidator(_own, [_planet], NullLogger<OwnStateValidator>.Instance);
+        Assert.Equal(OwnStateVerdict.Accepted, validator.Validate(Snap(1, 100, _ship, 1, new Vector3(1, 2, 3)), out var inShip, graph));
+        Assert.Equal(_ship, inShip.Frame);
+        Assert.Equal(_planet, inShip.Planet);
+
+        // After a reset (new session) the same applies; a frame whose region is not a known planet is still refused.
+        validator.Reset();
+        Assert.Equal(OwnStateVerdict.Accepted, validator.Validate(Snap(1, 100, _ship, 1, Vector3.Zero), out _, graph));
+        var stray = new OwnStateValidator(_own, [new PlanetId(2)], NullLogger<OwnStateValidator>.Instance);
+        Assert.Equal(OwnStateVerdict.UnknownPlanet, stray.Validate(Snap(1, 100, _ship, 1, Vector3.Zero), out _, graph));
+        Assert.Equal(OwnStateVerdict.UnknownPlanet, stray.Validate(Snap(2, 101, FrameRef.Of(new EntityId(9)), 1, Vector3.Zero), out _, graph));
+    }
+
+    private sealed class ShipOnHome : IFramePoseSource
+    {
+        public bool TryGetParent(FrameRef frame, out FrameRef parent) => TryGetLocalPose(frame, out parent, out _);
+
+        public bool TryGetLocalPose(FrameRef frame, out FrameRef parent, out PoseD poseInParent)
+        {
+            poseInParent = PoseD.Identity;
+            parent = frame == _ship ? _home : frame == _home ? FrameRef.Of(new SystemId(1)) : default;
+            return frame == _ship || frame == _home || frame == FrameRef.Of(new SystemId(1));
+        }
+    }
 }
 
 public sealed class ClientFramesTests

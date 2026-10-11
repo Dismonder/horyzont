@@ -478,7 +478,7 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         }
 
         _pending = null;
-        if (_validator is null || _validator.Validate(snapshot, out var own) != OwnStateVerdict.Accepted)
+        if (_validator is null || _validator.Validate(snapshot, out var own, _frames?.Graph?.Graph) != OwnStateVerdict.Accepted)
         {
             return;
         }
@@ -505,9 +505,24 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         _parentSeq = own.ParentSeq;
         _hasParent = true;
         _serverMode = own.Mode;
-        if (_body is null && !CreateBody(own))
+        if (_body is null)
         {
-            return;
+            // A session that starts attached to a construct (reconnect while saved in a ship) creates the body in planet space.
+            var initial = own;
+            if (OwnFrames.IsAttached(own))
+            {
+                if (_frames?.Graph is not { } frameGraph || !OwnFrames.TryToPlanet(frameGraph, own, own.ServerTick.Value, out var planetFeet, out var planetRotation))
+                {
+                    return;
+                }
+
+                initial = own with { Feet = planetFeet, Rotation = planetRotation, Velocity = NumVector3.Zero, Mode = MovementMode.Frozen };
+            }
+
+            if (!CreateBody(initial))
+            {
+                return;
+            }
         }
 
         var body = _body!;

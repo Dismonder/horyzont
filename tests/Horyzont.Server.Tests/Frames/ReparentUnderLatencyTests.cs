@@ -33,6 +33,12 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
     private const double TickRate = 60;
     private const double Limit = 0.5;
     private const ulong MaxCoveredGap = 10;
+
+    /// <summary>Share of remote frames that may fall into a snapshot gap (not measured for error).</summary>
+    private const double MaxUncoveredShare = 0.05;
+
+    /// <summary>Share of remote frames that may lie between samples on both sides of a reparent (error not measured).</summary>
+    private const double MaxStraddlingShare = 0.10;
     private static readonly SystemId _system = new(1);
     private static readonly FrameRef _home = FrameRef.Of(WorldFactory.HomePlanet);
 
@@ -50,6 +56,9 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
         Assert.True(report.Remote.Frames > 1000, report.Remote.ToString());
         Assert.True(report.Remote.MaxJump <= Limit, report.Remote.ToString());
         Assert.True(report.Remote.MaxError <= Limit, report.Remote.ToString());
+        Assert.Equal(0L, report.Remote.ReparentSnaps);
+        Assert.True(report.Remote.Uncovered < report.Remote.Frames * MaxUncoveredShare, report.Remote.ToString());
+        Assert.True(report.Remote.Straddling < report.Remote.Frames * MaxStraddlingShare, report.Remote.ToString());
         Assert.Equal(0, report.Remote.WrongFrames);
         Assert.Equal(0, report.Remote.WrongFrameApplied);
     }
@@ -68,6 +77,7 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
         Assert.True(report.Own.Frames > 1000, report.Own.ToString());
         Assert.True(report.Own.MaxJump <= Limit, report.Own.ToString());
         Assert.True(report.Own.MaxError <= Limit, report.Own.ToString());
+        Assert.Equal(0L, report.Own.ReparentSnaps);
         Assert.Equal(0, report.Own.WrongFrames);
         Assert.Equal(0, report.Own.WrongFrameApplied);
     }
@@ -531,7 +541,8 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
                 // interpolated over the gap, which is not a reparent effect.
                 if (!Covered(entity, cursor, out var from, out var to))
                 {
-                    _previous.Remove(entity);
+                    // The previous rendered point is kept: the first frame after the gap measures the jump over it (the speed allowance
+                    // of the elapsed time is subtracted), so a snap hidden by a gap is still seen.
                     _remote = _remote with { Uncovered = _remote.Uncovered + 1 };
                     continue;
                 }
@@ -539,7 +550,6 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
                 if (!buffer.TrySample(cursor, out var sample) || !_graph.TryGetWorldPose(sample.Frame, cursor, out var frame)
                     || !truth.TryWorldAt(entity, cursor, out var server))
                 {
-                    _previous.Remove(entity);
                     continue;
                 }
 

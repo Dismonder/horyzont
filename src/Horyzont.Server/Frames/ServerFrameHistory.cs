@@ -7,7 +7,7 @@ namespace Horyzont.Server.Frames;
 
 /// <summary>
 /// The server's 500 ms history of moving frames (K5-20 decision 9): every tick, in the <see cref="ServerTickPhase.Compose"/> phase
-/// (first in it), records the world pose of every ship-mode construct and forgets constructs that are gone or static again. Planet
+/// (first in it), records the world pose of every ship-mode construct (from an index rebuilt only when constructs are added or removed) and forgets constructs that are gone or static again. Planet
 /// frames do not move in K5-20 and come from the frame graph. Allocation-free in steady state.
 /// </summary>
 public sealed class ServerFrameHistory : IServerTickParticipant
@@ -16,6 +16,9 @@ public sealed class ServerFrameHistory : IServerTickParticipant
     private readonly FrameGraph _graph;
     private readonly FramePoseHistory _history;
     private readonly List<FrameRef> _tracked;
+    private readonly List<Construct> _ships;
+    private readonly int _capacity;
+    private ulong _shipsVersion = ulong.MaxValue;
     private bool _hasTick;
 
     /// <summary>Creates the history.</summary>
@@ -30,6 +33,8 @@ public sealed class ServerFrameHistory : IServerTickParticipant
         _graph = graph;
         _history = new FramePoseHistory(capacity);
         _tracked = new List<FrameRef>(capacity);
+        _ships = new List<Construct>(capacity);
+        _capacity = capacity;
     }
 
     /// <inheritdoc />
@@ -71,15 +76,10 @@ public sealed class ServerFrameHistory : IServerTickParticipant
             }
         }
 
-        var all = _state.Constructs.All;
-        for (var i = 0; i < all.Count; i++)
+        RefreshShips();
+        for (var i = 0; i < _ships.Count; i++)
         {
-            var construct = all[i];
-            if (construct.Mode != ConstructMode.Ship)
-            {
-                continue;
-            }
-
+            var construct = _ships[i];
             var frame = FrameRef.Of(construct.Id);
             if (!_graph.TryGetWorldPose(frame, out var pose))
             {
@@ -95,6 +95,31 @@ public sealed class ServerFrameHistory : IServerTickParticipant
 
         LastTick = tick;
         _hasTick = true;
+    }
+
+    /// <summary>
+    /// The ship-mode constructs, rebuilt only when a construct was added or removed (the mode of a construct object never changes), so
+    /// a tick does not scan every static construct. Capped at the capacity of the history: a ship beyond it could not be recorded
+    /// anyway, and a slot frees only when a ship is removed, which rebuilds the index.
+    /// </summary>
+    private void RefreshShips()
+    {
+        var store = _state.Constructs;
+        if (store.StructureVersion == _shipsVersion)
+        {
+            return;
+        }
+
+        _shipsVersion = store.StructureVersion;
+        _ships.Clear();
+        var all = store.All;
+        for (var i = 0; i < all.Count && _ships.Count < _capacity; i++)
+        {
+            if (all[i].Mode == ConstructMode.Ship)
+            {
+                _ships.Add(all[i]);
+            }
+        }
     }
 
     /// <summary>
