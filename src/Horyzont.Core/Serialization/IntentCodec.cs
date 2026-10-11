@@ -236,7 +236,13 @@ public static class IntentCodec
                 return new MarkerSetIntent(msMarker, msShared, msPlanet, msPosition, msName, (MarkerIcon)msIcon, (MarkerColor)msColor);
 
             case IntentCode.MarkerRemove:
-                return new MarkerRemoveIntent(new MarkerId(r.ReadVarUInt()));
+                var mrMarker = new MarkerId(r.ReadVarUInt());
+                if (mrMarker.IsNone || mrMarker.Value > MarkerIdAllocator.MaxValue)
+                {
+                    throw new ProtocolViolationException("Invalid marker intent.");
+                }
+
+                return new MarkerRemoveIntent(mrMarker);
 
             default:
                 throw new ProtocolViolationException($"Unhandled intent code {code}.");

@@ -80,6 +80,24 @@ public sealed class MarkerCodecTests
     }
 
     [Fact]
+    public void MarkerRemoveCodecs_IdZeroOrOverFourBillion_Rejected()
+    {
+        // 80 80 80 80 10 is 2^32, one past the largest id.
+        foreach (var bad in new[] { "17 01 00", "17 01 80 80 80 80 10" })
+        {
+            Assert.Throws<ProtocolViolationException>(() => Kit.DecodeOperation(Kit.Hex(bad)));
+        }
+
+        foreach (var bad in new[] { "0F 01 00", "0F 01 80 80 80 80 10" })
+        {
+            Assert.Throws<ProtocolViolationException>(() => Kit.DecodeIntent(Kit.Hex(bad)));
+        }
+
+        Assert.IsType<MarkerRemoveOp>(Kit.DecodeOperation(Kit.Hex("17 01 05")));
+        Assert.IsType<MarkerRemoveIntent>(Kit.DecodeIntent(Kit.Hex("0F 01 05")));
+    }
+
+    [Fact]
     public void MessageCodec_MarkersState_MaxFitsAndOverCountRejected()
     {
         var writer = new ByteWriter();

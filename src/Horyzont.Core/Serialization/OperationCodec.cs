@@ -244,7 +244,13 @@ public static class OperationCodec
                 return new MarkerSetOp(marker.Id, marker.Owner, marker.Planet, marker.Position, marker.Name, marker.Icon, marker.Color);
 
             case OperationKind.MarkerRemove:
-                return new MarkerRemoveOp(new MarkerId(r.ReadVarUInt()));
+                var removed = new MarkerId(r.ReadVarUInt());
+                if (removed.IsNone || removed.Value > MarkerIdAllocator.MaxValue)
+                {
+                    throw new ProtocolViolationException("Invalid marker.");
+                }
+
+                return new MarkerRemoveOp(removed);
 
             default:
                 throw new ProtocolViolationException($"Unhandled operation kind {kind}.");
