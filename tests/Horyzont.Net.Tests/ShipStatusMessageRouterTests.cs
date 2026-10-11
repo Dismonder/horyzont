@@ -3,11 +3,11 @@ using Horyzont.Net.Session;
 
 namespace Horyzont.Net.Tests;
 
-/// <summary>K5-26 decision 8 (X5): <c>ShipStatus</c> only from the server, in the game, on the unreliable channel.</summary>
+/// <summary>K5-26 decision 8 (X5): <c>ShipStatus</c> only from the server, in Loading and InGame, on the unreliable channel.</summary>
 public sealed class ShipStatusMessageRouterTests
 {
     [Fact]
-    public void MessageRouter_ShipStatus_ServerOnlyInGame()
+    public void MessageRouter_ShipStatus_ServerInLoadingAndInGame()
     {
         foreach (var state in Enum.GetValues<PeerState>())
         {

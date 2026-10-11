@@ -253,7 +253,7 @@ Podbijają `ProtocolVersion` do (main przy scaleniu) + 1: K5-20, K5-21, K5-22, K
 | Typ | Kanał | Od klienta | Od serwera | Właściciel |
 | --- | --- | --- | --- | --- |
 | 30 `ShipInputBatch` | zawodny | `InGame` (`IsGameMessageFromClient`) | — | K5-25 |
-| 31 `ShipStatus` | zawodny | — | `InGame` | K5-26 |
+| 31 `ShipStatus` | zawodny | — | `Loading`, `InGame` | K5-26 |
 | 32 `StarSystemState` | `ReliableOrdered` | — | `Loading`, `InGame` | K5-21 |
 | 33 `MarkersState` | `ReliableOrdered` | — | `Loading`, `InGame` | K5-27 |
 | 34 `ShipCorrection` | zawodny | — | `InGame` | K5-25 |
