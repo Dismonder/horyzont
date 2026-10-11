@@ -31,7 +31,7 @@ public readonly record struct ShipFlightView(FrameRef Parent, ShipMotion Motion,
 /// first time unparked go through <see cref="ShipLoadSettler"/>. Phase <see cref="ServerTickPhase.Frames"/>, registered before the
 /// zone transitions. Main thread; allocation-free after warm-up.
 /// </summary>
-public sealed class ShipFlightSystem : IServerTickParticipant
+public sealed class ShipFlightSystem : IServerTickParticipant, IShipStatusSource
 {
     private readonly ServerSimulation _simulation;
     private readonly ShipStatsCache _stats;
