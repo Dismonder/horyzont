@@ -184,6 +184,12 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
 
         public ulong MaxSnapshotGap { get; init; }
 
+        /// <summary>Gets the frames that moved along the straight path of a seat teleport (drawn as a slide, not a jump).</summary>
+        public int Smears { get; init; }
+
+        /// <summary>Gets the largest move of a smear frame above the speed allowance, metres.</summary>
+        public double MaxSmear { get; init; }
+
         public Stats Merge(Stats other) => new()
         {
             Jumps = [.. Jumps, .. other.Jumps],
@@ -194,6 +200,8 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
             WrongFrameApplied = WrongFrameApplied + other.WrongFrameApplied,
             ReparentSnaps = ReparentSnaps + other.ReparentSnaps,
             Resyncs = Resyncs + other.Resyncs,
+            Smears = Smears + other.Smears,
+            MaxSmear = Math.Max(MaxSmear, other.MaxSmear),
             Worst = other.MaxError > MaxError ? other.Worst : Worst,
         };
 
@@ -202,7 +210,7 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
             var sorted = Jumps.Order().ToArray();
             var p99 = sorted.Length == 0 ? 0 : sorted[(int)Math.Min(sorted.Length - 1, Math.Floor(sorted.Length * 0.99))];
             return FormattableString.Invariant(
-                $"frames={Frames} maxJump={MaxJump:F3} p99Jump={p99:F3} maxError={MaxError:F3} wrongFrames={WrongFrames} wrongFrameApplied={WrongFrameApplied} reparentSnaps={ReparentSnaps} resyncs={Resyncs} vmax={MaxSpeed:F1} underruns={Underruns} uncovered={Uncovered} straddling={Straddling} maxSnapshotGap={MaxSnapshotGap} worst: {Worst}");
+                $"frames={Frames} maxJump={MaxJump:F3} p99Jump={p99:F3} maxError={MaxError:F3} wrongFrames={WrongFrames} wrongFrameApplied={WrongFrameApplied} reparentSnaps={ReparentSnaps} resyncs={Resyncs} vmax={MaxSpeed:F1} underruns={Underruns} uncovered={Uncovered} straddling={Straddling} maxSnapshotGap={MaxSnapshotGap} smears={Smears} maxSmear={MaxSmear:F3} worst: {Worst}");
         }
     }
 
@@ -229,16 +237,68 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
         /// </summary>
         public bool SeatTeleports { get; init; }
 
-        /// <summary>Sum of the teleports of an entity at the ticks in (from, to].</summary>
-        public double TeleportBetween(EntityId entity, double from, double to)
+        /// <summary>
+        /// Credits the teleports of an entity at the ticks in (from, to] that are not in <paramref name="credited"/> and whose
+        /// post-teleport server position <paramref name="world"/> matches (within <paramref name="tolerance"/> of the server position at
+        /// one of the <paramref name="span"/> ticks from the teleport on): each teleport is credited to one frame pair only.
+        /// </summary>
+        /// <returns>The sum of the credited teleport distances.</returns>
+        public double CreditTeleports(
+            EntityId entity, double from, double to, in Vector3D world, int span, double tolerance, HashSet<(EntityId, ulong)> credited)
         {
             var sum = 0.0;
             for (var tick = (ulong)Math.Floor(from) + 1; tick <= (ulong)Math.Ceiling(to); tick++)
             {
-                sum += _teleports.TryGetValue((entity, tick), out var distance) ? distance : 0;
+                if (!_teleports.TryGetValue((entity, tick), out var distance) || credited.Contains((entity, tick)) || !Lands(entity, tick, world, span, tolerance))
+                {
+                    continue;
+                }
+
+                credited.Add((entity, tick));
+                sum += distance;
             }
 
             return sum;
+        }
+
+        /// <summary>
+        /// True when <paramref name="world"/> lies on the straight path of a teleport of the entity at a tick in (from, to]: between
+        /// the server position before it and one of the <paramref name="span"/> positions from it on (a teleport the remote buffer
+        /// draws as a slide between the samples around it).
+        /// </summary>
+        public bool OnTeleportPath(EntityId entity, double from, double to, in Vector3D world, int span, double tolerance)
+        {
+            for (var tick = (ulong)Math.Floor(from) + 1; tick <= (ulong)Math.Ceiling(to); tick++)
+            {
+                if (!_teleports.ContainsKey((entity, tick)) || !_ticks.TryGetValue((entity, tick - 1), out var before))
+                {
+                    continue;
+                }
+
+                for (var k = tick; k <= tick + (ulong)span; k++)
+                {
+                    if (_ticks.TryGetValue((entity, k), out var after)
+                        && Vector3D.Distance(before.World, world) + Vector3D.Distance(world, after.World) <= Vector3D.Distance(before.World, after.World) + tolerance)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private bool Lands(EntityId entity, ulong teleport, in Vector3D world, int span, double tolerance)
+        {
+            for (var tick = teleport; tick <= teleport + (ulong)span; tick++)
+            {
+                if (_ticks.TryGetValue((entity, tick), out var at) && Vector3D.Distance(world, at.World) <= tolerance)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public Dictionary<(FrameRef, ulong), PoseD> Frames { get; } = [];
@@ -444,6 +504,9 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
     /// <summary>One client: its replication, frames and either a remote render loop or its own entity.</summary>
     internal sealed class ClientView : IFullSnapshotSink
     {
+        /// <summary>The frame after a credited teleport is at most this far from a post-teleport server position, metres.</summary>
+        private const double TeleportLandTolerance = 0.5;
+
         private bool _clockStarted;
         private ulong _lastSnapshot;
         private readonly Dictionary<EntityId, List<ulong>> _sampleTicks = [];
@@ -454,6 +517,7 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
         private readonly RemoteMotionSampleAdapter _adapter;
         private readonly Dictionary<EntityId, RemoteMotionBuffer> _buffers = [];
         private readonly Dictionary<EntityId, (Vector3D World, double Tick)> _previous = [];
+        private readonly HashSet<(EntityId, ulong)> _credited = [];
         private readonly OwnStateValidator _validator;
         private Truth? _truth;
         private OwnState? _own;
@@ -690,11 +754,25 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
             if (_previous.TryGetValue(entity, out var previous) && tick >= previous.Tick)
             {
                 // A seat teleport may be drawn up to the interpolation delay early (the first sample after an idle stretch, or the
-                // newest own state under the seat camera at the render cursor) or late (interpolated over a snapshot gap): frames within
-                // that window of a server teleport may move by its distance.
+                // newest own state under the seat camera at the render cursor) or late (interpolated over a snapshot gap): one frame
+                // pair within that window of a server teleport may move by its distance, and only when the frame after the move lands
+                // on the post-teleport server position (review 8: no credit to a smeared or wrong jump, none twice).
                 var early = (_adapter.Clock.DelaySeconds * TickRate) + 3;
-                var teleport = _truth is { SeatTeleports: true } seats ? seats.TeleportBetween(entity, previous.Tick - early, tick + early) : 0;
-                jump = Math.Max(0, Vector3D.Distance(world, previous.World) - (maxSpeed * (tick - previous.Tick) / TickRate) - teleport);
+                var raw = Vector3D.Distance(world, previous.World) - (maxSpeed * (tick - previous.Tick) / TickRate);
+                // A frame on the straight path of a teleport (the remote buffer interpolates between the samples around it) is a
+                // slide, reported as a smear and not as a jump.
+                var span = (int)Math.Ceiling(early);
+                var tolerance = TeleportLandTolerance + (maxSpeed / TickRate);
+                var teleport = raw > 0 && _truth is { SeatTeleports: true } seats
+                    ? seats.CreditTeleports(entity, previous.Tick - early, tick + early, world, span, tolerance, _credited)
+                    : 0;
+                jump = Math.Max(0, raw - teleport);
+                if (jump > 0 && _truth is { SeatTeleports: true } path && path.OnTeleportPath(entity, previous.Tick - early, tick + early, world, span, tolerance))
+                {
+                    stats = stats with { Smears = stats.Smears + 1, MaxSmear = Math.Max(stats.MaxSmear, jump) };
+                    jump = 0;
+                }
+
                 stats.Jumps.Add(jump);
                 if (_truth is { SeatTeleports: true } && jump > 0.5 && jump > stats.MaxJump)
                 {
