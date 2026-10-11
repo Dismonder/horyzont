@@ -3,11 +3,13 @@ using System.Buffers.Binary;
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
+using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Space;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
+using Horyzont.Core.World.Markers;
 
 namespace Horyzont.Core.Serialization;
 
@@ -507,6 +509,83 @@ public static class StateCodec
         ValidateBlobHeader(blob, BlobKind.StarSystemParams);
         var r = new ByteReader(blob.Slice(2));
         var result = ReadStarSystem(ref r);
+        r.EnsureEnd();
+        return result;
+    }
+
+    /// <summary>
+    /// Writes a map marker without a prefix (K5-27; the body of operation 22, blob 11 and each record of <c>MarkersState</c>):
+    /// [id varuint][hasOwner][owner varuint when 1][planet varuint][x, y, z f32][name][icon][colour].
+    /// </summary>
+    /// <param name="w">Target writer.</param>
+    /// <param name="marker">The marker.</param>
+    /// <exception cref="ArgumentException">A value is out of range.</exception>
+    public static void WriteMarker(ByteWriter w, MarkerRecord marker)
+    {
+        ArgumentNullException.ThrowIfNull(w);
+        ArgumentNullException.ThrowIfNull(marker);
+        if (!MarkerRules.IsValidStyle(marker.Icon, marker.Color))
+        {
+            throw new ArgumentException("Invalid marker icon or colour.", nameof(marker));
+        }
+
+        w.WriteVarUInt(marker.Id.Value);
+        w.WriteBool(marker.Owner is not null);
+        if (marker.Owner is { } owner)
+        {
+            w.WriteVarUInt(owner.Value);
+        }
+
+        w.WriteVarUInt(marker.Planet.Value);
+        w.WriteVector3(marker.Position);
+        w.WriteString(marker.Name, MarkerRules.MaxNameBytes);
+        w.WriteByte((byte)marker.Icon);
+        w.WriteByte((byte)marker.Color);
+    }
+
+    /// <summary>Reads a map marker.</summary>
+    /// <param name="r">Reader.</param>
+    /// <returns>The marker.</returns>
+    /// <exception cref="ProtocolViolationException">The data is damaged.</exception>
+    public static MarkerRecord ReadMarker(ref ByteReader r)
+    {
+        var id = new MarkerId(r.ReadVarUInt());
+        PlayerId? owner = r.ReadBool() ? new PlayerId(r.ReadVarUInt()) : null;
+        var planet = new PlanetId(r.ReadVarUInt());
+        var position = r.ReadVector3();
+        string name = r.ReadString(MarkerRules.MaxNameBytes);
+        byte icon = r.ReadByte();
+        byte color = r.ReadByte();
+        if (id.IsNone || id.Value > MarkerIdAllocator.MaxValue || owner is { IsNone: true } || icon > (byte)MarkerIcon.Poi
+            || color > (byte)MarkerColor.Orange)
+        {
+            throw new ProtocolViolationException("Invalid marker.");
+        }
+
+        return new MarkerRecord(id, owner, planet, position, name, (MarkerIcon)icon, (MarkerColor)color);
+    }
+
+    /// <summary>Encodes a marker as a SQLite blob (<see cref="BlobKind.Marker"/>).</summary>
+    /// <param name="marker">The marker.</param>
+    /// <returns>The blob.</returns>
+    public static byte[] EncodeMarkerBlob(MarkerRecord marker)
+    {
+        var w = new ByteWriter();
+        w.WriteByte((byte)BlobKind.Marker);
+        w.WriteByte(CurrentFormatVersion);
+        WriteMarker(w, marker);
+        return w.WrittenSpan.ToArray();
+    }
+
+    /// <summary>Decodes a marker blob.</summary>
+    /// <param name="blob">Blob bytes.</param>
+    /// <returns>The marker.</returns>
+    /// <exception cref="ProtocolViolationException">The blob is damaged.</exception>
+    public static MarkerRecord DecodeMarkerBlob(ReadOnlySpan<byte> blob)
+    {
+        ValidateBlobHeader(blob, BlobKind.Marker);
+        var r = new ByteReader(blob.Slice(2));
+        var result = ReadMarker(ref r);
         r.EnsureEnd();
         return result;
     }

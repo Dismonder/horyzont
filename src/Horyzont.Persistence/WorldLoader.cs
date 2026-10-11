@@ -144,6 +144,11 @@ public static class WorldLoader
             ReadStarSystem(connection, builder);
             ReadConstructs(connection, builder);
             ReadPlayers(connection, builder);
+            // K5-27: worlds created before markers have no key; the counter starts at 1.
+            builder.SetNextMarkerId(meta.TryGetValue(Sql.MetaNextMarkerId, out var nextMarker) && nextMarker is long markerNumber
+                ? Sql.FromDb(markerNumber)
+                : 1);
+            ReadMarkers(connection, builder);
             ReadTerrainVersions(connection, builder);
             var state = builder.Build();
             var tail = ReadJournal(connection, lastCheckpoint);
@@ -298,6 +303,23 @@ public static class WorldLoader
             }
 
             builder.AddPlayer(record);
+        }
+    }
+
+    private static void ReadMarkers(SqliteConnection connection, WorldStateBuilder builder)
+    {
+        using var command = Sql.Command(connection, null, "SELECT marker_id, data FROM markers ORDER BY marker_id;");
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var id = Sql.FromDb(reader.GetInt64(0));
+            var record = StateCodec.DecodeMarkerBlob((byte[])reader.GetValue(1));
+            if (record.Id.Value != id)
+            {
+                throw new InvalidDataException($"Marker row {id} does not match its blob.");
+            }
+
+            builder.AddMarker(record);
         }
     }
 

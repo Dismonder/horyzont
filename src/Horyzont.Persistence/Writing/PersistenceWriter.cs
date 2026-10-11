@@ -550,9 +550,11 @@ public sealed class PersistenceWriter : IAsyncDisposable
             WriteConstructs(connection, transaction, checkpoint);
             _faults.Hit(FaultPoint.CheckpointMidTransaction);
             WritePlayers(connection, transaction, checkpoint);
+            WriteMarkers(connection, transaction, checkpoint);
             WriteTerrain(connection, transaction, command.Request.TerrainBlocks);
             Sql.SetMeta(connection, transaction, Sql.MetaNextEntityId, Sql.ToDb(checkpoint.NextEntityId));
             Sql.SetMeta(connection, transaction, Sql.MetaNextPlayerId, Sql.ToDb(checkpoint.NextPlayerId));
+            Sql.SetMeta(connection, transaction, Sql.MetaNextMarkerId, Sql.ToDb(checkpoint.NextMarkerId));
             Sql.SetMeta(connection, transaction, Sql.MetaLastCheckpointOpId, Sql.ToDb(barrier.Value));
             Sql.SetMeta(connection, transaction, Sql.MetaLastCheckpointTick, Sql.ToDb(checkpoint.Tick.Value));
             Sql.SetMeta(connection, transaction, Sql.MetaGameVersion, _options.GameVersion);
@@ -663,6 +665,26 @@ public sealed class PersistenceWriter : IAsyncDisposable
             command.Parameters.AddWithValue("$platformId", Sql.ToDb(player.Identity.Value));
             command.Parameters.AddWithValue("$entity", Sql.ToDb(player.Entity.Value));
             command.Parameters.AddWithValue("$data", StateCodec.EncodePlayerBlob(player));
+            command.ExecuteNonQuery();
+        }
+    }
+
+    private static void WriteMarkers(SqliteConnection connection, SqliteTransaction transaction, Core.Checkpoints.WorldCheckpoint checkpoint)
+    {
+        foreach (var marker in checkpoint.UpsertedMarkers)
+        {
+            using var command = Sql.Command(
+                connection, transaction,
+                "INSERT INTO markers (marker_id, data) VALUES ($id, $data) ON CONFLICT (marker_id) DO UPDATE SET data = excluded.data;");
+            command.Parameters.AddWithValue("$id", Sql.ToDb(marker.Id.Value));
+            command.Parameters.AddWithValue("$data", StateCodec.EncodeMarkerBlob(marker));
+            command.ExecuteNonQuery();
+        }
+
+        foreach (var removed in checkpoint.RemovedMarkers)
+        {
+            using var command = Sql.Command(connection, transaction, "DELETE FROM markers WHERE marker_id = $id;");
+            command.Parameters.AddWithValue("$id", Sql.ToDb(removed.Value));
             command.ExecuteNonQuery();
         }
     }

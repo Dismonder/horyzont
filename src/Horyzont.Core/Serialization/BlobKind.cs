@@ -20,4 +20,7 @@ public enum BlobKind : byte
 
     /// <summary>The star system of a world (K5-21): placement of the bodies and the sun cycle.</summary>
     StarSystemParams = 10,
+
+    /// <summary>A map marker (K5-27).</summary>
+    Marker = 11,
 }
