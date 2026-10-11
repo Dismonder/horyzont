@@ -6,5 +6,9 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <IsPackable>false</IsPackable>
+    <!-- Allocation tests count GetAllocatedBytesForCurrentThread. With tiered compilation the tier-up (call counting, OSR, rejit)
+         runs on a wall-clock timer and allocates on the test thread whenever it lands in the measured loop, which depends on CPU load
+         (parallel test projects). Fully optimized code from the first call makes the counts deterministic (docs/ZASADY.md, point 8). -->
+    <TieredCompilation>false</TieredCompilation>
   </PropertyGroup>
 </Project>

@@ -50,6 +50,8 @@ internal sealed class GatedSendBudget : IReplicationSendBudget
 
     public long LiveBytes { get; private set; }
 
+    public int BulkParts { get; private set; }
+
     public bool TryConsume(PlayerId player, ReplicationTraffic traffic, int bytes)
     {
         if (traffic == ReplicationTraffic.Live)
@@ -64,6 +66,7 @@ internal sealed class GatedSendBudget : IReplicationSendBudget
         }
 
         BulkBytes += bytes;
+        BulkParts++;
         return true;
     }
 }
