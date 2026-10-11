@@ -7,6 +7,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.Space;
 using Horyzont.Core.World;
+using Horyzont.Core.World.Terrain;
 using Horyzont.Game.Frames;
 using Horyzont.Game.Planet;
 using Horyzont.Game.Planet.Generators;
@@ -134,8 +135,11 @@ public class ServerPlanetTerrainsTests
             var planets = rig.Terrain.Planets;
             var moon = rig.Moon;
             var r = (float)moon.RadiusMeters;
-            var ground = new NumVector3(0, r, 0);
             using var lease = planets.Acquire(moon.Planet, PlanetLeaseReason.Dev);
+
+            // The check is made at the generated ground under the centre (LOD 0 exists only near a viewer).
+            AssertThat(planets.TryGetGroundRadius(moon.Planet, NumVector3.UnitY, out var groundRadius)).IsTrue();
+            var ground = new NumVector3(0, groundRadius, 0);
 
             // Above R + MaxRelief + 64 nothing is built: ready as soon as the node exists.
             var high = new NumVector3(0, r + PlanetGeneratorV1.MaxReliefMeters + 200f, 0);
@@ -195,6 +199,74 @@ public class ServerPlanetTerrainsTests
             GD.Print($"K5-22 repeated activation: nodes {nodesBefore} -> {nodesAfter}, static memory {memoryBefore} -> {memoryAfter}");
             AssertThat(Math.Abs(nodesAfter - nodesBefore) <= Math.Max(2, nodesBefore * 0.05)).IsTrue();
             AssertThat(memoryAfter <= memoryBefore * 1.05).IsTrue();
+        }
+        finally
+        {
+            await rig.DisposeAsync();
+        }
+    }
+
+    [TestCase(Timeout = 240000)]
+    [RequireGodotRuntime]
+    public async Task Readiness_StreamFault_Faulted()
+    {
+        await using var scene = EngineTestScene.Create();
+        var rig = Rig.Create(scene);
+        try
+        {
+            var planets = rig.Terrain.Planets;
+            var moon = rig.Moon;
+            using var lease = planets.Acquire(moon.Planet, PlanetLeaseReason.Dev);
+            AssertThat(planets.TryGetNode(moon.Planet, out var node)).IsTrue();
+            var high = new NumVector3(0, (float)moon.RadiusMeters + PlanetGeneratorV1.MaxReliefMeters + 500f, 0);
+            AssertThat(planets.GetReadiness(moon.Planet, high, 10f)).IsEqual(PlanetTerrainReadiness.Ready);
+
+            node!.Stream.ReportErrorForTest(new TerrainBlockKey(moon.Planet, 0, 0, 1, 0));
+
+            // Reported at once, also where nothing is built, and never masked as Streaming.
+            AssertThat(planets.GetReadiness(moon.Planet, high, 10f)).IsEqual(PlanetTerrainReadiness.Faulted);
+            AssertThat(planets.GetReadiness(moon.Planet, new NumVector3(0, (float)moon.RadiusMeters, 0), 8f)).IsEqual(PlanetTerrainReadiness.Faulted);
+        }
+        finally
+        {
+            await rig.DisposeAsync();
+        }
+    }
+
+    [TestCase(Timeout = 300000)]
+    [RequireGodotRuntime]
+    public async Task ServerShipViewers_ColumnUnderShip_ReachesGroundWithinLookahead()
+    {
+        await using var scene = EngineTestScene.Create();
+        var rig = Rig.Create(scene);
+        try
+        {
+            var planets = rig.Terrain.Planets;
+            var moon = rig.Moon;
+            var r = (float)moon.RadiusMeters;
+            using var lease = planets.Acquire(moon.Planet, PlanetLeaseReason.Dev);
+            AssertThat(planets.TryGetNode(moon.Planet, out var node)).IsTrue();
+            var up = NumVector3.Normalize(new NumVector3(0.3f, 1f, 0.2f));
+            AssertThat(planets.TryGetGroundRadius(moon.Planet, up, out var ground)).IsTrue();
+
+            // A ship 50 m over the ground at 30 m/s (in a valley or over a hill: the column spans down to R − MaxRelief).
+            var ship = up * (ground + 50f);
+            var altitude = ship.Length() - (r - PlanetGeneratorV1.MaxReliefMeters);
+            var column = TerrainColumn.UnderShip(ship, 10f, 30f, altitude, r, PlanetGeneratorV1.MaxReliefMeters);
+            AssertThat(column.Center.Length() - column.Radius <= ground).IsTrue();
+            AssertThat(planets.GetReadiness(moon.Planet, column.Center, column.Radius)).IsEqual(PlanetTerrainReadiness.Streaming);
+
+            planets.ShipViewers.Apply(new EntityId(77), moon.Planet, column, node!, ground);
+            AssertThat(planets.ShipViewers.TryGetViewer(new EntityId(77), out var viewer)).IsTrue();
+            var local = node!.ToLocal(viewer!.GlobalPosition);
+            AssertThat(Math.Abs(local.Length() - ground) < 1.0).IsTrue();
+
+            var ready = await scene.WaitFramesUntil(() => planets.GetReadiness(moon.Planet, column.Center, column.Radius) == PlanetTerrainReadiness.Ready, 1800);
+            AssertThat(ready).IsTrue();
+
+            // Deactivation takes the viewers of the planet with it.
+            planets.ShipViewers.RemovePlanet(moon.Planet);
+            AssertThat(planets.ShipViewers.Count).IsEqual(0);
         }
         finally
         {

@@ -55,10 +55,7 @@ public static class TerrainViewFeet
         feetInPlanet = new Vector3((float)point.X, (float)point.Y, (float)point.Z);
         if (playerFrame.Kind == FrameKind.Construct && state.Constructs.TryGet(new EntityId(playerFrame.Id), out var construct))
         {
-            var min = construct.BoundsMin;
-            var max = construct.BoundsMax;
-            var size = new Vector3(max.X - min.X + 1, max.Y - min.Y + 1, max.Z - min.Z + 1);
-            extraTolerance = size.Length() / 2f;
+            extraTolerance = Horyzont.Server.Space.ShipTerrainColumns.BoundingRadius(construct);
         }
 
         return TerrainFeet.Found;

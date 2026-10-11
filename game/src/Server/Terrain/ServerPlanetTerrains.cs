@@ -6,6 +6,7 @@ using Horyzont.Core.World;
 using Horyzont.Game.Frames;
 using Horyzont.Game.Planet;
 using Horyzont.Game.Planet.Generators;
+using Horyzont.Game.Planet.Surface;
 using Horyzont.Game.Terrain;
 using Horyzont.Server;
 using Horyzont.Server.Space;
@@ -29,6 +30,12 @@ public sealed partial class ServerPlanetTerrains : IServerTickParticipant, IPlan
 {
     /// <summary>Space over <c>R + MaxRelief</c> where nothing is built (above the voxel bounds of <see cref="PlanetTerrainLayout"/>).</summary>
     public const float ClearMarginMeters = 64f;
+
+    /// <summary>
+    /// Half-size of the box around the generated ground under the query centre that must have its LOD 0 collision built (well inside the
+    /// LOD 0 ring of <see cref="PlanetTerrainFactory.LodDistance"/> around a viewer standing on that ground).
+    /// </summary>
+    public const float GroundCoreMeters = 40f;
 
     private readonly VoxelTerrainService _service;
     private readonly WorldState _state;
@@ -63,10 +70,11 @@ public sealed partial class ServerPlanetTerrains : IServerTickParticipant, IPlan
         _logger = logger;
         _placement = new Horyzont.Core.Space.WorldStatePlanetPlacement(state);
         Policy = new PlanetActivityPolicy(options);
+        ShipViewers = new ServerShipViewers(fallbackParent);
         foreach (var planet in state.Planets.All)
         {
             var generator = GeneratorProfiles.CreateGenerator(planet);
-            _bodies.Add(planet.Id.Value, new Body(planet, generator, mipmaps?.Invoke(planet, generator)));
+            _bodies.Add(planet.Id.Value, new Body(planet, generator, mipmaps?.Invoke(planet, generator), new PlanetSurfaceSampler(planet, generator)));
         }
     }
 
@@ -90,6 +98,15 @@ public sealed partial class ServerPlanetTerrains : IServerTickParticipant, IPlan
 
     /// <summary>Gets or sets the demand of ship-mode constructs (K5-22 <see cref="MovingShipDemand"/>, K5-24 replaces it).</summary>
     public IShipDemandSource? ShipDemand { get; set; }
+
+    /// <summary>Gets or sets the frame history of the running world (ship speeds for <see cref="ShipViewers"/>); no ship viewers while null.</summary>
+    public Horyzont.Server.Frames.ServerFrameHistory? History { get; set; }
+
+    /// <summary>Gets or sets the seconds per server tick.</summary>
+    public double TickSeconds { get; set; } = 1.0 / 60.0;
+
+    /// <summary>Gets the collision viewers of ships in the frames of active planets (decision 5).</summary>
+    public ServerShipViewers ShipViewers { get; }
 
     /// <summary>Gets the number of planets with a terrain node.</summary>
     public int ActiveCount
@@ -149,7 +166,17 @@ public sealed partial class ServerPlanetTerrains : IServerTickParticipant, IPlan
         return new ReplayScope(this);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Readiness of the terrain in a query sphere (README Y11). Voxel Tools builds LOD 0 (the only collision LOD) only within
+    /// <see cref="PlanetTerrainFactory.LodDistance"/> of a viewer, so a column sphere of hundreds of metres is never meshed at LOD 0 as a
+    /// whole; the check is made where the ship meets the ground: the generated ground under the centre (<see cref="PlanetSurfaceSampler"/>)
+    /// with a box of <see cref="GroundCoreMeters"/> (at most the query radius). A sphere whose radial span does not reach that ground is
+    /// ready (nothing to collide with in it), unless the stream faulted. Main thread.
+    /// </summary>
+    /// <param name="planet">The planet.</param>
+    /// <param name="localCenter">Centre of the sphere in the planet frame.</param>
+    /// <param name="radius">Radius of the sphere.</param>
+    /// <returns>The readiness.</returns>
     public PlanetTerrainReadiness GetReadiness(PlanetId planet, Vector3 localCenter, float radius)
     {
         if (!_bodies.TryGetValue(planet.Value, out var body) || body.Node is null)
@@ -158,7 +185,32 @@ public sealed partial class ServerPlanetTerrains : IServerTickParticipant, IPlan
         }
 
         var clear = body.Planet.RadiusMeters + PlanetGeneratorV1.MaxReliefMeters + ClearMarginMeters;
-        return _service.GetReadiness(planet, localCenter, radius, clear);
+        var distance = localCenter.Length();
+        if (!float.IsFinite(distance) || !float.IsFinite(radius) || distance - radius > clear || distance < 1f)
+        {
+            return _service.GetReadiness(planet, localCenter, radius, clear);
+        }
+
+        var ground = body.GroundRadius(localCenter);
+        var core = MathF.Min(MathF.Max(radius, 0f), GroundCoreMeters);
+        if (ground < distance - radius - core || ground > distance + radius + core)
+        {
+            // No ground in the sphere: only a stream fault can make it not ready.
+            return _service.GetReadiness(planet, localCenter, radius, float.NegativeInfinity);
+        }
+
+        return _service.GetReadiness(planet, localCenter / distance * ground, core, clear);
+    }
+
+    /// <summary>Radius of the generated ground of a planet along a direction (cached for the last direction; main thread).</summary>
+    /// <param name="planet">The planet.</param>
+    /// <param name="direction">The direction in the planet frame.</param>
+    /// <param name="radius">The radius.</param>
+    /// <returns>False for an unknown planet.</returns>
+    public bool TryGetGroundRadius(PlanetId planet, Vector3 direction, out float radius)
+    {
+        radius = _bodies.TryGetValue(planet.Value, out var body) ? body.GroundRadius(direction) : 0f;
+        return body is not null;
     }
 
     /// <inheritdoc />
@@ -189,11 +241,42 @@ public sealed partial class ServerPlanetTerrains : IServerTickParticipant, IPlan
         {
             Deactivate(deactivate[i]);
         }
+
+        if (History is { } history && tick.Value % ServerShipViewers.UpdateIntervalTicks == 0)
+        {
+            ShipViewers.Update(_state, history, TickSeconds, this);
+        }
+    }
+
+    /// <summary>Writes the over-budget log entry of every active terrain (decision 7).</summary>
+    /// <param name="governor">The governor (logger and tick average).</param>
+    /// <param name="players">Players whose body is on a planet.</param>
+    public void LogTerrainStats(TerrainTickGovernor governor, Func<PlanetId, int> players)
+    {
+        ArgumentNullException.ThrowIfNull(governor);
+        ArgumentNullException.ThrowIfNull(players);
+        foreach (var body in _bodies.Values)
+        {
+            if (body.Node is not { } node || !GodotObject.IsInstanceValid(node))
+            {
+                continue;
+            }
+
+            var terrain = node.Terrain;
+            var statistics = terrain.GetStatistics();
+
+            // time_update_task: microseconds of the last update task of Voxel Tools (ProfilingClock).
+            var update = statistics.TryGetValue("time_update_task", out var micro) ? micro.AsDouble() / 1000.0 : 0.0;
+            var count = players(body.Planet.Id);
+            governor.LogTerrain(new PlanetTerrainStats(
+                body.Planet.Id, count, count + ShipViewers.CountOn(body.Planet.Id), terrain.DebugGetDataBlockCount(), update));
+        }
     }
 
     /// <summary>Takes every terrain node out of the tree and frees it (shutdown, after the terrain service closed the streams).</summary>
     public void FreeAll()
     {
+        ShipViewers.Clear();
         foreach (var body in _bodies.Values)
         {
             if (body.Node is { } node && GodotObject.IsInstanceValid(node))
@@ -256,6 +339,7 @@ public sealed partial class ServerPlanetTerrains : IServerTickParticipant, IPlan
             return;
         }
 
+        ShipViewers.RemovePlanet(planet);
         _service.RemovePlanet(planet);
         body.Node = null;
         LogDeactivated(_logger, planet.Value, ActiveCount);
@@ -276,8 +360,30 @@ public sealed partial class ServerPlanetTerrains : IServerTickParticipant, IPlan
     [LoggerMessage(Level = LogLevel.Debug, Message = "Planet {Planet} terrain lease released ({Reason}).")]
     private static partial void LogLeaseReleased(ILogger logger, ulong planet, PlanetLeaseReason reason);
 
-    private sealed class Body(PlanetParams planet, VoxelGenerator generator, DerivedLodRebuilder? mipmaps)
+    private sealed class Body(PlanetParams planet, VoxelGenerator generator, DerivedLodRebuilder? mipmaps, PlanetSurfaceSampler sampler)
     {
+        /// <summary>Cosine of the angle under which a cached ground radius is reused (about 0.5 m at R = 4 km).</summary>
+        private const float SameDirectionCos = 0.99999998f;
+
+        private Vector3 _lastDirection;
+        private float _lastGround = float.NaN;
+
+        public PlanetSurfaceSampler Sampler { get; } = sampler;
+
+        public float GroundRadius(Vector3 direction)
+        {
+            var length = direction.Length();
+            var unit = length > 1e-6f ? direction / length : Vector3.UnitY;
+            if (!float.IsNaN(_lastGround) && Vector3.Dot(unit, _lastDirection) >= SameDirectionCos)
+            {
+                return _lastGround;
+            }
+
+            _lastDirection = unit;
+            _lastGround = Sampler.SurfaceRadius(unit);
+            return _lastGround;
+        }
+
         public PlanetParams Planet { get; } = planet;
 
         public VoxelGenerator Generator { get; } = generator;

@@ -217,6 +217,7 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
 
         var viewer = new VoxelViewer { ViewDistance = (uint)ServerViewerDistance, RequiresVisuals = false, RequiresCollisions = true };
         body.AddChild(viewer);
+        character.Viewer = viewer;
 
         var index = _ordered.FindIndex(other => other.Player.Value > player.Value);
         _ordered.Insert(index < 0 ? _ordered.Count : index, character);
@@ -301,6 +302,16 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
                 i--;
             }
         }
+    }
+
+    /// <summary>The collision viewer of a body (K5-22 hook for the terrain tick governor, decision 7; the viewer stays a child of the body).</summary>
+    /// <param name="player">The player.</param>
+    /// <param name="viewer">The viewer when the player has a body.</param>
+    /// <returns>Whether the player has a body.</returns>
+    public bool TryGetViewer(PlayerId player, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out VoxelViewer? viewer)
+    {
+        viewer = _byPlayer.TryGetValue(player, out var character) ? character.Viewer : null;
+        return viewer is not null && IsInstanceValid(viewer);
     }
 
     /// <summary>Reads the state of a body.</summary>
@@ -536,6 +547,8 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
         public GroundProbe Probe { get; } = probe;
 
         public GroundProbe TerrainProbe { get; } = new(planet.Id);
+
+        public VoxelViewer? Viewer { get; set; }
 
         public int Starved { get; set; }
 
