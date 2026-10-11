@@ -1,8 +1,10 @@
 using System.Buffers.Binary;
 
 using Horyzont.Core.Checkpoints;
+using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Protocol;
+using Horyzont.Core.Space;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -404,6 +406,112 @@ public static class StateCodec
     }
 
     /// <summary>
+    /// Writes a star system without a prefix (K5-21 decision 13; also the payload of <c>StarSystemState</c>):
+    /// [system u64][layout u8][home u64][sun cycle f32][count u8]{[planet u64][body index u8][position 3×f64][rotation 4×f64]}.
+    /// </summary>
+    /// <param name="w">Target writer.</param>
+    /// <param name="system">The star system.</param>
+    /// <exception cref="ArgumentException">The system breaks an invariant of <see cref="StarSystemParams"/>.</exception>
+    public static void WriteStarSystem(ByteWriter w, StarSystemParams system)
+    {
+        ArgumentNullException.ThrowIfNull(w);
+        ArgumentNullException.ThrowIfNull(system);
+        try
+        {
+            system.Validate();
+        }
+        catch (InvalidDataException ex)
+        {
+            throw new ArgumentException(ex.Message, nameof(system), ex);
+        }
+
+        w.WriteUInt64(system.System.Value);
+        w.WriteByte(system.LayoutVersion);
+        w.WriteUInt64(system.HomePlanet.Value);
+        w.WriteSingle(system.SunCycleSeconds);
+        w.WriteByte((byte)system.Bodies.Count);
+        foreach (var body in system.Bodies)
+        {
+            w.WriteUInt64(body.Planet.Value);
+            w.WriteByte(body.BodyIndex);
+            WriteDouble(w, body.Pose.Position.X);
+            WriteDouble(w, body.Pose.Position.Y);
+            WriteDouble(w, body.Pose.Position.Z);
+            WriteDouble(w, body.Pose.Rotation.X);
+            WriteDouble(w, body.Pose.Rotation.Y);
+            WriteDouble(w, body.Pose.Rotation.Z);
+            WriteDouble(w, body.Pose.Rotation.W);
+        }
+    }
+
+    /// <summary>Reads a star system written by <see cref="WriteStarSystem"/>.</summary>
+    /// <param name="r">Reader.</param>
+    /// <returns>The star system.</returns>
+    /// <exception cref="ProtocolViolationException">
+    /// Truncated data, NaN or infinities, 0 or more than 8 bodies, duplicates, a missing home planet or body 0 off the origin.
+    /// </exception>
+    public static StarSystemParams ReadStarSystem(ref ByteReader r)
+    {
+        var system = new SystemId(r.ReadUInt64());
+        var layout = r.ReadByte();
+        var home = new PlanetId(r.ReadUInt64());
+        var sun = r.ReadSingle();
+        var count = r.ReadByte();
+        if (count is 0 or > StarSystemRules.MaxBodies)
+        {
+            throw new ProtocolViolationException($"Star system with {count} bodies.");
+        }
+
+        var bodies = new BodyPlacement[count];
+        for (var i = 0; i < count; i++)
+        {
+            var planet = new PlanetId(r.ReadUInt64());
+            var index = r.ReadByte();
+            var position = new Vector3D(ReadDouble(ref r), ReadDouble(ref r), ReadDouble(ref r));
+            var rotation = new QuaternionD(ReadDouble(ref r), ReadDouble(ref r), ReadDouble(ref r), ReadDouble(ref r));
+            bodies[i] = new BodyPlacement(planet, index, new PoseD(position, rotation));
+        }
+
+        var result = new StarSystemParams(system, layout, home, sun, bodies);
+        try
+        {
+            result.Validate();
+        }
+        catch (InvalidDataException ex)
+        {
+            throw new ProtocolViolationException(ex.Message);
+        }
+
+        return result;
+    }
+
+    /// <summary>Encodes a star system as a SQLite blob (<see cref="BlobKind.StarSystemParams"/>).</summary>
+    /// <param name="system">The star system.</param>
+    /// <returns>The blob.</returns>
+    /// <exception cref="ArgumentException">The system breaks an invariant.</exception>
+    public static byte[] EncodeStarSystemBlob(StarSystemParams system)
+    {
+        var w = new ByteWriter();
+        w.WriteByte((byte)BlobKind.StarSystemParams);
+        w.WriteByte(CurrentFormatVersion);
+        WriteStarSystem(w, system);
+        return w.WrittenSpan.ToArray();
+    }
+
+    /// <summary>Decodes a star system blob.</summary>
+    /// <param name="blob">Blob bytes.</param>
+    /// <returns>The star system.</returns>
+    /// <exception cref="ProtocolViolationException">The blob is damaged (see <see cref="ReadStarSystem"/>).</exception>
+    public static StarSystemParams DecodeStarSystemBlob(ReadOnlySpan<byte> blob)
+    {
+        ValidateBlobHeader(blob, BlobKind.StarSystemParams);
+        var r = new ByteReader(blob.Slice(2));
+        var result = ReadStarSystem(ref r);
+        r.EnsureEnd();
+        return result;
+    }
+
+    /// <summary>
     /// Encodes a terrain block envelope: [kind][format version][voxel format][u32 length][voxels]. The whole blob is also the
     /// payload of <c>TerrainBlockData</c>, so it never exceeds <see cref="ProtocolConstants.MaxTerrainBlockDataBytes"/>.
     /// </summary>
@@ -468,6 +576,19 @@ public static class StateCodec
         }
 
         return new TerrainBlockBlob(voxelFormat, blob[TerrainBlockHeaderBytes..].ToArray());
+    }
+
+    private static void WriteDouble(ByteWriter w, double value) => w.WriteUInt64(BitConverter.DoubleToUInt64Bits(value));
+
+    private static double ReadDouble(ref ByteReader r)
+    {
+        var value = BitConverter.UInt64BitsToDouble(r.ReadUInt64());
+        if (!double.IsFinite(value))
+        {
+            throw new ProtocolViolationException("Double value must be finite.");
+        }
+
+        return value;
     }
 
     private static void ValidateBlobHeader(ReadOnlySpan<byte> blob, BlobKind expectedKind)

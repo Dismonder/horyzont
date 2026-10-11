@@ -17,4 +17,7 @@ public enum BlobKind : byte
 
     /// <summary>The voxels of one LOD 0 terrain block (K2-09); the payload format is opaque to Core.</summary>
     TerrainBlock = 5,
+
+    /// <summary>The star system of a world (K5-21): placement of the bodies and the sun cycle.</summary>
+    StarSystemParams = 10,
 }
