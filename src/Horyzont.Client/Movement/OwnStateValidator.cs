@@ -100,8 +100,8 @@ public sealed class OwnStateValidator
             return verdict;
         }
 
-        var mode = entity.MotionFlags <= (byte)MovementMode.DevFlying ? (MovementMode)entity.MotionFlags : MovementMode.Falling;
-        if (entity.MotionFlags > (byte)MovementMode.DevFlying)
+        var mode = entity.MotionFlags <= (byte)MovementMode.Gliding ? (MovementMode)entity.MotionFlags : MovementMode.Falling;
+        if (entity.MotionFlags > (byte)MovementMode.Gliding)
         {
             if (_unknownFlags++ % LogEvery == 0)
             {

@@ -62,6 +62,7 @@ public sealed partial class GameComposition
         _ownTerrain?.FrameNodes = nodes;
         DayNight?.FrameNodes = nodes;
         Tools?.FrameNodes = nodes;
+        ConfigureSeats(frames, mirror);
         if (_env.Render)
         {
             // K5-24: the flight HUD; the ship status from ShipStatus 31 (K5-26).

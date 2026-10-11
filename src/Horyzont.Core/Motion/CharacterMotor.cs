@@ -58,6 +58,10 @@ public static class CharacterMotor
         var velocity = context.PreviousMode == MovementMode.DevFlying ? Vector3.Zero : context.Velocity;
         var radial = Vector3.Dot(velocity, up);
         var horizontal = velocity - (up * radial);
+        if (context.PreviousMode == MovementMode.Gliding && !context.OnFloor)
+        {
+            return Glide(input, context, rules, dt, up, forward, right, rotation, radial, horizontal);
+        }
 
         var moveLength = MathF.Sqrt((input.MoveX * input.MoveX) + (input.MoveY * input.MoveY));
         var scale = moveLength > 1f ? 1f / moveLength : 1f;
@@ -100,6 +104,27 @@ public static class CharacterMotor
         }
 
         return new MotorOutput(horizontal + (up * radial), up, rotation, mode);
+    }
+
+    /// <summary>
+    /// K5-25 decision 19: the suit glide after an ejection keeps the inherited velocity, damps its horizontal part, steers
+    /// toward the walk speed and clamps the fall speed; it ends on the floor (walking).
+    /// </summary>
+    private static MotorOutput Glide(
+        in MotorInput input, in MotorContext context, MovementRules rules, float dt, Vector3 up, Vector3 forward, Vector3 right,
+        Quaternion rotation, float radial, Vector3 horizontal)
+    {
+        horizontal *= MathF.Max(0f, 1f - (rules.GlideHorizontalDamping * dt));
+        var moveLength = MathF.Sqrt((input.MoveX * input.MoveX) + (input.MoveY * input.MoveY));
+        if (moveLength > 0f)
+        {
+            var scale = moveLength > 1f ? 1f / moveLength : 1f;
+            var wanted = ((right * (input.MoveX * scale)) + (forward * (input.MoveY * scale))) * rules.WalkSpeed;
+            horizontal = MoveToward(horizontal, wanted, rules.AirAcceleration * dt);
+        }
+
+        radial = MathF.Max(radial + (Vector3.Dot(GravityAt(context.Feet, context.Planet), up) * dt), -rules.SuitGlideFallSpeed);
+        return new MotorOutput(horizontal + (up * radial), up, rotation, MovementMode.Gliding);
     }
 
     private static Vector3 DevFlyVelocity(

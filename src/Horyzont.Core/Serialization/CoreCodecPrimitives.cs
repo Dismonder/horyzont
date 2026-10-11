@@ -10,7 +10,8 @@ internal static class CoreCodecPrimitives
     /// <summary>True for every defined <see cref="RejectReason"/>: 0-21 (Planet) and the Space reasons 30, 31, 37, 39.</summary>
     public static bool IsKnownRejectReason(byte value) =>
         value <= (byte)RejectReason.ServerReadOnly
-        || value is (byte)RejectReason.NoCockpit or (byte)RejectReason.ShipAnchored or (byte)RejectReason.NoEngine or (byte)RejectReason.ShipNotParked;
+        || value is (byte)RejectReason.NoCockpit or (byte)RejectReason.ShipAnchored or (byte)RejectReason.NoEngine or (byte)RejectReason.ShipNotParked
+        || value is (>= (byte)RejectReason.SeatOccupied and <= (byte)RejectReason.NotPilot) or (byte)RejectReason.ConstructNotEmpty;
 
     public static void WriteFrameRef(ByteWriter w, FrameRef f)
     {

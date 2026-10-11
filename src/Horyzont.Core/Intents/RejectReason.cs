@@ -77,6 +77,21 @@ public enum RejectReason : byte
     /// <summary>A block of the construct is embedded in terrain; K5-23.</summary>
     ShipAnchored = 31,
 
+    /// <summary>The seat is taken, also by an offline player; K5-25.</summary>
+    SeatOccupied = 32,
+
+    /// <summary>The seat is farther than the seat reach from the eye; K5-25.</summary>
+    SeatOutOfReach = 33,
+
+    /// <summary>The ship is too fast or too high to eject (or not in a planet frame); K5-25.</summary>
+    EjectTooFast = 34,
+
+    /// <summary>Only the pilot (the player in the control cockpit) may do this; K5-25.</summary>
+    NotPilot = 35,
+
+    /// <summary>Something is still in the frame of the construct; K5-25.</summary>
+    ConstructNotEmpty = 38,
+
     /// <summary>The construct has no engine (or the change would remove the last engine of a ship); K5-23.</summary>
     NoEngine = 37,
 

@@ -118,7 +118,8 @@ public sealed class ServerCharactersBinder : IServerTickParticipant, IServerPlay
         _characters = new ServerCharacters(
             runtime.Simulation, new SessionInputSource(runtime.Session), terrain.Voxel, _rules, _movement, _devFlightAllowed,
             _loggers.CreateLogger<ServerCharacters>(), constructsReady: _constructsReady,
-            frames: _frames is { } frames ? () => frames.EnsureWorld(runtime) : null, frameNodes: _frameNodes);
+            frames: _frames is { } frames ? () => frames.EnsureWorld(runtime) : null, frameNodes: _frameNodes,
+            ejects: new EjectVelocities(runtime.Simulation));
         _parent.AddChild(_characters);
         _sender = new OwnStateSender(runtime.Session, runtime.Simulation, _characters);
         return _characters;

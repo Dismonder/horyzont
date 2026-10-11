@@ -66,6 +66,11 @@ public sealed class RemoteMotionBuffer
             {
                 distanceLimit = Math.Max(distanceLimit, _flightSpeed * ((sample.ServerTick.Value - last.ServerTick.Value) / _tickRate));
             }
+            else if (sample.MotionFlags == (byte)MovementMode.Gliding && last.MotionFlags == sample.MotionFlags)
+            {
+                // The suit glide after an ejection keeps the ship velocity (up to 30 m/s, K5-25 decision 19): it moves that far.
+                distanceLimit += last.Velocity.Length() * ((sample.ServerTick.Value - last.ServerTick.Value) / _tickRate);
+            }
             if (rebased)
             {
                 // Rebased samples keep their world motion, which in the new frame may be a ship's speed (K5-20).

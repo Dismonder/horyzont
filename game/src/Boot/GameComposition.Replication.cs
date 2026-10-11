@@ -10,6 +10,7 @@ using Horyzont.Game.Client.Tools;
 using Horyzont.Game.Constructs;
 using Horyzont.Game.Server.Replication;
 using Horyzont.Server.Replication;
+using Horyzont.Server.Ships;
 
 namespace Horyzont.Game.Boot;
 
@@ -66,7 +67,8 @@ public sealed partial class GameComposition
         MotionBudget = new MotionSnapshotBudget(_env.Time);
         _replicationBinder = new EntityReplicationBinder(
             runtime => _characters.Characters is { } characters ? new ServerReplicationSource(runtime.State, characters) : null,
-            _env.Time, _env.Loggers, MotionBudget);
+            _env.Time, _env.Loggers, MotionBudget,
+            corrections: runtime => new ShipCorrectionSender(runtime.Simulation, () => Flight?.Flight, () => Flight?.Pilot));
         _replicationBinder.Register(Server);
     }
 
@@ -123,6 +125,7 @@ public sealed partial class GameComposition
         var scene = GD.Load<PackedScene>(ToolsScene) ?? throw new InvalidOperationException($"Scene {ToolsScene} not found.");
         var tools = scene.Instantiate<ToolNode>();
         tools.FrameNodes = ClientFrameNodes;
+        tools.OwnSeat = OwnSeat;
         var prediction = new ConstructPrediction(mirror, () => tools.Ticks);
         BlockPrediction = prediction;
         tools.Initialize(

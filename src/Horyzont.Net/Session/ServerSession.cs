@@ -239,6 +239,72 @@ public sealed class ServerSession
         return false;
     }
 
+    /// <summary>
+    /// Consumes pilot input slot <paramref name="slot"/> of an InGame player (K5-25 R1): older inputs are dropped, the input of the
+    /// slot is returned when it arrived, and a later arrival for the slot is refused.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <param name="slot">The slot.</param>
+    /// <param name="input">The input of the slot.</param>
+    /// <returns>True when the input of the slot was buffered.</returns>
+    public bool TryTakeShipInput(PlayerId player, uint slot, out ShipInput input)
+    {
+        if (TryGetShipInputs(player, out var inputs))
+        {
+            return inputs.TryTakeSlot(slot, out input);
+        }
+
+        input = default;
+        return false;
+    }
+
+    /// <summary>The newest pilot input number an InGame player sent since the last clear, buffered or late (anchoring, K5-25 R1).</summary>
+    /// <param name="player">The player.</param>
+    /// <param name="seq">The number.</param>
+    /// <returns>False when nothing is buffered.</returns>
+    public bool TryPeekNewestShipSeq(PlayerId player, out uint seq)
+    {
+        if (TryGetShipInputs(player, out var inputs))
+        {
+            return inputs.TryPeekNewestReceived(out seq);
+        }
+
+        seq = 0;
+        return false;
+    }
+
+    /// <summary>Accepts pilot inputs numbered from <paramref name="slot"/> again (re-anchoring behind the consumed slots, K5-25 R1).</summary>
+    /// <param name="player">The player.</param>
+    /// <param name="slot">The first slot to accept again.</param>
+    public void RewindShipInputs(PlayerId player, uint slot)
+    {
+        if (TryGetShipInputs(player, out var inputs))
+        {
+            inputs.Rewind(slot);
+        }
+    }
+
+    /// <summary>Pilot inputs of a player refused because their slot was already consumed (a client behind the server, K5-25 R1).</summary>
+    /// <param name="player">The player.</param>
+    /// <returns>The count since the last <see cref="ClearShipInputs"/>.</returns>
+    public int ShipInputLateCount(PlayerId player) => TryGetShipInputs(player, out var inputs) ? inputs.LateCount : 0;
+
+    /// <summary>Forgets the pilot inputs of a player (a seat change, a re-anchoring).</summary>
+    /// <param name="player">The player.</param>
+    public void ClearShipInputs(PlayerId player)
+    {
+        if (_byPlayer.TryGetValue(player, out var peer))
+        {
+            peer.ShipInputs?.Clear();
+        }
+    }
+
+    private bool TryGetShipInputs(PlayerId player, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out SequencedInputBuffer<ShipInput>? inputs)
+    {
+        inputs = _byPlayer.TryGetValue(player, out var peer) && peer.State == PeerState.InGame ? peer.ShipInputs : null;
+        return inputs is not null;
+    }
+
     /// <summary>Returns the transport endpoint of a connected player (a host tells its local player from remote ones with it).</summary>
     /// <param name="player">The player.</param>
     /// <returns>The remote endpoint, or null for a player that is not connected.</returns>
@@ -519,6 +585,9 @@ public sealed class ServerSession
             case InputBatch batch:
                 peer.Inputs?.Add(batch.FirstSeq, batch.Inputs);
                 break;
+            case ShipInputBatch shipBatch:
+                peer.ShipInputs?.Add(shipBatch.FirstSeq, shipBatch.Inputs);
+                break;
             case Ping ping:
                 SendMessage(peer, new Pong(ping.ClientTimeMicros, _currentTick));
                 break;
@@ -572,6 +641,7 @@ public sealed class ServerSession
         peer.Identity = hello.Identity;
         peer.State = PeerState.Loading;
         peer.Inputs = new InputBuffer(_options.InputBufferCapacity);
+        peer.ShipInputs = new SequencedInputBuffer<ShipInput>(_options.ShipInputBufferCapacity);
         _byPlayer.Add(player, peer);
         _joinedIdentities.Add(hello.Identity);
         _logger.PlayerJoined(player.Value, peer.Connection.Value);

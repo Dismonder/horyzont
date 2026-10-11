@@ -391,17 +391,7 @@ public sealed class ServerSimulation
         return buckets;
     }
 
-    private Vector3 SpawnPoint(PlanetParams planet)
-    {
-        var top = planet.RadiusMeters + planet.AtmosphereHeightMeters;
-        var origin = new Vector3(0f, top, 0f);
-        if (_terrain.Raycast(planet.Id, origin, -Vector3.UnitY, top, out var hit))
-        {
-            return hit.Position + (TerrainMath.UpAt(hit.Position) * 0.1f);
-        }
-
-        return new Vector3(0f, planet.RadiusMeters + 0.1f, 0f);
-    }
+    private Vector3 SpawnPoint(PlanetParams planet) => RespawnPoints.WorldStart(planet, _terrain);
 
     private void Fault(Exception exception, OpId id, OperationKind kind)
     {

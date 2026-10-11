@@ -42,6 +42,9 @@ public sealed record ServerOptions
     /// <summary>Gets the most inputs buffered per player.</summary>
     public int InputBufferCapacity { get; init; } = 8;
 
+    /// <summary>Pilot inputs buffered per player (K5-25): the delay of two slots plus jitter.</summary>
+    public int ShipInputBufferCapacity { get; init; } = 16;
+
     /// <summary>Gets the reliable messages accepted per second from one peer (burst: two seconds).</summary>
     public int ReliableMessagesPerSecond { get; init; } = 200;
 

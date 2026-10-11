@@ -20,4 +20,7 @@ public enum MovementMode : byte
 
     /// <summary>Developer flight: no gravity, free direction.</summary>
     DevFlying = 5,
+
+    /// <summary>Suit glide after an ejection: the fall speed is clamped (K5-25 decision 19).</summary>
+    Gliding = 6,
 }

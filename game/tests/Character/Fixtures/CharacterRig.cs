@@ -104,16 +104,18 @@ internal sealed class CharacterRig : IAsyncDisposable
     /// <param name="devFlight">Whether dev flight is allowed.</param>
     /// <param name="constructsReady">Readiness of asynchronous construct collision.</param>
     /// <param name="morePlanets">Planets of the world besides the terrain planet (without terrain).</param>
+    /// <param name="ejects">Whether the server bodies get the ejection velocities (K5-25).</param>
     /// <returns>The rig.</returns>
     public static async Task<CharacterRig> CreateAsync(
         EngineTestScene scene, Func<Godot.VoxelGenerator>? generator = null, MovementRules? movement = null,
         Func<PlanetParams, Vector3, Vector3>? rescue = null, bool devFlight = false,
-        Func<PlanetId, Vector3, bool>? constructsReady = null, PlanetParams[]? morePlanets = null)
+        Func<PlanetId, Vector3, bool>? constructsReady = null, PlanetParams[]? morePlanets = null, bool ejects = false)
     {
         var world = await TerrainTestWorld.CreateAsync(scene, generator: generator, morePlanets: morePlanets);
         var inputs = new FakeInputSource();
         var log = new RecordingLogger<ServerCharacters>();
-        var characters = new ServerCharacters(world.Sim, inputs, world.Service, new GameRules(), movement ?? new MovementRules(), devFlight, log, rescue, constructsReady);
+        var characters = new ServerCharacters(world.Sim, inputs, world.Service, new GameRules(), movement ?? new MovementRules(), devFlight, log, rescue, constructsReady,
+            ejects: ejects ? new Horyzont.Server.Frames.EjectVelocities(world.Sim) : null);
         scene.Add(characters);
         var stepper = scene.Add(new PhysicsStepper());
         var rig = new CharacterRig(scene, world, characters, inputs, log, stepper);

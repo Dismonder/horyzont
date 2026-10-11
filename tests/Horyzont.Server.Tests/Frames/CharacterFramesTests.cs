@@ -29,6 +29,21 @@ public sealed class CharacterFramesTests
     }
 
     [Fact]
+    public void CharacterFrames_ConstructToPlanetWithVelocity_Glide()
+    {
+        var rig = new FrameRig();
+        var eject = new Vector3(0, 0, 12);
+
+        Assert.Equal(
+            CharacterFrameAction.Glide,
+            CharacterFrames.Decide(rig.Graph, _home, 1, FrameKind.Construct, FrameRef.Of(_home), 2, eject, out var planet));
+        Assert.Equal(_home, planet);
+        Assert.Equal(CharacterFrameAction.Walk, CharacterFrames.Decide(rig.Graph, _home, 1, FrameKind.Construct, FrameRef.Of(_home), 2, Vector3.Zero, out _));
+        Assert.Equal(CharacterFrameAction.Walk, CharacterFrames.Decide(rig.Graph, _home, 1, FrameKind.Planet, FrameRef.Of(_home), 2, eject, out _));
+        Assert.Equal(CharacterFrameAction.Respawn, CharacterFrames.Decide(rig.Graph, _home, 1, FrameKind.Construct, FrameRef.Of(_other), 2, eject, out _));
+    }
+
+    [Fact]
     public void CharacterFrames_BackToTheBodyPlanet_Walk()
     {
         var rig = new FrameRig();

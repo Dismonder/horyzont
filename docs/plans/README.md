@@ -265,7 +265,7 @@ Typy 30, 31, 34 dopisać do listy zawodnych w `MessageChannels` i w `MessageChan
 | Ruch | Mechanizm | Wartość |
 | --- | --- | --- |
 | Migawki (statki i pasażerowie jako zwykłe byty) | `ISnapshotBudget` | 20 480 B/s bez zmian |
-| `ShipCorrection` (K5-25, przy migawce pilota) | wliczona do `ISnapshotBudget` tej samej rundy | ~73 B (≤ 81 B; przegląd K5-25 R2/R12) × 20 Hz |
+| `ShipCorrection` (K5-25, przy migawce pilota) | wliczona do `ISnapshotBudget` tej samej rundy | ~75 B ładunku z typem i wersją (73 B treści; ≤ 83 B; przegląd K5-25 R2/R12/R13) × 20 Hz ≈ 1,5 KB/s |
 | `ConstructState` statków (priorytety K5-26), `OperationApplied` (op 20, 22, 23, przepięcia na żywo — Y8), `MarkersState` (`Bulk`, jednorazowo ≤ ~37 KB) | wspólny `IReplicationSendBudget` | 27 000 B/s bez zmian |
 | `StarSystemState` (jednorazowo ≤ ~560 B), `ShipStatus` (2 Hz, ~45 B), `IntentReply`, `EntitySpawn/Despawn` | poza budżetem (sterowanie) | razem w zapasie ~2,5 KB/s |
 
@@ -344,6 +344,7 @@ Kolejność K5: (wykonawcy dopisują tu po scaleniu: pakiet, PR, `ProtocolVersio
 - K5-24 — PR: (numer przy otwarciu), `ProtocolVersion` = 11 (main 10 po K5-22 + 1, D4; scalenie gałęzi K5-22 i `origin/main`; op 21 `ShipFuelAdd`, intencja 13 `Refuel`, odmowa 39 `ShipNotParked`, blob 12 `ShipState`).
 - K5-26 — PR: (numer przy otwarciu), `ProtocolVersion` = 13 (main 12 po K5-27 + 1, D4; scalenie `origin/main` z K5-27; komunikat 31 `ShipStatus`, fotel w `EntitySpawn.KindData` gracza).
 - K5-27 — PR: (numer przy otwarciu), `ProtocolVersion` = 12 (main 11 po K5-24 + 1, D4; scalenie `origin/main` z K5-22 i K5-24; wiadomość 33, op 22/23, intencje 14/15, odmowa 36, blob 11).
+- K5-25 — PR: (numer przy otwarciu), `ProtocolVersion` = 14 (main 13 po K5-26 + 1, D4; scalenie `origin/main` z K5-26 i K5-27; intencje 11 `SeatEnter`, 12 `SeatExit`, 16 `SeatEvict`, odmowy 32–35 i 38, komunikaty 30 `ShipInputBatch` i 34 `ShipCorrection`, `MovementMode` 6 `Gliding`, `ShipLaunchBlock` 2 `PersonInHull`). Scalone z K5-26 i K5-27 (fotel w `KindData` i `ShipStatus` 31 z main); `ShipPoseOverride` zob. odstępstwa w PR.
 
 ## Szablon planu pakietu
 

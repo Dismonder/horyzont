@@ -1,5 +1,6 @@
 using Horyzont.Core.Ids;
 using Horyzont.Core.Protocol;
+using Horyzont.Core.Protocol.Messages;
 using Horyzont.Net.Transport;
 
 namespace Horyzont.Net.Session;
@@ -45,6 +46,9 @@ internal sealed class Peer
 
     /// <summary>Gets or sets the input buffer, allocated when the player joins; null before the handshake.</summary>
     public InputBuffer? Inputs { get; set; }
+
+    /// <summary>Gets or sets the pilot input buffer (K5-25), allocated with <see cref="Inputs"/>.</summary>
+    public SequencedInputBuffer<ShipInput>? ShipInputs { get; set; }
 
     /// <summary>Gets a value indicating whether the player passed OnPlayerJoining and has not left.</summary>
     public bool IsJoined => State is PeerState.Loading or PeerState.InGame;

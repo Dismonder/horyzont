@@ -22,9 +22,14 @@ internal static class IntentResolver
         MarkerSetIntent set => ResolveMarkerSet(state, set, player),
         MarkerRemoveIntent remove => new MarkerRemoveOp(remove.Marker),
         RefuelIntent refuel => new ShipFuelAddOp(refuel.Ship, facts.Amount, facts.Amount),
+        SeatEnterIntent => Reparent(facts, facts.Cell),
+        SeatExitIntent or SeatEvictIntent => Reparent(facts, null),
         _ => throw new InvalidOperationException($"Intent {intent.GetType().Name} passed validation but has no resolution."),
     };
 
+    /// <summary>K5-25: every seat intent is one reparent; the validator found the pose, the frame and the velocity.</summary>
+    private static EntityReparentOp Reparent(IntentFacts facts, CellPos? seat) =>
+        new(facts.Entity, facts.Frame, facts.ParentSeq + 1, facts.Point, facts.Rotation, facts.Velocity, seat);
     private static MarkerSetOp ResolveMarkerSet(WorldState state, MarkerSetIntent intent, PlayerId player)
     {
         if (intent.Marker.IsNone)

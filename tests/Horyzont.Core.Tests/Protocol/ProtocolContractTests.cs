@@ -37,14 +37,16 @@ public sealed class ProtocolContractTests
             (RejectReason.UnknownConstruct, 12), (RejectReason.CellOutOfBounds, 13), (RejectReason.CellOccupied, 14), (RejectReason.CellEmpty, 15),
             (RejectReason.UnknownBlockType, 16), (RejectReason.UnknownMaterial, 17), (RejectReason.IntersectsPlayer, 18),
             (RejectReason.NoLineOfSight, 19), (RejectReason.WrongPlanet, 20), (RejectReason.ServerReadOnly, 21),
-            (RejectReason.NoCockpit, 30), (RejectReason.ShipAnchored, 31), (RejectReason.NoEngine, 37), (RejectReason.MarkerLimit, 36), (RejectReason.ShipNotParked, 39));
+            (RejectReason.NoCockpit, 30), (RejectReason.ShipAnchored, 31), (RejectReason.SeatOccupied, 32), (RejectReason.SeatOutOfReach, 33),
+            (RejectReason.EjectTooFast, 34), (RejectReason.NotPilot, 35), (RejectReason.MarkerLimit, 36), (RejectReason.NoEngine, 37),
+            (RejectReason.ConstructNotEmpty, 38), (RejectReason.ShipNotParked, 39));
         AssertValues((MessageType.ClientHello, 1), (MessageType.ServerHello, 2), (MessageType.HandshakeReject, 3), (MessageType.ClientReady, 4),
             (MessageType.TerrainCacheReport, 5), (MessageType.TerrainBlockData, 6), (MessageType.TerrainChecksums, 7), (MessageType.ConstructState, 8),
             (MessageType.ConstructRemoved, 9), (MessageType.OperationApplied, 10), (MessageType.IntentSubmit, 11), (MessageType.IntentReply, 12),
             (MessageType.InputBatch, 13), (MessageType.Snapshot, 14), (MessageType.SnapshotAck, 15), (MessageType.EntitySpawn, 16),
             (MessageType.EntityDespawn, 17), (MessageType.Ping, 18), (MessageType.Pong, 19), (MessageType.Disconnect, 20), (MessageType.ResyncRequest, 21), (MessageType.ServerStatus, 22), (MessageType.JoinUnavailable, 23), (MessageType.TerrainSync, 24), (MessageType.TerrainView, 25),
-            (MessageType.ShipStatus, 31), (MessageType.StarSystemState, 32),
-            (MessageType.MarkersState, 33));
+            (MessageType.ShipInputBatch, 30), (MessageType.ShipStatus, 31), (MessageType.StarSystemState, 32),
+            (MessageType.MarkersState, 33), (MessageType.ShipCorrection, 34));
         AssertValues((DeliveryChannel.ReliableOrdered, 0), (DeliveryChannel.Unreliable, 1));
         AssertValues((HandshakeRejectCode.WrongProtocol, 1), (HandshakeRejectCode.WrongBuild, 2), (HandshakeRejectCode.ServerFull, 3),
             (HandshakeRejectCode.BadPassword, 4), (HandshakeRejectCode.Banned, 5), (HandshakeRejectCode.AlreadyConnected, 6),
@@ -86,12 +88,17 @@ public sealed class ProtocolContractTests
         Assert.Throws<ProtocolViolationException>(() => MessageCodec.Read(beyond));
     }
 
-    /// <summary>The Space reject reasons of K5-23 and K5-24 round-trip; the gaps of the 30-39 range stay undefined until their packages.</summary>
+    /// <summary>The Space reject reasons of K5-23, K5-24 and K5-25 round-trip; the gaps of the 30-39 range stay undefined until their packages.</summary>
     [Theory]
     [InlineData(RejectReason.NoCockpit, 30)]
     [InlineData(RejectReason.ShipAnchored, 31)]
     [InlineData(RejectReason.NoEngine, 37)]
     [InlineData(RejectReason.ShipNotParked, 39)]
+    [InlineData(RejectReason.SeatOccupied, 32)]
+    [InlineData(RejectReason.SeatOutOfReach, 33)]
+    [InlineData(RejectReason.EjectTooFast, 34)]
+    [InlineData(RejectReason.NotPilot, 35)]
+    [InlineData(RejectReason.ConstructNotEmpty, 38)]
     public void RejectReason_KosmosValues_Golden(RejectReason reason, byte value)
     {
         var reply = new IntentReply(7, reason, OpId.None);
@@ -102,7 +109,7 @@ public sealed class ProtocolContractTests
 
         Assert.Equal(new byte[] { 12, 1, 7, value, 0 }, bytes);
         Assert.Equal(reply, MessageCodec.Read(bytes));
-        foreach (byte undefined in new byte[] { 22, 29, 32, 33, 34, 35, 38, 40, 255 })
+        foreach (byte undefined in new byte[] { 22, 29, 40, 255 })
         {
             var copy = (byte[])bytes.Clone();
             copy[3] = undefined;
@@ -119,19 +126,21 @@ public sealed class ProtocolContractTests
     /// K5-24 adds ShipFuelAddOp (21), RefuelIntent (13) and ShipNotParked (39) after K5-22 (main 10): 11.
     /// K5-27 adds MarkersState (33), operations 22/23, intents 14/15, reject reason 36 and blob 11 after K5-24 (main 11): 12.
     /// K5-26 adds ShipStatus (31) and the seat in a player's EntitySpawn.KindData after K5-27 (main 12): 13.
+    /// K5-25 adds seat intents 11, 12, 16, reject reasons 32-35 and 38, ShipInputBatch (30), ShipCorrection (34), Gliding and
+    /// PersonInHull after K5-26 (main 13): 14.
     /// A rebase onto a newer main updates this value, the constant and the package plan together.
     /// </summary>
     [Fact]
     public void ProtocolVersion_MatchesDocumentedMergeValue()
     {
-        Assert.Equal(13, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(14, ProtocolConstants.ProtocolVersion);
         Assert.Equal(0x3F, ProtocolConstants.InputButtonsMask);
     }
 
     [Fact]
     public void Constants_GoldenValues()
     {
-        Assert.Equal(13, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(14, ProtocolConstants.ProtocolVersion);
         Assert.Equal(262144, ProtocolConstants.MaxReliableMessageBytes);
         Assert.Equal(1150, ProtocolConstants.MaxUnreliableMessageBytes);
         Assert.Equal(32, ProtocolConstants.MaxDisplayNameBytes);
@@ -145,7 +154,7 @@ public sealed class ProtocolContractTests
     [Fact]
     public void MessageChannels_MapsEveryType()
     {
-        var unreliable = new[] { MessageType.InputBatch, MessageType.Snapshot, MessageType.SnapshotAck, MessageType.Ping, MessageType.Pong, MessageType.ShipStatus };
+        var unreliable = new[] { MessageType.InputBatch, MessageType.Snapshot, MessageType.SnapshotAck, MessageType.Ping, MessageType.Pong, MessageType.ShipInputBatch, MessageType.ShipCorrection, MessageType.ShipStatus };
         foreach (var type in Enum.GetValues<MessageType>())
         {
             var expected = unreliable.Contains(type) ? DeliveryChannel.Unreliable : DeliveryChannel.ReliableOrdered;
@@ -191,6 +200,8 @@ public sealed class ProtocolContractTests
             new ServerStatus(true, 2, "Writer unavailable"),
             new JoinUnavailable(1, "Terrain mismatch"),
             new StarSystemState(Horyzont.Core.Space.StarSystemGenesis.CreateWorldBodies(1, "core:planet/1").System),
+            new ShipInputBatch(1, [new ShipInput(1, default)]),
+            new ShipCorrection(new EntityId(1), 1, 0, Vector3.Zero, Quaternion.Identity, Vector3.Zero, Vector3.Zero, 0f, default, default, default, float.PositiveInfinity),
             new ShipStatus(new EntityId(1), default, 1f, 2f, 3f, default, default),
             new MarkersState([]),
         ];

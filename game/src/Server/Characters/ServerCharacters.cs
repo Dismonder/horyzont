@@ -60,6 +60,7 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
     private readonly Func<PlanetId, NumVector3, bool> _constructsReady;
     private readonly Func<FrameGraph?>? _frames;
     private readonly FrameNodes? _frameNodes;
+    private readonly EjectVelocities? _ejects;
     private readonly ILogger<ServerCharacters> _logger;
     private readonly List<Slot> _ordered = [];
     private readonly Dictionary<PlayerId, Slot> _byPlayer = [];
@@ -80,10 +81,12 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
     /// <param name="constructsReady">Whether collision at the saved pose is installed, including asynchronous construct meshing.</param>
     /// <param name="frames">The frame graph of the server (K5-20); by default a graph over the world with the first planet in identity.</param>
     /// <param name="frameNodes">The frame nodes of the server; planet-frame values of the bodies go through the planet nodes (identity without).</param>
+    /// <param name="ejects">Velocities of ejections from ships (K5-25 R4); without it an ejected body waits for the ground like a walk.</param>
     public ServerCharacters(
         ServerSimulation simulation, IInputSource inputs, VoxelTerrainService terrain, GameRules rules, MovementRules movement,
         bool devFlightAllowed, ILogger<ServerCharacters> logger, Func<PlanetParams, NumVector3, NumVector3>? rescue = null,
-        Func<PlanetId, NumVector3, bool>? constructsReady = null, Func<FrameGraph?>? frames = null, FrameNodes? frameNodes = null)
+        Func<PlanetId, NumVector3, bool>? constructsReady = null, Func<FrameGraph?>? frames = null, FrameNodes? frameNodes = null,
+        EjectVelocities? ejects = null)
     {
         ArgumentNullException.ThrowIfNull(simulation);
         ArgumentNullException.ThrowIfNull(inputs);
@@ -101,6 +104,7 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
         _constructsReady = constructsReady ?? ((_, _) => true);
         _frames = frames;
         _frameNodes = frameNodes;
+        _ejects = ejects;
         _logger = logger;
         _tickSeconds = 1f / rules.TickRate;
         Name = "Characters";
@@ -471,12 +475,21 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
     /// <returns>True when the slot was replaced (a spawn on another planet) and the tick of the old slot ends.</returns>
     private bool FollowReparent(Slot c, PlayerState simulated)
     {
-        var action = CharacterFrames.Decide(Graph, c.Planet.Id, c.Seq, simulated.Frame, simulated.ParentSeq, out _);
+        var body = c.Body;
+        var velocity = NumVector3.Zero;
+        _ejects?.TryTake(simulated.Entity, simulated.ParentSeq, out velocity);
+        var previous = body.Attached ? FrameKind.Construct : FrameKind.Planet;
+        var action = CharacterFrames.Decide(Graph, c.Planet.Id, c.Seq, previous, simulated.Frame, simulated.ParentSeq, velocity, out _);
         _logger.FrameChanged(c.Player.Value, simulated.Frame.Kind, simulated.Frame.Id, simulated.ParentSeq, action);
         c.Seq = simulated.ParentSeq;
-        var body = c.Body;
         switch (action)
         {
+            case CharacterFrameAction.Glide:
+                // K5-25 decision 19: ejected from a ship — the suit glide starts with the ship velocity, without the ground wait.
+                body.SetAttached(false);
+                body.Place(simulated.Position, velocity, NumQuaternion.Normalize(simulated.BodyRotation), MovementMode.Gliding, false);
+                c.FrozenTicks = 0;
+                return false;
             case CharacterFrameAction.Walk:
                 body.SetAttached(false);
                 body.Place(simulated.Position, NumVector3.Zero, NumQuaternion.Normalize(simulated.BodyRotation), MovementMode.Frozen, false);

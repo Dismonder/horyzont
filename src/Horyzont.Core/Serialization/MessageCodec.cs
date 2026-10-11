@@ -393,6 +393,14 @@ public static class MessageCodec
                 StateCodec.WriteStarSystem(w, starSystem.System);
                 break;
 
+            case ShipInputBatch sib:
+                ShipMessageCodec.WriteInputBatch(w, sib);
+                break;
+
+            case ShipCorrection sc:
+                ShipMessageCodec.WriteCorrection(w, sc);
+                break;
+
             case ShipStatus shipStatus:
                 WriteShipStatus(w, shipStatus);
                 break;
@@ -797,6 +805,12 @@ public static class MessageCodec
 
             case MessageType.StarSystemState:
                 return new StarSystemState(StateCodec.ReadStarSystem(ref r));
+
+            case MessageType.ShipInputBatch:
+                return ShipMessageCodec.ReadInputBatch(ref r);
+
+            case MessageType.ShipCorrection:
+                return ShipMessageCodec.ReadCorrection(ref r);
 
             case MessageType.ShipStatus:
                 return ReadShipStatus(ref r);

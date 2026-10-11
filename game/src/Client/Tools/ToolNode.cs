@@ -44,6 +44,7 @@ public sealed partial class ToolNode : Node, IClientSessionListener
     private ILogger<ToolNode>? _logger;
     private IToolWorldView? _view;
     private ShipModeSwitch? _ship;
+    private SeatInteraction? _seats;
     private long _tick;
     private int _accepted;
     private int _rejected;
@@ -71,6 +72,15 @@ public sealed partial class ToolNode : Node, IClientSessionListener
 
     /// <summary>Gets the ship mode key handler (K5-23); null while there is no controller.</summary>
     public ShipModeSwitch? Ship => _ship;
+
+    /// <summary>Gets the seat keys of the session (K5-25); null outside a session.</summary>
+    public SeatInteraction? Seats => _seats;
+
+    /// <summary>Gets or sets the own seat (K5-25); set by the composition before the session starts.</summary>
+    public IOwnSeatSource? OwnSeat { get; set; }
+
+    /// <summary>Gets the result of the last press of a seat key, or null.</summary>
+    public SeatUseResult? LastSeatUse { get; private set; }
 
     /// <summary>Gets the result of the latest press of the ship mode key.</summary>
     public ShipModeToggleResult? LastShipToggle { get; private set; }
@@ -186,6 +196,8 @@ public sealed partial class ToolNode : Node, IClientSessionListener
             _rules, _view, new SessionIntentSender(_client!.Session), Pending, Blocks, Materials, _loggers!.CreateLogger<ToolController>());
         var content = BlockContentTable.Create(hello.BlockTypes, BlockDefinitions ?? new Dictionary<string, BlockTypeDef>());
         _ship = new ShipModeSwitch(_view, new SessionIntentSender(_client.Session), Pending, content, _rules);
+        _seats = OwnSeat is { } own ? new SeatInteraction(_view, new SessionIntentSender(_client.Session), Pending, content, own, _rules) : null;
+        LastSeatUse = null;
         LastShipToggle = null;
         _accepted = 0;
         _rejected = 0;
@@ -225,6 +237,7 @@ public sealed partial class ToolNode : Node, IClientSessionListener
         Pending?.Clear();
         Controller = null;
         _ship = null;
+        _seats = null;
         Pending = null;
         _view = null;
         _prediction = null;
@@ -246,6 +259,13 @@ public sealed partial class ToolNode : Node, IClientSessionListener
         }
 
         var player = _player!;
+        if (_seats is { } seats && (frame.SeatUse || frame.SeatEvict) && _client!.Session.State == ClientState.InGame && seats.Seated)
+        {
+            // Seated (frozen, no aim): F leaves the seat or ejects.
+            LastSeatUse = frame.SeatUse ? seats.Use(null, tick) : seats.Evict(null, tick);
+            frame = frame with { SeatUse = false, SeatEvict = false };
+        }
+
         // An aim that is not usable (default) still applies the setting steps and clears the preview; no intent is sent.
         if (_client!.Session.State != ClientState.InGame || !player.IsActive || player.CameraMode == CameraMode.DevFree)
         {
@@ -263,6 +283,11 @@ public sealed partial class ToolNode : Node, IClientSessionListener
         }
 
         controller.Update(frame, ray, tick);
+        if (_seats is { } seatKeys && (frame.SeatUse || frame.SeatEvict))
+        {
+            LastSeatUse = frame.SeatUse ? seatKeys.Use(ray, tick) : seatKeys.Evict(ray, tick);
+        }
+
         if (_ship is { } ship)
         {
             // The raycast for the developer HUD runs at 10 Hz; a press of the key is handled at once.

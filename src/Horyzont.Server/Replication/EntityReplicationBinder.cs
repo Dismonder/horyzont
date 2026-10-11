@@ -20,6 +20,7 @@ public sealed class EntityReplicationBinder : IServerTickParticipant, IServerPla
     private readonly ILoggerFactory _loggers;
     private readonly ReplicationRanges _ranges;
     private ServerRuntime? _runtime;
+    private readonly Func<ServerRuntime, IShipCorrectionSource?>? _corrections;
     private EntityReplication? _replication;
 
     /// <summary>Initializes a new instance of the <see cref="EntityReplicationBinder"/> class.</summary>
@@ -29,10 +30,12 @@ public sealed class EntityReplicationBinder : IServerTickParticipant, IServerPla
     /// <param name="snapshotBudget">Snapshot byte budget; the fixed 1150 bytes when null.</param>
     /// <param name="ranges">Interest distances by region and kind; <see cref="ReplicationRanges.Default"/> when null (K5-26).</param>
     /// <param name="sendBudget">Reliable budget; the default 27 000 B/s token bucket when null.</param>
+    /// <param name="corrections">Ship corrections of pilots (K5-25); null = none.</param>
     public EntityReplicationBinder(
         Func<ServerRuntime, IEntityReplicationSource?> sourceFactory, TimeProvider time, ILoggerFactory loggers, ISnapshotBudget? snapshotBudget = null,
-        ReplicationRanges? ranges = null, IReplicationSendBudget? sendBudget = null)
+        ReplicationRanges? ranges = null, IReplicationSendBudget? sendBudget = null, Func<ServerRuntime, IShipCorrectionSource?>? corrections = null)
     {
+        _corrections = corrections;
         ArgumentNullException.ThrowIfNull(sourceFactory);
         ArgumentNullException.ThrowIfNull(time);
         ArgumentNullException.ThrowIfNull(loggers);
@@ -91,7 +94,10 @@ public sealed class EntityReplicationBinder : IServerTickParticipant, IServerPla
 
         _replication = new EntityReplication(
             runtime.Session, runtime.Simulation, source, _snapshotBudget, SendBudget, _time, _loggers.CreateLogger<EntityReplication>(),
-            _ranges, player => !runtime.IsLocalPlayer(player));
+            _ranges, player => !runtime.IsLocalPlayer(player))
+        {
+            ShipCorrections = _corrections?.Invoke(runtime),
+        };
         return _replication;
     }
 }

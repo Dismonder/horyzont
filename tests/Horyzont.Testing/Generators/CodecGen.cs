@@ -11,6 +11,8 @@ using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Serialization;
+using Horyzont.Core.Ships;
+using Horyzont.Core.Ships.Flight;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -276,7 +278,61 @@ public static class CodecGen
         ShipModeIntent.Select(i => (Intent)i),
         MarkerSetIntent.Select(i => (Intent)i),
         MarkerRemoveIntent.Select(i => (Intent)i),
-        RefuelIntent.Select(i => (Intent)i));
+        RefuelIntent.Select(i => (Intent)i),
+        SeatEnterIntent.Select(i => (Intent)i),
+        EntityId.Select(id => (Intent)new SeatExitIntent(id)),
+        SeatEvictIntent.Select(i => (Intent)i));
+
+    /// <summary>Seat enter intents (K5-25).</summary>
+    public static Gen<SeatEnterIntent> SeatEnterIntent { get; } =
+        from id in EntityId
+        from cell in Cell
+        from origin in Vector
+        from direction in Vector
+        select new SeatEnterIntent(id, cell, origin, direction);
+
+    /// <summary>Seat evict intents (K5-25).</summary>
+    public static Gen<SeatEvictIntent> SeatEvictIntent { get; } =
+        from id in EntityId
+        from cell in Cell
+        from origin in Vector
+        from direction in Vector
+        select new SeatEvictIntent(id, cell, origin, direction);
+
+    /// <summary>Pilot controls: axes in [-127, 127], known buttons (K5-25).</summary>
+    public static Gen<ShipControl> ShipControl { get; } =
+        from tx in Gen.Choose(-127, 127)
+        from ty in Gen.Choose(-127, 127)
+        from tz in Gen.Choose(-127, 127)
+        from pitch in Gen.Choose(-127, 127)
+        from yaw in Gen.Choose(-127, 127)
+        from roll in Gen.Choose(-127, 127)
+        from buttons in Gen.Choose(0, 7)
+        select new ShipControl((sbyte)tx, (sbyte)ty, (sbyte)tz, (sbyte)pitch, (sbyte)yaw, (sbyte)roll, (ShipButtons)buttons);
+
+    /// <summary>Pilot input batches of 1 to 5 inputs (K5-25).</summary>
+    public static Gen<ShipInputBatch> ShipInputBatch { get; } =
+        from seq in VarU32
+        from count in Gen.Choose(1, ProtocolConstants.MaxInputsPerBatch)
+        from inputs in (from tick in VarU32 from control in ShipControl select new ShipInput(tick, control)).ArrayOf(count)
+        select new ShipInputBatch(seq, inputs);
+
+    /// <summary>Ship corrections: any finite state, a cap that is positive or infinite (K5-25).</summary>
+    public static Gen<ShipCorrection> ShipCorrection { get; } =
+        from ship in EntityId
+        from seq in VarU32
+        from parentSeq in VarU32
+        from position in Vector
+        from rotation in UnitQuaternion
+        from linear in Vector
+        from angular in Vector
+        from fuel in Gen.Choose(0, 100000)
+        from flags in Gen.Choose(0, 255)
+        from gate in Gen.Choose(0, 3)
+        from block in Gen.Choose(0, 2)
+        from cap in Gen.Elements(float.PositiveInfinity, 0.25f, 300f, float.MaxValue)
+        select new ShipCorrection(ship, seq, parentSeq, position, rotation, linear, angular, fuel * 0.5f, (ShipFlightFlags)flags,
+            (ShipTerrainGate)gate, (ShipLaunchBlock)block, cap);
 
     /// <summary>Terrain tool intents.</summary>
     public static Gen<TerrainToolIntent> TerrainToolIntent { get; } =
@@ -509,12 +565,13 @@ public static class CodecGen
         ServerStatus.Select(m => (Message)m),
         JoinUnavailable.Select(m => (Message)m),
         Full64.Select(seed => (Message)new StarSystemState(Horyzont.Core.Space.StarSystemGenesis.CreateWorldBodies(seed, "core:planet/1").System)),
+        ShipInputBatch.Select(m => (Message)m),
+        ShipCorrection.Select(m => (Message)m),
         ShipStatus.Select(m => (Message)m),
         (from first in Marker
          from second in Marker
          from count in Gen.Choose(0, 2)
          select (Message)new MarkersState(new[] { first, second }.Take(count).ToArray())));
-
 
     /// <summary>Ship status messages (K5-26): any ship and tick, non-negative finite values, any flags, a defined launch block.</summary>
     public static Gen<ShipStatus> ShipStatus { get; } =

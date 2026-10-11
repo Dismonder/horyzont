@@ -57,4 +57,7 @@ public sealed record GameRules
 
     /// <summary>Largest distance from the centre of a refuel station cell to the bounding sphere of the ship, metres (K5-24 P3).</summary>
     public float RefuelRangeMeters { get; init; } = 15f;
+
+    /// <summary>Seat, ejection, launch guard and pilot input rules (K5-25).</summary>
+    public Ships.SeatRules Seats { get; init; } = Ships.SeatRules.Default;
 }

@@ -95,6 +95,20 @@ public static class ShipFixtures
     public static BlockContentTable ContentFor(WorldState state) => BlockContentTable.Create(state.BlockTypes, _definitions);
 
     /// <summary>
+    /// Moves the construct <see cref="ConstructId"/> (with everyone in its frame) into the frame of the star system at a point of that
+    /// frame (K5-25 owner decision: the fixture of the "ship in the system frame" tests).
+    /// </summary>
+    /// <param name="simulation">The simulation over a world of <see cref="CreateWorld"/>.</param>
+    /// <param name="position">Origin of the construct in the system frame.</param>
+    public static void MoveToSystemFrame(Horyzont.Core.Simulation.ServerSimulation simulation, Vector3 position)
+    {
+        ArgumentNullException.ThrowIfNull(simulation);
+        simulation.State.Constructs.TryGet(ConstructId, out var construct);
+        simulation.ApplyServerOperation(new Horyzont.Core.Operations.EntityReparentOp(
+            ConstructId, FrameRef.Of(WorldFactory.HomePlanetParams.System), construct!.ParentSeq + 1, position, Quaternion.Identity, Vector3.Zero, null));
+    }
+
+    /// <summary>
     /// A world with one planet, the fixture block types and, optionally, the construct <see cref="ConstructId"/> built like a
     /// loaded checkpoint (static, on the home planet).
     /// </summary>
@@ -102,11 +116,18 @@ public static class ShipFixtures
     /// <param name="origin">Construct origin in the planet frame.</param>
     /// <param name="mode">Construct mode.</param>
     /// <returns>The world.</returns>
-    public static WorldState CreateWorld(IReadOnlyList<ShipBlock>? blocks, Vector3 origin = default, ConstructMode mode = ConstructMode.Static)
+    /// <param name="extraPlanets">Planets added after the home planet (K5-25: another planet for the Y9 tests).</param>
+    public static WorldState CreateWorld(
+        IReadOnlyList<ShipBlock>? blocks, Vector3 origin = default, ConstructMode mode = ConstructMode.Static, IReadOnlyList<PlanetParams>? extraPlanets = null)
     {
         var builder = new WorldStateBuilder(WorldFactory.DefaultWorldId, 42);
         builder.SetProgress(default, default, blocks is null ? 1UL : 2UL, 1);
         builder.AddPlanet(WorldFactory.HomePlanetParams);
+        foreach (var planet in extraPlanets ?? [])
+        {
+            builder.AddPlanet(planet);
+        }
+
         for (var i = 0; i < BlockKeys.Length; i++)
         {
             builder.AddBlockType(new RegistryEntry((ushort)(i + 1), BlockKeys[i]));

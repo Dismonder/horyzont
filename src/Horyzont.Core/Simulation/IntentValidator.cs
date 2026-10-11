@@ -2,6 +2,7 @@ using System.Numerics;
 
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
+using Horyzont.Core.Motion;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Ships;
 using Horyzont.Core.World;
@@ -24,6 +25,9 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
     /// <summary>A tank with less than this much room is full for a refuel (K5-24 decision 14).</summary>
     private const float RefuelFullMargin = 0.5f;
     private const float SightEpsilon = 1e-3f;
+
+    /// <summary>Step of the sight ray through the seat cell of a seated actor, metres; at most <see cref="SeatRules.SightSteps"/> steps.</summary>
+    private const float SeatSightStep = 0.05f;
 
     /// <summary>Corners of a block are probed this far inside the cell, so a block that only touches the ground is not embedded.</summary>
     private const float AnchorInset = 0.1f;
@@ -57,7 +61,13 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.InvalidParameters;
         }
 
-        var hasPlanet = TryGetEye(player, out var playerPlanet, out var eye);
+        // K5-25 P5: a seated player does not edit terrain or blocks.
+        if (player.Seat is not null && intent is TerrainToolIntent or PlaceBlockIntent or RemoveBlockIntent)
+        {
+            return RejectReason.InvalidParameters;
+        }
+
+        var hasPlanet = TryGetActor(player, out var playerPlanet, out var eye);
         if (rayOrigin is { } origin && hasPlanet && Vector3.Distance(origin, eye) > rules.MaxRayOriginErrorMeters)
         {
             return RejectReason.RayOriginMismatch;
@@ -74,9 +84,12 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             PlaceBlockIntent { Target: ConstructFaceTarget face } place => ValidatePlaceOnFace(place, face, hasPlanet, playerPlanet, eye, out facts),
             PlaceBlockIntent { Target: TerrainTarget target } place => ValidatePlaceOnTerrain(place, target, hasPlanet, playerPlanet, eye, out facts),
             RemoveBlockIntent remove => ValidateRemove(remove, hasPlanet, playerPlanet, eye, out facts),
-            ShipModeIntent ship => ValidateShipMode(ship, hasPlanet, playerPlanet, eye, out facts),
+            ShipModeIntent ship => ValidateShipMode(player, ship, hasPlanet, playerPlanet, eye, out facts),
             MarkerSetIntent or MarkerRemoveIntent => MarkerIntentRules.Validate(state, playerId, intent),
-            RefuelIntent refuel => ValidateRefuel(refuel, hasPlanet, playerPlanet, eye, out facts),
+            RefuelIntent refuel => ValidateRefuel(player, refuel, hasPlanet, playerPlanet, eye, out facts),
+            SeatEnterIntent enter => ValidateSeatEnter(player, enter, hasPlanet, playerPlanet, eye, out facts),
+            SeatExitIntent exit => ValidateSeatExit(player, exit, out facts),
+            SeatEvictIntent evict => ValidateSeatEvict(player, evict, hasPlanet, playerPlanet, eye, out facts),
             _ => RejectReason.InvalidParameters,
         };
     }
@@ -85,7 +98,8 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
     internal static TokenBucket? BucketFor(Intent intent, PlayerBuckets buckets) => intent switch
     {
         TerrainToolIntent => buckets.Terrain,
-        PlaceBlockIntent or RemoveBlockIntent or ShipModeIntent or RefuelIntent => buckets.Blocks,
+        PlaceBlockIntent or RemoveBlockIntent or ShipModeIntent or RefuelIntent or SeatEnterIntent or SeatExitIntent or SeatEvictIntent
+            => buckets.Blocks,
         MarkerSetIntent or MarkerRemoveIntent => buckets.Markers,
         _ => null,
     };
@@ -117,6 +131,14 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             case RefuelIntent refuel:
                 rayOrigin = refuel.RayOrigin;
                 return Geometry.IsFinite(refuel.RayOrigin) && Geometry.IsDirection(refuel.RayDirection);
+            case SeatEnterIntent enter:
+                rayOrigin = enter.RayOrigin;
+                return Geometry.IsFinite(enter.RayOrigin) && Geometry.IsDirection(enter.RayDirection);
+            case SeatEvictIntent evict:
+                rayOrigin = evict.RayOrigin;
+                return Geometry.IsFinite(evict.RayOrigin) && Geometry.IsDirection(evict.RayDirection);
+            case SeatExitIntent:
+                return true;
             default:
                 return false;
         }
@@ -376,18 +398,23 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             }
         }
 
-        // The applier refuses to remove a seat or the last block of a frame that still has children.
-        if (state.TryGetSeated(construct.Id, remove.Cell, out _)
-            || (construct.BlockCount == 1 && state.HasChildren(FrameRef.Of(construct.Id))))
+        // The applier refuses to remove a seat or the last block of a frame that still has children (K5-25 decision 21).
+        if (construct.BlockCount == 1 && state.HasChildren(FrameRef.Of(construct.Id)))
         {
-            return RejectReason.IntersectsPlayer;
+            return RejectReason.ConstructNotEmpty;
+        }
+
+        if (state.TryGetSeated(construct.Id, remove.Cell, out _))
+        {
+            return RejectReason.SeatOccupied;
         }
 
         facts = new IntentFacts(planet, cellCenter, Quaternion.Identity, remove.Cell);
         return RejectReason.None;
     }
 
-    private RejectReason ValidateShipMode(ShipModeIntent intent, bool hasPlanet, PlanetId playerPlanet, Vector3 eye, out IntentFacts facts)
+    private RejectReason ValidateShipMode(
+        PlayerState actor, ShipModeIntent intent, bool hasPlanet, PlanetId playerPlanet, Vector3 eye, out IntentFacts facts)
     {
         facts = default;
         if (!state.Constructs.TryGet(intent.Construct, out var construct))
@@ -417,13 +444,21 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.NoCockpit;
         }
 
+        var pilot = CheckPilot(actor, construct);
+        if (pilot == RejectReason.NotPilot)
+        {
+            return pilot;
+        }
+
+        // K5-25 decision 3: the pilot sits in the cockpit, so reach and sight to it hold by definition.
         var cellCenter = ToPlanet(construct, CellCenter(cell));
-        if (Vector3.Distance(eye, cellCenter) > rules.ReachMeters + CellReachSlack)
+        var inCockpit = pilot == RejectReason.None && actor.Seat == cell;
+        if (!inCockpit && Vector3.Distance(eye, cellCenter) > rules.ReachMeters + CellReachSlack)
         {
             return RejectReason.OutOfReach;
         }
 
-        if (!HasLineOfSight(planet, eye, cellCenter, construct.Id, cell))
+        if (!inCockpit && !HasLineOfSight(planet, eye, cellCenter, construct.Id, cell, actor))
         {
             return RejectReason.NoLineOfSight;
         }
@@ -457,7 +492,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
     /// function, reach and line of sight like a cockpit, a parked ship within <see cref="GameRules.RefuelRangeMeters"/> of the
     /// station on the same planet, a tank not already full. The facts carry the tank capacity (the resolution fills the tank).
     /// </summary>
-    private RejectReason ValidateRefuel(RefuelIntent intent, bool hasPlanet, PlanetId playerPlanet, Vector3 eye, out IntentFacts facts)
+    private RejectReason ValidateRefuel(PlayerState actor, RefuelIntent intent, bool hasPlanet, PlanetId playerPlanet, Vector3 eye, out IntentFacts facts)
     {
         facts = default;
         if (!state.Constructs.TryGet(intent.Station, out var station))
@@ -493,7 +528,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.OutOfReach;
         }
 
-        if (!HasLineOfSight(planet, eye, cellCenter, station.Id, cell))
+        if (!HasLineOfSight(planet, eye, cellCenter, station.Id, cell, actor))
         {
             return RejectReason.NoLineOfSight;
         }
@@ -506,6 +541,11 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
         if (ship.Mode != ConstructMode.Ship || ship.Id == station.Id)
         {
             return RejectReason.InvalidParameters;
+        }
+
+        if (CheckPilot(actor, ship) == RejectReason.NotPilot)
+        {
+            return RejectReason.NotPilot;
         }
 
         if (!IsParked(ship.Id))
@@ -528,6 +568,198 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
 
         facts = new IntentFacts(planet, cellCenter, Quaternion.Identity, cell, stats.FuelCapacity);
         return RejectReason.None;
+    }
+
+    /// <summary>
+    /// K5-25 decision 4: a player seated in <paramref name="target"/> acts on it only as its pilot. None = the actor is the pilot,
+    /// <see cref="RejectReason.NotPilot"/> = another seat of the target, <see cref="RejectReason.InvalidParameters"/> = not
+    /// seated in the target (the rules of a standing player apply).
+    /// </summary>
+    private RejectReason CheckPilot(PlayerState actor, Construct target)
+    {
+        if (actor.Seat is not { } seat || actor.Frame != FrameRef.Of(target.Id))
+        {
+            return RejectReason.InvalidParameters;
+        }
+
+        return ShipStatsCalculator.Compute(target, content).ControlCell == seat ? RejectReason.None : RejectReason.NotPilot;
+    }
+
+    /// <summary>K5-25 decision 5: sit in a free cockpit or seat, or move to another seat of the same construct.</summary>
+    private RejectReason ValidateSeatEnter(
+        PlayerState actor, SeatEnterIntent intent, bool hasPlanet, PlanetId playerPlanet, Vector3 eye, out IntentFacts facts)
+    {
+        facts = default;
+        var target = CheckSeatTarget(intent.Construct, intent.SeatCell, hasPlanet, playerPlanet, out var construct, out var planet, out var block);
+        if (target != RejectReason.None)
+        {
+            return target;
+        }
+
+        if (actor.Seat is not null && actor.Frame != FrameRef.Of(construct!.Id))
+        {
+            return RejectReason.InvalidParameters;
+        }
+
+        if (state.TryGetSeated(construct!.Id, intent.SeatCell, out var occupant))
+        {
+            return occupant.Player == actor.Player ? RejectReason.InvalidParameters : RejectReason.SeatOccupied;
+        }
+
+        var reach = CheckSeatReach(actor, construct, intent.SeatCell, planet, eye);
+        if (reach != RejectReason.None)
+        {
+            return reach;
+        }
+
+        if (construct.Mode == ConstructMode.Ship && !IsParked(construct.Id))
+        {
+            return RejectReason.ShipNotParked;
+        }
+
+        facts = new IntentFacts(
+            planet, SeatPose.Feet(intent.SeatCell, block.Orientation, rules.Seats), SeatPose.Rotation(block.Orientation), intent.SeatCell,
+            Entity: actor.Entity, Frame: FrameRef.Of(construct.Id), ParentSeq: actor.ParentSeq);
+        return RejectReason.None;
+    }
+
+    /// <summary>
+    /// K5-25 decisions 6 and 7: leave the seat of a static or parked construct at a free cell, or eject from a flying ship below
+    /// the speed and height limits with the velocity of the ship at the exit point.
+    /// </summary>
+    private RejectReason ValidateSeatExit(PlayerState actor, SeatExitIntent intent, out IntentFacts facts)
+    {
+        facts = default;
+        if (actor.Seat is not { } seat || actor.Frame != FrameRef.Of(intent.Construct) || !state.Constructs.TryGet(intent.Construct, out var construct))
+        {
+            return RejectReason.InvalidParameters;
+        }
+
+        // P6: a construct in the system frame has no planet to stand on.
+        if (!state.TryResolvePlanet(construct.Parent, out var planet)
+            || !BlockOverlap.TryGetConstructPose(state.Constructs, construct, FrameRef.Of(planet), out _, out var constructRotation))
+        {
+            return RejectReason.EjectTooFast;
+        }
+
+        var orientation = construct.GetBlock(seat).Orientation;
+        var eject = construct.Mode == ConstructMode.Ship && !IsParked(construct.Id);
+        var shipVelocity = Vector3.Zero;
+        var angular = Vector3.Zero;
+        var centre = Vector3.Zero;
+        if (eject)
+        {
+            var hasRecord = state.ShipStates.TryGet(construct.Id, out var record);
+            var stats = ShipStatsCalculator.Compute(construct, content);
+            centre = ToPlanet(construct, stats.CenterOfMass);
+            if (construct.Parent.Kind != FrameKind.Planet || !hasRecord || !(record.LinearVelocity.Length() <= rules.Seats.EjectMaxSpeed)
+                || !terrain.Raycast(planet, centre, -TerrainMath.UpAt(centre), rules.Seats.EjectMaxHeight, out _))
+            {
+                return RejectReason.EjectTooFast;
+            }
+
+            shipVelocity = record.LinearVelocity;
+            angular = Vector3.Transform(record.AngularVelocity, construct.Rotation);
+        }
+
+        var regionUp = Vector3.Transform(TerrainMath.UpAt(ToPlanet(construct, CellCenter(seat))), Quaternion.Inverse(constructRotation));
+        var groundPlanet = planet;
+        bool IsGround(Vector3 local) => !terrain.TrySampleSolid(groundPlanet, ToPlanet(construct, local), out var solid) || solid;
+        if (!SeatExitPlanner.TryPlan(construct, seat, orientation, regionUp, IsGround, eject, rules.Seats, out var feet))
+        {
+            return RejectReason.CellOccupied;
+        }
+
+        var point = ToPlanet(construct, feet);
+        var up = TerrainMath.UpAt(point);
+        var body = Quaternion.Concatenate(SeatPose.Rotation(orientation), constructRotation);
+        var velocity = eject ? shipVelocity + Vector3.Cross(angular, point - centre) : Vector3.Zero;
+        facts = new IntentFacts(
+            planet, point, SurfaceFrame.FromYaw(up, SurfaceFrame.YawOf(body, up)), seat, Velocity: velocity, Entity: actor.Entity,
+            Frame: FrameRef.Of(planet), ParentSeq: actor.ParentSeq);
+        return RejectReason.None;
+    }
+
+    /// <summary>K5-25 decision 8: free a seat of a static or parked construct held by an offline player; they go to the world start.</summary>
+    private RejectReason ValidateSeatEvict(
+        PlayerState actor, SeatEvictIntent intent, bool hasPlanet, PlanetId playerPlanet, Vector3 eye, out IntentFacts facts)
+    {
+        facts = default;
+        var target = CheckSeatTarget(intent.Construct, intent.SeatCell, hasPlanet, playerPlanet, out var construct, out var planet, out _);
+        if (target != RejectReason.None)
+        {
+            return target;
+        }
+
+        var reach = CheckSeatReach(actor, construct!, intent.SeatCell, planet, eye);
+        if (reach != RejectReason.None)
+        {
+            return reach;
+        }
+
+        if (!state.TryGetSeated(construct!.Id, intent.SeatCell, out var occupant) || occupant.IsOnline || occupant.Player == actor.Player)
+        {
+            return RejectReason.InvalidParameters;
+        }
+
+        if (construct.Mode == ConstructMode.Ship && !IsParked(construct.Id))
+        {
+            return RejectReason.ShipNotParked;
+        }
+
+        var home = state.HomePlanet;
+        if (!state.Planets.TryGet(home, out var homeParams))
+        {
+            return RejectReason.UnknownPlanet;
+        }
+
+        facts = new IntentFacts(
+            home, RespawnPoints.WorldStart(homeParams, terrain), Quaternion.Identity, intent.SeatCell, Entity: occupant.Entity,
+            Frame: FrameRef.Of(home), ParentSeq: occupant.ParentSeq);
+        return RejectReason.None;
+    }
+
+    /// <summary>The construct exists on the planet of the actor and the cell holds a cockpit or a seat.</summary>
+    private RejectReason CheckSeatTarget(
+        EntityId id, CellPos cell, bool hasPlanet, PlanetId playerPlanet, out Construct? construct, out PlanetId planet, out BlockState block)
+    {
+        planet = default;
+        block = default;
+        if (!state.Constructs.TryGet(id, out construct))
+        {
+            return RejectReason.UnknownConstruct;
+        }
+
+        if (!hasPlanet || !state.TryResolvePlanet(construct.Parent, out planet) || planet != playerPlanet)
+        {
+            return RejectReason.WrongPlanet;
+        }
+
+        if (!cell.IsInBounds)
+        {
+            return RejectReason.CellOutOfBounds;
+        }
+
+        block = construct.GetBlock(cell);
+        if (block.IsEmpty)
+        {
+            return RejectReason.CellEmpty;
+        }
+
+        var kind = content.Get(block.TypeId).Function.Kind;
+        return kind is BlockFunctionKind.Cockpit or BlockFunctionKind.Seat ? RejectReason.None : RejectReason.InvalidParameters;
+    }
+
+    /// <summary>The seat cell centre within <see cref="SeatRules.ReachMeters"/> of the eye and in sight.</summary>
+    private RejectReason CheckSeatReach(PlayerState actor, Construct construct, CellPos cell, PlanetId planet, Vector3 eye)
+    {
+        var centre = ToPlanet(construct, CellCenter(cell));
+        if (!(Vector3.Distance(eye, centre) <= rules.Seats.ReachMeters))
+        {
+            return RejectReason.SeatOutOfReach;
+        }
+
+        return HasLineOfSight(planet, eye, centre, construct.Id, cell, actor) ? RejectReason.None : RejectReason.NoLineOfSight;
     }
 
     /// <summary>A ship without a flight state has never moved since the switch, so it stands parked.</summary>
@@ -634,9 +866,10 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
     }
 
     /// <summary>
-    /// The ray from the eye to a target point inside or on the target cell hits no terrain and no other cell first.
+    /// The ray from the eye to a target point inside or on the target cell hits no terrain and no other cell first. The seat cell
+    /// of a seated <paramref name="actor"/> does not block its own sight (K5-25: the seated eye looks out of its seat).
     /// </summary>
-    private bool HasLineOfSight(PlanetId planet, Vector3 eye, Vector3 target, EntityId? construct, CellPos cell)
+    private bool HasLineOfSight(PlanetId planet, Vector3 eye, Vector3 target, EntityId? construct, CellPos cell, PlayerState? actor = null)
     {
         var toTarget = target - eye;
         var distance = toTarget.Length();
@@ -646,29 +879,63 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
         }
 
         var direction = toTarget / distance;
-        if (ConstructRaycast.Raycast(state.Constructs, FrameRef.Of(planet), eye, direction, distance + SightEpsilon, out var hit)
-            && (hit.Construct != construct || hit.Cell != cell)
-            && hit.Distance < distance - SightEpsilon)
+        EntityId? seatConstruct = actor is { Seat: not null } && actor.Frame.Kind == FrameKind.Construct ? new EntityId(actor.Frame.Id) : null;
+        var seatCell = actor?.Seat ?? default;
+        var travelled = 0f;
+        var reach = distance;
+        var walked = false;
+        for (var step = 0; step < rules.Seats.SightSteps; step++)
         {
-            return false;
+            var left = distance - travelled;
+            if (!ConstructRaycast.Raycast(state.Constructs, FrameRef.Of(planet), eye + (direction * travelled), direction, left + SightEpsilon, out var hit))
+            {
+                walked = true;
+                break;
+            }
+
+            if (hit.Construct == construct && hit.Cell == cell)
+            {
+                reach = MathF.Min(travelled + hit.Distance, distance);
+                walked = true;
+                break;
+            }
+
+            if (seatConstruct is { } seatId && hit.Construct == seatId && hit.Cell == seatCell)
+            {
+                travelled += hit.Distance + SeatSightStep;
+                if (travelled >= distance)
+                {
+                    walked = true;
+                    break;
+                }
+
+                continue;
+            }
+
+            if (hit.Distance < left - SightEpsilon)
+            {
+                return false;
+            }
+
+            walked = true;
+            break;
         }
 
-        var reach = hit.Construct == construct && hit.Cell == cell ? MathF.Min(hit.Distance, distance) : distance;
+        if (!walked)
+        {
+            return false; // the step budget ran out inside the seat cell: no proof of a clear line
+        }
+
         return !terrain.Raycast(planet, eye, direction, reach, out var terrainHit)
             || terrainHit.Distance >= reach - TerrainSightSlackMeters;
     }
 
-    private bool TryGetEye(PlayerState player, out PlanetId planet, out Vector3 eye)
-    {
-        if (!state.TryToPlanetFrame(player.Frame, player.Position, out planet, out var feet))
-        {
-            eye = default;
-            return false;
-        }
-
-        eye = feet + (TerrainMath.UpAt(feet) * rules.EyeHeight);
-        return true;
-    }
+    /// <summary>
+    /// Y9 (K5-25 decision 3): the eye of the actor in the frame of its planet. A seated player has the seated eye of its seat block
+    /// expressed through the construct chain; a frame without a planet (the system frame) gives false.
+    /// </summary>
+    private bool TryGetActor(PlayerState player, out PlanetId planet, out Vector3 eye) =>
+        IntentActor.TryGetEye(state, rules, player, out planet, out eye);
 
     private bool SphereHitsPlayer(PlanetId planet, Vector3 center, float radius)
     {
