@@ -80,6 +80,12 @@ public enum MessageType : byte
     /// <summary>Client to server, reliable terrain viewer update.</summary>
     TerrainView = 25,
 
+    /// <summary>C→S, unreliable: pilot inputs (K5-25).</summary>
+    ShipInputBatch = 30,
+
     /// <summary>S→C: the star system of the world, once after the hello (K5-21).</summary>
     StarSystemState = 32,
+
+    /// <summary>S→C, unreliable: the server state of the ship of the pilot (K5-25).</summary>
+    ShipCorrection = 34,
 }

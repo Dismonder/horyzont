@@ -23,7 +23,7 @@ public sealed class FlightCodecGoldenTests
     private const string RefuelHex =
         "0D 01  05  07  02 01 00  00 00 80 3F  00 00 00 40  00 00 40 40  00 00 00 00  00 00 00 00  00 00 80 3F";
 
-    private static readonly int[] _launchBlocks = [0, 1];
+    private static readonly int[] _launchBlocks = [0, 1, 2];
     private static readonly int[] _threeBits = [0, 1, 2, 4];
     private static readonly int[] _eightBits = [0, 1, 2, 4, 8, 16, 32, 64, 128];
 

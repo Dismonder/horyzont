@@ -7,6 +7,8 @@ using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
+using Horyzont.Core.Ships;
+using Horyzont.Core.Ships.Flight;
 using Horyzont.Core.Space;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
@@ -164,6 +166,13 @@ public static class MaxMessages
             new ServerStatus(true, 2, Text(ProtocolConstants.MaxRejectDetailBytes)),
             new JoinUnavailable(1, Text(ProtocolConstants.MaxRejectDetailBytes)),
             new StarSystemState(MaxStarSystem()),
+            new ShipInputBatch(
+                uint.MaxValue,
+                Enumerable.Range(0, ProtocolConstants.MaxInputsPerBatch)
+                    .Select(_ => new ShipInput(uint.MaxValue, new ShipControl(-127, 127, -127, 127, -127, 127, (ShipButtons)7)))
+                    .ToArray()),
+            new ShipCorrection(maxEntity, uint.MaxValue, uint.MaxValue, new Vector3(float.MaxValue), Quaternion.Identity, new Vector3(float.MinValue),
+                new Vector3(float.MaxValue), float.MaxValue, (ShipFlightFlags)255, ShipTerrainGate.Unavailable, ShipLaunchBlock.PersonInHull, float.MaxValue),
         ];
     }
     /// <summary>The largest star system: eight bodies with the largest ids and coordinates (about 560 B, README Y5).</summary>
