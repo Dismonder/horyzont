@@ -339,6 +339,7 @@ Kolejność K5: (wykonawcy dopisują tu po scaleniu: pakiet, PR, `ProtocolVersio
 
 - K5-20 — PR #26, `ProtocolVersion` = 8 (main 7 po K5-23 + 1, D4; scalenie `origin/main` z K3-17, K3-18 i K5-23).
 - K5-21 — PR: (numer przy otwarciu), `ProtocolVersion` = 9 (main 8 po K5-20 + 1, D4; scalenie K5-20 i `origin/main`).
+- K5-27 — PR: (numer przy otwarciu), `ProtocolVersion` = 10 (main 9 po K5-21 + 1, D4; K5-22 bierze równolegle 10 — przeliczyć przy scaleniu drugiego z nich).
 
 ## Szablon planu pakietu
 

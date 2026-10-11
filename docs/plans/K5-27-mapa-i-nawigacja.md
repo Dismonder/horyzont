@@ -191,32 +191,32 @@ Każdy krok: test czerwony → kod → zielone testy → mały commit (Conventio
 
 **Faza A — kontrakty i Core**
 
-- [ ] 0. Warunki wejścia: `git status`; worktree `F:/dev/horyzont-k5-27` od `origin/main` po scaleniu K5-21; zapisać w „Odstępstwach” scalone pakiety; potwierdzić DDL `markers (marker_id, data)` w migracji Kosmosu, `ServerSpaceSync`, `ClientStarSystem`, `WorldState.HomePlanet`; sprawdzić, że kody op 22/23, intencji 14/15, odmowy 36, blobu 11 i komunikatu 33 są wolne na `main` i w otwartych PR K5; ustalić, jak `EntityReplication` (K3-15) wybiera operacje do `OperationApplied` (czy op bez zmian budowli by wysłał) i czy K3-18 dostarczył `IGameplayInputGate` i `game/locale/ui.csv`. Commit `docs:`.
-- [ ] 1. **Kontrakt do zatwierdzenia przez Opus przed kodem appliera:** rekordy `MarkerId`, `MarkerRecord`, `MarkerSetOp`, `MarkerRemoveOp`, `MarkerSetIntent`, `MarkerRemoveIntent`, `MarkersState`, wartości enumów, `RejectReason.MarkerLimit = 36`, `MarkerRules`; czerwone `MarkerCodecs_GoldenBytes`. Po akceptacji: kodeki op/intencji/blobu 11. Commity `test:`, `feat:`.
-- [ ] 2. `MarkerIdAllocator`, `MarkerStore`, `WorldState.Markers/MarkerIds`, `ChangeTracker` (zbiór znaczników); testy magazynu. Commity `test:`, `feat:`.
-- [ ] 3. Applier op 22/23 w `OperationApplier.cs`; testy warunków; `git diff` pusty na korpusie złotym i `DeterminismTests`. Commity `test:`, `feat:`.
-- [ ] 4. Walidator (`MarkerIntentRules`, kubełek w `IntentValidator.HasValidParameters`, `GameRules.MarkerIntentsPerSecond`) i resolver; testy intencji. Commity `test:`, `feat:`.
+- [x] 0. Warunki wejścia: `git status`; worktree `F:/dev/horyzont-k5-27` od `origin/main` po scaleniu K5-21; zapisać w „Odstępstwach” scalone pakiety; potwierdzić DDL `markers (marker_id, data)` w migracji Kosmosu, `ServerSpaceSync`, `ClientStarSystem`, `WorldState.HomePlanet`; sprawdzić, że kody op 22/23, intencji 14/15, odmowy 36, blobu 11 i komunikatu 33 są wolne na `main` i w otwartych PR K5; ustalić, jak `EntityReplication` (K3-15) wybiera operacje do `OperationApplied` (czy op bez zmian budowli by wysłał) i czy K3-18 dostarczył `IGameplayInputGate` i `game/locale/ui.csv`. Commit `docs:`.
+- [x] 1. **Kontrakt do zatwierdzenia przez Opus przed kodem appliera:** rekordy `MarkerId`, `MarkerRecord`, `MarkerSetOp`, `MarkerRemoveOp`, `MarkerSetIntent`, `MarkerRemoveIntent`, `MarkersState`, wartości enumów, `RejectReason.MarkerLimit = 36`, `MarkerRules`; czerwone `MarkerCodecs_GoldenBytes`. Po akceptacji: kodeki op/intencji/blobu 11. Commity `test:`, `feat:`.
+- [x] 2. `MarkerIdAllocator`, `MarkerStore`, `WorldState.Markers/MarkerIds`, `ChangeTracker` (zbiór znaczników); testy magazynu. Commity `test:`, `feat:`.
+- [x] 3. Applier op 22/23 w `OperationApplier.cs`; testy warunków; `git diff` pusty na korpusie złotym i `DeterminismTests`. Commity `test:`, `feat:`.
+- [x] 4. Walidator (`MarkerIntentRules`, kubełek w `IntentValidator.HasValidParameters`, `GameRules.MarkerIntentsPerSecond`) i resolver; testy intencji. Commity `test:`, `feat:`.
 
 **Faza B — skrót, zapis, protokół**
 
-- [ ] 5. Warunkowy `StateHasher` (przed zmianą zapisać stałą skrótu `WorldFactory.CreateDefault()`); `WorldCheckpoint` + `CaptureCheckpoint`/`RequeueAfterFailedCheckpoint` + `WorldStateBuilder`; testy skrótu i checkpointu. Commity `test:`, `feat:`.
-- [ ] 6. Persistence: `Sql.MetaNextMarkerId`, `PersistenceWriter`, `WorldLoader`, `WorldCreator`; testy restartu, awarii i starego świata. Commity `test:`, `feat:`.
-- [ ] 7. `MessageType.MarkersState = 33`, rekord, `MessageCodec`, `MessageChannels`, `MessageRouter` (X5), fixture X6 (`ProtocolContractTests`, `MaxMessages`, `CodecGen` także dla op/intencji), D4 z aktualizacją dwóch istniejących testów. Commity `test:`, `feat:`.
+- [x] 5. Warunkowy `StateHasher` (przed zmianą zapisać stałą skrótu `WorldFactory.CreateDefault()`); `WorldCheckpoint` + `CaptureCheckpoint`/`RequeueAfterFailedCheckpoint` + `WorldStateBuilder`; testy skrótu i checkpointu. Commity `test:`, `feat:`.
+- [x] 6. Persistence: `Sql.MetaNextMarkerId`, `PersistenceWriter`, `WorldLoader`, `WorldCreator`; testy restartu, awarii i starego świata. Commity `test:`, `feat:`.
+- [x] 7. `MessageType.MarkersState = 33`, rekord, `MessageCodec`, `MessageChannels`, `MessageRouter` (X5), fixture X6 (`ProtocolContractTests`, `MaxMessages`, `CodecGen` także dla op/intencji), D4 z aktualizacją dwóch istniejących testów. Commity `test:`, `feat:`.
 
 **Faza C — serwer i klient**
 
-- [ ] 8. `MarkerReplication` + `MarkersState` w `ServerSpaceSync` (budżet `Bulk`, kolejka op do synchronizacji); rejestracja w `GameComposition.Navigation.cs` (także serwer dedykowany); testy dwóch klientów. Commity `test:`, `feat:`.
-- [ ] 9. `ClientMarkerStore`, `NavigationTarget`, `NavigationGuidance`, `NavigationCoordinator`, `DistanceFormatter`, `SystemMapModel`; testy ciągłości i alokacji. Commity `test:`, `feat:`.
+- [x] 8. `MarkerReplication` + `MarkersState` w `ServerSpaceSync` (budżet `Bulk`, kolejka op do synchronizacji); rejestracja w `GameComposition.Navigation.cs` (także serwer dedykowany); testy dwóch klientów. Commity `test:`, `feat:`.
+- [x] 9. `ClientMarkerStore`, `NavigationTarget`, `NavigationGuidance`, `NavigationCoordinator`, `DistanceFormatter`, `SystemMapModel`; testy ciągłości i alokacji. Commity `test:`, `feat:`.
 
 **Faza D — gra**
 
-- [ ] 10. `NavigationHud` + `EdgeArrow`; test silnika. Commity `test:`, `feat:`.
-- [ ] 11. `SystemMapPanel`, `PlanetMapSampler`, `PlanetMapPanel`; testy silnika (próbkowanie, render modelu). Commity `test:`, `feat:`.
-- [ ] 12. **[K3-18]** `MarkerEditDialog`, akcja `toggle_map`, `MapInputGate` + złożenie bramek, `IMapOpener`, klucze `ui.csv`, tekst odmowy 36; test bramki; ręczny przebieg (tworzenie, edycja, usunięcie, prywatny niewidoczny dla drugiego gracza) wpisany do PR (`Manual`). Commity `test:`, `feat:`.
+- [x] 10. `NavigationHud` + `EdgeArrow`; test silnika. Commity `test:`, `feat:`.
+- [x] 11. `SystemMapPanel`, `PlanetMapSampler`, `PlanetMapPanel`; testy silnika (próbkowanie, render modelu). Commity `test:`, `feat:`.
+- [ ] 12. **[K3-18]** (kod i testy gotowe; brak: ręczny przebieg `Manual` w silniku)  `MarkerEditDialog`, akcja `toggle_map`, `MapInputGate` + złożenie bramek, `IMapOpener`, klucze `ui.csv`, tekst odmowy 36; test bramki; ręczny przebieg (tworzenie, edycja, usunięcie, prywatny niewidoczny dla drugiego gracza) wpisany do PR (`Manual`). Commity `test:`, `feat:`.
 
 **Faza E — odbiór**
 
-- [ ] 13. Rebase na `main`; pełne komendy odbioru; `docs/ZASADY.md` pkt 3: `MarkerRecord` i `MarkerId` jako typy zapisywane, `MarkerRules` jako stałe semantyki operacji; wiersz scalenia K5-27 w istniejącej sekcji „Pakiety K5” `docs/plans/README.md` z faktyczną wartością `ProtocolVersion`; PR ze zrzutami mapy i HUD, odstępstwami i odpowiedziami na pytania. Commit `docs:`.
+- [ ] 13. (zrobione: ZASADY pkt 3, wiersz README, odstępstwa; zostaje: rebase, `ProtocolVersion`, smoke, zrzuty, PR) Rebase na `main`; pełne komendy odbioru; `docs/ZASADY.md` pkt 3: `MarkerRecord` i `MarkerId` jako typy zapisywane, `MarkerRules` jako stałe semantyki operacji; wiersz scalenia K5-27 w istniejącej sekcji „Pakiety K5” `docs/plans/README.md` z faktyczną wartością `ProtocolVersion`; PR ze zrzutami mapy i HUD, odstępstwami i odpowiedziami na pytania. Commit `docs:`.
 
 ## Odbiór
 
@@ -290,4 +290,36 @@ Kolejność scalania: **(K5-23 ↔ K5-20 dowolnie) → K5-21 → K5-27**; K5-27 
 
 ## Odstępstwa i decyzje wykonawcy
 
-(wypełnia wykonawca: stan K5-21/K3-15/K3-18 na `main`, sposób wyboru operacji w `EntityReplication`, rzeczywiste nazwy API, wartość `ProtocolVersion`, wyniki testów restartu i nawigacji, odpowiedzi właściciela)
+Wykonawca: Claude (Sonnet 5.5, na zlecenie hosta), gałąź `pakiet/k5-27-mapa-i-nawigacja` od `origin/main` 37096d1.
+
+**Stan wejścia (krok 0).** Na `main` są K3 (w tym K3-15, K3-18: `IGameplayInputGate`, `game/locale/ui.csv`), K5-23, K5-20, K5-21 (`StarSystemState` 32, blob 10, `M0002_Space` z tabelą `markers (marker_id, data)`, `ClientStarSystem`, `WorldState.HomePlanet`). Kody 22/23, 14/15, 36, blob 11, komunikat 33 były wolne. `EntityReplication.OnApplied` przekazuje tylko operacje z `ConstructChanges` albo `EntityReparentOp` (N22 potwierdzone, plik bez edycji). K5-22 i K5-24 nie są na `main`: `PlanetMapSampler` jest własną bisekcją (`PlanetMap` + `PlanetMapCache` + `SurfaceBisection`), do podmiany na `PlanetSurfaceSampler`, gdy K5-22 wejdzie.
+
+**Odstępstwa od planu.**
+1. **Format bajtów** (decyzja 6) zapisany konwencją istniejących kodeków (`ByteWriter`): identyfikatory (`MarkerId`, `PlayerId`, `PlanetId`) jako `varuint`, nazwa jako `WriteString` (długość `varuint` + UTF-8), liczba rekordów `MarkersState` jako `varuint`, a nie `u64`/`u8`/`u16` ze szkicu. Złote bajty w `MarkerCodecTests`. **Do zatwierdzenia przez Opus** (krok 1 wymagał akceptacji przed kodem appliera; wykonawca nie miał kogo zapytać).
+2. **Klawisz mapy: `N`, nie `M`.** `M` jest zajęty przez `tool_material_next` (`project.godot`). Pytanie P6 do właściciela. Zamykanie: ten sam klawisz albo `Esc` (kolejność `_Input` względem menu pauzy nie jest sprawdzona w silniku).
+3. **`MarkerReplication` wysyła `MarkersState` sam** (jest `IServerPlayerObserver` zarejestrowanym po `ServerSpaceSync`), a nie przez edycję `ServerSpaceSync`; kolejność `StarSystemState` → `MarkersState` zachowana. Operacje podczas oczekiwania na stan (budżet `Bulk` bez środków) nie są kolejkowane: stan budowany przy wysyłce już je zawiera (ten sam efekt, mniej kodu). Brak `MarkerLog.cs` (nie ma nic do zalogowania).
+4. **Pozycja własna w nawigacji** to pozycja bieżącej kamery Godota (świat Godota = rama układu, K5-20) w `double` przez `GodotFrames` (`CameraViewpoint`), a nie osobna ścieżka z `OwnState`. Rzutowanie na ekran: własny `NavigationScreenMath` (kierunek w przestrzeni kamery, bez `UnprojectPosition` i bez punktu pomocniczego).
+5. **Bramka wejścia**: `MapInputGate` + `CompositeInputGate`, składane przez `GameComposition.ComposeInputGate`; wymagało dwóch jednolinijkowych zmian w `GameUiCoordinator.Attach` (K3-18), bo ten przypisuje `reader.Gate = this` po złożeniu sesji. `MenuController` bez zmian.
+6. `GameComposition.cs`: `partial void ConfigureNavigation()` i wywołanie po `ConfigureMotion()` (X10).
+7. Dodatkowe typy biblioteki klienta: `IWorldPoseSource`/`ClientFramePoses` (nić między `ClientFrameGraph` a koordynatorem, testowalne bez silnika), `INavigationViewpoint`, `PlanetMapProjection`, `SurfaceBisection`, `NavigationScreenMath`.
+8. `WorldCheckpoint` ma dodatkowy konstruktor bez pól znaczników (stare wywołania w testach/pakietach równoległych kompilują się bez zmian).
+9. Nazwy graczy na mapie układu: klient ich nie zna (`EntitySpawn` niesie tylko `Owner`); model przyjmuje funkcję nazw, gra podaje `#<id gracza>` dla cudzych bytów (P1 bez zmian).
+
+**`ProtocolVersion` = 10** (`main` 9 + 1, D4); K5-22 bierze równolegle też 10: do przeliczenia przy scaleniu (`ProtocolContractTests`, `ProtocolConstants`, komentarz w planie).
+
+**Wyniki.** `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"` zielone poza znanym kruchym `Replicate_LargeConstruct_DoesNotBlockTicksAndArrivesComplete` (zegar ścienny, nie dotyczy pakietu). Testy restartu (`Markers_CheckpointRestart_SameMarkersAndHash`), awarii (`Markers_CrashBeforeCheckpoint_JournalReplayRestores`), prywatności (`MarkerReplication_PrivateToOwnerOnly_SharedToAll`, dwóch klientów na `InMemoryTransport`, brak bajtów cudzego prywatnego) i ciągłości nawigacji (`NavigationCoordinator_TargetOnMoon_FromPlanetShipAndSystemFrames_Continuous`, ≤ 1 mm) przechodzą. Testy silnika w `game/tests/Navigation/` są napisane i się kompilują, **nie uruchamiane lokalnie** (zakaz gdUnit na tej maszynie): `NavigationHud_TargetInView_Pin_Behind_EdgeArrow`, `PlanetMapSampler_HeightsMatchGeneratorWithinVoxel`, `SystemMapPanel_RendersModel`, `MapInputGate_Open_BlocksGameplayInput`.
+
+**Do zrobienia przed PR.** Ręczny przebieg `Manual` kroku 12 (tworzenie, edycja, usunięcie, prywatny niewidoczny dla drugiego gracza); krok 13 (rebase na `main`, wartość `ProtocolVersion`, `python tools/engine/build.py smoke`, zrzuty).
+
+**Krok 1 (kontrakt Opus):** akceptacja Opus **nie odbyła się** — pending Opus review (patrz odstępstwo 1; commity kroków 1–7 do przeglądu).
+
+**Lista kontrolna ręcznego przebiegu `Manual` (krok 12, dla właściciela; dwa klienty, host + gość):**
+1. Klawisz `N` otwiera mapę układu; `N`/`Esc` zamyka; podczas mapy ruch i narzędzia są zablokowane.
+2. Mapa planety: widoczna wysokościomierz-mapa, kursor pokazuje położenie; bieżąca pozycja gracza zaznaczona.
+3. Utwórz znacznik (nazwa, ikona, kolor, prywatny/wspólny): pojawia się na mapie i jako pinezka w HUD.
+4. Edytuj znacznik (nazwa, kolor): zmiana widoczna od razu; po restarcie serwera zostaje.
+5. Ustaw znacznik jako cel nawigacji: pinezka w polu widzenia, strzałka na krawędzi, gdy cel za plecami; odległość z jednostką.
+6. Usuń znacznik: znika z mapy i HUD; cel nawigacji czyszczony.
+7. Znacznik prywatny jest niewidoczny na drugim kliencie; wspólny — widoczny u obu.
+8. Przekroczenie limitu znaczników: komunikat odmowy 36 po polsku.
+9. Nawigacja do znacznika na księżycu: odległość ciągła przy zmianie ramy (planeta → statek → układ).
