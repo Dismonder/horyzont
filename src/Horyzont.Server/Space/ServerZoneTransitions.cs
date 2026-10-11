@@ -50,6 +50,30 @@ public sealed class ServerZoneTransitions : IServerTickParticipant
     /// <summary>Gets the number of refused reparents (retried next tick).</summary>
     public int Refused { get; private set; }
 
+    /// <summary>
+    /// Registers the zone transitions and then the frame node composer in phase <see cref="ServerTickPhase.Frames"/>, so the
+    /// characters of the tick see the frames moved and reparented in it (K5-20 review). The flight of ships (K5-24) is registered
+    /// before this call and runs first.
+    /// </summary>
+    /// <param name="server">The server.</param>
+    /// <param name="zones">The zone transitions.</param>
+    /// <param name="frameNodes">The composer of the server frame nodes for phase Frames; null without frames.</param>
+    public static void RegisterFramesPhase(ServerRuntime server, ServerZoneTransitions zones, IServerTickParticipant? frameNodes)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        ArgumentNullException.ThrowIfNull(zones);
+        if (frameNodes is not null && frameNodes.Phase != ServerTickPhase.Frames)
+        {
+            throw new ArgumentException("The frame node composer must run in phase Frames.", nameof(frameNodes));
+        }
+
+        server.AddTickParticipant(zones);
+        if (frameNodes is not null)
+        {
+            server.AddTickParticipant(frameNodes);
+        }
+    }
+
     /// <summary>Gets the number of ships with a remembered failure log tick (tests: ids of removed ships are dropped).</summary>
     internal int TrackedFailures => _lastFailureLog.Count;
 
