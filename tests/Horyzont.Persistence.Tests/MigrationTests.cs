@@ -13,6 +13,9 @@ public sealed class MigrationTests
 {
     public const string FixtureName = "world-v1.db";
 
+    // Newest production schema; the test migrations come right after it (K5-21 added M0002).
+    private static int Latest => MigrationRunner.All.Count;
+
     private static readonly DateTimeOffset _now = new(2026, 10, 8, 9, 30, 15, TimeSpan.Zero);
 
     private static string CreatePlanetless(TempDirectory dir)
@@ -36,12 +39,14 @@ public sealed class MigrationTests
         var (loaded, sim, _) = WorldHarness.LoadAndReplay(dir.WorldPath);
 
         Assert.Equal(WorldFactory.DefaultWorldId, loaded.State.Id);
-        Assert.Single(loaded.State.Planets.All);
+        // M0002 backfilled the star system around the only planet of the K1-05 fixture (K5-21 decision 12).
+        Assert.Equal(4, loaded.State.Planets.All.Count);
+        Assert.NotNull(loaded.State.StarSystem);
         Assert.NotEmpty(loaded.JournalTail);
         Assert.True(sim.State.Players.Count > 0);
         Assert.Equal(loaded.JournalTail[^1].Id, sim.State.LastOpId);
 
-        var migrated = Load(dir.WorldPath, [MigrationRunner.All[0], new TestMigration2()]);
+        var migrated = Load(dir.WorldPath, [.. MigrationRunner.All, new TestMigrationNext()]);
         Assert.Equal(loaded.JournalTail.Count, migrated.JournalTail.Count);
     }
 
@@ -51,16 +56,16 @@ public sealed class MigrationTests
         using var dir = new TempDirectory();
         var path = CreatePlanetless(dir);
 
-        Load(path, [MigrationRunner.All[0], new TestMigration2()]);
+        Load(path, [.. MigrationRunner.All, new TestMigrationNext()]);
 
-        Assert.Equal(2L, RawDb.Long(path, "PRAGMA user_version;"));
+        Assert.Equal(Latest + 1L, RawDb.Long(path, "PRAGMA user_version;"));
         Assert.Equal(1L, RawDb.Long(path, "SELECT COUNT(*) FROM test_m2;"));
         var copy = Assert.Single(Directory.GetFiles(dir.BackupsPath));
         Assert.Equal("20261008-093015-000001-pre-migration.db", Path.GetFileName(copy));
-        Assert.Equal(1L, RawDb.Long(copy, "PRAGMA user_version;"));
+        Assert.Equal(Latest, RawDb.Long(copy, "PRAGMA user_version;"));
         Assert.Equal("delete", RawDb.Scalar(copy, "PRAGMA journal_mode;"));
 
-        Load(path, [MigrationRunner.All[0], new TestMigration2()]);
+        Load(path, [.. MigrationRunner.All, new TestMigrationNext()]);
         Assert.Single(Directory.GetFiles(dir.BackupsPath));
     }
 
@@ -70,9 +75,9 @@ public sealed class MigrationTests
         using var dir = new TempDirectory();
         var path = CreatePlanetless(dir);
 
-        Assert.Throws<SqliteException>(() => Load(path, [MigrationRunner.All[0], new FailingMigration2()]));
+        Assert.Throws<SqliteException>(() => Load(path, [.. MigrationRunner.All, new FailingMigrationNext()]));
 
-        Assert.Equal(1L, RawDb.Long(path, "PRAGMA user_version;"));
+        Assert.Equal(Latest, RawDb.Long(path, "PRAGMA user_version;"));
         Assert.Equal(0L, RawDb.Long(path, "SELECT COUNT(*) FROM sqlite_schema WHERE name = 'half_done';"));
     }
 
@@ -86,7 +91,7 @@ public sealed class MigrationTests
         var error = Assert.Throws<WorldFromNewerVersionException>(() => Load(path, MigrationRunner.All));
 
         Assert.Equal(99, error.SchemaVersion);
-        Assert.Equal(1, error.SupportedVersion);
+        Assert.Equal(Latest, error.SupportedVersion);
     }
 
     [Fact]
@@ -111,12 +116,12 @@ public sealed class MigrationTests
 
         Assert.Throws<InvalidOperationException>(() => MigrationRunner.Validate(list));
         Assert.Throws<InvalidOperationException>(() => Load(path, list));
-        Assert.Equal(1L, RawDb.Long(path, "PRAGMA user_version;"));
+        Assert.Equal(Latest, RawDb.Long(path, "PRAGMA user_version;"));
     }
 
-    private sealed class TestMigration2 : IMigration
+    private sealed class TestMigrationNext : IMigration
     {
-        public int Number => 2;
+        public int Number => Latest + 1;
 
         public void Apply(SqliteConnection connection, SqliteTransaction transaction)
         {
@@ -127,9 +132,9 @@ public sealed class MigrationTests
         }
     }
 
-    private sealed class FailingMigration2 : IMigration
+    private sealed class FailingMigrationNext : IMigration
     {
-        public int Number => 2;
+        public int Number => Latest + 1;
 
         public void Apply(SqliteConnection connection, SqliteTransaction transaction)
         {

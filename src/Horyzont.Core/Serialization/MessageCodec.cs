@@ -386,6 +386,10 @@ public static class MessageCodec
 
                 break;
 
+            case StarSystemState starSystem:
+                StateCodec.WriteStarSystem(w, starSystem.System);
+                break;
+
             case ResyncRequest request:
                 if (request.Entity.IsNone)
                 {
@@ -769,6 +773,9 @@ public static class MessageCodec
                 }
 
                 return new Snapshot(snapId, sTick, baseline, lastInput, frames, entities);
+
+            case MessageType.StarSystemState:
+                return new StarSystemState(StateCodec.ReadStarSystem(ref r));
 
             case MessageType.ResyncRequest:
                 var requested = new EntityId(r.ReadVarUInt());

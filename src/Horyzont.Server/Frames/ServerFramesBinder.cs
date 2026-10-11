@@ -1,4 +1,5 @@
 using Horyzont.Core.Frames;
+using Horyzont.Core.Space;
 
 namespace Horyzont.Server.Frames;
 
@@ -6,7 +7,7 @@ namespace Horyzont.Server.Frames;
 /// Registers the server frames with a runtime (K5-20): the frame graph over the loaded world, the 500 ms frame history (first
 /// participant of the <see cref="ServerTickPhase.Compose"/> phase) and the transitions, created with the world on the first tick.
 /// </summary>
-/// <param name="placement">Planet poses of a loaded world; by default the first planet of the world is the home planet in identity.</param>
+/// <param name="placement">Planet poses of a loaded world; by default <see cref="WorldStatePlanetPlacement"/> (the star system of the world).</param>
 public sealed class ServerFramesBinder(WorldStatePlacement? placement = null) : IServerTickParticipant
 {
     private ServerFrameHistory? _history;
@@ -44,7 +45,7 @@ public sealed class ServerFramesBinder(WorldStatePlacement? placement = null) : 
         if (_transitions is null)
         {
             var state = runtime.State;
-            var graph = new FrameGraph(new WorldStateFramePoses(state, (placement ?? HomeFirst)(state)));
+            var graph = new FrameGraph(new WorldStateFramePoses(state, (placement ?? DefaultPlacement)(state)));
             _history = new ServerFrameHistory(state, graph);
             _transitions = new FrameTransitions(runtime.Simulation, _history);
         }
@@ -59,8 +60,8 @@ public sealed class ServerFramesBinder(WorldStatePlacement? placement = null) : 
         _history!.OnTick(runtime);
     }
 
-    private static HomeOnlyPlacement HomeFirst(Horyzont.Core.World.WorldState state) =>
-        new HomeOnlyPlacement(state.Planets.All.Count > 0 ? state.Planets.All[0].Id : default);
+    // K5-21 decision 15: the star system of the world (home planet only when it has none).
+    private static WorldStatePlanetPlacement DefaultPlacement(Horyzont.Core.World.WorldState state) => new(state);
 }
 
 /// <summary>Chooses the planet placement of a loaded world.</summary>

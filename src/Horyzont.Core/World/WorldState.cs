@@ -3,6 +3,7 @@ using System.Numerics;
 
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
+using Horyzont.Core.Space;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Terrain;
@@ -61,6 +62,15 @@ public sealed class WorldState
     /// <summary>Planets.</summary>
     public PlanetRegistry Planets { get; }
 
+    /// <summary>
+    /// The star system (K5-21), or null for a world created without one (old <see cref="CreateNew(WorldId, ulong, IEnumerable{PlanetParams}, IEnumerable{string}, IEnumerable{string})"/>,
+    /// the golden corpus, a world the migration could not backfill). Immutable: no operation changes it.
+    /// </summary>
+    public StarSystemParams? StarSystem { get; private set; }
+
+    /// <summary>The home planet: body 0 of the star system, otherwise the first planet. Never use <c>Planets.All[0]</c> for it.</summary>
+    public PlanetId HomePlanet => StarSystem?.HomePlanet ?? (Planets.All.Count > 0 ? Planets.All[0].Id : default);
+
     /// <summary>Block types.</summary>
     public BlockTypeRegistry BlockTypes { get; }
 
@@ -80,6 +90,63 @@ public sealed class WorldState
     public bool IsCheckpointInFlight => _inFlight is not null;
 
     internal ChangeTracker Tracker => _tracker;
+
+    /// <summary>Sets the star system once, after the planets; every body must be a registered planet and the zones separated.</summary>
+    /// <param name="system">The star system.</param>
+    /// <exception cref="InvalidDataException">The system is invalid, already set or inconsistent with the planets.</exception>
+    internal void SetStarSystem(StarSystemParams system)
+    {
+        if (StarSystem is not null)
+        {
+            throw new InvalidDataException("The star system is already set.");
+        }
+
+        system.Validate();
+        var bodies = new PlanetParams[system.Bodies.Count];
+        for (var i = 0; i < bodies.Length; i++)
+        {
+            if (!Planets.TryGet(system.Bodies[i].Planet, out var planet))
+            {
+                throw new InvalidDataException($"Star system {system.System.Value}: planet {system.Bodies[i].Planet.Value} is not in the world.");
+            }
+
+            bodies[i] = planet;
+        }
+
+        StarSystemGenesis.ValidateSeparation(system, bodies);
+        StarSystem = system;
+    }
+
+    /// <summary>
+    /// Creates a new world. Block types get numbers from 1 in the given order; <see cref="BlockTypeRegistry.MissingKey"/>
+    /// is appended when absent. Materials get numbers from 1 in the given order.
+    /// LastOpId = None, CurrentTick = 0, NextEntityId = 1, NextPlayerId = 1.
+    /// </summary>
+    /// <param name="id">World id.</param>
+    /// <param name="galaxySeed">Galaxy seed.</param>
+    /// <param name="system">The star system (K5-21); every body must be one of <paramref name="planets"/>.</param>
+    /// <param name="planets">Planets.</param>
+    /// <param name="blockTypeKeys">Block type keys.</param>
+    /// <param name="materialKeys">Material keys.</param>
+    /// <returns>The new world.</returns>
+    /// <exception cref="ArgumentException">The system is invalid or a body is not among the planets.</exception>
+    public static WorldState CreateNew(
+        WorldId id, ulong galaxySeed, StarSystemParams system, IEnumerable<PlanetParams> planets, IEnumerable<string> blockTypeKeys,
+        IEnumerable<string> materialKeys)
+    {
+        ArgumentNullException.ThrowIfNull(system);
+        var state = CreateNew(id, galaxySeed, planets, blockTypeKeys, materialKeys);
+        try
+        {
+            state.SetStarSystem(system);
+        }
+        catch (InvalidDataException ex)
+        {
+            throw new ArgumentException(ex.Message, nameof(system), ex);
+        }
+
+        return state;
+    }
 
     /// <summary>
     /// Creates a new world. Block types get numbers from 1 in the given order; <see cref="BlockTypeRegistry.MissingKey"/>

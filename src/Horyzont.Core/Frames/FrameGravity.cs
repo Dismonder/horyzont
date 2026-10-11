@@ -29,7 +29,23 @@ public static class FrameGravity
     /// <param name="planets">Parameters of a planet; null when unknown.</param>
     /// <param name="gravity">Receives the acceleration in the frame.</param>
     /// <returns>False for an unknown frame or region planet.</returns>
-    public static bool TryAt(FrameGraph graph, FrameRef frame, Vector3D local, Func<PlanetId, PlanetParams?> planets, out Vector3D gravity)
+    public static bool TryAt(FrameGraph graph, FrameRef frame, Vector3D local, Func<PlanetId, PlanetParams?> planets, out Vector3D gravity) =>
+        TryAt(graph, frame, local, planets, zone: false, out gravity);
+
+    /// <summary>
+    /// Gravity of a construct at a point of its frame (K5-21 decision 17): the zone gravity of the region body
+    /// (<see cref="Space.StarSystemMath.GravityInPlanet"/>) expressed in the frame; zero in a system region.
+    /// </summary>
+    /// <param name="graph">The frame graph.</param>
+    /// <param name="frame">The frame.</param>
+    /// <param name="local">The point in the frame.</param>
+    /// <param name="planets">Parameters of a planet; null when unknown.</param>
+    /// <param name="gravity">Receives the acceleration in the frame.</param>
+    /// <returns>False for an unknown frame or region planet.</returns>
+    public static bool TryAtZone(FrameGraph graph, FrameRef frame, Vector3D local, Func<PlanetId, PlanetParams?> planets, out Vector3D gravity) =>
+        TryAt(graph, frame, local, planets, zone: true, out gravity);
+
+    private static bool TryAt(FrameGraph graph, FrameRef frame, Vector3D local, Func<PlanetId, PlanetParams?> planets, bool zone, out Vector3D gravity)
     {
         ArgumentNullException.ThrowIfNull(graph);
         ArgumentNullException.ThrowIfNull(planets);
@@ -55,7 +71,8 @@ public static class FrameGravity
             return false;
         }
 
-        gravity = FrameMath.InverseTransformDirection(pose, AtPlanet(planet, FrameMath.TransformPoint(pose, local)));
+        var point = FrameMath.TransformPoint(pose, local);
+        gravity = FrameMath.InverseTransformDirection(pose, zone ? Space.StarSystemMath.GravityInPlanet(point, planet) : AtPlanet(planet, point));
         return true;
     }
 }

@@ -3,6 +3,7 @@ using System.Numerics;
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Space;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -36,12 +37,33 @@ public static class TestShips
     /// <summary>A world with the home planet and the given constructs (ids must be below 100).</summary>
     /// <param name="ships">The constructs.</param>
     /// <returns>The world.</returns>
-    public static WorldState CreateWorld(params TestShip[] ships)
+    public static WorldState CreateWorld(params TestShip[] ships) => Create(42, [WorldFactory.HomePlanetParams], null, ships);
+
+    /// <summary>A world with the star system of <paramref name="seed"/> (K5-21: four bodies) and the given constructs (ids below 100).</summary>
+    /// <param name="seed">Galaxy seed.</param>
+    /// <param name="ships">The constructs.</param>
+    /// <returns>The world.</returns>
+    public static WorldState CreateStarSystemWorld(ulong seed, params TestShip[] ships)
+    {
+        var created = StarSystemGenesis.CreateWorldBodies(seed, WorldFactory.HomePlanetParams.GeneratorProfile);
+        return Create(seed, created.Bodies, created.System, ships);
+    }
+
+    private static WorldState Create(ulong seed, IReadOnlyList<PlanetParams> planets, StarSystemParams? system, TestShip[] ships)
     {
         ArgumentNullException.ThrowIfNull(ships);
-        var builder = new WorldStateBuilder(WorldFactory.DefaultWorldId, 42);
+        var builder = new WorldStateBuilder(WorldFactory.DefaultWorldId, seed);
         builder.SetProgress(default, default, 100, 1);
-        builder.AddPlanet(WorldFactory.HomePlanetParams);
+        foreach (var planet in planets)
+        {
+            builder.AddPlanet(planet);
+        }
+
+        if (system is not null)
+        {
+            builder.SetStarSystem(system);
+        }
+
         builder.AddBlockType(new RegistryEntry(StoneTypeId, WorldFactory.StoneBlockKey));
         builder.AddBlockType(new RegistryEntry(StoneTypeId + 1, BlockTypeRegistry.MissingKey));
         builder.AddMaterial(new RegistryEntry(1, "stone"));

@@ -162,6 +162,18 @@ internal sealed class ModeFixture
         return finished && released;
     }
 
+    /// <summary>
+    /// The home planet of the world (K5-21: body 0 of the star system). <c>Planets.All</c> is in id order, so its element 0 is any
+    /// body of the system, not the planet the game spawns on and builds terrain for.
+    /// </summary>
+    public static PlanetParams Home(WorldState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        return state.Planets.TryGet(state.HomePlanet, out var home)
+            ? home
+            : throw new InvalidOperationException("The world has no home planet.");
+    }
+
     /// <summary>Y of the surface above the planet's north pole (+Y axis) from the generator.</summary>
     public static int SurfaceY(PlanetParams planet)
     {

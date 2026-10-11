@@ -108,7 +108,7 @@ public sealed class HostConstructs : IServerTickParticipant, IDisposable
         _runtime = runtime;
         if (state.Planets.All.Count > 0)
         {
-            World.RebuildAll(FrameRef.Of(state.Planets.All[0].Id));
+            World.RebuildAll(FrameRef.Of(state.HomePlanet));
         }
     }
 
@@ -187,7 +187,7 @@ public sealed class HostConstructs : IServerTickParticipant, IDisposable
 #pragma warning disable CA1031 // The server must keep running; the failure is logged.
         try
         {
-            World.RebuildAll(FrameRef.Of(state.Planets.All[0].Id));
+            World.RebuildAll(FrameRef.Of(state.HomePlanet));
         }
         catch (Exception ex)
 #pragma warning restore CA1031

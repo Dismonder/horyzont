@@ -70,6 +70,11 @@ public static class WorldLoader
             GrowRegistries(connection, "block_types", options.BlockTypeKeys, ProtocolConstants.MaxBlockTypes, logger);
             GrowRegistries(connection, "materials", options.MaterialKeys, ProtocolConstants.MaxMaterials, logger);
             var loaded = ReadWorld(connection);
+            if (loaded.State.StarSystem is null)
+            {
+                PersistenceLog.NoStarSystem(logger, database.Path, loaded.State.Planets.All.Count);
+            }
+
             PersistenceLog.WorldLoaded(logger, database.Path, loaded.LastCheckpointOpId.Value, loaded.JournalTail.Count);
             return loaded;
         }
@@ -136,6 +141,7 @@ public static class WorldLoader
             ReadRegistry(connection, "block_types", entry => builder.AddBlockType(entry));
             ReadRegistry(connection, "materials", entry => builder.AddMaterial(entry));
             ReadPlanets(connection, builder);
+            ReadStarSystem(connection, builder);
             ReadConstructs(connection, builder);
             ReadPlayers(connection, builder);
             ReadTerrainVersions(connection, builder);
@@ -209,6 +215,30 @@ public static class WorldLoader
 
             builder.AddPlanet(planet);
         }
+    }
+
+    private static void ReadStarSystem(SqliteConnection connection, WorldStateBuilder builder)
+    {
+        using var command = Sql.Command(connection, null, "SELECT system_id, params FROM star_systems ORDER BY system_id;");
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return;
+        }
+
+        var id = Sql.FromDb(reader.GetInt64(0));
+        var system = StateCodec.DecodeStarSystemBlob((byte[])reader.GetValue(1));
+        if (system.System.Value != id)
+        {
+            throw new InvalidDataException($"Star system row {id} holds system {system.System.Value}.");
+        }
+
+        if (reader.Read())
+        {
+            throw new InvalidDataException("A world has at most one star system.");
+        }
+
+        builder.SetStarSystem(system);
     }
 
     private static void ReadConstructs(SqliteConnection connection, WorldStateBuilder builder)

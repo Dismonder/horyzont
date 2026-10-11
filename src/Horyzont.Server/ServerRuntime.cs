@@ -128,6 +128,9 @@ public sealed partial class ServerRuntime
     /// <summary>Gets a value indicating whether the world runs in safe mode without a writer (a journal tail that was not replayed).</summary>
     public bool IsReadOnlyStart => _readOnlyStart;
 
+    /// <summary>Gets the tick participants in run order (tests).</summary>
+    internal IReadOnlyList<IServerTickParticipant> TickParticipants => _participants;
+
     /// <summary>Registers a system that takes part in every tick: by <see cref="IServerTickParticipant.Phase"/>, in registration order within a phase.</summary>
     /// <param name="participant">The participant.</param>
     public void AddTickParticipant(IServerTickParticipant participant)

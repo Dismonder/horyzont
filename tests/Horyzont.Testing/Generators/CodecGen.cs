@@ -456,7 +456,8 @@ public static class CodecGen
          from position in Vector
          select (Message)new TerrainView(new PlanetId(1), Math.Max(1u, seq), position, 2048, position, 64)),
         ServerStatus.Select(m => (Message)m),
-        JoinUnavailable.Select(m => (Message)m));
+        JoinUnavailable.Select(m => (Message)m),
+        Full64.Select(seed => (Message)new StarSystemState(Horyzont.Core.Space.StarSystemGenesis.CreateWorldBodies(seed, "core:planet/1").System)));
 
     /// <summary>Server status messages: any flag and reason, detail of 0 to the codec maximum in UTF-8 bytes.</summary>
     public static Gen<ServerStatus> ServerStatus { get; } =

@@ -16,6 +16,7 @@
     <ProjectReference Include="../../src/Horyzont.Persistence/Horyzont.Persistence.csproj" />
     <ProjectReference Include="../../src/Horyzont.Net/Horyzont.Net.csproj" />
     <ProjectReference Include="../../src/Horyzont.Client/Horyzont.Client.csproj" />
+    <ProjectReference Include="../../src/Horyzont.Server/Horyzont.Server.csproj" />
     <ProjectReference Include="../Horyzont.Testing/Horyzont.Testing.csproj" />
   </ItemGroup>
 </Project>

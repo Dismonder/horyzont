@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 
 using Horyzont.Core.Ids;
+using Horyzont.Core.Space;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -49,6 +50,12 @@ public static class StateHasher
             F32(hash, planet.AtmosphereHeightMeters);
             F32(hash, planet.CoreDepthMeters);
             F32(hash, planet.DayLengthSeconds);
+        }
+
+        // K5-21 decision 9: the star system section exists only when the world has one, so worlds without it hash as before.
+        if (state.StarSystem is { } system)
+        {
+            StarSystem(hash, system);
         }
 
         U32(hash, (uint)state.Constructs.Count);
@@ -173,6 +180,32 @@ public static class StateHasher
         F32(hash, q.Z);
         F32(hash, q.W);
     }
+
+    private static void StarSystem(XxHash64 hash, StarSystemParams system)
+    {
+        U64(hash, system.System.Value);
+        Span<byte> one = stackalloc byte[1];
+        one[0] = system.LayoutVersion;
+        hash.Append(one);
+        U64(hash, system.HomePlanet.Value);
+        F32(hash, system.SunCycleSeconds);
+        U32(hash, (uint)system.Bodies.Count);
+        foreach (var body in system.Bodies)
+        {
+            U64(hash, body.Planet.Value);
+            one[0] = body.BodyIndex;
+            hash.Append(one);
+            F64(hash, body.Pose.Position.X);
+            F64(hash, body.Pose.Position.Y);
+            F64(hash, body.Pose.Position.Z);
+            F64(hash, body.Pose.Rotation.X);
+            F64(hash, body.Pose.Rotation.Y);
+            F64(hash, body.Pose.Rotation.Z);
+            F64(hash, body.Pose.Rotation.W);
+        }
+    }
+
+    private static void F64(XxHash64 hash, double value) => U64(hash, BitConverter.DoubleToUInt64Bits(value));
 
     private static void F32(XxHash64 hash, float value) => U32(hash, BitConverter.SingleToUInt32Bits(value));
 

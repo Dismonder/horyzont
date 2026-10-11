@@ -3,6 +3,7 @@ using System.Numerics;
 using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Simulation;
+using Horyzont.Core.Space;
 using Horyzont.Core.World;
 using Horyzont.Server.Frames;
 using Horyzont.Testing;
@@ -20,7 +21,7 @@ internal sealed class FrameRig
         State = state ?? TestShips.CreateDefault();
         Journal = new InMemoryJournal();
         Sim = new ServerSimulation(State, new FakeTerrainService(), Journal, new GameRules(), NullLogger<ServerSimulation>.Instance);
-        Graph = new FrameGraph(new WorldStateFramePoses(State, new HomeOnlyPlacement(WorldFactory.HomePlanet)));
+        Graph = new FrameGraph(new WorldStateFramePoses(State, new WorldStatePlanetPlacement(State)));
         History = new ServerFrameHistory(State, Graph);
         Transitions = new FrameTransitions(Sim, History);
     }

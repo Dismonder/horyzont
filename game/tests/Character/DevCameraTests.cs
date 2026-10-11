@@ -34,7 +34,7 @@ public class DevCameraTests
         var player = composition.LocalPlayer!;
         AssertThat(await fixture.WaitUntil(() => player.IsActive, 180)).IsTrue();
         var dev = player.DevCamera!;
-        var planet = composition.Server!.State.Planets.All[0];
+        var planet = ModeFixture.Home(composition.Server!.State);
         AssertThat(player.VisualViewer).IsNotNull();
 
         var press = new InputEventAction { Action = "dev_camera_orbit", Pressed = true };

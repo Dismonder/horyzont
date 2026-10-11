@@ -92,6 +92,13 @@ public sealed partial class VoxelServerTerrainFactory : IServerTerrainFactory
                 Path.Combine(Path.GetDirectoryName(Path.GetFullPath(worldPath))!, DerivedDatabaseName), _time, _loggers.CreateLogger<DerivedLodStore>()));
             foreach (var planet in state.Planets.All)
             {
+                if (planet.Id != state.HomePlanet)
+                {
+                    // K5-22 replaces this guard with terrain activation: until then only the home planet has terrain (K5-21
+                    // decision 11), otherwise every body would put a VoxelLodTerrain at the origin of the system.
+                    continue;
+                }
+
                 var configured = CreatePlanet(planet, _options, _material);
                 var rebuilder = configured.Generator is { } generator ? derived.Add(planet, blocks, generator) : null;
                 var node = service.AddPlanet(planet, configured, rebuilder);

@@ -79,4 +79,7 @@ public enum MessageType : byte
 
     /// <summary>Client to server, reliable terrain viewer update.</summary>
     TerrainView = 25,
+
+    /// <summary>S→C: the star system of the world, once after the hello (K5-21).</summary>
+    StarSystemState = 32,
 }

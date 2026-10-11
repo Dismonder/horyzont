@@ -65,6 +65,24 @@ public class DayNightTests
     }
 
     [TestCase]
+    public void DayNight_SunDirection_BitwiseEqualsPreK5_21Formula()
+    {
+        // K5-21 moved the formula to StarSystemMath.SunDirection; the planet overload must stay bit for bit the same.
+        foreach (var dayLength in new[] { 1800f, 1200f, 7.3f })
+        {
+            var planet = Planet(dayLength);
+            foreach (var tick in new ulong[] { 0, 1, 7000, 27000, 54000, 95555, 1_000_003, (ulong)uint.MaxValue * 3, ulong.MaxValue })
+            {
+                var expected = OldSunDirection(tick, TickRate, dayLength);
+                var actual = DayNightCycle.SunDirection(tick, TickRate, planet);
+                AssertThat(BitConverter.SingleToUInt32Bits(actual.X)).IsEqual(BitConverter.SingleToUInt32Bits(expected.X));
+                AssertThat(BitConverter.SingleToUInt32Bits(actual.Y)).IsEqual(BitConverter.SingleToUInt32Bits(expected.Y));
+                AssertThat(BitConverter.SingleToUInt32Bits(actual.Z)).IsEqual(BitConverter.SingleToUInt32Bits(expected.Z));
+            }
+        }
+    }
+
+    [TestCase]
     [RequireGodotRuntime]
     public async Task DayNight_SunLight_AppliesDirection()
     {
@@ -83,5 +101,14 @@ public class DayNightTests
             AssertThat(Math.Abs(forward.Y - expected.Y)).IsLess(1e-5);
             AssertThat(Math.Abs(forward.Z - expected.Z)).IsLess(1e-5);
         }
+    }
+
+    // The inlined formula of DayNightCycle.SunDirection before K5-21.
+    private static System.Numerics.Vector3 OldSunDirection(ulong tick, int tickRate, float dayLengthSeconds)
+    {
+        var period = (ulong)Math.Round((double)dayLengthSeconds * tickRate);
+        var phase = tick % period;
+        var angle = 2d * Math.PI * ((double)phase / period);
+        return new System.Numerics.Vector3((float)Math.Cos(angle), 0f, (float)-Math.Sin(angle));
     }
 }

@@ -48,7 +48,7 @@ public sealed partial class GameComposition
 
     private void ConfigureClientFrames(ClientReplication replication, ConstructMirror? mirror)
     {
-        var frames = new ClientFrames(replication.Entities, mirror);
+        var frames = new ClientFrames(replication.Entities, mirror, ClientStarSystem);
         replication.Decoder.AddSink(frames);
         Client!.AddListener(frames);
         LocalPlayer!.AttachFrames(frames);
@@ -63,10 +63,13 @@ public sealed partial class GameComposition
         Tools?.FrameNodes = nodes;
     }
 
-    /// <summary>Composes the server frame nodes in the compose phase, after the frame history.</summary>
-    private sealed class FrameNodesComposer(FrameNodes nodes) : IServerTickParticipant
+    /// <summary>
+    /// Composes the server frame nodes: in the compose phase after the frame history, and (K5-21) once more at the end of the frames
+    /// phase, so the characters of the tick see the frames moved and reparented in that phase, not those of the previous tick.
+    /// </summary>
+    private sealed class FrameNodesComposer(FrameNodes nodes, ServerTickPhase phase = ServerTickPhase.Compose) : IServerTickParticipant
     {
-        public ServerTickPhase Phase => ServerTickPhase.Compose;
+        public ServerTickPhase Phase => phase;
 
         public void OnTick(ServerRuntime runtime)
         {

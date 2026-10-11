@@ -5,6 +5,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Motion;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Simulation;
+using Horyzont.Core.Space;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Terrain;
 using Horyzont.Game.Character;
@@ -108,7 +109,7 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
 
     /// <summary>Gets the frame graph the attached bodies are posed with.</summary>
     public FrameGraph Graph => _frames?.Invoke() ?? (_ownGraph ??= new FrameGraph(new WorldStateFramePoses(
-        _simulation.State, new HomeOnlyPlacement(_simulation.State.Planets.All.Count > 0 ? _simulation.State.Planets.All[0].Id : default))));
+        _simulation.State, new WorldStatePlanetPlacement(_simulation.State))));
 
     /// <summary>Gets the number of bodies.</summary>
     public int Count => _ordered.Count;

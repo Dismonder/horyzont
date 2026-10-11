@@ -387,6 +387,7 @@ public sealed partial class GameComposition
 
         composition.ServerFrames = serverFrames;
         composition.ServerFrameNodes = serverFrameNodes;
+        composition.ConfigureSpace();
         composition.ConfigureReplication();
         composition.ConfigureTerrainReplication();
         composition.ConfigureMotion();
@@ -416,6 +417,7 @@ public sealed partial class GameComposition
         return composition;
     }
 
+    partial void ConfigureSpace();
     partial void ConfigureReplication();
     partial void ConfigureTerrainReplication();
     partial void ConfigureMotion();
@@ -696,12 +698,11 @@ public sealed partial class GameComposition
     private static string WorldPathOf(string savesDir, Guid id) => Path.Combine(savesDir, id.ToString("D"), "world.db");
 
     private static WorldState NewWorld(Guid id, ulong seed, IReadOnlyList<string> blockTypeKeys) =>
-        WorldState.CreateNew(
-            new Horyzont.Core.Ids.WorldId(id),
-            seed,
-            [PlanetGenesis.CreatePlanet(seed, PlanetGenesis.HomePlanetIndex, GeneratorProfiles.Current)],
-            blockTypeKeys,
-            TerrainMaterials.Keys);
+        NewWorld(id, seed, Horyzont.Core.Space.StarSystemGenesis.CreateWorldBodies(seed, GeneratorProfiles.Current), blockTypeKeys);
+
+    // K5-21: a new world gets its star system (home planet of PlanetGenesis and the bodies of StarSystemLayout.V1).
+    private static WorldState NewWorld(Guid id, ulong seed, Horyzont.Core.Space.GeneratedStarSystem created, IReadOnlyList<string> blockTypeKeys) =>
+        WorldState.CreateNew(new Horyzont.Core.Ids.WorldId(id), seed, created.System, created.Bodies, blockTypeKeys, TerrainMaterials.Keys);
 
     private async Task<int?> StartServerAsync(CancellationToken ct)
     {

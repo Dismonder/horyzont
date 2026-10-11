@@ -8,7 +8,7 @@ namespace Horyzont.Persistence.Migrations;
 public static class MigrationRunner
 {
     /// <summary>The production migrations in number order.</summary>
-    public static IReadOnlyList<IMigration> All { get; } = [new M0001_Initial()];
+    public static IReadOnlyList<IMigration> All { get; } = [new M0001_Initial(), new M0002_Space()];
 
     /// <summary>Checks that the numbers are exactly 1, 2, …, n in list order.</summary>
     /// <param name="migrations">The list.</param>

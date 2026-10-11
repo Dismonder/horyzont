@@ -6,6 +6,7 @@ using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Simulation;
+using Horyzont.Core.World;
 using Horyzont.Net.Session;
 using Horyzont.Server.UI;
 
@@ -94,7 +95,28 @@ public sealed class GameServerHooks : IServerGameHooks
         }
 
         return new ServerHello(
-            state.Id, state.CurrentTick, TickRate, player, joined.Entity, state.Planets.All, state.BlockTypes.Entries, state.Materials.Entries);
+            state.Id, state.CurrentTick, TickRate, player, joined.Entity, HomeFirst(state), state.BlockTypes.Entries, state.Materials.Entries);
+    }
+
+    // K5-21 decision 10: element 0 of ServerHello.Planets is the home planet, the rest keeps the registry (id) order.
+    private static List<PlanetParams> HomeFirst(WorldState state)
+    {
+        var all = state.Planets.All;
+        var planets = new List<PlanetParams>(all.Count);
+        if (state.Planets.TryGet(state.HomePlanet, out var home))
+        {
+            planets.Add(home);
+        }
+
+        foreach (var planet in all)
+        {
+            if (planet.Id != state.HomePlanet)
+            {
+                planets.Add(planet);
+            }
+        }
+
+        return planets;
     }
 
     /// <inheritdoc />

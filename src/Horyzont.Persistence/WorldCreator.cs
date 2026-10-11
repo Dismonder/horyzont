@@ -2,6 +2,7 @@ using System.Globalization;
 
 using Horyzont.Core.Ids;
 using Horyzont.Core.Serialization;
+using Horyzont.Core.Space;
 using Horyzont.Core.World;
 using Horyzont.Persistence.Migrations;
 
@@ -12,7 +13,7 @@ namespace Horyzont.Persistence;
 /// <summary>Creates the file of a new world: schema, meta, registries and planets.</summary>
 public static class WorldCreator
 {
-    /// <summary>Writes a world made by <see cref="WorldState.CreateNew"/> to a new file.</summary>
+    /// <summary>Writes a world made by <c>WorldState.CreateNew</c> to a new file.</summary>
     /// <param name="path">World file; must not exist. The directory is created when missing.</param>
     /// <param name="world">The new world: no operations, constructs, players or terrain versions.</param>
     /// <param name="options">Persistence options (the game version is stored).</param>
@@ -77,7 +78,20 @@ public static class WorldCreator
             command.ExecuteNonQuery();
         }
 
+        if (world.StarSystem is { } system)
+        {
+            InsertStarSystem(connection, transaction, system);
+        }
+
         transaction.Commit();
+    }
+
+    internal static void InsertStarSystem(SqliteConnection connection, SqliteTransaction transaction, StarSystemParams system)
+    {
+        using var command = Sql.Command(connection, transaction, "INSERT INTO star_systems (system_id, params) VALUES ($id, $params);");
+        command.Parameters.AddWithValue("$id", Sql.ToDb(system.System.Value));
+        command.Parameters.AddWithValue("$params", StateCodec.EncodeStarSystemBlob(system));
+        command.ExecuteNonQuery();
     }
 
     internal static void InsertRegistry(SqliteConnection connection, SqliteTransaction transaction, string table, ushort id, string key)

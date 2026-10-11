@@ -149,7 +149,12 @@ public sealed class ServerSimulation
             throw new InvalidOperationException("The world has no planet to spawn on.");
         }
 
-        var planet = State.Planets.All[0];
+        // K5-21 decision 10: the registry is sorted by id, so the first planet may be a moon; spawn on the home planet.
+        if (!State.Planets.TryGet(State.HomePlanet, out var planet))
+        {
+            throw new InvalidOperationException("The home planet is not in the world.");
+        }
+
         return new PlayerJoinOp(
             State.PlayerIds.PeekNext(), identity, displayName, State.EntityIds.PeekNext(), FrameRef.Of(planet.Id), 0,
             SpawnPoint(planet), Quaternion.Identity);

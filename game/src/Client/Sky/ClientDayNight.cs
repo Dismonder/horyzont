@@ -2,6 +2,7 @@ using Godot;
 
 using Horyzont.Client;
 using Horyzont.Client.Session;
+using Horyzont.Client.Space;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.World;
 using Horyzont.Game.Frames;
@@ -11,7 +12,7 @@ namespace Horyzont.Game.Client.Sky;
 
 /// <summary>
 /// The sun and the sky of the client (decision D12). The direction of the sun is a pure function of the server tick
-/// (<see cref="DayNightCycle.SunDirection"/>); this node only estimates that tick and sets the <see cref="SunLight"/>: in a solo or
+/// (<see cref="DayNightCycle.SunDirection(ulong, int, float)"/>); this node only estimates that tick and sets the <see cref="SunLight"/>: in a solo or
 /// host process it is the tick of the server itself, for a remote client the tick of the hello plus the ticks since, corrected by
 /// every own-state snapshot. The client has no clock of day of its own. The sky follows: it is turned so its zenith is the local
 /// up of the camera, and it fades with the sun below the horizon and with height above the atmosphere. Lighting only; nothing
@@ -29,6 +30,9 @@ public sealed partial class ClientDayNight : Node, IClientSessionListener
     private PlanetParams? _planet;
     private int _tickRate = 60;
     private ulong _tick;
+
+    /// <summary>Gets or sets the star system of the session (K5-21): its sun cycle drives the sun; null = the day of the home planet.</summary>
+    public ClientStarSystem? StarSystem { get; set; }
 
     /// <summary>Gets or sets the frame nodes of the client (K5-20): planet-frame values go through the planet node; null = identity.</summary>
     public FrameNodes? FrameNodes { get; set; }
@@ -118,9 +122,12 @@ public sealed partial class ClientDayNight : Node, IClientSessionListener
 
         _tick = _authoritativeTick?.Invoke() ?? _tick + 1;
         AppliedTick = _tick;
-        _sun.Apply(_tick, _tickRate, _planet);
+        _sun.Apply(_tick, _tickRate, SunCycleSeconds);
         UpdateSky();
     }
+
+    // K5-21 decision 17: the cycle of the star system when known (equal to the home day in worlds of V1), else the home planet day.
+    private float SunCycleSeconds => StarSystem is { SunCycleSeconds: > 0f } system ? system.SunCycleSeconds : _planet!.DayLengthSeconds;
 
     private void UpdateSky()
     {
@@ -128,7 +135,7 @@ public sealed partial class ClientDayNight : Node, IClientSessionListener
         var origin = _view is { IsActive: true } ? _view.CameraOrigin : System.Numerics.Vector3.UnitX * planet.RadiusMeters;
         var length = origin.Length();
         var up = length > 1e-3f ? origin / length : System.Numerics.Vector3.UnitY;
-        var sun = DayNightCycle.SunDirection(_tick, _tickRate, planet);
+        var sun = DayNightCycle.SunDirection(_tick, _tickRate, SunCycleSeconds);
         var elevation = System.Numerics.Vector3.Dot(sun, up);
         Daylight = Mathf.SmoothStep(-0.12f, 0.2f, elevation);
         if (_environment is null || _sky is null)

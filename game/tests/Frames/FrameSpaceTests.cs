@@ -4,6 +4,7 @@ using Godot;
 
 using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
+using Horyzont.Core.Space;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Game.Frames;
@@ -45,8 +46,9 @@ public class FrameSpaceTests
         AssertThat(spaces.TryGet(_ship, out var ship)).IsTrue();
         AssertThat(ship.PhysicsSpace).IsEqual(planet.PhysicsSpace);
         AssertThat(ship.SupportsWalking).IsFalse();
+        // K5-21 decision 17: a construct has the zone gravity of the body, g0 (R/r)^2 at 4100 m.
         var inShip = ship.GravityAt(Vector3D.Zero);
-        AssertThat(Math.Abs(inShip.Length() - _planet.Gravity)).IsLess(1e-3);
+        AssertThat(Math.Abs(inShip.Length() - StarSystemMath.Gravity(4100, _planet.RadiusMeters, _planet.Gravity))).IsLess(1e-3);
         AssertThat(Vector3D.Distance(inShip, new Vector3D(0, -_planet.Gravity, 0))).IsGreater(1);
         mode = ConstructMode.Static;
         AssertThat(spaces.TryGet(_ship, out var parked)).IsTrue();
