@@ -132,6 +132,39 @@ public sealed class CoopReplicationTests
         await rig.StopServerAsync();
     }
 
+    [Fact]
+    public async Task Crowd_CheckBreak_WritesBotDumpsEqualToTheServerDump()
+    {
+        var schedule = new BotSchedule { ControlPeriodTicks = 2400, QuietTicks = 600, DrainTicks = 600, BurstStartTicks = 100_000 };
+        await using var rig = new CoopRig(replicated: true);
+        await rig.StartServerAsync();
+        rig.AddBot(BotRole.Builder, seed: 41, schedule);
+        rig.AddBot(BotRole.Builder, seed: 42, schedule);
+        var crowd = rig.UseCrowd();
+        crowd.Schedule = schedule;
+        crowd.DumpDirectory = Path.Combine(rig.DirectoryPath, "dumps");
+
+        await rig.RunAsync(2400);
+
+        Assert.Equal(1, crowd.Breaks);
+        var server = CoopServerDigest.Entries(rig.Server).ToDictionary(e => (e.Kind, e.Key));
+        foreach (var bot in rig.Bots)
+        {
+            var path = Path.Combine(crowd.DumpDirectory, "break001", bot.Options.Name + ".jsonl");
+            var first = File.ReadLines(path).First();
+            Assert.StartsWith("{\"kind\":\"bot\",\"key\":\"" + bot.Options.Name + "\",\"role\":\"builder\",\"in_game\":true,\"feet\":[", first, StringComparison.Ordinal);
+            using var reader = new StreamReader(path);
+            var entries = DigestDump.Read(reader);
+            Assert.Contains(entries, e => e.Kind == DigestKind.Construct && e.Position is not null);
+            Assert.Contains(entries, e => e.Kind == DigestKind.Terrain && e.Version > 0);
+            Assert.All(entries, e => Assert.True(
+                server.TryGetValue((e.Kind, e.Key), out var expected) && expected.Version == e.Version && expected.Hash == e.Hash,
+                bot.Options.Name + ": " + e));
+        }
+
+        await rig.StopServerAsync();
+    }
+
     private static Vector3 Zone(CoopRig rig) => new(rig.Server.State.Planets.All[0].RadiusMeters, 0f, 0f);
 
     private static async Task<int> RunWithChecksAsync(BotSchedule schedule, int frames)

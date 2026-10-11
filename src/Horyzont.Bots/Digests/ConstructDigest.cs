@@ -60,7 +60,7 @@ public static class ConstructDigest
         ArgumentNullException.ThrowIfNull(construct);
         return new DigestEntry(
             DigestKind.Construct, construct.Id.Value.ToString(CultureInfo.InvariantCulture), construct.Version, HashOf(construct),
-            ((long)construct.Id.Value, 0, 0, 0, 0));
+            ((long)construct.Id.Value, 0, 0, 0, 0), construct.Origin);
     }
 
     /// <summary>Digest of a set of constructs; the input order does not matter.</summary>

@@ -17,7 +17,10 @@ public static class BotReport
     /// <param name="time">The clock the timestamps of the bots come from.</param>
     /// <param name="frames">Frames run by the crowd.</param>
     /// <param name="skippedFrames">Frames skipped after stalls.</param>
-    public static void Write(string path, IReadOnlyList<BotClient> bots, TimeProvider time, long frames, long skippedFrames)
+    /// <param name="latency">Edit latency measurement; null when none was taken.</param>
+    /// <param name="breaks">Check breaks dumped so far.</param>
+    public static void Write(
+        string path, IReadOnlyList<BotClient> bots, TimeProvider time, long frames, long skippedFrames, EditLatencyTracker? latency = null, int breaks = 0)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         ArgumentNullException.ThrowIfNull(bots);
@@ -33,6 +36,18 @@ public static class BotReport
             json.WriteNumber("frames", frames);
             json.WriteNumber("skipped_frames", skippedFrames);
             json.WriteNumber("working_set_bytes", Environment.WorkingSet);
+            json.WriteNumber("breaks", breaks);
+            if (latency is not null)
+            {
+                // From the submit of the author to the arrival at another bot (P5, network part), milliseconds.
+                var (count, p50, p99, max) = latency.Summary();
+                json.WriteStartObject("edit_latency_ms");
+                json.WriteNumber("count", count);
+                json.WriteNumber("p50", Math.Round(p50, 3));
+                json.WriteNumber("p99", Math.Round(p99, 3));
+                json.WriteNumber("max", Math.Round(max, 3));
+                json.WriteEndObject();
+            }
             json.WriteStartArray("bots");
             foreach (var bot in bots)
             {
@@ -65,6 +80,20 @@ public static class BotReport
         json.WriteNumber("rejected", stats.Rejected);
         json.WriteNumber("refused_locally", stats.RefusedLocally);
         json.WriteNumber("unknown_replies", stats.UnknownReplies);
+        json.WriteNumber("replica_digest", bot.Replica.Digest);
+        if (bot.Replica is Replicas.BotReplicaSet set)
+        {
+            json.WriteStartObject("terrain");
+            json.WriteBoolean("ready", set.Terrain.IsReady);
+            json.WriteNumber("reports", set.Terrain.ReportsSent);
+            json.WriteNumber("views", set.Terrain.ViewsSent);
+            json.WriteNumber("pages", set.Terrain.SyncPages);
+            json.WriteNumber("blocks_received", set.Terrain.BlocksReceived);
+            json.WriteNumber("blocks_stored", set.Terrain.BlocksStored);
+            json.WriteNumber("stale", set.Terrain.StaleBlocks);
+            json.WriteNumber("violations", set.Terrain.Violations);
+            json.WriteEndObject();
+        }
         json.WriteStartObject("rejections");
         foreach (var (reason, count) in stats.Rejections.OrderBy(r => r.Key))
         {

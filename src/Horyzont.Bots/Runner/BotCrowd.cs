@@ -41,6 +41,35 @@ public sealed class BotCrowd
     /// <summary>Gets the number of the last frame that ran; -1 before the epoch.</summary>
     public long LastFrame => _nextFrame - 1;
 
+    /// <summary>Gets or sets the edit latency measurement; resolved once per second of frames when set.</summary>
+    public EditLatencyTracker? Latency { get; set; }
+
+    /// <summary>
+    /// Gets or sets where the check breaks write their dumps (<c>break001/bot0.jsonl</c>, ...); null for none. A dump is written
+    /// <see cref="DumpLeadTicks"/> before the end of every control period of <see cref="Schedule"/>, inside the drain window.
+    /// </summary>
+    public string? DumpDirectory { get; set; }
+
+    /// <summary>Gets or sets the timetable of the check breaks.</summary>
+    public BotSchedule Schedule { get; set; } = new();
+
+    /// <summary>Gets the number of check breaks dumped.</summary>
+    public int Breaks { get; private set; }
+
+    /// <summary>Ticks before the end of a control period at which the bots dump their state (2 s; the orchestrator asks the server then).</summary>
+    public const int DumpLeadTicks = 2 * BotSchedule.TicksPerSecond;
+
+    /// <summary>Gets the index (from 1) of the check break dumped at a frame, or 0 when the frame is no dump frame.</summary>
+    /// <param name="frame">Frame since the epoch.</param>
+    /// <param name="schedule">Timetable.</param>
+    /// <returns>The break index.</returns>
+    public static long BreakAt(long frame, BotSchedule schedule)
+    {
+        ArgumentNullException.ThrowIfNull(schedule);
+        var next = frame + DumpLeadTicks;
+        return frame >= 0 && next % schedule.ControlPeriodTicks == 0 ? next / schedule.ControlPeriodTicks : 0;
+    }
+
     /// <summary>Runs the frames that are due.</summary>
     /// <returns>The number of frames run.</returns>
     public int Pump()
@@ -78,9 +107,43 @@ public sealed class BotCrowd
                 bot.Tick(_nextFrame);
             }
 
+            AfterFrame(_nextFrame);
             run++;
         }
 
         return run;
+    }
+
+    /// <summary>Writes the dumps of every bot for a check break.</summary>
+    /// <param name="index">Break index (from 1).</param>
+    public void Dump(long index)
+    {
+        if (DumpDirectory is null)
+        {
+            return;
+        }
+
+        var directory = Path.Combine(DumpDirectory, "break" + index.ToString("000", System.Globalization.CultureInfo.InvariantCulture));
+        Directory.CreateDirectory(directory);
+        foreach (var bot in _bots)
+        {
+            using var writer = new StreamWriter(Path.Combine(directory, bot.Options.Name + ".jsonl"), append: false, new System.Text.UTF8Encoding(false));
+            bot.WriteDump(writer);
+        }
+
+        Breaks++;
+    }
+
+    private void AfterFrame(long frame)
+    {
+        if (Latency is not null && frame % BotSchedule.TicksPerSecond == 0)
+        {
+            Latency.Resolve();
+        }
+
+        if (BreakAt(frame, Schedule) is var index and > 0)
+        {
+            Dump(index);
+        }
     }
 }

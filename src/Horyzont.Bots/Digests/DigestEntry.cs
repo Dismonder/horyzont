@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace Horyzont.Bots.Digests;
 
 /// <summary>What a digest entry describes.</summary>
@@ -19,7 +21,11 @@ public enum DigestKind
 /// <param name="Version">Version of the construct or of the terrain block.</param>
 /// <param name="Hash">Content hash (<see cref="ConstructDigest.HashOf"/>; terrain envelope hash, 0 when unknown).</param>
 /// <param name="SortKey">Numeric order inside the kind, so dumps list keys in their natural order.</param>
-public readonly record struct DigestEntry(DigestKind Kind, string Key, uint Version, ulong Hash, (long A, long B, long C, long D, long E) SortKey);
+/// <param name="Position">
+/// Where the entry is in its parent frame (the origin of a construct), for the coverage of the shared zone; not part of any digest.
+/// </param>
+public readonly record struct DigestEntry(
+    DigestKind Kind, string Key, uint Version, ulong Hash, (long A, long B, long C, long D, long E) SortKey, Vector3? Position = null);
 
 /// <summary>Orders entries by kind, then by the natural order of their keys.</summary>
 public sealed class DigestEntryComparer : IComparer<DigestEntry>

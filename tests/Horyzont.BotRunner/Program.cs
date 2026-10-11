@@ -1,6 +1,7 @@
 using System.Globalization;
 
 using Horyzont.Bots.Client;
+using Horyzont.Bots.Replicas;
 using Horyzont.Bots.Runner;
 using Horyzont.Bots.Transport;
 using Horyzont.Core;
@@ -30,7 +31,7 @@ internal static class Program
         catch (ArgumentException ex)
         {
             Console.Error.WriteLine("RUNNER usage error: " + ex.Message);
-            Console.Error.WriteLine("usage: BotRunner --connect <ipv4:port> [--bots 8] [--roles builder:5,explorer:2,abuser:1] [--seed 1] [--epoch <unix ms>] [--latency-ms 50] [--jitter-ms 10] [--minutes 0] [--out dir] [--profiles core:planet/1] [--identity-base 7000]");
+            Console.Error.WriteLine("usage: BotRunner --connect <ipv4:port> [--bots 8] [--roles builder:5,explorer:2,abuser:1] [--seed 1] [--epoch <unix ms>] [--latency-ms 50] [--jitter-ms 10] [--minutes 0] [--out dir] [--profiles core:planet/1] [--identity-base 7000] [--control-seconds 900] [--quiet-seconds 60] [--drain-seconds 20]");
             return 2;
         }
 
@@ -82,11 +83,26 @@ internal static class Program
                     BuildHash = buildHash,
                     Seed = options.Seed + (ulong)i,
                     Role = options.RoleOf(i),
+                    Schedule = options.Schedule,
                 },
-                transport, time));
+                transport, time,
+                new BotReplicaSet(
+                    new ConstructMirrorReplica(time),
+                    new TerrainReplica(Path.Combine(options.OutDirectory, "cache", "bot" + i.ToString(CultureInfo.InvariantCulture)), time))));
         }
 
-        var crowd = new BotCrowd(bots, time, epoch);
+        var latency = new EditLatencyTracker(time);
+        for (var i = 0; i < bots.Count; i++)
+        {
+            latency.Attach(bots[i], i);
+        }
+
+        var crowd = new BotCrowd(bots, time, epoch)
+        {
+            Latency = latency,
+            DumpDirectory = Path.Combine(options.OutDirectory, "dumps"),
+            Schedule = options.Schedule,
+        };
         var reportPath = Path.Combine(options.OutDirectory, "bots.json");
         var started = time.GetTimestamp();
         var end = options.Minutes > 0 ? time.GetUtcNow().AddSeconds(2 + (options.Minutes * 60)) : DateTimeOffset.MaxValue;
@@ -100,7 +116,7 @@ internal static class Program
             if (time.GetTimestamp() >= nextReport)
             {
                 nextReport += (long)(_reportEvery.TotalSeconds * time.TimestampFrequency);
-                BotReport.Write(reportPath, bots, time, crowd.LastFrame + 1, crowd.SkippedFrames);
+                BotReport.Write(reportPath, bots, time, crowd.LastFrame + 1, crowd.SkippedFrames, latency, crowd.Breaks);
                 Console.WriteLine(string.Create(
                     CultureInfo.InvariantCulture,
                     $"RUNNER in_game={bots.Count(b => b.IsInGame)}/{bots.Count} frame={crowd.LastFrame} skipped={crowd.SkippedFrames} accepted={bots.Sum(b => b.Stats.Accepted)} rejected={bots.Sum(b => b.Stats.Rejected)} disconnects={bots.Sum(b => b.Stats.Disconnects)}"));
@@ -126,7 +142,12 @@ internal static class Program
             Thread.Sleep(5);
         }
 
-        BotReport.Write(reportPath, bots, time, crowd.LastFrame + 1, crowd.SkippedFrames);
+        BotReport.Write(reportPath, bots, time, crowd.LastFrame + 1, crowd.SkippedFrames, latency, crowd.Breaks);
+        foreach (var bot in bots)
+        {
+            (bot.Replica as IDisposable)?.Dispose();
+        }
+
         Console.WriteLine(string.Create(
             CultureInfo.InvariantCulture,
             $"RUNNER DONE seconds={time.GetElapsedTime(started).TotalSeconds:0.0} accepted={bots.Sum(b => b.Stats.Accepted)} rejected={bots.Sum(b => b.Stats.Rejected)} report={reportPath}"));

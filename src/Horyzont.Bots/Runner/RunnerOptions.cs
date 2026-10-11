@@ -49,6 +49,23 @@ public sealed record RunnerOptions
     /// <summary>Gets the first platform identity value of the bots (bot i uses value + i); stable, so a bot returns as the same player.</summary>
     public ulong IdentityBase { get; init; } = 7000;
 
+    /// <summary>Gets the length of a control period in seconds (default 900): a check break with dumps ends every period.</summary>
+    public int ControlSeconds { get; init; } = 900;
+
+    /// <summary>Gets the quiet window before the end of a control period, in seconds (default 60).</summary>
+    public int QuietSeconds { get; init; } = 60;
+
+    /// <summary>Gets the drain window at the end of a control period, in seconds (default 20).</summary>
+    public int DrainSeconds { get; init; } = 20;
+
+    /// <summary>Gets the shared timetable of the bots.</summary>
+    public BotSchedule Schedule => new()
+    {
+        ControlPeriodTicks = (long)ControlSeconds * BotSchedule.TicksPerSecond,
+        QuietTicks = (long)QuietSeconds * BotSchedule.TicksPerSecond,
+        DrainTicks = (long)DrainSeconds * BotSchedule.TicksPerSecond,
+    };
+
     /// <summary>Returns the role of bot <paramref name="index"/>.</summary>
     /// <param name="index">Bot number from 0.</param>
     /// <returns>The role.</returns>
@@ -78,6 +95,7 @@ public sealed record RunnerOptions
         string[] known =
         [
             "--connect", "--bots", "--roles", "--seed", "--epoch", "--latency-ms", "--jitter-ms", "--minutes", "--out", "--profiles", "--identity-base",
+            "--control-seconds", "--quiet-seconds", "--drain-seconds",
         ];
         foreach (var key in values.Keys.Where(k => Array.IndexOf(known, k) < 0))
         {
@@ -103,6 +121,14 @@ public sealed record RunnerOptions
             throw new ArgumentException("--jitter-ms must not exceed --latency-ms.");
         }
 
+        var control = Integer(values, "--control-seconds", 900, 30, 86_400);
+        var quiet = Integer(values, "--quiet-seconds", 60, 0, 3600);
+        var drain = Integer(values, "--drain-seconds", 20, 5, 3600);
+        if (quiet + drain >= control)
+        {
+            throw new ArgumentException("--quiet-seconds plus --drain-seconds must be shorter than --control-seconds.");
+        }
+
         var minutes = 0.0;
         if (values.TryGetValue("--minutes", out var minutesText)
             && (!double.TryParse(minutesText, NumberStyles.Float, CultureInfo.InvariantCulture, out minutes) || minutes < 0 || !double.IsFinite(minutes)))
@@ -124,6 +150,9 @@ public sealed record RunnerOptions
             OutDirectory = values.GetValueOrDefault("--out", "."),
             GeneratorProfiles = values.GetValueOrDefault("--profiles", "core:planet/1"),
             IdentityBase = values.TryGetValue("--identity-base", out var identity) ? ParseUnsigned(identity, "--identity-base") : 7000,
+            ControlSeconds = control,
+            QuietSeconds = quiet,
+            DrainSeconds = drain,
         };
     }
 

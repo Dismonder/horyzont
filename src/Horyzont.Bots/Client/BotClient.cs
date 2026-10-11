@@ -166,6 +166,15 @@ public sealed class BotClient : IClientSessionListener, IFullSnapshotSink
         }
     }
 
+    /// <summary>Writes the dump of a check break: a header line (name, role, feet) and the entries of the replica.</summary>
+    /// <param name="writer">Destination.</param>
+    public void WriteDump(TextWriter writer)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        Digests.DigestDump.WriteBotHeader(writer, _options.Name, _options.Role.ToString().ToLowerInvariant(), IsInGame, _own.Feet);
+        _replica.WriteDump(writer);
+    }
+
     /// <summary>Disconnects from the server (a normal leave).</summary>
     public void Leave() => Runtime.Session.Disconnect();
 

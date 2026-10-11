@@ -14,9 +14,11 @@ What it does (real time, one deadline for the whole run):
     thirds; profile "tick": neither, and the server may be pinned to some cores (--affinity);
  5. ends the run, stops runner and server, and checks: bots in game, restart keeps state hash and last op, nothing acknowledged
     before the kill (minus 150 ms) is lost, no operation id twice, tick time (profile tick: mean at most 8 ms).
+Check breaks (phase B): the bots follow one timetable from the shared epoch; every --control-minutes ends with a quiet window and a
+drain. Two seconds before the end of each period every bot writes its dump (runnerN/dumps/breakNNN/botI.jsonl) and the orchestrator
+asks the server for "digest --dump dumps/breakNNN/server.jsonl"; tools/coop/compare_dumps.py compares them (state_identical_at_breaks).
+The edit latency of the runner (submit at the author to arrival at the other bots, RTT --latency-ms x 2) is reported, not gated.
 Writes summary.json and summary.md into --out. Exit code 0 only when every check passed.
-
-The state comparison between the server and the bots (digest dumps) needs the replicas of K3-15/K3-16 and is added by phase B.
 """
 
 from __future__ import annotations
@@ -36,6 +38,9 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import compare_dumps  # a sibling script; -I keeps the script directory off sys.path
+
 READY = re.compile(r"SERVER READY world=(\S+) state hash=([0-9A-F]{16})(?: last op=(\d+))?")
 STOPPED = re.compile(r"Stopped; state hash=([0-9A-F]{16})(?: last op=(\d+))?")
 CHECKPOINT = re.compile(r"Checkpoint (started|committed) boundary=(\d+)")
@@ -43,6 +48,8 @@ STATS = re.compile(
     r"STATS tick_ms mean=([\d.]+) p95=([\d.]+) p99=([\d.]+) max=([\d.]+) n=(\d+) players=(\d+) last_op=(\d+) checkpoint=(idle|running)"
 )
 RUNNER_PROGRESS = re.compile(r"RUNNER in_game=(\d+)/(\d+) frame=(-?\d+) skipped=(\d+)")
+DIGEST = re.compile(r"DIGEST constructs=([0-9a-f]{16}) terrain_versions=([0-9a-f]{16}) terrain_voxels=([0-9a-f]{16}|-)(?: dump=(.+))?")
+DUMP_LEAD_SECONDS = 2.0  # BotCrowd.DumpLeadTicks: the dump is taken two seconds before the end of a control period
 DURABILITY_MARGIN_SECONDS = 0.150  # one journal batch (100 ms) plus 50 ms of slack
 TICK_BUDGET_MS = 8.0
 
@@ -289,9 +296,34 @@ def render_markdown(summary: dict) -> str:
         f"# Co-op soak: {summary['verdict']}\n\n"
         f"- minutes: {summary['minutes']}, bots: {summary['bots']}, profile: {summary['profile']}\n"
         f"- tick mean {ticks.get('mean', 0):.3f} ms, worst p99 {ticks.get('p99_worst', 0):.3f} ms, max {ticks.get('max', 0):.3f} ms over {ticks.get('ticks', 0)} ticks\n"
-        f"- rejections: {summary.get('rejections', {})}\n\n"
+        f"- rejections: {summary.get('rejections', {})}\n"
+        f"- edit latency at other bots (ms): {summary.get('edit_latency_ms')}\n"
+        f"- check breaks: {[(b['minute'], b['passed']) for b in summary.get('breaks', [])]}\n\n"
         f"| check | result | detail |\n| --- | --- | --- |\n{rows}\n"
     )
+
+
+def control_windows(minutes: float, control_minutes: float | None) -> tuple[float, int, int]:
+    """(control period, quiet, drain) in seconds: 15 min / 60 s / 20 s for long runs; short runs get one break in the middle or so."""
+    if control_minutes is None:
+        control_minutes = 15.0 if minutes >= 30 else max(1.0, minutes / 2)
+    control = control_minutes * 60.0
+    return (control, 60, 20) if control >= 300 else (control, 20, 10)
+
+
+def break_times(epoch_s: float, control_s: float, until_s: float) -> list[tuple[int, float]]:
+    """(index from 1, wall time) of every dump moment up to a time: two seconds before the end of each control period."""
+    times = []
+    index = 1
+    while epoch_s + index * control_s - DUMP_LEAD_SECONDS <= until_s:
+        times.append((index, epoch_s + index * control_s - DUMP_LEAD_SECONDS))
+        index += 1
+    return times
+
+
+def latency_summary(report: dict) -> dict | None:
+    """The edit latency of the last runner report that measured one."""
+    return report.get("edit_latency_ms")
 
 
 def self_test() -> int:
@@ -366,6 +398,14 @@ def self_test() -> int:
     assert av_budget_check(0)[0] and av_budget_check(1)[0] and not av_budget_check(2)[0]
     server_lines = [Line(1.0, "x"), Line(2.0, "Stopped; state hash=0123456789ABCDEF last op=9")]
     assert stopped_in(server_lines) and not stopped_in([Line(1.0, "Stopped")])
+    assert control_windows(120, None) == (900.0, 60, 20) and control_windows(3, None) == (90.0, 20, 10)
+    assert control_windows(10, 2) == (120.0, 20, 10)
+    assert break_times(1000.0, 90.0, 1000.0 + 200.0) == [(1, 1088.0), (2, 1178.0)]
+    assert break_times(1000.0, 900.0, 1500.0) == []
+    digest = DIGEST.search("DIGEST constructs=00000000000000ab terrain_versions=00000000000000cd terrain_voxels=- dump=C:/x y/server.jsonl")
+    assert digest is not None and digest.group(3) == "-" and digest.group(4) == "C:/x y/server.jsonl"
+    assert latency_summary({"edit_latency_ms": {"p99": 140.0}}) == {"p99": 140.0} and latency_summary({}) is None
+    assert compare_dumps.self_test() == 0
     print("coop_soak self-test OK")
     return 0
 
@@ -450,6 +490,11 @@ class Run:
         self.last_op_after_kill: int | None = None
         self.runner_generation = 0
         self.engine_exit_av = 0
+        # Profile tick measures the server under steady load: no quiet windows unless asked for.
+        control_minutes = args.control_minutes if args.control_minutes is not None or args.profile != "tick" else args.minutes + 60
+        self.control_s, self.quiet_s, self.drain_s = control_windows(args.minutes, control_minutes)
+        self.breaks: list[dict] = []
+        self.busy = False  # a restart or kill is in progress: no check break
 
     # --- commands ---
 
@@ -486,7 +531,8 @@ class Run:
         base = [
             "dotnet", str(dll), "--connect", f"127.0.0.1:{self.port}", "--bots", str(self.args.bots), "--seed", str(self.args.seed),
             "--epoch", str(epoch_ms), "--latency-ms", str(self.args.latency_ms), "--jitter-ms", str(self.args.jitter_ms),
-            "--out", str(out),
+            "--out", str(out), "--control-seconds", str(int(self.control_s)), "--quiet-seconds", str(self.quiet_s),
+            "--drain-seconds", str(self.drain_s),
         ]
         return base, self.repo
 
@@ -575,8 +621,12 @@ class Run:
             restart_at, kill_at = plan_events(args.profile, args.restart_at, args.kill_at, total)
             next_stats = run_start + 60
             restarted = killed = False
+            pending_breaks = break_times(epoch_ms / 1000.0, self.control_s, time.time() + total)
             while time.monotonic() - run_start < total:
                 elapsed = time.monotonic() - run_start
+                if pending_breaks and time.time() >= pending_breaks[0][1]:
+                    index, _at = pending_breaks.pop(0)
+                    self.check_break(index)
                 self.collect_server_lines()
                 if self.runner is not None:
                     self.runner.new_lines()
@@ -614,6 +664,46 @@ class Run:
             if not self.args.keep:
                 shutil.rmtree(self.work, ignore_errors=True)
 
+    def check_break(self, index: int) -> None:
+        """Dumps the server state at the moment the bots dump theirs and compares the dumps of the break."""
+        name = f"break{index:03d}"
+        minute = round((index * self.control_s) / 60.0, 2)
+        if self.server is None or not self.server.alive or self.busy or self.runner is None:
+            self.breaks.append({"break": index, "minute": minute, "passed": None, "detail": "skipped: server restarting"})
+            return
+        folder = self.out / "dumps" / name
+        folder.mkdir(parents=True, exist_ok=True)
+        server_dump = folder / "server.jsonl"
+        self.collect_server_lines()
+        mark = len(self.server_lines)
+        self.server.send(f"digest --dump {server_dump}")
+        digest = None
+        limit = time.monotonic() + 30
+        while time.monotonic() < limit and digest is None:
+            time.sleep(0.05)
+            self.collect_server_lines()
+            for _at, text in self.server_lines[mark:]:
+                digest = DIGEST.search(text) or digest
+        bot_folder = self.out / f"runner{self.runner_generation}" / "dumps" / name
+        limit = time.monotonic() + 15
+        while time.monotonic() < limit and len(list(bot_folder.glob("*.jsonl"))) < self.args.bots:
+            time.sleep(0.1)
+        bots = sorted(bot_folder.glob("*.jsonl"))
+        if digest is None or not server_dump.is_file() or len(bots) < self.args.bots:
+            self.breaks.append({
+                "break": index, "minute": minute, "passed": False,
+                "detail": f"digest line {'seen' if digest else 'missing'}, server dump {server_dump.is_file()}, {len(bots)} bot dumps",
+            })
+            return
+        result = compare_dumps.compare(compare_dumps.load_dump(server_dump), [compare_dumps.load_dump(p) for p in bots])
+        (folder / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+        self.breaks.append({
+            "break": index, "minute": minute, "passed": result["passed"],
+            "detail": "; ".join(c["name"] + (" ok" if c["passed"] else " FAIL " + c["detail"]) for c in result["checks"]),
+            "first_difference": result["first_difference"], "digest": digest.group(0),
+        })
+        print(f"check break {index} (minute {minute}): {'PASS' if result['passed'] else 'FAIL'} {result['first_difference'] or ''}", flush=True)
+
     def start_runner(self, epoch_ms: int) -> None:
         self.runner_generation += 1
         command, cwd = self.runner_command(epoch_ms, self.runner_generation)
@@ -622,6 +712,14 @@ class Run:
         self.runner.wait_line(re.compile(r"RUNNER READY"), 60, self.deadline)
 
     def graceful_restart(self) -> None:
+        assert self.server is not None
+        self.busy = True
+        try:
+            self._graceful_restart()
+        finally:
+            self.busy = False
+
+    def _graceful_restart(self) -> None:
         assert self.server is not None
         self.stats_now()
         self.server.send("stop")
@@ -643,6 +741,13 @@ class Run:
         ))
 
     def kill_and_restart(self) -> None:
+        self.busy = True
+        try:
+            self._kill_and_restart()
+        finally:
+            self.busy = False
+
+    def _kill_and_restart(self) -> None:
         assert self.server is not None
         self.stats_now()
         self.collect_server_lines()
@@ -715,6 +820,13 @@ class Run:
         ticks = aggregate_ticks(self.tick_windows)
         if args.profile == "tick":
             self.checks.append(Check("tick_mean_within_budget", 0 < ticks["ticks"] and ticks["mean"] <= TICK_BUDGET_MS, f"mean {ticks['mean']:.3f} ms (budget {TICK_BUDGET_MS} ms)"))
+        done = [b for b in self.breaks if b["passed"] is not None]
+        if done or self.breaks:
+            self.checks.append(Check(
+                "state_identical_at_breaks", bool(done) and all(b["passed"] for b in done),
+                ", ".join(f"min {b['minute']}: {'PASS' if b['passed'] else ('skipped' if b['passed'] is None else 'FAIL')}" for b in self.breaks),
+            ))
+        latency = latency_summary(report)
         av_ok, av_detail = av_budget_check(self.engine_exit_av)
         self.checks.append(Check("engine_exit_av_within_limit", av_ok, av_detail))
         passed = all(c.passed for c in self.checks)
@@ -722,6 +834,7 @@ class Run:
             "engine_exit_av": self.engine_exit_av,
             "verdict": "PASS" if passed else "FAIL", "minutes": args.minutes, "bots": args.bots, "profile": args.profile,
             "port": self.port, "tick": ticks, "rejections": rejection_totals(report), "checks": [c.__dict__ for c in self.checks],
+            "breaks": self.breaks, "edit_latency_ms": latency, "control_seconds": self.control_s,
         }
         (self.out / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
         (self.out / "summary.md").write_text(render_markdown(summary), encoding="utf-8")
@@ -745,6 +858,7 @@ def main() -> int:
     parser.add_argument("--affinity", type=lambda text: int(text, 0), default=0x3F, help="core mask of the server in profile tick (6 cores by default)")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--latency-ms", type=int, default=50, help="one way; the round trip is twice that")
+    parser.add_argument("--control-minutes", type=float, default=None, help="period of the check breaks; default 15, or half of a run shorter than 30 minutes")
     parser.add_argument("--jitter-ms", type=int, default=10)
     parser.add_argument("--restart-at", type=float, default=None, help="minute of the graceful restart (0 = never); default a third of the run when it lasts 2.5 minutes or more")
     parser.add_argument("--kill-at", type=float, default=None, help="minute of the kill (0 = never); default two thirds of the run")

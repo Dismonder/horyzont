@@ -27,6 +27,30 @@ public sealed class RunnerOptionsTests
     }
 
     [Fact]
+    public void Parse_ControlWindows_MakeTheScheduleOfTheBreaks()
+    {
+        var options = RunnerOptions.Parse(["--connect", "10.0.0.2:1", "--control-seconds", "90", "--quiet-seconds", "20", "--drain-seconds", "10"]);
+
+        Assert.Equal(90 * 60, options.Schedule.ControlPeriodTicks);
+        Assert.Equal(20 * 60, options.Schedule.QuietTicks);
+        Assert.Equal(10 * 60, options.Schedule.DrainTicks);
+        Assert.Equal(15 * 60 * 60, RunnerOptions.Parse(["--connect", "10.0.0.2:1"]).Schedule.ControlPeriodTicks);
+        Assert.Throws<ArgumentException>(() => RunnerOptions.Parse(["--connect", "10.0.0.2:1", "--control-seconds", "60", "--quiet-seconds", "50"]));
+    }
+
+    [Fact]
+    public void BreakAt_TwoSecondsBeforeTheEndOfEveryControlPeriod_InsideTheDrain()
+    {
+        var schedule = new BotSchedule { ControlPeriodTicks = 600, QuietTicks = 120, DrainTicks = 240 };
+
+        Assert.Equal(0, BotCrowd.BreakAt(0, schedule));
+        Assert.Equal(1, BotCrowd.BreakAt(600 - BotCrowd.DumpLeadTicks, schedule));
+        Assert.Equal(2, BotCrowd.BreakAt(1200 - BotCrowd.DumpLeadTicks, schedule));
+        Assert.Equal(0, BotCrowd.BreakAt(601 - BotCrowd.DumpLeadTicks, schedule));
+        Assert.Equal(BotPhase.Drain, schedule.PhaseAt(600 - BotCrowd.DumpLeadTicks));
+    }
+
+    [Fact]
     public void Parse_Defaults_AreTheEightBotCrowd()
     {
         var options = RunnerOptions.Parse(["--connect", "10.0.0.2:1"]);

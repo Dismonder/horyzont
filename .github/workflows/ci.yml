@@ -201,10 +201,12 @@ jobs:
         shell: pwsh
         run: tools/ci/wer_localdumps.ps1 -Action enable -Dir wer-dumps
 
-      # K4-19 criteria 1, 5 and 7 in miniature: 8 bots of the .NET runner, a graceful restart and a kill, 3 minutes.
+      # K4-19 criteria 1, 5, 6 and 7 in miniature: 8 bots of the .NET runner, a graceful restart and a kill, 3 minutes, one check
+      # break at 1.5 minutes whose server and bot dumps compare_dumps.py compares (state_identical_at_breaks).
       # Phase C raises --engine-bots to 1 once the bot mode of the game exists.
       - name: Co-op smoke
         run: |
+          python -I tools/coop/compare_dumps.py --self-test
           python tools/coop/coop_soak.py --self-test
           python tools/coop/coop_soak.py --godot engine-ci/editor/${{ matrix.editor }} --minutes 3 --bots 8 --engine-bots 0 --out coop-smoke
 
@@ -216,6 +218,7 @@ jobs:
           path: |
             coop-smoke/summary.*
             coop-smoke/**/bots.json
+            coop-smoke/dumps/**
           if-no-files-found: ignore
 
       - name: Disable WER LocalDumps
