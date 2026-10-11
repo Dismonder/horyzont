@@ -17,7 +17,7 @@ namespace Horyzont.Server.Ships;
 /// Ready → <see cref="ShipTerrainGate.Ready"/>; Inactive, or Streaming high above the ground
 /// (<c>Altitude ≥ 2 s · v_lim + CollisionPendingAltitude</c>) → <see cref="ShipTerrainGate.NotLoaded"/>; Streaming lower →
 /// <see cref="ShipTerrainGate.CollisionPending"/>; Faulted, or no Ready for <see cref="FlightRules.ReadinessTimeoutSeconds"/>
-/// (counted in queries per ship, reset by Ready, a planet change and parking) → <see cref="ShipTerrainGate.Unavailable"/>, which
+/// (counted in queries per ship in which the gate holds the ship, reset by Ready, a planet change and parking) → <see cref="ShipTerrainGate.Unavailable"/>, which
 /// asks again every <see cref="RetrySeconds"/> and logs a warning at most every <see cref="LogIntervalSeconds"/> per ship. In the band
 /// near the terrain the horizontal speed is capped by <see cref="TerrainSweep.MaxHorizontalSpeed"/>. Main thread.
 /// </summary>
@@ -99,11 +99,15 @@ public sealed class PlanetTerrainShipGate : IShipTerrainGate
             horizontalSpeedCap = TerrainSweep.MaxHorizontalSpeed(radius);
         }
 
-        entry.Waited++;
-        if (entry.Unavailable && entry.Waited % (RetrySeconds * _tickRate) != 0)
+        if (entry.Unavailable)
         {
-            Warn(ship, planet, entry, entry.Last);
-            return ShipTerrainGate.Unavailable;
+            // An unavailable terrain holds the ship at any altitude: every tick counts toward the retry.
+            entry.Waited++;
+            if (entry.Waited % (RetrySeconds * _tickRate) != 0)
+            {
+                Warn(ship, planet, entry, entry.Last);
+                return ShipTerrainGate.Unavailable;
+            }
         }
 
         Queries++;
@@ -116,18 +120,31 @@ public sealed class PlanetTerrainShipGate : IShipTerrainGate
             return ShipTerrainGate.Ready;
         }
 
-        if (readiness == PlanetTerrainReadiness.Faulted || entry.Waited >= _rules.ReadinessTimeoutSeconds * _tickRate)
+        var distance = com.Length();
+        var surfaceAltitude = Math.Max(0, distance - body.RadiusMeters - _rules.SurfaceClearanceMeters);
+        var limit = _rules.SpeedLimit(surfaceAltitude, (motion.Flags & ShipFlightFlags.PulseEngaged) != 0);
+        var gate = readiness == PlanetTerrainReadiness.Inactive || surfaceAltitude >= (2 * limit) + _rules.CollisionPendingAltitude
+            ? ShipTerrainGate.NotLoaded
+            : ShipTerrainGate.CollisionPending;
+
+        // The timeout counts only the ticks in which the gate actually holds the ship (Opus review): below 2 R for a terrain that
+        // is not loaded, under the pending altitude for a pending collision; a ship high above waits for nothing.
+        var held = ShipFlightModel.BlocksDescent(
+            new FlightEnvironment { Gate = gate, DistanceFromBody = distance, RadiusOfBody = body.RadiusMeters, Altitude = surfaceAltitude },
+            _rules);
+        if (held && !entry.Unavailable)
+        {
+            entry.Waited++;
+        }
+
+        if (readiness == PlanetTerrainReadiness.Faulted || entry.Unavailable || entry.Waited >= _rules.ReadinessTimeoutSeconds * _tickRate)
         {
             entry.Unavailable = true;
             Warn(ship, planet, entry, readiness);
             return ShipTerrainGate.Unavailable;
         }
 
-        var surfaceAltitude = Math.Max(0, com.Length() - body.RadiusMeters - _rules.SurfaceClearanceMeters);
-        var limit = _rules.SpeedLimit(surfaceAltitude, (motion.Flags & ShipFlightFlags.PulseEngaged) != 0);
-        return readiness == PlanetTerrainReadiness.Inactive || surfaceAltitude >= (2 * limit) + _rules.CollisionPendingAltitude
-            ? ShipTerrainGate.NotLoaded
-            : ShipTerrainGate.CollisionPending;
+        return gate;
     }
 
     /// <inheritdoc />

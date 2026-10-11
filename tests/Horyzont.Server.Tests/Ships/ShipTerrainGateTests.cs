@@ -60,6 +60,29 @@ public sealed class ShipTerrainGateTests
     }
 
     [Fact]
+    public void ShipTerrainGate_TimeoutCountsOnlyTicksThatHoldTheShip()
+    {
+        var (gate, readiness, _) = Create();
+        readiness.Answer = PlanetTerrainReadiness.Streaming;
+        var timeout = (int)(FlightRules.Default.ReadinessTimeoutSeconds * TickRate);
+        var high = At(2 * FlightFixtures.Home.RadiusMeters);
+
+        // Above 2 R a terrain that is not loaded does not hold the ship: no timeout however long it streams.
+        for (var i = 0; i < timeout + 10; i++)
+        {
+            Assert.Equal(ShipTerrainGate.NotLoaded, Query(gate, high));
+        }
+
+        // Low, where the gate holds it, the timeout counts from the first holding tick.
+        for (var i = 1; i < timeout; i++)
+        {
+            Assert.Equal(ShipTerrainGate.CollisionPending, Query(gate, At(350)));
+        }
+
+        Assert.Equal(ShipTerrainGate.Unavailable, Query(gate, At(350)));
+    }
+
+    [Fact]
     public void ShipTerrainGate_StreamingBeyondTimeout_Unavailable()
     {
         var (gate, readiness, _) = Create();
@@ -67,8 +90,9 @@ public sealed class ShipTerrainGateTests
         var timeout = (int)(FlightRules.Default.ReadinessTimeoutSeconds * TickRate);
 
         // High above the ground a streaming terrain is "not loaded"; low it is "collision pending" (hover).
+        // (above 2 R the gate does not hold the ship, so that query does not count toward the timeout).
         Assert.Equal(ShipTerrainGate.NotLoaded, Query(gate, At(4000)));
-        for (var i = 1; i < timeout - 1; i++)
+        for (var i = 1; i < timeout; i++)
         {
             Assert.Equal(ShipTerrainGate.CollisionPending, Query(gate, At(350)));
         }
