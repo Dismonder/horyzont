@@ -1,5 +1,7 @@
 using Horyzont.Server.Tests.Support;
 
+using Microsoft.Extensions.Logging.Abstractions;
+
 namespace Horyzont.Server.Tests;
 
 public sealed class TickPhaseTests
@@ -29,6 +31,9 @@ public sealed class TickPhaseTests
         Assert.Equal(0, (int)ServerTickPhase.Frames);
         Assert.Equal(1, (int)ServerTickPhase.Characters);
         Assert.Equal(2, (int)ServerTickPhase.Compose);
+
+        // README Y7: K5-21 zone transitions run in phase Frames (K5-24 flight registers before them).
+        Assert.Equal(ServerTickPhase.Frames, new Horyzont.Server.Space.ServerZoneTransitions(() => null, 60, NullLogger<Horyzont.Server.Space.ServerZoneTransitions>.Instance).Phase);
         await rig.StopAsync();
     }
 
