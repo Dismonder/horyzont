@@ -125,4 +125,25 @@ public sealed class ConstructReplica
         _tracker.Clear();
         return true;
     }
+
+    /// <summary>Applies the next block version of a mode switch (K5-23): the mode and pose change, the parent and its counter do not.</summary>
+    /// <param name="mode">New mode; differs from the current one.</param>
+    /// <param name="parent">Parent the operation was resolved against; must equal the current one.</param>
+    /// <param name="parentSeq">Reparent counter the operation was resolved against; must equal the current one.</param>
+    /// <param name="origin">Pose position after the switch.</param>
+    /// <param name="rotation">Pose rotation after the switch.</param>
+    /// <param name="version">Next version.</param>
+    /// <returns>Whether the switch was applied; false leaves the copy unchanged.</returns>
+    public bool TrySetMode(ConstructMode mode, FrameRef parent, uint parentSeq, Vector3 origin, Quaternion rotation, uint version)
+    {
+        if (version != unchecked(Value.Version + 1) || mode is not (ConstructMode.Static or ConstructMode.Ship) || mode == Value.Mode
+            || parent != Value.Parent || parentSeq != Value.ParentSeq || !Geometry.IsFinite(origin) || !Geometry.IsRotation(rotation))
+        {
+            return false;
+        }
+
+        Value.SetMode(mode, origin, rotation);
+        _tracker.Clear();
+        return true;
+    }
 }

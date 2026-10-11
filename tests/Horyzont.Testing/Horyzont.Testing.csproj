@@ -7,5 +7,6 @@
     <ProjectReference Include="../../src/Horyzont.Core/Horyzont.Core.csproj" />
     <ProjectReference Include="../../src/Horyzont.Persistence/Horyzont.Persistence.csproj" />
     <ProjectReference Include="../../src/Horyzont.Server/Horyzont.Server.csproj" />
+    <ProjectReference Include="../../src/Horyzont.Client/Horyzont.Client.csproj" />
   </ItemGroup>
 </Project>

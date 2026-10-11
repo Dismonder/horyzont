@@ -26,4 +26,7 @@ public enum OperationKind : byte
 
     /// <summary><see cref="EntityReparentOp"/>.</summary>
     EntityReparent = 7,
+
+    /// <summary><see cref="ShipModeSetOp"/>.</summary>
+    ShipModeSet = 20,
 }

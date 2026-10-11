@@ -18,14 +18,14 @@ public sealed class MesherTimingTests
 {
     private const string Json = """
         {
-          "formatVersion": 1,
+          "formatVersion": 2,
           "materials": [ { "key": "stone", "color": "#8A8D91" }, { "key": "wood", "color": "#A67B4B" }, { "key": "metal", "color": "#B8C4D0" } ],
           "blocks": [
-            { "key": "core:stone_block", "shape": "cube", "material": "stone" },
-            { "key": "core:wood_planks", "shape": "cube", "material": "wood" },
-            { "key": "core:metal_plate", "shape": "cube", "material": "metal" },
-            { "key": "core:stone_slab", "shape": "mesh", "mesh": "builtin:slab", "material": "stone" },
-            { "key": "core:stone_slope", "shape": "mesh", "mesh": "builtin:slope", "material": "stone" }
+            { "key": "core:stone_block", "shape": "cube", "mass": 100, "material": "stone" },
+            { "key": "core:wood_planks", "shape": "cube", "mass": 100, "material": "wood" },
+            { "key": "core:metal_plate", "shape": "cube", "mass": 100, "material": "metal" },
+            { "key": "core:stone_slab", "shape": "mesh", "mesh": "builtin:slab", "mass": 100, "material": "stone" },
+            { "key": "core:stone_slope", "shape": "mesh", "mesh": "builtin:slope", "mass": 100, "material": "stone" }
           ]
         }
         """;

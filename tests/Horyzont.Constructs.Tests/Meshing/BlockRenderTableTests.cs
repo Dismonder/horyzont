@@ -11,12 +11,12 @@ public sealed class BlockRenderTableTests
 {
     private const string Json = """
         {
-          "formatVersion": 1,
+          "formatVersion": 2,
           "materials": [ { "key": "stone", "color": "#808080" }, { "key": "wood", "color": "#A67B4B" } ],
           "blocks": [
-            { "key": "core:stone_block", "shape": "cube", "material": "stone" },
-            { "key": "core:wood_planks", "shape": "cube", "material": "wood", "collision": false },
-            { "key": "core:stone_slab", "shape": "mesh", "mesh": "builtin:slab", "material": "stone" }
+            { "key": "core:stone_block", "shape": "cube", "mass": 100, "material": "stone" },
+            { "key": "core:wood_planks", "shape": "cube", "mass": 100, "material": "wood", "collision": false },
+            { "key": "core:stone_slab", "shape": "mesh", "mesh": "builtin:slab", "mass": 100, "material": "stone" }
           ]
         }
         """;

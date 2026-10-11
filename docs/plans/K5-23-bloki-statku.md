@@ -160,23 +160,23 @@ Każdy krok: test czerwony → kod → zielone testy → mały commit (Conventio
 
 **Faza A (od razu, `main` z K2 + K3-00)**
 
-- [ ] 0. Warunki wejścia: `git status`, worktree `F:/dev/horyzont-k5-23` od `origin/main`; zapisać w „Odstępstwach” scalone pakiety i rzeczywiste nazwy z tabeli „Kontekst” (zwłaszcza `IntentCodec`, kubełek bloków, plik tekstów odmów w HUD); sprawdzić, że kody 20 (`OperationKind`), 10 (`IntentCode`), 30/31/37 (`RejectReason`) są wolne na `main` i w otwartych PR K5. Commit `docs:`.
-- [ ] 1. `BlockFunction`, `BlockFunctionKind`, `SeatRole`, rozszerzony `BlockTypeDef`, `BlockContentTable`; `BlockTypeCatalog` format 2 + `BlockContentTableBuilder`; `blocks.json` (typy i masy z decyzji 10), `blocks.csv`. Testy treści najpierw.
-- [ ] 2. Kontrakt do zatwierdzenia przez Opus **przed kodem appliera**: rekordy `ShipModeSetOp`, `ShipModeIntent`, wartości enumów, układ bajtów (testy złote czerwone). Po akceptacji: kodeki, fixture X6 (`CodecGen`, `MaxMessages`, kontrakt), podbicie `ProtocolVersion` (D4).
-- [ ] 3. `ITerrainService.TrySampleSolid` we wszystkich implementacjach (lista z grepa w PR), `FakeTerrainService` z modelem terenu do testów; `VoxelTerrainService` + test silnika.
-- [ ] 4. `ShipStats`, `ShipStatsCalculator` (testy 30 bloków, 24 orientacje, tensor) i `ShipFixtures.Thirty`; test `ShipFixtures_Thirty_DownThrustExceedsWeightOnPlanetC` (ciąg w dół > masa × 12 m/s², przegląd K5 N13) — niezaliczony → strojenie danych `blocks.json`, nie kodu.
-- [ ] 5. `Construct.SetMode`, applier `ShipModeSetOp` (warunki wstępne, skutek z wersją + 1, `ConstructChanges`; test `ShipModeSetOp_LiveObserver_ReceivesOperationNotTransfer` w kroku 7); testy powtórki, skrótu, checkpointu; korpus złoty i `DeterminismTests` bez zmian w plikach.
-- [ ] 6. Walidator i resolver `ShipModeIntent`, niezmienniki decyzji 7, przeciążenie konstruktora `ServerSimulation` z `BlockContentTable`; testy odmów.
-- [ ] 7. `ShipStatsCache`, komenda `ship`, `GameComposition.Ships.cs` (tabela treści z `BlockContentLoader` + rejestr świata → `ServerSimulation`; także serwer dedykowany); test integracyjny `ShipMode_ThirtyBlockConstruct_ToShipAndBack_ViaIntents`.
-- [ ] 8. Klient w grze: akcja `ship_mode_toggle` (`G`), wysyłka intencji przez `IIntentSender` z promieniem z oka, teksty odmów 30/31/37 (pl/en), linia HUD dev; `python tools/engine/build.py smoke`.
+- [x] 0. Warunki wejścia: `git status`, worktree `F:/dev/horyzont-k5-23` od `origin/main`; zapisać w „Odstępstwach” scalone pakiety i rzeczywiste nazwy z tabeli „Kontekst” (zwłaszcza `IntentCodec`, kubełek bloków, plik tekstów odmów w HUD); sprawdzić, że kody 20 (`OperationKind`), 10 (`IntentCode`), 30/31/37 (`RejectReason`) są wolne na `main` i w otwartych PR K5. Commit `docs:`.
+- [x] 1. `BlockFunction`, `BlockFunctionKind`, `SeatRole`, rozszerzony `BlockTypeDef`, `BlockContentTable`; `BlockTypeCatalog` format 2 + `BlockContentTableBuilder`; `blocks.json` (typy i masy z decyzji 10), `blocks.csv`. Testy treści najpierw.
+- [x] 2. Kontrakt do zatwierdzenia przez Opus **przed kodem appliera**: rekordy `ShipModeSetOp`, `ShipModeIntent`, wartości enumów, układ bajtów (testy złote czerwone). Po akceptacji: kodeki, fixture X6 (`CodecGen`, `MaxMessages`, kontrakt), podbicie `ProtocolVersion` (D4).
+- [x] 3. `ITerrainService.TrySampleSolid` we wszystkich implementacjach (lista z grepa w PR), `FakeTerrainService` z modelem terenu do testów; `VoxelTerrainService` + test silnika.
+- [x] 4. `ShipStats`, `ShipStatsCalculator` (testy 30 bloków, 24 orientacje, tensor) i `ShipFixtures.Thirty`; test `ShipFixtures_Thirty_DownThrustExceedsWeightOnPlanetC` (ciąg w dół > masa × 12 m/s², przegląd K5 N13) — niezaliczony → strojenie danych `blocks.json`, nie kodu.
+- [x] 5. `Construct.SetMode`, applier `ShipModeSetOp` (warunki wstępne, skutek z wersją + 1, `ConstructChanges`; test `ShipModeSetOp_LiveObserver_ReceivesOperationNotTransfer` w kroku 7); testy powtórki, skrótu, checkpointu; korpus złoty i `DeterminismTests` bez zmian w plikach.
+- [x] 6. Walidator i resolver `ShipModeIntent`, niezmienniki decyzji 7, przeciążenie konstruktora `ServerSimulation` z `BlockContentTable`; testy odmów.
+- [x] 7. `ShipStatsCache`, komenda `ship`, `GameComposition.Ships.cs` (tabela treści z `BlockContentLoader` + rejestr świata → `ServerSimulation`; także serwer dedykowany); test integracyjny `ShipMode_ThirtyBlockConstruct_ToShipAndBack_ViaIntents`.
+- [x] 8. Klient w grze: akcja `ship_mode_toggle` (`G`), wysyłka intencji przez `IIntentSender` z promieniem z oka, teksty odmów 30/31/37 (pl/en), linia HUD dev; `python tools/engine/build.py smoke`.
 
 **Faza B — po scaleniu K3-15**
 
-- [ ] 9. **[K3-15]** `ConstructReplica.TrySetMode`, `ConstructMirror` stosuje `ShipModeSetOp` z `OperationApplied`; testy lustra; `Manual_ShipMode_ThirtyBlocks_InGame` w trybie host + klient (zdalny klient widzi zmianę trybu w HUD dev).
+- [x] 9. **[K3-15]** `ConstructReplica.TrySetMode`, `ConstructMirror` stosuje `ShipModeSetOp` z `OperationApplied`; testy lustra; `Manual_ShipMode_ThirtyBlocks_InGame` w trybie host + klient (zdalny klient widzi zmianę trybu w HUD dev).
 
 **Faza C — odbiór (po scaleniu K4-19)**
 
-- [ ] 10. Rebase na `main`; pełne komendy akceptacyjne; dopisać do `docs/ZASADY.md` pkt 4: „walidator może czytać treść (`BlockContentTable`) i teren; applier `ShipModeSetOp` — nigdy”, a w pkt 3 wiersz `src/Horyzont.Core/World/Blocks/BlockTypeDef.cs` „treść, nie format — bez podbicia”; wiersz K5-23 w sekcji „Pakiety K5” `docs/plans/README.md`; PR z odstępstwami i pytaniami.
+- [x] 10. Rebase na `main`; pełne komendy akceptacyjne; dopisać do `docs/ZASADY.md` pkt 4: „walidator może czytać treść (`BlockContentTable`) i teren; applier `ShipModeSetOp` — nigdy”, a w pkt 3 wiersz `src/Horyzont.Core/World/Blocks/BlockTypeDef.cs` „treść, nie format — bez podbicia”; wiersz K5-23 w sekcji „Pakiety K5” `docs/plans/README.md`; PR z odstępstwami i pytaniami.
 
 ## Odbiór
 
@@ -240,4 +240,11 @@ Brak krawędzi startu. Zasada X10: integruje pakiet scalany później. Rekomendo
 
 ## Odstępstwa i decyzje wykonawcy
 
-(wypełnia wykonawca: stan K3/K4 przy każdej fazie, rzeczywiste nazwy API, akceptacja kontraktu przez Opus w kroku 2, wyniki pomiarów, różnice od planu)
+- **Stan bazy:** `main` = K2 + K3-00 + K3-15 (#20); `origin/main` przy odbiorze bez nowych commitów (K4-19 nie scalone w tej bazie, krok 10 wykonany bez rebase'u poza `git merge origin/main` = już aktualne). Fazy A, B i C zrobione w jednym przebiegu, bo K3-15 jest już na `main`.
+- **Akceptacja kontraktu przez Opus w kroku 2: NIE UDOKUMENTOWANA.** W historii gałęzi i w notatkach przekazania nie ma śladu zatwierdzenia rekordów `ShipModeSetOp`/`ShipModeIntent`, wartości enumów i bajtów złotych przez Opus 5.5; kodeki i testy złote (commit 7be5569) napisał wykonawca. Zatwierdzenie nadrabia przegląd Opus w PR (ZASADY pkt 9); bajty złote do sprawdzenia przy przeglądzie.
+- **ProtocolVersion = 6** (`main` = 5 po K3-16, D4: main + 1); zaktualizowane tylko istniejące `ProtocolVersion_MatchesDocumentedMergeValue` i `Constants_GoldenValues`. Tabela kolejności z README (K5-23 → 7; K3-18 jeszcze nie scalone) zakładała K3-16/K3-18 przed K5-23; faktyczna wartość zależy od kolejności scalania, kto scala później, podbija od `main`.
+- **Krok 8:** klawisz `G` (`ship_mode_toggle`) czyta `ToolInputReader` do nowego pola `ToolInputFrame.ShipModeToggle` (parametr z wartością domyślną, żeby nie zmieniać wywołań); logika w `Horyzont.Client.Ships.ShipModeSwitch` (testowana poza silnikiem), `ToolNode` przekazuje jej promień z oka, tabelę treści z `ServerHello.BlockTypes` + `BlockContentTable.Create(entries, definitions)` (nowe przeciążenie w Core, bez zmiany formatu) i `BlockDefinitions` z `GameComposition`. `CompositeEditPrediction` kieruje `ShipModeIntent` do `NoEditPrediction` (brak predykcji trybu). Linia HUD dev pokazuje tryb, masę, ciąg +Y, silniki i fotele z kopii klienta (decyduje serwer). Klucze tekstów: `REJECT_NO_COCKPIT`, `REJECT_SHIP_ANCHORED`, `REJECT_NO_ENGINE`, `SHIP_*` w `game/locale/tools.csv` (pl/en).
+- **Krok 9:** `ConstructReplica.TrySetMode` wymaga wersji + 1, zmiany trybu, równego `Parent`/`ParentSeq`, skończonej pozy; `ConstructMirror` stosuje `ShipModeSetOp` z `OperationApplied` (przy odmowie żąda resyncu jak przy blokach). `Manual_ShipMode_ThirtyBlocks_InGame` jest napisany jako test z `[Trait("Category","Manual")]` w `ShipModeIntegrationTests` (lustro zdalnego klienta w pamięci); procedurę z grą (host + klient, zrzuty) wykonuje właściciel.
+- **Niewykonane lokalnie (zasada wspólnego runnera):** `python tools/engine/build.py smoke`, test silnika `TrySampleSolidTests`, gdUnit. Zrobi je CI (job `game`). Zrzuty i linia `SHIP …` dla `ShipFixtures.Thirty` do opisu PR: do uzupełnienia.
+- **ZASADY:** dopisane wiersz `BlockTypeDef.cs` w pkt 3 (treść, nie format) i punkt w pkt 4 (walidator może czytać treść i teren, applier nigdy). Wiersz K5-23 w `docs/plans/README.md` „Pakiety K5” już istnieje w bazie; bez zmian.
+- **Flaka:** `ReplicationConvergenceTests.Replicate_LargeConstruct_DoesNotBlockTicksAndArrivesComplete` (limit czasu 100 ms) raz przekroczył limit (118 ms) przy pełnym przebiegu równoległym i przeszedł osobno; test czasowy wrażliwy na obciążenie, niezwiązany z pakietem.

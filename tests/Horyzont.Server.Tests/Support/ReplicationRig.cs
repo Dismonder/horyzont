@@ -95,9 +95,10 @@ internal sealed class ReplicationRig : IAsyncDisposable
 
     public static async Task<ReplicationRig> StartAsync(
         Func<WorldState>? createWorld = null, ISnapshotBudget? snapshotBudget = null, FakeTimeProvider? time = null,
-        IReplicationSendBudget? sendBudget = null, LinkConditions? conditions = null)
+        IReplicationSendBudget? sendBudget = null, LinkConditions? conditions = null,
+        Func<ServerRuntimeOptions, ServerRuntimeOptions>? configure = null)
     {
-        var rig = new ServerRig(time: time, createWorld: createWorld, conditions: conditions);
+        var rig = new ServerRig(time: time, createWorld: createWorld, conditions: conditions, configure: configure);
         var characters = new FakeCharacters();
         var binder = new EntityReplicationBinder(
             runtime => new ServerReplicationSource(runtime.State, characters), rig.Time, rig.Log, snapshotBudget, 500f, sendBudget);

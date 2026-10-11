@@ -29,13 +29,15 @@ public sealed class ProtocolContractTests
     public void Enums_GoldenValues()
     {
         AssertValues((OperationKind.TerrainEdit, 1), (OperationKind.ConstructCreate, 2), (OperationKind.BlockSet, 3), (OperationKind.BlockClear, 4),
-            (OperationKind.PlayerJoin, 5), (OperationKind.PlayerLeave, 6), (OperationKind.EntityReparent, 7));
+            (OperationKind.PlayerJoin, 5), (OperationKind.PlayerLeave, 6), (OperationKind.EntityReparent, 7),
+            (OperationKind.ShipModeSet, 20));
         AssertValues((RejectReason.None, 0), (RejectReason.UnknownPlayer, 1), (RejectReason.PlayerOffline, 2), (RejectReason.RateLimited, 3),
             (RejectReason.InvalidParameters, 4), (RejectReason.RayOriginMismatch, 5), (RejectReason.NoHit, 6), (RejectReason.OutOfReach, 7),
             (RejectReason.AreaNotLoaded, 8), (RejectReason.BelowCore, 9), (RejectReason.OutsideAtmosphere, 10), (RejectReason.UnknownPlanet, 11),
             (RejectReason.UnknownConstruct, 12), (RejectReason.CellOutOfBounds, 13), (RejectReason.CellOccupied, 14), (RejectReason.CellEmpty, 15),
             (RejectReason.UnknownBlockType, 16), (RejectReason.UnknownMaterial, 17), (RejectReason.IntersectsPlayer, 18),
-            (RejectReason.NoLineOfSight, 19), (RejectReason.WrongPlanet, 20), (RejectReason.ServerReadOnly, 21));
+            (RejectReason.NoLineOfSight, 19), (RejectReason.WrongPlanet, 20), (RejectReason.ServerReadOnly, 21),
+            (RejectReason.NoCockpit, 30), (RejectReason.ShipAnchored, 31), (RejectReason.NoEngine, 37));
         AssertValues((MessageType.ClientHello, 1), (MessageType.ServerHello, 2), (MessageType.HandshakeReject, 3), (MessageType.ClientReady, 4),
             (MessageType.TerrainCacheReport, 5), (MessageType.TerrainBlockData, 6), (MessageType.TerrainChecksums, 7), (MessageType.ConstructState, 8),
             (MessageType.ConstructRemoved, 9), (MessageType.OperationApplied, 10), (MessageType.IntentSubmit, 11), (MessageType.IntentReply, 12),
@@ -81,6 +83,29 @@ public sealed class ProtocolContractTests
         var beyond = writer.WrittenSpan.ToArray();
         beyond[^2] = 22;
         Assert.Throws<ProtocolViolationException>(() => MessageCodec.Read(beyond));
+    }
+
+    /// <summary>The Space reject reasons of K5-23 round-trip; the gaps of the 30-39 range stay undefined until their packages.</summary>
+    [Theory]
+    [InlineData(RejectReason.NoCockpit, 30)]
+    [InlineData(RejectReason.ShipAnchored, 31)]
+    [InlineData(RejectReason.NoEngine, 37)]
+    public void RejectReason_KosmosValues_Golden(RejectReason reason, byte value)
+    {
+        var reply = new IntentReply(7, reason, OpId.None);
+        var writer = new ByteWriter();
+
+        MessageCodec.Write(writer, reply);
+        var bytes = writer.WrittenSpan.ToArray();
+
+        Assert.Equal(new byte[] { 12, 1, 7, value, 0 }, bytes);
+        Assert.Equal(reply, MessageCodec.Read(bytes));
+        foreach (byte undefined in new byte[] { 22, 29, 32, 33, 34, 35, 36, 38, 39, 40, 255 })
+        {
+            var copy = (byte[])bytes.Clone();
+            copy[3] = undefined;
+            Assert.Throws<ProtocolViolationException>(() => MessageCodec.Read(copy));
+        }
     }
 
     /// <summary>

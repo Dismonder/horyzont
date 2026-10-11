@@ -197,6 +197,8 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
             {
                 BlockSetOp set when set.Construct == id && !result.Removed => replica.TrySet(set.Cell, set.Block, result.Version),
                 BlockClearOp clear when clear.Construct == id => replica.TrySet(clear.Cell, BlockState.Empty, result.Version),
+                ShipModeSetOp mode when mode.Construct == id && !result.Removed => replica.TrySetMode(
+                    mode.Mode, mode.Parent, mode.ParentSeq, mode.Origin, mode.Rotation, result.Version),
                 _ => false,
             };
             if (!applied)

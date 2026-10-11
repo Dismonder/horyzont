@@ -4,6 +4,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
 using Horyzont.Core.World;
+using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Terrain;
 
@@ -13,11 +14,17 @@ namespace Horyzont.Core.Simulation;
 /// Validates intents against the state and the terrain. The order of the checks decides the returned reason
 /// (docs/plans/K1-03-core-stan-i-operacje.md, "Walidacja i rozwiązanie"). Never throws for bad input.
 /// </summary>
-internal sealed class IntentValidator(WorldState state, ITerrainService terrain, GameRules rules)
+internal sealed class IntentValidator(WorldState state, ITerrainService terrain, GameRules rules, BlockContentTable content)
 {
     /// <summary>Distance from a cell centre to its corner, rounded up.</summary>
     private const float CellReachSlack = 0.87f;
     private const float SightEpsilon = 1e-3f;
+
+    /// <summary>Corners of a block are probed this far inside the cell, so a block that only touches the ground is not embedded.</summary>
+    private const float AnchorInset = 0.1f;
+
+    /// <summary>Blocks farther than this above the highest terrain cannot be embedded in it.</summary>
+    private const float AnchorSkipMargin = 2f;
 
     /// <summary>
     /// Ignores the final 0.25 m of terrain occlusion along the sight ray to allow SDF march uncertainty
@@ -62,6 +69,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             PlaceBlockIntent { Target: ConstructFaceTarget face } place => ValidatePlaceOnFace(place, face, hasPlanet, playerPlanet, eye, out facts),
             PlaceBlockIntent { Target: TerrainTarget target } place => ValidatePlaceOnTerrain(place, target, hasPlanet, playerPlanet, eye, out facts),
             RemoveBlockIntent remove => ValidateRemove(remove, hasPlanet, playerPlanet, eye, out facts),
+            ShipModeIntent ship => ValidateShipMode(ship, hasPlanet, playerPlanet, eye, out facts),
             _ => RejectReason.InvalidParameters,
         };
     }
@@ -70,7 +78,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
     internal static TokenBucket? BucketFor(Intent intent, PlayerBuckets buckets) => intent switch
     {
         TerrainToolIntent => buckets.Terrain,
-        PlaceBlockIntent or RemoveBlockIntent => buckets.Blocks,
+        PlaceBlockIntent or RemoveBlockIntent or ShipModeIntent => buckets.Blocks,
         _ => null,
     };
 
@@ -92,6 +100,9 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
                 return Enum.IsDefined(face.Face);
             case RemoveBlockIntent:
                 return true;
+            case ShipModeIntent ship:
+                rayOrigin = ship.RayOrigin;
+                return Geometry.IsFinite(ship.RayOrigin) && Geometry.IsDirection(ship.RayDirection) && Enum.IsDefined(ship.TargetMode);
             default:
                 return false;
         }
@@ -233,6 +244,15 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.IntersectsPlayer;
         }
 
+        if (construct.Mode == ConstructMode.Ship && construct.Parent.Kind == FrameKind.Planet)
+        {
+            var embedded = CellEmbedded(planet, construct, cell);
+            if (embedded != RejectReason.None)
+            {
+                return embedded;
+            }
+        }
+
         facts = new IntentFacts(planet, cellCenter, Quaternion.Identity, cell);
         return RejectReason.None;
     }
@@ -327,6 +347,21 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.NoLineOfSight;
         }
 
+        // A ship keeps its last cockpit and its last engine: the flight model of K5-24 assumes it has both.
+        if (construct.Mode == ConstructMode.Ship)
+        {
+            var kind = content.Get(construct.GetBlock(remove.Cell).TypeId).Function.Kind;
+            if (kind == BlockFunctionKind.Cockpit && CountFunction(construct, BlockFunctionKind.Cockpit, 2) < 2)
+            {
+                return RejectReason.NoCockpit;
+            }
+
+            if (kind == BlockFunctionKind.Engine && CountFunction(construct, BlockFunctionKind.Engine, 2) < 2)
+            {
+                return RejectReason.NoEngine;
+            }
+        }
+
         // The applier refuses to remove a seat or the last block of a frame that still has children.
         if (state.TryGetSeated(construct.Id, remove.Cell, out _)
             || (construct.BlockCount == 1 && state.HasChildren(FrameRef.Of(construct.Id))))
@@ -336,6 +371,156 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
 
         facts = new IntentFacts(planet, cellCenter, Quaternion.Identity, remove.Cell);
         return RejectReason.None;
+    }
+
+    private RejectReason ValidateShipMode(ShipModeIntent intent, bool hasPlanet, PlanetId playerPlanet, Vector3 eye, out IntentFacts facts)
+    {
+        facts = default;
+        if (!state.Constructs.TryGet(intent.Construct, out var construct))
+        {
+            return RejectReason.UnknownConstruct;
+        }
+
+        if (!hasPlanet || !state.TryResolvePlanet(construct.Parent, out var planet) || planet != playerPlanet)
+        {
+            return RejectReason.WrongPlanet;
+        }
+
+        var cell = intent.CockpitCell;
+        if (!cell.IsInBounds)
+        {
+            return RejectReason.CellOutOfBounds;
+        }
+
+        var block = construct.GetBlock(cell);
+        if (block.IsEmpty)
+        {
+            return RejectReason.CellEmpty;
+        }
+
+        if (content.Get(block.TypeId).Function.Kind != BlockFunctionKind.Cockpit)
+        {
+            return RejectReason.NoCockpit;
+        }
+
+        var cellCenter = ToPlanet(construct, CellCenter(cell));
+        if (Vector3.Distance(eye, cellCenter) > rules.ReachMeters + CellReachSlack)
+        {
+            return RejectReason.OutOfReach;
+        }
+
+        if (!HasLineOfSight(planet, eye, cellCenter, construct.Id, cell))
+        {
+            return RejectReason.NoLineOfSight;
+        }
+
+        // K5-23: a ship stands parked on its planet, so both directions need the planet frame (a flying ship is K5-24).
+        if (intent.TargetMode == construct.Mode || construct.Parent.Kind != FrameKind.Planet)
+        {
+            return RejectReason.InvalidParameters;
+        }
+
+        if (intent.TargetMode == ConstructMode.Ship)
+        {
+            var anchor = CheckSwitchToShip(planet, construct);
+            if (anchor != RejectReason.None)
+            {
+                return anchor;
+            }
+        }
+
+        facts = new IntentFacts(planet, cellCenter, Quaternion.Identity, cell);
+        return RejectReason.None;
+    }
+
+    /// <summary>Engines present, the terrain around the construct loaded and no block embedded in it.</summary>
+    private RejectReason CheckSwitchToShip(PlanetId planet, Construct construct)
+    {
+        if (CountFunction(construct, BlockFunctionKind.Engine, 1) == 0)
+        {
+            return RejectReason.NoEngine;
+        }
+
+        var centre = ToPlanet(construct, (CellCenter(construct.BoundsMin) + CellCenter(construct.BoundsMax)) * 0.5f);
+        var radius = (Vector3.Distance(CellCenter(construct.BoundsMin), CellCenter(construct.BoundsMax)) * 0.5f) + 1f;
+        if (!terrain.IsAreaLoaded(planet, centre, radius))
+        {
+            return RejectReason.AreaNotLoaded;
+        }
+
+        foreach (var (chunkPos, chunk) in construct.Chunks)
+        {
+            var raw = chunk.Blocks;
+            for (var i = 0; i < raw.Length; i++)
+            {
+                if (raw[i] == 0)
+                {
+                    continue;
+                }
+
+                var reason = CellEmbedded(planet, construct, CellPos.FromChunk(chunkPos, i));
+                if (reason != RejectReason.None)
+                {
+                    return reason;
+                }
+            }
+        }
+
+        return RejectReason.None;
+    }
+
+    /// <summary>
+    /// A block is embedded when its centre or one of its corners, moved 0.1 m into the cell, lies in the terrain. Only blocks
+    /// that can reach the terrain are probed. An unknown answer (area not loaded) is <see cref="RejectReason.AreaNotLoaded"/>.
+    /// </summary>
+    private RejectReason CellEmbedded(PlanetId planet, Construct construct, CellPos cell)
+    {
+        state.Planets.TryGet(planet, out var planetParams);
+        var centre = construct.CellCenterToParent(cell);
+        var skipBeyond = planetParams!.RadiusMeters + rules.TerrainMaxReliefMeters + AnchorSkipMargin;
+        if (centre.Length() > skipBeyond + CellReachSlack)
+        {
+            return RejectReason.None;
+        }
+
+        const float far = 0.5f - AnchorInset;
+        var local = CellCenter(cell);
+        for (var i = -1; i < 8; i++)
+        {
+            var offset = i < 0
+                ? Vector3.Zero
+                : new Vector3((i & 1) == 0 ? -far : far, (i & 2) == 0 ? -far : far, (i & 4) == 0 ? -far : far);
+            if (!terrain.TrySampleSolid(planet, construct.LocalToParent(local + offset), out var solid))
+            {
+                return RejectReason.AreaNotLoaded;
+            }
+
+            if (solid)
+            {
+                return RejectReason.ShipAnchored;
+            }
+        }
+
+        return RejectReason.None;
+    }
+
+    /// <summary>Counts blocks with a function, stopping at <paramref name="stopAt"/>.</summary>
+    private int CountFunction(Construct construct, BlockFunctionKind kind, int stopAt)
+    {
+        var count = 0;
+        foreach (var (_, chunk) in construct.Chunks)
+        {
+            var raw = chunk.Blocks;
+            for (var i = 0; i < raw.Length; i++)
+            {
+                if (raw[i] != 0 && content.Get(new BlockState(raw[i]).TypeId).Function.Kind == kind && ++count >= stopAt)
+                {
+                    return count;
+                }
+            }
+        }
+
+        return count;
     }
 
     private RejectReason CheckBlockType(PlaceBlockIntent place)
