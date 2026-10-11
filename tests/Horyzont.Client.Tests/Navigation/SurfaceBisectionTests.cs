@@ -19,12 +19,21 @@ public sealed class SurfaceBisectionTests
     }
 
     [Fact]
-    public void SurfaceBisection_NoSignChange_ReturnsEdgeOfRange()
+    public void SurfaceBisection_NoSignChange_ReturnsNominalRadius()
     {
         var allAir = SurfaceBisection.FindSurfaceRadius(_ => 1f, Vector3.UnitX, 1000f, out _);
-        Assert.InRange(allAir, 700f, 700f + SurfaceBisection.DefaultTolerance);
+        Assert.Equal(1000f, allAir);
         var allSolid = SurfaceBisection.FindSurfaceRadius(_ => -1f, Vector3.UnitX, 1000f, out _);
-        Assert.InRange(allSolid, 1300f - SurfaceBisection.DefaultTolerance, 1300f);
+        Assert.Equal(1000f, allSolid);
+    }
+
+    [Theory]
+    [InlineData(-299.8f)]
+    [InlineData(299.8f)]
+    public void SurfaceBisection_SurfaceAtEdgeOfRange_IsFoundNotNominal(float offset)
+    {
+        var found = SurfaceBisection.FindSurfaceRadius(p => p.Length() - (1000f + offset), Vector3.UnitX, 1000f, out _);
+        Assert.InRange(found, 1000f + offset - SurfaceBisection.DefaultTolerance, 1000f + offset + SurfaceBisection.DefaultTolerance);
     }
 
     [Fact]

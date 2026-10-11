@@ -5,7 +5,7 @@ namespace Horyzont.Client.Navigation;
 /// <summary>
 /// Finds the height of the planet surface along a ray from the centre by bisection of a signed distance field (K5-27 decision 12):
 /// inside the surface the field is not positive, outside it is positive. Between R − relief and R + relief down to the tolerance it takes
-/// at most 11 samples for 300 m and 0.5 m. Used by the planet map; the sampler of the game supplies the field.
+/// at most 11 samples for 300 m and 0.5 m (12 when the search ends at an end of the range and that end is checked). Used by the planet map; the sampler of the game supplies the field.
 /// </summary>
 public static class SurfaceBisection
 {
@@ -27,8 +27,10 @@ public static class SurfaceBisection
         Func<Vector3, float> sdf, Vector3 direction, float radius, out int samples, float relief = DefaultRelief, float tolerance = DefaultTolerance)
     {
         ArgumentNullException.ThrowIfNull(sdf);
-        var low = radius - relief;
-        var high = radius + relief;
+        var rangeLow = radius - relief;
+        var rangeHigh = radius + relief;
+        var low = rangeLow;
+        var high = rangeHigh;
         samples = 0;
         while (high - low > tolerance)
         {
@@ -41,6 +43,25 @@ public static class SurfaceBisection
             else
             {
                 high = middle;
+            }
+        }
+
+        // The search converges on an end of the range both when the surface is there and when the field never changes sign
+        // (all air goes to the top, all solid to the bottom); one extra sample at that end tells the two apart.
+        if (low <= rangeLow)
+        {
+            samples++;
+            if (sdf(direction * rangeLow) > 0f)
+            {
+                return radius;
+            }
+        }
+        else if (high >= rangeHigh)
+        {
+            samples++;
+            if (sdf(direction * rangeHigh) <= 0f)
+            {
+                return radius;
             }
         }
 

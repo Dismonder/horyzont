@@ -50,13 +50,13 @@ public sealed class NavigationScreenMathTests
         {
             var radius = SurfaceBisection.FindSurfaceRadius(p => p.Length() - surface, Vector3.UnitX, 4000f, out var samples);
             Assert.InRange(MathF.Abs(radius - surface), 0f, 0.5f);
-            Assert.True(samples <= 11, $"{samples} samples");
+            Assert.True(samples <= 12, $"{samples} samples"); // 11 plus one check of the range end when the search ends there
         }
 
-        // Without a sign change the search ends at the edge of the range instead of looping.
+        // Without a sign change the nominal radius is returned.
         var flat = SurfaceBisection.FindSurfaceRadius(_ => 1f, Vector3.UnitY, 4000f, out var used);
-        Assert.InRange(flat, 3699f, 3701f);
-        Assert.True(used <= 11);
+        Assert.Equal(4000f, flat);
+        Assert.True(used <= 12);
     }
 
     [Fact]
