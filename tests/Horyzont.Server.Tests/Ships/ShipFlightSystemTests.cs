@@ -145,7 +145,7 @@ public sealed class ShipFlightSystemTests
         var path = Path.Combine(RepoRoot(), "game", "src", "Boot", "GameComposition.Space.cs");
         var text = File.ReadAllText(path);
         var flight = text.IndexOf("ConfigureFlight(server)", StringComparison.Ordinal);
-        var zones = text.IndexOf("server.AddTickParticipant(ZoneTransitions)", StringComparison.Ordinal);
+        var zones = text.IndexOf("ServerZoneTransitions.RegisterFramesPhase(", StringComparison.Ordinal);
 
         Assert.True(flight >= 0 && zones >= 0, "both registrations are in ConfigureSpace");
         Assert.True(flight < zones, "the flight runs before the zone transitions in phase Frames");
