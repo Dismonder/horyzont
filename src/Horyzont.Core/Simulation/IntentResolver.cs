@@ -21,6 +21,7 @@ internal static class IntentResolver
         ShipModeIntent ship => ResolveShipMode(state, ship),
         MarkerSetIntent set => ResolveMarkerSet(state, set, player),
         MarkerRemoveIntent remove => new MarkerRemoveOp(remove.Marker),
+        RefuelIntent refuel => new ShipFuelAddOp(refuel.Ship, facts.Amount, facts.Amount),
         _ => throw new InvalidOperationException($"Intent {intent.GetType().Name} passed validation but has no resolution."),
     };
 

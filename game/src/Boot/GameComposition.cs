@@ -388,6 +388,7 @@ public sealed partial class GameComposition
         composition.ServerFrames = serverFrames;
         composition.ServerFrameNodes = serverFrameNodes;
         composition.ConfigureSpace();
+        composition.ConfigurePlanets();
         composition.ConfigureReplication();
         composition.ConfigureTerrainReplication();
         composition.ConfigureMotion();
@@ -419,6 +420,7 @@ public sealed partial class GameComposition
     }
 
     partial void ConfigureSpace();
+    partial void ConfigurePlanets();
     partial void ConfigureReplication();
     partial void ConfigureTerrainReplication();
     partial void ConfigureMotion();
@@ -563,7 +565,8 @@ public sealed partial class GameComposition
 
         if (Server is not null)
         {
-            ClientNode!.TerrainProvider = new SharedTerrainProvider(TerrainFactory!.Terrain!.Voxel);
+            var terrain = TerrainFactory!.Terrain!;
+            ClientNode!.TerrainProvider = SharedTerrainProvider.Over(terrain);
             if (connectClient)
             {
                 ConnectLocalClient();

@@ -19,6 +19,7 @@ public static class IntentCodec
         ShipMode = 10,
         MarkerSet = 14,
         MarkerRemove = 15,
+        Refuel = 13,
     }
 
     private enum BlockTargetCode : byte
@@ -131,6 +132,16 @@ public static class IntentCodec
                 w.WriteVarUInt(mr.Marker.Value);
                 break;
 
+            case RefuelIntent rf:
+                w.WriteByte((byte)IntentCode.Refuel);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(rf.Ship.Value);
+                w.WriteVarUInt(rf.Station.Value);
+                CoreCodecPrimitives.WriteCellPos(w, rf.StationCell);
+                w.WriteVector3(rf.RayOrigin);
+                w.WriteVector3(rf.RayDirection);
+                break;
+
             default:
                 throw new ArgumentException($"Unknown intent type {intent.GetType().Name}.", nameof(intent));
         }
@@ -142,7 +153,7 @@ public static class IntentCodec
     public static Intent Read(ref ByteReader r)
     {
         byte codeByte = r.ReadByte();
-        if (codeByte is < (byte)IntentCode.TerrainTool or > (byte)IntentCode.RemoveBlock and not (byte)IntentCode.ShipMode and not (byte)IntentCode.MarkerSet and not (byte)IntentCode.MarkerRemove)
+        if (codeByte is < (byte)IntentCode.TerrainTool or > (byte)IntentCode.RemoveBlock and not ((byte)IntentCode.ShipMode or (byte)IntentCode.MarkerSet or (byte)IntentCode.MarkerRemove or (byte)IntentCode.Refuel))
         {
             throw new ProtocolViolationException($"Unknown intent code {codeByte}.");
         }
@@ -243,6 +254,14 @@ public static class IntentCodec
                 }
 
                 return new MarkerRemoveIntent(mrMarker);
+
+            case IntentCode.Refuel:
+                var rfShip = new EntityId(r.ReadVarUInt());
+                var rfStation = new EntityId(r.ReadVarUInt());
+                var rfCell = CoreCodecPrimitives.ReadCellPos(ref r);
+                var rfOrigin = r.ReadVector3();
+                var rfDirection = r.ReadVector3();
+                return new RefuelIntent(rfShip, rfStation, rfCell, rfOrigin, rfDirection);
 
             default:
                 throw new ProtocolViolationException($"Unhandled intent code {code}.");

@@ -24,6 +24,9 @@ public readonly record struct BlockFunction(
     /// <summary>A door.</summary>
     public static BlockFunction Door => new(BlockFunctionKind.Door);
 
+    /// <summary>Gets the function of a refuel station (K5-24).</summary>
+    public static BlockFunction RefuelStation => new(BlockFunctionKind.RefuelStation);
+
     /// <summary>A seat block.</summary>
     /// <param name="role">Passenger or navigator.</param>
     /// <returns>The function.</returns>

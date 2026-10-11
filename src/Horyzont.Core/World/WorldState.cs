@@ -7,6 +7,7 @@ using Horyzont.Core.Space;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Markers;
+using Horyzont.Core.World.Ships;
 using Horyzont.Core.World.Terrain;
 
 namespace Horyzont.Core.World;
@@ -88,6 +89,9 @@ public sealed class WorldState
 
     /// <summary>Players.</summary>
     public PlayerStore Players { get; }
+
+    /// <summary>Gets the flight states of the ships (K5-24); not part of the state hash.</summary>
+    public ShipStateStore ShipStates { get; } = new();
 
     /// <summary>Versions of edited terrain blocks.</summary>
     public TerrainVersionTable TerrainVersions { get; }
@@ -358,11 +362,37 @@ public sealed class WorldState
             }
         }
 
+        // Ship states: changed records of existing ships; records of removed constructs are dropped here (K5-24 decision 11).
+        foreach (var id in removedConstructs)
+        {
+            if (ShipStates.Remove(id))
+            {
+                _tracker.MarkShipState(id);
+            }
+        }
+
+        var shipIds = _tracker.ShipStates.ToArray();
+        Array.Sort(shipIds, static (a, b) => a.Value.CompareTo(b.Value));
+        var upsertedShips = new List<ShipStateRecord>();
+        var removedShips = new List<EntityId>();
+        foreach (var id in shipIds)
+        {
+            if (Constructs.TryGet(id, out _) && ShipStates.TryGet(id, out var record))
+            {
+                upsertedShips.Add(record);
+            }
+            else
+            {
+                ShipStates.Remove(id);
+                removedShips.Add(id);
+            }
+        }
+
         _tracker.Clear();
         _inFlight = new WorldCheckpoint(
             LastOpId, CurrentTick, EntityIds.NextValue, PlayerIds.NextValue,
             upsertedConstructs, removedConstructs, upsertedChunks, removedChunks, players, terrain,
-            upsertedMarkers, removedMarkers, MarkerIds.NextValue);
+            upsertedMarkers, removedMarkers, MarkerIds.NextValue, upsertedShips, removedShips);
         return _inFlight;
     }
 
@@ -420,6 +450,16 @@ public sealed class WorldState
         foreach (var id in failed.RemovedMarkers)
         {
             _tracker.MarkMarker(id);
+        }
+
+        foreach (var ship in failed.ShipStatesToWrite)
+        {
+            _tracker.MarkShipState(ship.Construct);
+        }
+
+        foreach (var id in failed.ShipStatesToDelete)
+        {
+            _tracker.MarkShipState(id);
         }
 
         _inFlight = null;

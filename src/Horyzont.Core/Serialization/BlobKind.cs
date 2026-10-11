@@ -23,4 +23,7 @@ public enum BlobKind : byte
 
     /// <summary>A map marker (K5-27).</summary>
     Marker = 11,
+
+    /// <summary>The flight state of a ship (K5-24): fuel, velocities and flags.</summary>
+    ShipState = 12,
 }

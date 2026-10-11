@@ -35,4 +35,7 @@ public enum OperationKind : byte
 
     /// <summary><see cref="MarkerRemoveOp"/>.</summary>
     MarkerRemove = 23,
+
+    /// <summary><see cref="ShipFuelAddOp"/>.</summary>
+    ShipFuelAdd = 21,
 }

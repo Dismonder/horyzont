@@ -189,7 +189,7 @@ public static class CodecGen
     /// <summary>Chunks of 4096 well-formed block states in assorted shapes (empty, uniform, sparse, banded, worst-case alternating, random).</summary>
     public static Gen<uint[]> ChunkBlocks { get; } = Gen.Choose(0, 5).SelectMany(shape => Gen.Choose(0, int.MaxValue).SelectMany(seed => BuildChunk(shape, seed)));
 
-    /// <summary>Operations of all eight kinds.</summary>
+    /// <summary>Operations of all nine kinds.</summary>
     public static Gen<Operation> Operation => Gen.OneOf(
         TerrainEditOp.Select(o => (Operation)o),
         ConstructCreateOp.Select(o => (Operation)o),
@@ -200,7 +200,8 @@ public static class CodecGen
         EntityReparentOp.Select(o => (Operation)o),
         ShipModeSetOp.Select(o => (Operation)o),
         MarkerSetOp.Select(o => (Operation)o),
-        MarkerRemoveOp.Select(o => (Operation)o));
+        MarkerRemoveOp.Select(o => (Operation)o),
+        ShipFuelAddOp.Select(o => (Operation)o));
 
     /// <summary>Terrain edit operations.</summary>
     public static Gen<TerrainEditOp> TerrainEditOp { get; } =
@@ -267,14 +268,15 @@ public static class CodecGen
         from seat in Optional(Cell)
         select new EntityReparentOp(entity, parent, parentSeq, position, rotation, velocity, seat);
 
-    /// <summary>Intents of all four kinds.</summary>
+    /// <summary>Intents of all five kinds.</summary>
     public static Gen<Intent> Intent => Gen.OneOf(
         TerrainToolIntent.Select(i => (Intent)i),
         PlaceBlockIntent.Select(i => (Intent)i),
         RemoveBlockIntent.Select(i => (Intent)i),
         ShipModeIntent.Select(i => (Intent)i),
         MarkerSetIntent.Select(i => (Intent)i),
-        MarkerRemoveIntent.Select(i => (Intent)i));
+        MarkerRemoveIntent.Select(i => (Intent)i),
+        RefuelIntent.Select(i => (Intent)i));
 
     /// <summary>Terrain tool intents.</summary>
     public static Gen<TerrainToolIntent> TerrainToolIntent { get; } =
@@ -348,6 +350,22 @@ public static class CodecGen
 
     /// <summary>Marker remove intents.</summary>
     public static Gen<MarkerRemoveIntent> MarkerRemoveIntent { get; } = Gen.Choose(1, int.MaxValue).Select(v => new MarkerRemoveIntent(new MarkerId((ulong)v)));
+
+    /// <summary>Fuel add operations (K5-24): units finite and positive, capacity finite and non-negative.</summary>
+    public static Gen<ShipFuelAddOp> ShipFuelAddOp { get; } =
+        from id in EntityId
+        from units in Gen.Elements(0.5f, 1f, 1000f, 2000f, float.Epsilon, float.MaxValue)
+        from capacity in Gen.Elements(0f, 1000f, 2000f, float.MaxValue)
+        select new ShipFuelAddOp(id, units, capacity);
+
+    /// <summary>Refuel intents (K5-24).</summary>
+    public static Gen<RefuelIntent> RefuelIntent { get; } =
+        from ship in EntityId
+        from station in EntityId
+        from cell in Cell
+        from origin in Vector
+        from direction in Vector
+        select new RefuelIntent(ship, station, cell, origin, direction);
 
     /// <summary>Ship mode intents.</summary>
     public static Gen<ShipModeIntent> ShipModeIntent { get; } =

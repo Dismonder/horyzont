@@ -82,4 +82,7 @@ public enum RejectReason : byte
 
     /// <summary>The player or the world has reached the marker limit (256 private per player, 256 shared); K5-27.</summary>
     MarkerLimit = 36,
+
+    /// <summary>The ship is not parked (return to the static mode, refuelling); K5-24.</summary>
+    ShipNotParked = 39,
 }

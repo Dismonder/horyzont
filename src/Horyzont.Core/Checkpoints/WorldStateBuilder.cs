@@ -10,6 +10,7 @@ using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Markers;
+using Horyzont.Core.World.Ships;
 using Horyzont.Core.World.Terrain;
 
 namespace Horyzont.Core.Checkpoints;
@@ -28,6 +29,7 @@ public sealed class WorldStateBuilder
     private readonly List<PlayerRecord> _players = [];
     private readonly List<TerrainBlockVersion> _terrain = [];
     private readonly List<MarkerRecord> _markers = [];
+    private readonly List<ShipStateRecord> _shipStates = [];
     private StarSystemParams? _starSystem;
     private OpId _lastOpId;
     private Tick _tick;
@@ -137,6 +139,10 @@ public sealed class WorldStateBuilder
     /// <param name="version">The version.</param>
     public void AddTerrainVersion(TerrainBlockVersion version) => _terrain.Add(version);
 
+    /// <summary>Adds the flight state of a ship (K5-24); the construct must exist, the record must be valid.</summary>
+    /// <param name="record">The record.</param>
+    public void AddShipState(ShipStateRecord record) => _shipStates.Add(record);
+
     /// <summary>Builds the world.</summary>
     /// <returns>The world state.</returns>
     /// <exception cref="InvalidDataException">The data is inconsistent.</exception>
@@ -240,6 +246,16 @@ public sealed class WorldStateBuilder
         foreach (var marker in _markers)
         {
             LoadMarker(state, marker);
+        }
+
+        foreach (var ship in _shipStates)
+        {
+            if (!ship.IsValid || !state.Constructs.TryGet(ship.Construct, out _) || state.ShipStates.TryGet(ship.Construct, out _))
+            {
+                throw new InvalidDataException($"Ship state of construct {ship.Construct.Value} is invalid, duplicate or has no construct.");
+            }
+
+            state.ShipStates.Set(ship);
         }
 
         return state;

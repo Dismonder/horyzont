@@ -1,5 +1,6 @@
 using Horyzont.Core.Ids;
 using Horyzont.Core.World.Markers;
+using Horyzont.Core.World.Ships;
 using Horyzont.Core.World.Terrain;
 
 namespace Horyzont.Core.Checkpoints;
@@ -18,6 +19,8 @@ namespace Horyzont.Core.Checkpoints;
 /// <param name="UpsertedMarkers">Markers that exist and changed, by id (K5-27).</param>
 /// <param name="RemovedMarkers">Markers removed, by id (K5-27).</param>
 /// <param name="NextMarkerId">Next marker id (K5-27); 1 when no marker was ever created.</param>
+/// <param name="UpsertedShipStates">Changed flight states of existing ships, by construct id (K5-24); null = none.</param>
+/// <param name="RemovedShipStates">Flight states of constructs that no longer exist, by id (K5-24); null = none.</param>
 public sealed record WorldCheckpoint(
     OpId BarrierOpId,
     Tick Tick,
@@ -31,7 +34,9 @@ public sealed record WorldCheckpoint(
     IReadOnlyList<TerrainBlockVersion> TerrainVersions,
     IReadOnlyList<MarkerRecord> UpsertedMarkers,
     IReadOnlyList<MarkerId> RemovedMarkers,
-    ulong NextMarkerId)
+    ulong NextMarkerId,
+    IReadOnlyList<ShipStateRecord>? UpsertedShipStates = null,
+    IReadOnlyList<EntityId>? RemovedShipStates = null)
 {
     /// <summary>Creates a checkpoint without marker changes (worlds and tests that predate K5-27).</summary>
     public WorldCheckpoint(
@@ -50,4 +55,10 @@ public sealed record WorldCheckpoint(
             upsertedPlayers, terrainVersions, [], [], 1)
     {
     }
+
+    /// <summary>Gets the upserted ship states, never null.</summary>
+    public IReadOnlyList<ShipStateRecord> ShipStatesToWrite => UpsertedShipStates ?? [];
+
+    /// <summary>Gets the removed ship states, never null.</summary>
+    public IReadOnlyList<EntityId> ShipStatesToDelete => RemovedShipStates ?? [];
 }

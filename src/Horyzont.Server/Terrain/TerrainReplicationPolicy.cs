@@ -21,6 +21,12 @@ public static class TerrainReplicationPolicy
     /// <summary>How far the declared viewer positions may be from the feet of the server character, in metres.</summary>
     public const float ViewerTolerance = 64f;
 
+    /// <summary>
+    /// Distance from the centre of a planet, in planet radii, up to which a player may view its terrain (K5-22 decision 8: the client
+    /// activates a terrain from 4 R and releases it beyond 4.4 R).
+    /// </summary>
+    public const float OtherPlanetViewFactor = 4.4f;
+
     /// <summary>Radius around the collision viewer inside which edit data is sent as live traffic, in metres.</summary>
     public const float LiveRadius = 64f;
 

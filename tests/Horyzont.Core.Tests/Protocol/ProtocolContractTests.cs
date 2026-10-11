@@ -30,14 +30,14 @@ public sealed class ProtocolContractTests
     {
         AssertValues((OperationKind.TerrainEdit, 1), (OperationKind.ConstructCreate, 2), (OperationKind.BlockSet, 3), (OperationKind.BlockClear, 4),
             (OperationKind.PlayerJoin, 5), (OperationKind.PlayerLeave, 6), (OperationKind.EntityReparent, 7),
-            (OperationKind.ShipModeSet, 20), (OperationKind.MarkerSet, 22), (OperationKind.MarkerRemove, 23));
+            (OperationKind.ShipModeSet, 20), (OperationKind.ShipFuelAdd, 21), (OperationKind.MarkerSet, 22), (OperationKind.MarkerRemove, 23));
         AssertValues((RejectReason.None, 0), (RejectReason.UnknownPlayer, 1), (RejectReason.PlayerOffline, 2), (RejectReason.RateLimited, 3),
             (RejectReason.InvalidParameters, 4), (RejectReason.RayOriginMismatch, 5), (RejectReason.NoHit, 6), (RejectReason.OutOfReach, 7),
             (RejectReason.AreaNotLoaded, 8), (RejectReason.BelowCore, 9), (RejectReason.OutsideAtmosphere, 10), (RejectReason.UnknownPlanet, 11),
             (RejectReason.UnknownConstruct, 12), (RejectReason.CellOutOfBounds, 13), (RejectReason.CellOccupied, 14), (RejectReason.CellEmpty, 15),
             (RejectReason.UnknownBlockType, 16), (RejectReason.UnknownMaterial, 17), (RejectReason.IntersectsPlayer, 18),
             (RejectReason.NoLineOfSight, 19), (RejectReason.WrongPlanet, 20), (RejectReason.ServerReadOnly, 21),
-            (RejectReason.NoCockpit, 30), (RejectReason.ShipAnchored, 31), (RejectReason.NoEngine, 37), (RejectReason.MarkerLimit, 36));
+            (RejectReason.NoCockpit, 30), (RejectReason.ShipAnchored, 31), (RejectReason.NoEngine, 37), (RejectReason.MarkerLimit, 36), (RejectReason.ShipNotParked, 39));
         AssertValues((MessageType.ClientHello, 1), (MessageType.ServerHello, 2), (MessageType.HandshakeReject, 3), (MessageType.ClientReady, 4),
             (MessageType.TerrainCacheReport, 5), (MessageType.TerrainBlockData, 6), (MessageType.TerrainChecksums, 7), (MessageType.ConstructState, 8),
             (MessageType.ConstructRemoved, 9), (MessageType.OperationApplied, 10), (MessageType.IntentSubmit, 11), (MessageType.IntentReply, 12),
@@ -57,7 +57,7 @@ public sealed class ProtocolContractTests
         AssertValues((ConstructMode.Static, 0), (ConstructMode.Ship, 1));
         AssertValues((BlockShape.Cube, 1), (BlockShape.Mesh, 2));
         AssertValues((BlobKind.ConstructHeader, 1), (BlobKind.Player, 2), (BlobKind.ConstructChunk, 3), (BlobKind.PlanetParams, 4),
-            (BlobKind.TerrainBlock, 5), (BlobKind.StarSystemParams, 10), (BlobKind.Marker, 11));
+            (BlobKind.TerrainBlock, 5), (BlobKind.StarSystemParams, 10), (BlobKind.Marker, 11), (BlobKind.ShipState, 12));
         AssertValues((TerrainShape.Sphere, 1));
         AssertValues((TerrainEditMode.Remove, 1), (TerrainEditMode.Add, 2));
         AssertValues((EntityKind.Player, 1), (EntityKind.Construct, 2));
@@ -86,11 +86,12 @@ public sealed class ProtocolContractTests
         Assert.Throws<ProtocolViolationException>(() => MessageCodec.Read(beyond));
     }
 
-    /// <summary>The Space reject reasons of K5-23 round-trip; the gaps of the 30-39 range stay undefined until their packages.</summary>
+    /// <summary>The Space reject reasons of K5-23 and K5-24 round-trip; the gaps of the 30-39 range stay undefined until their packages.</summary>
     [Theory]
     [InlineData(RejectReason.NoCockpit, 30)]
     [InlineData(RejectReason.ShipAnchored, 31)]
     [InlineData(RejectReason.NoEngine, 37)]
+    [InlineData(RejectReason.ShipNotParked, 39)]
     public void RejectReason_KosmosValues_Golden(RejectReason reason, byte value)
     {
         var reply = new IntentReply(7, reason, OpId.None);
@@ -101,7 +102,7 @@ public sealed class ProtocolContractTests
 
         Assert.Equal(new byte[] { 12, 1, 7, value, 0 }, bytes);
         Assert.Equal(reply, MessageCodec.Read(bytes));
-        foreach (byte undefined in new byte[] { 22, 29, 32, 33, 34, 35, 38, 39, 40, 255 })
+        foreach (byte undefined in new byte[] { 22, 29, 32, 33, 34, 35, 38, 40, 255 })
         {
             var copy = (byte[])bytes.Clone();
             copy[3] = undefined;
@@ -114,20 +115,22 @@ public sealed class ProtocolContractTests
     /// Gate decision D4: the value on main plus one. K2-10 raised it from 1 to 2; K2-11 adds <see cref="InputButtons.DevFly"/> and
     /// the 0x3F button mask and raises it to 3. K5-20 raises it for ship-mode constructs in snapshots (semantics only, main + 1).
     /// K5-21 adds StarSystemState (32) on the K5-20 stack: K5-20 + 1, recomputed as main + 1 when K5-21 merges.
-    /// K5-27 adds MarkersState (33), operations 22/23, intents 14/15, reject reason 36 and blob 11: 10 = main (9) + 1, recomputed at merge.
+    /// K5-22 changes the acceptance rule of TerrainView (another planet up to 4.4 R) on the K5-21 stack: K5-21 + 1 (P1, D4).
+    /// K5-24 adds ShipFuelAddOp (21), RefuelIntent (13) and ShipNotParked (39) after K5-22 (main 10): 11.
+    /// K5-27 adds MarkersState (33), operations 22/23, intents 14/15, reject reason 36 and blob 11 after K5-24 (main 11): 12.
     /// A rebase onto a newer main updates this value, the constant and the package plan together.
     /// </summary>
     [Fact]
     public void ProtocolVersion_MatchesDocumentedMergeValue()
     {
-        Assert.Equal(10, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(12, ProtocolConstants.ProtocolVersion);
         Assert.Equal(0x3F, ProtocolConstants.InputButtonsMask);
     }
 
     [Fact]
     public void Constants_GoldenValues()
     {
-        Assert.Equal(10, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(12, ProtocolConstants.ProtocolVersion);
         Assert.Equal(262144, ProtocolConstants.MaxReliableMessageBytes);
         Assert.Equal(1150, ProtocolConstants.MaxUnreliableMessageBytes);
         Assert.Equal(32, ProtocolConstants.MaxDisplayNameBytes);

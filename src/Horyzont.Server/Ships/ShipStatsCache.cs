@@ -3,6 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Ships;
+using Horyzont.Core.Ships.Flight;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.World.Constructs;
 
@@ -48,6 +49,33 @@ public sealed class ShipStatsCache
         return true;
     }
 
+    /// <summary>
+    /// Hull boxes of a construct in the ship mode (K5-24 decision 8): the same array until the blocks change, so a collider rebuilds
+    /// its proxy only when the reference differs.
+    /// </summary>
+    /// <param name="construct">Construct id.</param>
+    /// <param name="boxes">The boxes when the construct is a ship.</param>
+    /// <returns>False when the construct does not exist or is not in the ship mode.</returns>
+    public bool TryGetHullBoxes(EntityId construct, [NotNullWhen(true)] out ShipHullBox[]? boxes)
+    {
+        boxes = null;
+        if (!TryGet(construct, out _))
+        {
+            return false;
+        }
+
+        var entry = _entries[construct];
+        if (entry.Boxes is null)
+        {
+            _simulation.State.Constructs.TryGet(construct, out var current);
+            entry = entry with { Boxes = ShipHullBoxes.Compute(current!) };
+            _entries[construct] = entry;
+        }
+
+        boxes = entry.Boxes;
+        return true;
+    }
+
     private void OnApplied(AppliedOperation applied)
     {
         foreach (var change in applied.ConstructChanges)
@@ -74,5 +102,5 @@ public sealed class ShipStatsCache
         return stats;
     }
 
-    private readonly record struct Entry(uint Version, ShipStats Stats);
+    private readonly record struct Entry(uint Version, ShipStats Stats, ShipHullBox[]? Boxes = null);
 }

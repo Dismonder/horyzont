@@ -48,7 +48,9 @@ public class VoxelServerTerrainFactoryTests
         Task<int>? reading = null;
         TerrainStream? stream = null;
         TerrainBlockStore? storeForCleanup = null;
-        var factory = new VoxelServerTerrainFactory(scene.Root, PlanetTerrainOptions.Server, time, NullLoggerFactory.Instance)
+        // K5-22: the server terrain parent must be a Node3D (the fallback parent of planet nodes while there are no frame nodes).
+        var parent = scene.Add(new Node3D { Name = "Terrain" });
+        var factory = new VoxelServerTerrainFactory(parent, PlanetTerrainOptions.Server, time, NullLoggerFactory.Instance)
         {
             StoreCreated = store =>
             {
@@ -64,10 +66,6 @@ public class VoxelServerTerrainFactoryTests
                     }
                 }));
             },
-            // K5-21 decision 11: only the home planet gets terrain until K5-22, so the second planet is never built.
-            CreatePlanet = (planet, options, material) => planet.Id == second.Id
-                ? throw new InvalidOperationException("The second planet must not get terrain before K5-22")
-                : PlanetTerrainFactory.Create(planet, options, material),
             PlanetCreated = node =>
             {
                 stream = node.Stream;
@@ -84,7 +82,7 @@ public class VoxelServerTerrainFactoryTests
                     throw new TimeoutException("The first planet did not enter its read");
                 }
 
-                // The construction fails while the first planet's read is still running (formerly the second planet's creation).
+                // K5-22: only the home planet gets a node at start, so the construction fails right after it was made.
                 throw expected;
             },
         };
@@ -106,7 +104,7 @@ public class VoxelServerTerrainFactoryTests
             AssertThat(stream.SourceReads).IsEqual(1);
             AssertThat(factory.FailureCleanup.IsCompleted).IsFalse();
             AssertThat(factory.FailedStoreCount).IsEqual(1);
-            AssertThat(scene.Root.GetChildCount()).IsEqual(0);
+            AssertThat(parent.GetChildCount()).IsEqual(0);
             if (drainTimesOut)
             {
                 time.Advance(TimeSpan.FromSeconds(6));

@@ -69,7 +69,12 @@ public static class WorldLoader
 
             GrowRegistries(connection, "block_types", options.BlockTypeKeys, ProtocolConstants.MaxBlockTypes, logger);
             GrowRegistries(connection, "materials", options.MaterialKeys, ProtocolConstants.MaxMaterials, logger);
-            var loaded = ReadWorld(connection);
+            var orphans = new List<ulong>();
+            var loaded = ReadWorld(connection, orphans);
+            foreach (var orphan in orphans)
+            {
+                PersistenceLog.ShipStateWithoutConstruct(logger, orphan);
+            }
             if (loaded.State.StarSystem is null)
             {
                 PersistenceLog.NoStarSystem(logger, database.Path, loaded.State.Planets.All.Count);
@@ -125,7 +130,7 @@ public static class WorldLoader
         transaction.Commit();
     }
 
-    private static LoadedWorld ReadWorld(SqliteConnection connection)
+    private static LoadedWorld ReadWorld(SqliteConnection connection, List<ulong> orphanShipStates)
     {
         var meta = ReadMeta(connection);
         try
@@ -150,6 +155,7 @@ public static class WorldLoader
                 : 1);
             ReadMarkers(connection, builder);
             ReadTerrainVersions(connection, builder);
+            ReadShipStates(connection, builder, orphanShipStates);
             var state = builder.Build();
             var tail = ReadJournal(connection, lastCheckpoint);
             return new LoadedWorld(state, tail, lastCheckpoint, MetaText(meta, Sql.MetaGameVersion));
@@ -320,6 +326,34 @@ public static class WorldLoader
             }
 
             builder.AddMarker(record);
+        }
+    }
+
+    /// <summary>K5-24 decision 16: flight states by construct id; a row of a construct that does not exist is skipped (Warning).</summary>
+    private static void ReadShipStates(SqliteConnection connection, WorldStateBuilder builder, List<ulong> orphans)
+    {
+        using var command = Sql.Command(
+            connection, null,
+            "SELECT s.construct_id, s.data, e.entity_id FROM ship_state s "
+            + "LEFT JOIN entities e ON e.entity_id = s.construct_id AND e.kind = $kind ORDER BY s.construct_id;");
+        command.Parameters.AddWithValue("$kind", (long)EntityKind.Construct);
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var id = Sql.FromDb(reader.GetInt64(0));
+            var record = StateCodec.DecodeShipStateBlob((byte[])reader.GetValue(1));
+            if (record.Construct.Value != id)
+            {
+                throw new InvalidDataException($"Ship state row {id} does not match its blob.");
+            }
+
+            if (reader.IsDBNull(2))
+            {
+                orphans.Add(id);
+                continue;
+            }
+
+            builder.AddShipState(record);
         }
     }
 

@@ -24,10 +24,20 @@ public static class PlanetTerrainFactory
     /// <param name="options">Active parts of the node.</param>
     /// <param name="material">Render material shared between planets (create it once with <see cref="PlanetTerrainMaterial.Create"/>); when null and rendering is on, a new one is created.</param>
     /// <exception cref="NotSupportedException">Unknown generator profile or voxel size other than 1.</exception>
-    public static VoxelLodTerrain Create(PlanetParams planet, PlanetTerrainOptions options, Material? material = null)
+    public static VoxelLodTerrain Create(PlanetParams planet, PlanetTerrainOptions options, Material? material = null) =>
+        Create(planet, options, material, null);
+
+    /// <summary>Creates the terrain node with a generator made earlier for this planet (K5-22: generators are compiled once at start). Main thread.</summary>
+    /// <param name="planet">Planet parameters (profile, radius).</param>
+    /// <param name="options">Active parts of the node.</param>
+    /// <param name="material">Render material shared between planets; see the other overload.</param>
+    /// <param name="generator">Generator of <paramref name="planet"/> from <see cref="GeneratorProfiles.CreateGenerator"/>; made here when null.</param>
+    /// <returns>The terrain node, outside the tree and without a stream.</returns>
+    /// <exception cref="NotSupportedException">Unknown generator profile or voxel size other than 1.</exception>
+    public static VoxelLodTerrain Create(PlanetParams planet, PlanetTerrainOptions options, Material? material, VoxelGenerator? generator)
     {
         ArgumentNullException.ThrowIfNull(planet);
-        var generator = GeneratorProfiles.CreateGenerator(planet);
+        generator ??= GeneratorProfiles.CreateGenerator(planet);
         var half = PlanetTerrainLayout.BoundsHalfExtentVoxels(planet);
 
         var mesher = new VoxelMesherTransvoxel();

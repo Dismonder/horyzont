@@ -15,6 +15,7 @@ internal sealed class ChangeTracker
     internal HashSet<TerrainBlockKey> Terrain { get; } = [];
 
     internal HashSet<MarkerId> Markers { get; } = [];
+    internal HashSet<EntityId> ShipStates { get; } = [];
 
     internal void MarkConstruct(EntityId id) => Constructs.Add(id);
 
@@ -25,6 +26,7 @@ internal sealed class ChangeTracker
     internal void MarkTerrain(TerrainBlockKey key) => Terrain.Add(key);
 
     internal void MarkMarker(MarkerId id) => Markers.Add(id);
+    internal void MarkShipState(EntityId id) => ShipStates.Add(id);
 
     internal void Clear()
     {
@@ -33,5 +35,6 @@ internal sealed class ChangeTracker
         Players.Clear();
         Terrain.Clear();
         Markers.Clear();
+        ShipStates.Clear();
     }
 }

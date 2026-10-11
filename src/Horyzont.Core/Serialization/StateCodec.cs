@@ -10,6 +10,7 @@ using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Markers;
+using Horyzont.Core.World.Ships;
 
 namespace Horyzont.Core.Serialization;
 
@@ -17,6 +18,9 @@ namespace Horyzont.Core.Serialization;
 public static class StateCodec
 {
     private const byte CurrentFormatVersion = 1;
+
+    /// <summary>Length of a <see cref="BlobKind.ShipState"/> blob.</summary>
+    public const int ShipStateBlobLength = 39;
     private const int ChunkCellCount = 4096;
     private const int TerrainBlockHeaderBytes = 7;
 
@@ -655,6 +659,51 @@ public static class StateCodec
         }
 
         return new TerrainBlockBlob(voxelFormat, blob[TerrainBlockHeaderBytes..].ToArray());
+    }
+
+    /// <summary>Encodes the flight state of a ship as a SQLite blob (<see cref="BlobKind.ShipState"/>, 39 bytes).</summary>
+    /// <param name="record">The record; must be <see cref="ShipStateRecord.IsValid"/>.</param>
+    /// <returns>The blob.</returns>
+    /// <exception cref="ArgumentException">The record is not valid.</exception>
+    public static byte[] EncodeShipStateBlob(in ShipStateRecord record)
+    {
+        if (!record.IsValid)
+        {
+            throw new ArgumentException($"Invalid ship state of construct {record.Construct.Value}.", nameof(record));
+        }
+
+        var w = new ByteWriter(ShipStateBlobLength);
+        w.WriteByte((byte)BlobKind.ShipState);
+        w.WriteByte(CurrentFormatVersion);
+        w.WriteUInt64(record.Construct.Value);
+        w.WriteSingle(record.Fuel);
+        w.WriteVector3(record.LinearVelocity);
+        w.WriteVector3(record.AngularVelocity);
+        w.WriteByte((byte)record.Flags);
+        return w.WrittenSpan.ToArray();
+    }
+
+    /// <summary>Decodes a <see cref="BlobKind.ShipState"/> blob.</summary>
+    /// <param name="blob">The blob.</param>
+    /// <returns>The record.</returns>
+    /// <exception cref="ProtocolViolationException">Wrong kind, version or length, a non-finite value, negative fuel or an unknown flag.</exception>
+    public static ShipStateRecord DecodeShipStateBlob(ReadOnlySpan<byte> blob)
+    {
+        ValidateBlobHeader(blob, BlobKind.ShipState);
+        var r = new ByteReader(blob[2..]);
+        var construct = new EntityId(r.ReadUInt64());
+        var fuel = r.ReadSingle();
+        var linear = r.ReadVector3();
+        var angular = r.ReadVector3();
+        var flags = (ShipStateFlags)r.ReadByte();
+        r.EnsureEnd();
+        var record = new ShipStateRecord(construct, fuel, linear, angular, flags);
+        if (!record.IsValid)
+        {
+            throw new ProtocolViolationException($"Invalid ship state of construct {construct.Value}.");
+        }
+
+        return record;
     }
 
     private static void WriteDouble(ByteWriter w, double value) => w.WriteUInt64(BitConverter.DoubleToUInt64Bits(value));

@@ -6,6 +6,7 @@ using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Constructs;
+using Horyzont.Core.World.Ships;
 using Horyzont.Core.World.Terrain;
 
 namespace Horyzont.Core.Simulation;
@@ -36,6 +37,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             ShipModeSetOp op => CheckShipModeSet(op),
             MarkerSetOp op => CheckMarkerSet(op),
             MarkerRemoveOp op => CheckMarkerRemove(op),
+            ShipFuelAddOp op => CheckShipFuelAdd(op),
             _ => $"Unknown operation {operation.GetType().Name}.",
         } ?? string.Empty;
         return failure.Length == 0;
@@ -98,6 +100,10 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 break;
             case MarkerRemoveOp op:
                 state.Markers.Remove(op.Marker);
+                break;
+
+            case ShipFuelAddOp op:
+                ApplyShipFuelAdd(op);
                 break;
             default:
                 throw new InvalidOperationException($"Unknown operation {operation.GetType().Name}.");
@@ -364,6 +370,31 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         }
 
         return null;
+    }
+
+    /// <summary>K5-24 decision 13: only hashed state (the construct is a ship) and the values; never the ship state or the content.</summary>
+    private string? CheckShipFuelAdd(ShipFuelAddOp op)
+    {
+        if (!state.Constructs.TryGet(op.Construct, out var construct))
+        {
+            return "unknown construct";
+        }
+
+        if (construct.Mode != ConstructMode.Ship)
+        {
+            return "not a ship";
+        }
+
+        return float.IsFinite(op.Units) && op.Units > 0f && float.IsFinite(op.Capacity) && op.Capacity >= 0f ? null : "invalid fuel units or capacity";
+    }
+
+    private void ApplyShipFuelAdd(ShipFuelAddOp op)
+    {
+        var record = state.ShipStates.TryGet(op.Construct, out var current)
+            ? current
+            : new ShipStateRecord(op.Construct, 0f, Vector3.Zero, Vector3.Zero, ShipStateFlags.Parked | ShipStateFlags.GearDown);
+        state.ShipStates.Set(record with { Fuel = MathF.Min(record.Fuel + op.Units, op.Capacity) });
+        state.Tracker.MarkShipState(op.Construct);
     }
 
     private string? CheckShipModeSet(ShipModeSetOp op)

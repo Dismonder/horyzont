@@ -551,6 +551,7 @@ public sealed class PersistenceWriter : IAsyncDisposable
             _faults.Hit(FaultPoint.CheckpointMidTransaction);
             WritePlayers(connection, transaction, checkpoint);
             WriteMarkers(connection, transaction, checkpoint);
+            WriteShipStates(connection, transaction, checkpoint);
             WriteTerrain(connection, transaction, command.Request.TerrainBlocks);
             Sql.SetMeta(connection, transaction, Sql.MetaNextEntityId, Sql.ToDb(checkpoint.NextEntityId));
             Sql.SetMeta(connection, transaction, Sql.MetaNextPlayerId, Sql.ToDb(checkpoint.NextPlayerId));
@@ -685,6 +686,27 @@ public sealed class PersistenceWriter : IAsyncDisposable
         {
             using var command = Sql.Command(connection, transaction, "DELETE FROM markers WHERE marker_id = $id;");
             command.Parameters.AddWithValue("$id", Sql.ToDb(removed.Value));
+            command.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>K5-24 decision 16: the flight states (blob 12) in the transaction of the checkpoint.</summary>
+    private static void WriteShipStates(SqliteConnection connection, SqliteTransaction transaction, Core.Checkpoints.WorldCheckpoint checkpoint)
+    {
+        foreach (var removed in checkpoint.ShipStatesToDelete)
+        {
+            using var command = Sql.Command(connection, transaction, "DELETE FROM ship_state WHERE construct_id = $id;");
+            command.Parameters.AddWithValue("$id", Sql.ToDb(removed.Value));
+            command.ExecuteNonQuery();
+        }
+
+        foreach (var ship in checkpoint.ShipStatesToWrite)
+        {
+            using var command = Sql.Command(
+                connection, transaction,
+                "INSERT INTO ship_state (construct_id, data) VALUES ($id, $data) ON CONFLICT (construct_id) DO UPDATE SET data = excluded.data;");
+            command.Parameters.AddWithValue("$id", Sql.ToDb(ship.Construct.Value));
+            command.Parameters.AddWithValue("$data", StateCodec.EncodeShipStateBlob(ship));
             command.ExecuteNonQuery();
         }
     }

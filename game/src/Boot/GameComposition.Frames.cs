@@ -59,8 +59,15 @@ public sealed partial class GameComposition
         ClientNode!.AddChild(nodes);
         ClientFrameNodes = nodes;
         LocalPlayer.FrameNodes = nodes;
+        _ownTerrain?.FrameNodes = nodes;
         DayNight?.FrameNodes = nodes;
         Tools?.FrameNodes = nodes;
+        if (_env.Render)
+        {
+            // K5-24: the flight HUD; the ship status comes with K5-26 (ShipStatus 31).
+            ClientNode.AddChild(new Horyzont.Game.Client.Ships.FlightHud(
+                LocalPlayer, frames, mirror, () => ClientStarSystem?.Model, Horyzont.Client.Ships.UnknownShipStatus.Instance));
+        }
     }
 
     /// <summary>
