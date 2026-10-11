@@ -80,6 +80,9 @@ public enum MessageType : byte
     /// <summary>Client to server, reliable terrain viewer update.</summary>
     TerrainView = 25,
 
+    /// <summary>S→C: flight status of the ship the player sits in, 2 Hz, unreliable (K5-26).</summary>
+    ShipStatus = 31,
+
     /// <summary>S→C: the star system of the world, once after the hello (K5-21).</summary>
     StarSystemState = 32,
 }
