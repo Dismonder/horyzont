@@ -87,12 +87,17 @@ public sealed class ProtocolContractTests
         Assert.Throws<ProtocolViolationException>(() => MessageCodec.Read(beyond));
     }
 
-    /// <summary>The Space reject reasons of K5-23 and K5-24 round-trip; the gaps of the 30-39 range stay undefined until their packages.</summary>
+    /// <summary>The Space reject reasons of K5-23, K5-24 and K5-25 round-trip; the gaps of the 30-39 range stay undefined until their packages.</summary>
     [Theory]
     [InlineData(RejectReason.NoCockpit, 30)]
     [InlineData(RejectReason.ShipAnchored, 31)]
     [InlineData(RejectReason.NoEngine, 37)]
     [InlineData(RejectReason.ShipNotParked, 39)]
+    [InlineData(RejectReason.SeatOccupied, 32)]
+    [InlineData(RejectReason.SeatOutOfReach, 33)]
+    [InlineData(RejectReason.EjectTooFast, 34)]
+    [InlineData(RejectReason.NotPilot, 35)]
+    [InlineData(RejectReason.ConstructNotEmpty, 38)]
     public void RejectReason_KosmosValues_Golden(RejectReason reason, byte value)
     {
         var reply = new IntentReply(7, reason, OpId.None);
@@ -103,7 +108,7 @@ public sealed class ProtocolContractTests
 
         Assert.Equal(new byte[] { 12, 1, 7, value, 0 }, bytes);
         Assert.Equal(reply, MessageCodec.Read(bytes));
-        foreach (byte undefined in new byte[] { 22, 29, 32, 33, 34, 35, 36, 38, 40, 255 })
+        foreach (byte undefined in new byte[] { 22, 29, 36, 40, 255 })
         {
             var copy = (byte[])bytes.Clone();
             copy[3] = undefined;

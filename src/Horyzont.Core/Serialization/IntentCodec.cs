@@ -16,7 +16,10 @@ public static class IntentCodec
         PlaceBlock = 2,
         RemoveBlock = 3,
         ShipMode = 10,
+        SeatEnter = 11,
+        SeatExit = 12,
         Refuel = 13,
+        SeatEvict = 16,
     }
 
     private enum BlockTargetCode : byte
@@ -116,6 +119,20 @@ public static class IntentCodec
                 w.WriteVector3(rf.RayDirection);
                 break;
 
+            case SeatEnterIntent se:
+                WriteSeatTarget(w, IntentCode.SeatEnter, se.Construct, se.SeatCell, se.RayOrigin, se.RayDirection);
+                break;
+
+            case SeatExitIntent sx:
+                w.WriteByte((byte)IntentCode.SeatExit);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(sx.Construct.Value);
+                break;
+
+            case SeatEvictIntent sv:
+                WriteSeatTarget(w, IntentCode.SeatEvict, sv.Construct, sv.SeatCell, sv.RayOrigin, sv.RayDirection);
+                break;
+
             default:
                 throw new ArgumentException($"Unknown intent type {intent.GetType().Name}.", nameof(intent));
         }
@@ -127,7 +144,8 @@ public static class IntentCodec
     public static Intent Read(ref ByteReader r)
     {
         byte codeByte = r.ReadByte();
-        if (codeByte is < (byte)IntentCode.TerrainTool or > (byte)IntentCode.RemoveBlock and not ((byte)IntentCode.ShipMode or (byte)IntentCode.Refuel))
+        if (codeByte is < (byte)IntentCode.TerrainTool or (> (byte)IntentCode.RemoveBlock and < (byte)IntentCode.ShipMode)
+            or (> (byte)IntentCode.Refuel and not (byte)IntentCode.SeatEvict))
         {
             throw new ProtocolViolationException($"Unknown intent code {codeByte}.");
         }
@@ -213,8 +231,36 @@ public static class IntentCodec
                 var rfDirection = r.ReadVector3();
                 return new RefuelIntent(rfShip, rfStation, rfCell, rfOrigin, rfDirection);
 
+            case IntentCode.SeatEnter:
+                var seConstruct = new EntityId(r.ReadVarUInt());
+                var seCell = CoreCodecPrimitives.ReadCellPos(ref r);
+                var seOrigin = r.ReadVector3();
+                var seDirection = r.ReadVector3();
+                return new SeatEnterIntent(seConstruct, seCell, seOrigin, seDirection);
+
+            case IntentCode.SeatExit:
+                return new SeatExitIntent(new EntityId(r.ReadVarUInt()));
+
+            case IntentCode.SeatEvict:
+                var svConstruct = new EntityId(r.ReadVarUInt());
+                var svCell = CoreCodecPrimitives.ReadCellPos(ref r);
+                var svOrigin = r.ReadVector3();
+                var svDirection = r.ReadVector3();
+                return new SeatEvictIntent(svConstruct, svCell, svOrigin, svDirection);
+
             default:
                 throw new ProtocolViolationException($"Unhandled intent code {code}.");
         }
+    }
+
+    /// <summary>Layout of intents 11 and 16 (K5-25 decision 1): construct, cell, ray origin, ray direction.</summary>
+    private static void WriteSeatTarget(ByteWriter w, IntentCode code, EntityId construct, CellPos cell, System.Numerics.Vector3 origin, System.Numerics.Vector3 direction)
+    {
+        w.WriteByte((byte)code);
+        w.WriteByte(CurrentFormatVersion);
+        w.WriteVarUInt(construct.Value);
+        CoreCodecPrimitives.WriteCellPos(w, cell);
+        w.WriteVector3(origin);
+        w.WriteVector3(direction);
     }
 }
