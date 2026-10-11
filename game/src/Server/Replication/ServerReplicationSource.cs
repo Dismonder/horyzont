@@ -40,7 +40,8 @@ public sealed class ServerReplicationSource(WorldState world, IServerCharacterSo
                 player.Entity, EntityKind.Player, player.Player, new SnapshotFrame(state.Frame, state.ParentSeq),
                 new EntityState(player.Entity, AllFields, 0, state.ParentSeq, state.Feet, Quaternion.Normalize(state.BodyRotation), state.Velocity,
                     (byte)state.Mode),
-                0f);
+                0f,
+                state.Frame == player.Frame && state.ParentSeq == player.ParentSeq ? player.Seat : null);
         }
 
         var constructs = world.Constructs.All;

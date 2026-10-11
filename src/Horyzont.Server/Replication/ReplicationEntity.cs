@@ -1,5 +1,6 @@
 using Horyzont.Core.Ids;
 using Horyzont.Core.Protocol.Messages;
+using Horyzont.Core.World.Constructs;
 
 namespace Horyzont.Server.Replication;
 
@@ -10,5 +11,6 @@ namespace Horyzont.Server.Replication;
 /// <param name="Frame">Parent reference and its sequence.</param>
 /// <param name="State">Complete local state.</param>
 /// <param name="BoundsRadius">Interest bounding sphere radius.</param>
+/// <param name="Seat">Seat cell of a player in the construct frame (K5-26); null when not seated or not a player.</param>
 public readonly record struct ReplicationEntity(EntityId Id, EntityKind Kind, PlayerId? Owner,
-    SnapshotFrame Frame, EntityState State, float BoundsRadius);
+    SnapshotFrame Frame, EntityState State, float BoundsRadius, CellPos? Seat = null);

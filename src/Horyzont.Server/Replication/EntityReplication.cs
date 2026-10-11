@@ -518,8 +518,10 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         _session.Send(player, new EntityDespawn(id));
     }
 
+    // K5-26 decision 7: a player's kind data is its seat, so an observer entering range after the boarding knows it.
     private static EntitySpawn MakeSpawn(in ReplicationEntity entity) =>
-        new(entity.Id, entity.Kind, 0, entity.Owner, entity.Frame, entity.State with { FrameIndex = 0, Fields = (EntityStateFields)15 }, []);
+        new(entity.Id, entity.Kind, 0, entity.Owner, entity.Frame, entity.State with { FrameIndex = 0, Fields = (EntityStateFields)15 },
+            entity.Kind == EntityKind.Player ? EntitySpawnSeat.Encode(entity.Seat) : []);
 
     private void SendSnapshots(Tick tick)
     {
