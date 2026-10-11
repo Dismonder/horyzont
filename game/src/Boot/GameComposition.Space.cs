@@ -44,6 +44,7 @@ public sealed partial class GameComposition
         {
             ClientStarSystem = new ClientStarSystem();
             Client.AddListener(ClientStarSystem);
+            DayNight?.StarSystem = ClientStarSystem;
         }
     }
 

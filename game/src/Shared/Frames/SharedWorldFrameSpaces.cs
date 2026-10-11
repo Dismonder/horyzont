@@ -2,6 +2,7 @@ using Godot;
 
 using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
+using Horyzont.Core.Space;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Constructs;
 
@@ -9,8 +10,9 @@ namespace Horyzont.Game.Frames;
 
 /// <summary>
 /// The frame spaces of EA (K5-20, decision 18): every frame shares the physics space of the world. A planet frame has the radial
-/// gravity of the planet; a construct frame has the gravity of its region expressed in the construct frame and supports walking only
-/// in the static mode; the system frame has no gravity (zones of influence come with K5-21).
+/// gravity of the planet (characters, constant up to the atmosphere); a construct frame in a planet region has the zone gravity of
+/// the body (K5-21 decision 17, <see cref="StarSystemMath.GravityInPlanet"/>) expressed in the construct frame and supports walking
+/// only in the static mode; the system frame has no gravity (a ship there is outside every 3 R zone, K5-21 decision 5).
 /// </summary>
 /// <param name="nodes">The frame nodes of the side (transforms and the physics space).</param>
 /// <param name="graph">The frame graph of the side; null before the world runs.</param>
@@ -63,9 +65,17 @@ public sealed class SharedWorldFrameSpaces(
 
         public bool SupportsWalking => walking;
 
-        public Vector3D GravityAt(Vector3D localPosition) =>
-            frame.Kind != FrameKind.System && owner._graph() is { } g && FrameGravity.TryAt(g, frame, localPosition, owner._planets, out var gravity)
-                ? gravity
-                : Vector3D.Zero;
+        public Vector3D GravityAt(Vector3D localPosition)
+        {
+            if (frame.Kind == FrameKind.System || owner._graph() is not { } g)
+            {
+                return Vector3D.Zero;
+            }
+
+            var found = frame.Kind == FrameKind.Construct
+                ? FrameGravity.TryAtZone(g, frame, localPosition, owner._planets, out var gravity)
+                : FrameGravity.TryAt(g, frame, localPosition, owner._planets, out gravity);
+            return found ? gravity : Vector3D.Zero;
+        }
     }
 }

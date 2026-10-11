@@ -5,6 +5,8 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Space;
 using Horyzont.Core.Tests.Serialization;
 using Horyzont.Core.World;
+using Horyzont.Testing;
+using Horyzont.Testing.Ships;
 
 namespace Horyzont.Core.Tests.Space;
 
@@ -102,6 +104,34 @@ public sealed class StarSystemMathTests
         Assert.Throws<ArgumentOutOfRangeException>(() => StarSystemMath.SunDirection(0, 0, 1800f));
         Assert.Throws<ArgumentOutOfRangeException>(() => StarSystemMath.SunDirection(0, rate, float.NaN));
         Assert.Throws<ArgumentOutOfRangeException>(() => StarSystemMath.SunDirection(0, rate, 0f));
+    }
+
+    [Fact]
+    public void FrameGravity_TryAtZone_ConstructHasZoneGravityInItsAxes()
+    {
+        var rotation = System.Numerics.Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitZ, MathF.PI / 2);
+        var created = StarSystemGenesis.CreateWorldBodies(21, WorldFactory.HomePlanetParams.GeneratorProfile);
+        var home = created.Bodies.Single(b => b.Id == created.System.HomePlanet);
+        var origin = new System.Numerics.Vector3(0f, home.RadiusMeters + 2000f, 0f);
+        var state = TestShips.CreateStarSystemWorld(
+            21,
+            new TestShip(new EntityId(10), FrameRef.Of(home.Id), origin, rotation),
+            new TestShip(new EntityId(11), FrameRef.Of(new SystemId(1)), new System.Numerics.Vector3(0f, 0f, 300_000f), rotation));
+        var graph = new FrameGraph(new WorldStateFramePoses(state, new WorldStatePlanetPlacement(state)));
+        PlanetParams? Planets(PlanetId id) => state.Planets.TryGet(id, out var p) ? p : null;
+
+        Assert.True(FrameGravity.TryAtZone(graph, FrameRef.Of(new EntityId(10)), Vector3D.Zero, Planets, out var zone));
+        var r = (double)home.RadiusMeters + 2000;
+        var expected = FrameMath.InverseTransformDirection(
+            new PoseD(Vector3D.FromFloat(origin), QuaternionD.FromFloat(rotation)), new Vector3D(0, -StarSystemMath.Gravity(r, home.RadiusMeters, home.Gravity), 0));
+        Assert.InRange(Vector3D.Distance(expected, zone), 0, 1e-6);
+        Assert.True(zone.Length() < home.Gravity * 0.6);
+
+        // The planet frame keeps the character rule (constant inside the atmosphere); a construct in the system frame has none.
+        Assert.True(FrameGravity.TryAt(graph, FrameRef.Of(home.Id), new Vector3D(0, home.RadiusMeters + 100, 0), Planets, out var character));
+        Assert.Equal(home.Gravity, character.Length(), 1e-9);
+        Assert.True(FrameGravity.TryAtZone(graph, FrameRef.Of(new EntityId(11)), Vector3D.Zero, Planets, out var inSystem));
+        Assert.Equal(Vector3D.Zero, inSystem);
     }
 
     private static (double Radius, double G0)[] TestBodies { get; } = [(4000, 9.81f), (1400, 1.62f), (3500, 9.0f), (4500, 12.0f)];
