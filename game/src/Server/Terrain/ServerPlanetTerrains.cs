@@ -209,7 +209,7 @@ public sealed partial class ServerPlanetTerrains : IServerTickParticipant, IPlan
         return _service.GetReadiness(planet, ground, TerrainGround.Core(radius), clear);
     }
 
-    /// <summary>Radius of the generated ground of a planet along a direction (cached for the last direction; main thread).</summary>
+    /// <summary>Radius of the generated ground of a planet along a direction (cached per direction, <see cref="DirectionRadiusCache"/>; main thread).</summary>
     /// <param name="planet">The planet.</param>
     /// <param name="direction">The direction in the planet frame.</param>
     /// <param name="radius">The radius.</param>
@@ -373,35 +373,30 @@ public sealed partial class ServerPlanetTerrains : IServerTickParticipant, IPlan
     [LoggerMessage(Level = LogLevel.Debug, Message = "Planet {Planet} terrain lease released ({Reason}).")]
     private static partial void LogLeaseReleased(ILogger logger, ulong planet, PlanetLeaseReason reason);
 
-    private sealed class Body(PlanetParams planet, VoxelGenerator generator, DerivedLodRebuilder? mipmaps, PlanetSurfaceSampler sampler)
+    private sealed class Body
     {
-        /// <summary>Cosine of the angle under which a cached ground radius is reused (about 0.5 m at R = 4 km).</summary>
-        private const float SameDirectionCos = 0.99999998f;
+        private readonly DirectionRadiusCache _ground = new();
+        private readonly Func<Vector3, float> _surfaceRadius;
 
-        private Vector3 _lastDirection;
-        private float _lastGround = float.NaN;
-
-        public PlanetSurfaceSampler Sampler { get; } = sampler;
-
-        public float GroundRadius(Vector3 direction)
+        public Body(PlanetParams planet, VoxelGenerator generator, DerivedLodRebuilder? mipmaps, PlanetSurfaceSampler sampler)
         {
-            var length = direction.Length();
-            var unit = length > 1e-6f ? direction / length : Vector3.UnitY;
-            if (!float.IsNaN(_lastGround) && Vector3.Dot(unit, _lastDirection) >= SameDirectionCos)
-            {
-                return _lastGround;
-            }
-
-            _lastDirection = unit;
-            _lastGround = Sampler.SurfaceRadius(unit);
-            return _lastGround;
+            Planet = planet;
+            Generator = generator;
+            Mipmaps = mipmaps;
+            Sampler = sampler;
+            _surfaceRadius = sampler.SurfaceRadius;
         }
 
-        public PlanetParams Planet { get; } = planet;
+        public PlanetSurfaceSampler Sampler { get; }
 
-        public VoxelGenerator Generator { get; } = generator;
+        /// <summary>Radius of the generated ground along a direction; cached per direction (several ships and queries alternate).</summary>
+        public float GroundRadius(Vector3 direction) => _ground.Get(direction, _surfaceRadius);
 
-        public DerivedLodRebuilder? Mipmaps { get; } = mipmaps;
+        public PlanetParams Planet { get; }
+
+        public VoxelGenerator Generator { get; }
+
+        public DerivedLodRebuilder? Mipmaps { get; }
 
         public PlanetTerrain? Node { get; set; }
     }
