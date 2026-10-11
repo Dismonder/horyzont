@@ -10,7 +10,7 @@ namespace Horyzont.Core.Protocol.Messages;
 /// <param name="TickRate">Ticks per second.</param>
 /// <param name="YourPlayer">Player id of the client.</param>
 /// <param name="YourEntity">Body entity of the client.</param>
-/// <param name="Planets">Planets.</param>
+/// <param name="Planets">Planets; element 0 is the home planet (K5-21), the rest in id order.</param>
 /// <param name="BlockTypes">Block type registry.</param>
 /// <param name="Materials">Material registry.</param>
 public sealed record ServerHello(

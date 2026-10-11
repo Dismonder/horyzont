@@ -114,7 +114,9 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
                 Path.Combine(_cacheDirectory, "terrain-derived.db"), settings.Time, settings.Loggers.CreateLogger<DerivedLodStore>()));
         }
 
-        foreach (var planet in hello.Planets)
+        // K5-22 replaces this guard with terrain activation: until then only the home planet (element 0 of the hello, K5-21
+        // decision 10) has terrain, otherwise every body would put a VoxelLodTerrain at the origin of the system (decision 11).
+        foreach (var planet in hello.Planets.Take(1))
         {
             var terrain = PlanetTerrainFactory.Create(planet, _options, _material);
             var rebuilder = _derived is not null && terrain.Generator is { } generator && Cache is not null ? _derived.Add(planet, Cache, generator) : null;
