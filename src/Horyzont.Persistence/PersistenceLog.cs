@@ -19,6 +19,9 @@ internal static partial class PersistenceLog
     [LoggerMessage(EventId = 103, Level = LogLevel.Warning, Message = "World {Path} has no star system ({PlanetCount} planets); only the home planet is placed")]
     internal static partial void NoStarSystem(ILogger logger, string path, int planetCount);
 
+    [LoggerMessage(EventId = 104, Level = LogLevel.Warning, Message = "Ship state of construct {Construct} has no construct; the row is skipped")]
+    internal static partial void ShipStateWithoutConstruct(ILogger logger, ulong construct);
+
     [LoggerMessage(EventId = 110, Level = LogLevel.Critical, Message = "Persistence writer faulted; journal up to operation {DurableOpId} is durable, {Pending} entries wait in memory")]
     internal static partial void WriterFaulted(ILogger logger, Exception exception, ulong durableOpId, int pending);
 

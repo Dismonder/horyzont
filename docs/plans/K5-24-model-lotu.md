@@ -189,7 +189,7 @@ Każdy krok: test czerwony → kod → zielone testy → mały commit (Conventio
 - [x] 3. `ShipControl`, `FlightRules`, `ShipMotion`, `FlightEnvironment`, `ShipFlightModel` (testy właściwości, determinizmu i alokacji najpierw), `ShipStats.ControlFrame`. Commity `test:`, `feat:`.
 - [x] 4. `AutolandController`, `DevTransitPilot`, `SphereGroundCollider`, `ScriptedControlSource`; testy autolądowania i przelotów (raport czasów w PR; nieosiągnięte okna → strojenie danych `FlightRules`, nie zmiana asercji). Commity `test:`, `feat:`.
 - [x] 5. `ShipStateRecord`/`Store`, `ServerSimulation.UpdateShipState`, applier `ShipFuelAddOp`, `StateHasher_ShipStateIgnored`; `git diff` pusty na korpusie złotym i `DeterminismTests`. Commity `test:`, `feat:`.
-- [ ] 6. `WorldCheckpoint`/`CaptureCheckpoint`/`RequeueAfterFailedCheckpoint`, `WorldStateBuilder.AddShipState`, `PersistenceWriter` i `WorldLoader` dla `ship_state`; testy zapisu. Commity `test:`, `feat:`.
+- [x] 6. `WorldCheckpoint`/`CaptureCheckpoint`/`RequeueAfterFailedCheckpoint`, `WorldStateBuilder.AddShipState`, `PersistenceWriter` i `WorldLoader` dla `ship_state`; testy zapisu. Commity `test:`, `feat:`.
 - [ ] 7. Walidator i resolver `RefuelIntent`, `ShipNotParked` w `ShipModeIntent`, `BlockFunctionKind.RefuelStation` + parser `blocks.json` + blok `core:ship_refuel_station` + nazwy i tekst odmowy 39; `ShipHullBoxes`. Testy. Commity `test:`, `feat:`.
 
 **Faza B — serwer i silnik**
