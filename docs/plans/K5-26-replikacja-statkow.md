@@ -157,7 +157,7 @@ Każdy krok: test czerwony → kod → zielone testy → mały commit (Conventio
 
 **Faza A — wejście i test akceptacyjny**
 
-- [ ] 0. Warunki wejścia: `git status`; worktree `F:/dev/horyzont-k5-26` od `origin/main` po scaleniu K5-24; w „Odstępstwach” zapisać scalone pakiety (K5-20…K5-25, K5-27) i rzeczywiste nazwy: zmiany K5-20 w `EntityReplication`/`SnapshotBuilder` (region, `Ship` w `Mobile`), `ShipFlightSystem.TryGetStatus`, `ShipFlightStatus`, `ShipFlightFlags`, `ShipLaunchBlock`, `IClientShipStatus`, `DevControlSource`, pole fotela w `PlayerState`; sprawdzić, że `MessageType` 31 jest wolny na `main` i w otwartych PR K5 (K5-25 ma 30 i 34). Jeśli K5-25 scalony — zapisać, czy już wypełnia `KindData` gracza albo dodaje fotel do `ReplicationEntity` (wtedy decyzja 7 tylko dopina brakujące). Commit `docs:`.
+- [x] 0. Warunki wejścia: `git status`; worktree `F:/dev/horyzont-k5-26` od `origin/main` po scaleniu K5-24; w „Odstępstwach” zapisać scalone pakiety (K5-20…K5-25, K5-27) i rzeczywiste nazwy: zmiany K5-20 w `EntityReplication`/`SnapshotBuilder` (region, `Ship` w `Mobile`), `ShipFlightSystem.TryGetStatus`, `ShipFlightStatus`, `ShipFlightFlags`, `ShipLaunchBlock`, `IClientShipStatus`, `DevControlSource`, pole fotela w `PlayerState`; sprawdzić, że `MessageType` 31 jest wolny na `main` i w otwartych PR K5 (K5-25 ma 30 i 34). Jeśli K5-25 scalony — zapisać, czy już wypełnia `KindData` gracza albo dodaje fotel do `ReplicationEntity` (wtedy decyzja 7 tylko dopina brakujące). Commit `docs:`.
 - [ ] 1. `ShipCoopRig` + szkielet `ShipReplication_TwoClients_SeriesOfFlights_*` (czerwony: brak zasięgu 10 km, pasażerów razem ze statkiem, statusu) i `ShipReplication_ObserverLeavesAndReturns_*`. Commit `test:`.
 
 **Faza B — replikacja**
@@ -256,3 +256,13 @@ Kolejność scalania K5: **(K5-23 ↔ K5-20) → K5-21 → {K5-22, K5-24, K5-27}
 ## Odstępstwa i decyzje wykonawcy
 
 (wypełnia wykonawca: stan K5 na `main` (zwłaszcza K5-25), rzeczywiste nazwy API, wynik testu akceptacyjnego z liczbami, odpowiedzi właściciela, różnice od planu)
+
+**Krok 0 (2026-10-11).** Gałąź od głowy K5-24 `5223cb3` (= `main` z K5-20, K5-21, K5-22, K5-23 + K5-24 w CI, PR #32). K5-25 i K5-27 niescalone (K5-25 w przeglądzie planu: `ShipInputBatch` 30, `ShipCorrection` 34 — K5-26 ich nie zajmuje; K5-27 na swojej gałęzi: komunikat 33, op 22/23, intencje 14/15, odmowa 36, blob 11). `MessageType` 31 wolny na `main`, K5-24 i K5-27. `ProtocolVersion`: K5-24 = 11, K5-27 = 12 przed K5-26 w kolejce → K5-26 bierze **13** (przeliczane przy scaleniu, D4).
+
+Rzeczywiste nazwy na `main`/K5-24:
+- `ShipFlightSystem.TryGetStatus(EntityId, out ShipFlightStatus)` (`src/Horyzont.Server/Ships/`; `false` dla budowli, której lot jeszcze nie krokował); `ShipFlightStatus(Fuel, FuelCapacity, SpeedLimit, Flags, LaunchBlock)` i `ShipLaunchBlock` (`None`, `FuelReserve`) w `Horyzont.Core.Ships`; `ShipFlightFlags` (8 bitów, wszystkie zajęte) w `Horyzont.Core.Ships.Flight`.
+- `ShipFlightHost` (faza `Frames`, tworzy `ShipFlightSystem` i `DevControlSource` przy `--dev`), `ServerZoneTransitions.RegisterFramesPhase`, `ServerFramesBinder` — wszystko w `src/Horyzont.Server`, więc uprząż testu składa je bez Godota.
+- `IClientShipStatus`/`UnknownShipStatus` w `src/Horyzont.Client/Ships/`; podmiana jest w `GameComposition.Frames.cs` (`FlightHud`), nie w `.Flight.cs` jak w planie.
+- Fotel: `PlayerState.Seat` (`CellPos?`), `EntityReparentOp.SeatCell`; `ServerCharacterState` fotela nie ma — `ServerReplicationSource` czyta go z `PlayerState`.
+- K5-20 w `EntityReplication`: `ToRegion` przez `FrameGraph.TryExpressInRegion`, `IsSnapshotCandidate` (tryb `Ship` czytany co rundę), `ForwardReparent` (budowla na żywo → `OperationApplied`). `EntityReplicationBinder` nie przekazuje `FrameGraph` (domyślny graf bez rozmieszczenia planet — region wystarcza).
+- **K4-19 nie istnieje na `main`:** brak `CoopRig` i `LatencyTransport`. Uprząż testu akceptacyjnego powstaje na `ServerRig`/`ReplicationRig` (`tests/Horyzont.Server.Tests/Support/`) z `InMemoryNetwork(LinkConditions)`; projekt `Horyzont.Integration.Tests` nie widzi kodu `game/` (`ServerReplicationSource`), więc test akceptacyjny i `ShipCoopRig` są w `tests/Horyzont.Server.Tests/Ships/` zamiast `Integration.Tests/Ships/`.
