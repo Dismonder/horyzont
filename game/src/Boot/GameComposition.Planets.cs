@@ -101,6 +101,13 @@ public sealed partial class GameComposition
         return new Horyzont.Game.Client.Terrain.ClientViewpoint(planet, planet, radius, player.CameraOrigin, player.PredictedFeet);
     }
 
+    /// <summary>
+    /// Stand-in tick time for <see cref="TerrainTickGovernor"/> until K4-19 (Opus review of K5-22): <see cref="ServerRuntime"/> does not
+    /// expose the time of the whole tick, so this measures only from the first participant of the <see cref="ServerTickPhase.Frames"/>
+    /// phase (registered first) to the planet terrains in <see cref="ServerTickPhase.Compose"/> — without the session poll, the
+    /// participants after the terrains, <c>AdvanceTick</c> and the checkpoint scheduling. It under-reads the tick, so the governor
+    /// throttles later than it would on the real tick time; K4-19 replaces it with the runtime's tick time.
+    /// </summary>
     private sealed class TickClock : IServerTickParticipant
     {
         private long _start;
