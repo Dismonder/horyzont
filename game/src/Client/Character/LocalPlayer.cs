@@ -461,7 +461,8 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
 
     private bool GateOpen(PlayerBody body)
     {
-        if (body.OnFloor || body.Mode == MovementMode.DevFlying)
+        // K5-25: an ejected body glides from its own state (the suit glide is predicted like the server body, no ground gate).
+        if (body.OnFloor || body.Mode is MovementMode.DevFlying or MovementMode.Gliding)
         {
             return true;
         }
@@ -543,7 +544,7 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
 
         _attached = null;
 
-        var open = WorldReadiness.IsReady && (own.Mode == MovementMode.DevFlying || body.OnFloor || _probe!.TryFindGround(body.GetWorld3D(), own.Feet, GateDepthMeters, out _));
+        var open = WorldReadiness.IsReady && (own.Mode is MovementMode.DevFlying or MovementMode.Gliding || body.OnFloor || _probe!.TryFindGround(body.GetWorld3D(), own.Feet, GateDepthMeters, out _));
         if (own.LastProcessedInputSeq == 0 || own.Mode == MovementMode.Frozen || !open || parentChanged)
         {
             // The server has not moved the body yet (or the terrain under it is not here yet): follow it, do not predict.

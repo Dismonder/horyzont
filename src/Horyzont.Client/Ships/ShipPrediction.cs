@@ -72,6 +72,21 @@ public sealed class ShipPrediction
     /// <summary>Gets the predicted motion after the newest input.</summary>
     public ShipMotion Motion => _motion;
 
+    /// <summary>Gets a value indicating whether the prediction has a state (after a reset).</summary>
+    public bool HasState => _hasState;
+
+    /// <summary>Stops predicting (the pilot left the cockpit).</summary>
+    public void Clear()
+    {
+        _hasState = false;
+        Stats = null;
+        _held = null;
+        _heldTicks = 0;
+        _offset = default;
+        _offsetLeft = 0f;
+        Array.Clear(_ring);
+    }
+
     /// <summary>Gets the reparent counter of the predicted ship.</summary>
     public uint ParentSeq { get; private set; }
 
@@ -112,6 +127,18 @@ public sealed class ShipPrediction
         _offsetLeft = 0f;
         _held = null;
         _heldTicks = 0;
+    }
+
+    /// <summary>Starts predicting from the state of a correction (the first correction after boarding).</summary>
+    /// <param name="correction">The correction.</param>
+    /// <param name="stats">Stats of the ship.</param>
+    public void Reset(ShipCorrection correction, ShipStats stats)
+    {
+        ArgumentNullException.ThrowIfNull(correction);
+        Reset(ToMotion(correction), correction.ParentSeq, stats);
+        _gate = correction.Gate;
+        _launchBlock = correction.LaunchBlock;
+        _horizontalCap = float.IsPositiveInfinity(correction.HorizontalSpeedCap) ? double.PositiveInfinity : correction.HorizontalSpeedCap;
     }
 
     /// <summary>

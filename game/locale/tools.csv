@@ -35,6 +35,11 @@ REJECT_NO_COCKPIT,No cockpit,Brak kokpitu
 REJECT_SHIP_ANCHORED,A block is stuck in the ground,Blok tkwi w ziemi
 REJECT_NO_ENGINE,No engine,Brak silnika
 REJECT_SHIP_NOT_PARKED,The ship is not parked,Statek nie stoi na postoju
+REJECT_SEAT_OCCUPIED,The seat is taken,Fotel jest zajęty
+REJECT_SEAT_OUT_OF_REACH,The seat is too far,Fotel jest za daleko
+REJECT_EJECT_TOO_FAST,Too fast or too high to jump out,Za szybko albo za wysoko na wyskok
+REJECT_NOT_PILOT,Only the pilot can do that,Tylko pilot może to zrobić
+REJECT_CONSTRUCT_NOT_EMPTY,Someone is still inside,Ktoś jest jeszcze w środku
 SHIP_TOGGLE,Ship mode,Tryb statku
 SHIP_MODE,Mode,Tryb
 SHIP_MODE_SHIP,Ship,Statek
@@ -44,6 +49,8 @@ SHIP_THRUST,Thrust,Ciąg
 SHIP_ENGINES,Engines,Silniki
 SHIP_SEATS,Seats,Fotele
 SHIP_NOT_COCKPIT,Aim at the cockpit,Wskaż kokpit
+SEAT_NONE,Aim at a seat or cockpit,Wskaż fotel albo kokpit
+SEAT_NAVIGATOR_MAP,Navigator seat: M opens the map,Stanowisko nawigatora: M otwiera mapę
 FLIGHT_ALTITUDE,Altitude,Wysokość
 FLIGHT_SPEED,Speed,Prędkość
 FLIGHT_LIMIT,Limit,Limit

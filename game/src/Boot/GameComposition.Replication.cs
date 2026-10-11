@@ -125,6 +125,7 @@ public sealed partial class GameComposition
         var scene = GD.Load<PackedScene>(ToolsScene) ?? throw new InvalidOperationException($"Scene {ToolsScene} not found.");
         var tools = scene.Instantiate<ToolNode>();
         tools.FrameNodes = ClientFrameNodes;
+        tools.OwnSeat = OwnSeat;
         var prediction = new ConstructPrediction(mirror, () => tools.Ticks);
         BlockPrediction = prediction;
         tools.Initialize(

@@ -49,6 +49,17 @@ public sealed class FlightHudTextTests
     }
 
     [Fact]
+    public void FlightHud_LaunchBlockPersonInHull_ShowsMessage()
+    {
+        // K5-25 decision 9: the guard result reaches the HUD through ShipFlightStatus.LaunchBlock (ShipStatus 31 of K5-26).
+        var status = new ShipFlightStatus(1500f, 2000f, 100f, ShipFlightFlags.Parked, ShipLaunchBlock.PersonInHull);
+
+        var values = FlightHudValues.Compute(new Vector3D(0, 4002, 0), new Vector3D(0, 4002, 0), 1.0 / 60, _home, true, status, FlightRules.Default);
+
+        Assert.EndsWith("\nBLOCKED_PERSON", Text(values), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void FlightHud_Format_AllocatesNothingAndCutsAtBufferEnd()
     {
         var values = FlightHudValues.Compute(new Vector3D(0, 5300, 0), new Vector3D(0, 5300, 0), 1.0 / 60, _home, false, default, FlightRules.Default);
