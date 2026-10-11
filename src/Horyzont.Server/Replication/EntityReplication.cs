@@ -37,7 +37,7 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
     private readonly IEntityReplicationSource _source;
     private readonly TimeProvider _time;
     private readonly ILogger _logger;
-    private readonly float _viewRange;
+    private readonly ReplicationRanges _ranges;
     private readonly Func<PlayerId, bool> _receivesConstructs;
     private readonly ISnapshotBudget _snapshotBudget;
     private readonly IReplicationSendBudget _sendBudget;
@@ -65,7 +65,7 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
     /// <param name="sendBudget">Per-client reliable budget shared with other senders.</param>
     /// <param name="time">Clock of the resync rate limit.</param>
     /// <param name="logger">Logger.</param>
-    /// <param name="viewRange">Interest distance in metres, from the bounding sphere surface.</param>
+    /// <param name="viewRange">Interest distance in metres for every entity and region, from the bounding sphere surface.</param>
     /// <param name="receivesConstructs">Whether a player gets construct data; false for the local player of a host, who shares the world.</param>
     /// <param name="frames">
     /// Frame graph of the simulation's world for region positions; by default one over the world state without planet placements (a
@@ -75,6 +75,25 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         ServerSession session, ServerSimulation simulation, IEntityReplicationSource source, ISnapshotBudget snapshotBudget,
         IReplicationSendBudget sendBudget, TimeProvider time, ILogger<EntityReplication> logger, float viewRange = 500f,
         Func<PlayerId, bool>? receivesConstructs = null, FrameGraph? frames = null)
+        : this(session, simulation, source, snapshotBudget, sendBudget, time, logger, ReplicationRanges.Uniform(viewRange), receivesConstructs, frames)
+    {
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="EntityReplication"/> class with interest ranges by region and kind (K5-26).</summary>
+    /// <param name="session">Session the messages go through.</param>
+    /// <param name="simulation">Simulation whose applied operations are replicated.</param>
+    /// <param name="source">Authoritative entity copies.</param>
+    /// <param name="snapshotBudget">Snapshot byte budget.</param>
+    /// <param name="sendBudget">Per-client reliable budget shared with other senders.</param>
+    /// <param name="time">Clock of the resync rate limit.</param>
+    /// <param name="logger">Logger.</param>
+    /// <param name="ranges">Interest distances by region and kind.</param>
+    /// <param name="receivesConstructs">Whether a player gets construct data; false for the local player of a host, who shares the world.</param>
+    /// <param name="frames">Frame graph of the simulation's world for region positions (see the other constructor).</param>
+    public EntityReplication(
+        ServerSession session, ServerSimulation simulation, IEntityReplicationSource source, ISnapshotBudget snapshotBudget,
+        IReplicationSendBudget sendBudget, TimeProvider time, ILogger<EntityReplication> logger, ReplicationRanges ranges,
+        Func<PlayerId, bool>? receivesConstructs = null, FrameGraph? frames = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(simulation);
@@ -83,12 +102,13 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         ArgumentNullException.ThrowIfNull(sendBudget);
         ArgumentNullException.ThrowIfNull(time);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(ranges);
         _session = session;
         _simulation = simulation;
         _source = source;
         _time = time;
         _logger = logger;
-        _viewRange = viewRange;
+        _ranges = ranges;
         _receivesConstructs = receivesConstructs ?? (static _ => true);
         _snapshotBudget = snapshotBudget;
         _sendBudget = sendBudget;
@@ -267,7 +287,17 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         {
             ref readonly var entity = ref _entities[i];
             ToRegion(entity.Frame.Frame, entity.State.Position, out var region, out var position);
-            _subjects[i] = new InterestSubject(entity.Id, region, position, entity.BoundsRadius, _viewRange);
+            _subjects[i] = new InterestSubject(entity.Id, region, position, entity.BoundsRadius, _ranges.For(region, IsShip(in entity)));
+        }
+
+        // Passengers have no range of their own (K5-26 decision 2): an entity whose frame chain passes through a ship takes the
+        // subject of that ship, so it enters and leaves together with it. Ship subjects never change in this pass.
+        for (var i = 0; i < _entityCount; i++)
+        {
+            if (_entities[i].Kind != EntityKind.Construct && TryFindShip(_entities[i].Frame.Frame, out var ship))
+            {
+                _subjects[i] = _subjects[ship] with { Entity = _entities[i].Id };
+            }
         }
 
         var players = _session.PlayersInGame;
@@ -343,6 +373,33 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         {
             state.Mobile.RemoveAt(at);
         }
+    }
+
+    private bool IsShip(in ReplicationEntity entity) =>
+        entity.Kind == EntityKind.Construct
+        && _simulation.State.Constructs.TryGet(entity.Id, out var construct) && construct.Mode == ConstructMode.Ship;
+
+    /// <summary>The nearest ship-mode construct in a frame chain (depth ≤ 8), as an index of this round's entities.</summary>
+    private bool TryFindShip(FrameRef frame, out int index)
+    {
+        for (var depth = 0; depth < 8 && frame.Kind == FrameKind.Construct; depth++)
+        {
+            var id = new EntityId(frame.Id);
+            if (!_simulation.State.Constructs.TryGet(id, out var construct))
+            {
+                break;
+            }
+
+            if (construct.Mode == ConstructMode.Ship)
+            {
+                return _index.TryGetValue(id, out index);
+            }
+
+            frame = construct.Parent;
+        }
+
+        index = -1;
+        return false;
     }
 
     private bool IsSnapshotCandidate(in ReplicationEntity entity) =>
