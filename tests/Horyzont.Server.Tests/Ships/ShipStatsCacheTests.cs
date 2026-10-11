@@ -115,4 +115,23 @@ public sealed class ShipStatsCacheTests
         Assert.Equal(0, cache.Count);
         Assert.False(cache.TryGet(_ship, out _));
     }
+
+    [Fact]
+    public void ShipStatsCache_HullBoxes_SameUntilBlocksChange()
+    {
+        var (sim, _, cache) = Create();
+        Assert.False(cache.TryGetHullBoxes(_ship, out _));
+
+        sim.ApplyServerOperation(SetMode(sim, ConstructMode.Ship));
+        Assert.True(cache.TryGetHullBoxes(_ship, out var first));
+        Assert.Equal(ShipFixtures.Thirty.Count, first.Sum(b => b.Volume));
+        Assert.True(cache.TryGetHullBoxes(_ship, out var again));
+        Assert.Same(first, again);
+
+        var extra = new CellPos(5, 1, 1);
+        sim.ApplyServerOperation(new BlockSetOp(_ship, extra, ShipFixtures.StateOf(new ShipBlock(ShipFixtures.Hull, extra))));
+        Assert.True(cache.TryGetHullBoxes(_ship, out var more));
+        Assert.NotSame(first, more);
+        Assert.Contains(more, b => b.Contains(extra));
+    }
 }
