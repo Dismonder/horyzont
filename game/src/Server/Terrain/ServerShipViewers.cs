@@ -92,7 +92,8 @@ public sealed class ServerShipViewers
 
     /// <summary>
     /// Places (creating when needed) the viewer of a ship in its column; the column is in the planet frame of <paramref name="node"/>.
-    /// When the generated ground lies within the radial span of the column, the viewer stands on it (LOD 0, the collision LOD, is built
+    /// When the generated ground lies within the radial span of the column widened by the ground core (<see cref="TerrainGround"/>, the
+    /// same test as the readiness query), the viewer stands on it (LOD 0, the collision LOD, is built
     /// only within <see cref="Horyzont.Game.Planet.PlanetTerrainFactory.LodDistance"/> of a viewer, the place the readiness query checks);
     /// otherwise at the centre of the column.
     /// </summary>
@@ -115,13 +116,7 @@ public sealed class ServerShipViewers
         entry.Planet = planet;
         entry.Seen = true;
         entry.Viewer.ViewDistance = (uint)MathF.Ceiling(column.ViewerDistance);
-        var distance = column.Center.Length();
-        var position = column.Center;
-        if (distance > 1f && float.IsFinite(groundRadius) && MathF.Abs(groundRadius - distance) <= column.Radius)
-        {
-            position = column.Center / distance * groundRadius;
-        }
-
+        var position = TerrainGround.ViewerPoint(column, groundRadius);
         entry.Viewer.GlobalPosition = node.GlobalTransform * TerrainVectors.ToGodot(position);
     }
 

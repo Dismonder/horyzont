@@ -33,9 +33,9 @@ public sealed partial class ServerPlanetTerrains : IServerTickParticipant, IPlan
 
     /// <summary>
     /// Half-size of the box around the generated ground under the query centre that must have its LOD 0 collision built (well inside the
-    /// LOD 0 ring of <see cref="PlanetTerrainFactory.LodDistance"/> around a viewer standing on that ground).
+    /// LOD 0 ring of <see cref="PlanetTerrainFactory.LodDistance"/> around a viewer standing on that ground); <see cref="TerrainGround.CoreMeters"/>.
     /// </summary>
-    public const float GroundCoreMeters = 40f;
+    public const float GroundCoreMeters = TerrainGround.CoreMeters;
 
     private readonly VoxelTerrainService _service;
     private readonly WorldState _state;
@@ -191,15 +191,13 @@ public sealed partial class ServerPlanetTerrains : IServerTickParticipant, IPlan
             return _service.GetReadiness(planet, localCenter, radius, clear);
         }
 
-        var ground = body.GroundRadius(localCenter);
-        var core = MathF.Min(MathF.Max(radius, 0f), GroundCoreMeters);
-        if (ground < distance - radius - core || ground > distance + radius + core)
+        if (!TerrainGround.TryGroundPoint(localCenter, radius, body.GroundRadius(localCenter), out var ground))
         {
             // No ground in the sphere: only a stream fault can make it not ready.
             return _service.GetReadiness(planet, localCenter, radius, float.NegativeInfinity);
         }
 
-        return _service.GetReadiness(planet, localCenter / distance * ground, core, clear);
+        return _service.GetReadiness(planet, ground, TerrainGround.Core(radius), clear);
     }
 
     /// <summary>Radius of the generated ground of a planet along a direction (cached for the last direction; main thread).</summary>
