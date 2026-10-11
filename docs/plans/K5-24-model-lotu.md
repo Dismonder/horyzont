@@ -196,7 +196,7 @@ Każdy krok: test czerwony → kod → zielone testy → mały commit (Conventio
 
 - [x] 8. `IShipCollider`, `GodotShipCollider` (pośrednik z pudełek, `BodyTestMotion`, wykluczenia) + testy silnika. Commity `test:`, `feat:`.
 - [x] 9. `ShipFlightSystem`, `IShipControlSource` (+ `NoPilotControlSource`, `DevControlSource`), `IShipTerrainGate` (geometria kolumny, limit czasu, `Unavailable` — decyzja 17, kontrakt zatwierdza Opus razem z K5-22 wg README Y11) + `HomeOnlyGate` (+ `PlanetTerrainShipGate` i `UnparkedShipDemand`, jeśli K5-22 scalony), testy `ShipTerrainGate_*`, `ShipLoadSettler`, `TryGetStatus`, komendy `ship pilot`/`ship fuel`; `GameComposition.Flight.cs` i jedna linia w `GameComposition.Space.cs` przed rejestracją `ServerZoneTransitions` (także serwer dedykowany); testy `ShipFlightSystem_*`, `ShipLoadSettler_*`. Commity `test:`, `feat:`.
-- [ ] 10. `Autoland_HomeTerrain_From100m_Parks` (job `game`), `Manual_Flight_HomeToMoon_InGame` (do K5-22 lądowanie na księżycu kończy się zawisem na 2 R — opisać w PR); `python tools/engine/build.py smoke`. Commit `test:`.
+- [x] 10. `Autoland_HomeTerrain_From100m_Parks` (job `game`), `Manual_Flight_HomeToMoon_InGame` (do K5-22 lądowanie na księżycu kończy się zawisem na 2 R — opisać w PR); `python tools/engine/build.py smoke`. Commit `test:`.
 
 **Faza C — HUD i odbiór**
 
@@ -306,4 +306,9 @@ Kolejność scalania K5: **(K5-23 ↔ K5-20) → K5-21 → {K5-22, K5-24, K5-27}
 - `ShipStateStore`: `SortedDictionary` boksował `EntityId` przy każdym odczycie (24 B/statek/tick) — teraz `Dictionary` + posortowana lista id (`All` buduje listę tylko dla zapisu); test `ShipFlightSystem_EightShips_TickAllocatesZero` = 0 B.
 - Test `ShipFlightSystem_ReparentKeepsVelocity` zastąpiony `…_HeaderChangedElsewhere_RestartsFromHeaderKeepsVelocity` (świat testowy bez układu nie ma ramy układu do przepięcia; ścieżka odtworzenia z nagłówka jest ta sama).
 - Znane niestabilności przy pełnym `dotnet test Horyzont.sln` pod obciążeniem: `Replicate_LargeConstruct_DoesNotBlockTicksAndArrivesComplete` i `AllocationTests.SubmitPlaceOnFaceOverlappingOtherConstruct_Rejected_DoesNotAllocate` — zielone przy uruchomieniu osobno.
+
+**Krok 10 (2026-10-11).**
+
+- `game/tests/Ships/AutolandEngineTests.cs` (gdUnit4, `[RequireGodotRuntime]`, job `game`): prawdziwy teren planety domowej (`VoxelServerTerrainFactory`, ziarno 21 jak `DescentTests`), widz kolizji statku `ServerShipViewers` z `ShipTerrainQuery`, `PlanetTerrainShipGate` nad gotowością K5-22, `GodotShipCollider`, pół sekundy zawisu bez podwozia, potem brak pilota → autolądowanie; asercje: postój, dryf ≤ 5 m. **Nieuruchomiony lokalnie** (testy silnika tylko w CI); `python tools/engine/build.py smoke` też nie (uruchamia silnik).
+- `Manual_Flight_HomeToMoon_InGame` (procedura do PR): host `--dev`; zbudować statek z 30 bloków (`ShipFixtures.Thirty`: kokpit, 4 silniki, 2 zbiorniki, napęd, podwozie), przełączyć w tryb statku; konsola: `ship <id>` (linia z `fuel=… v=… limit=… parked=… gate=…`), `ship fuel <id> 2000`, `ship pilot <id> planet:<księżyc>`; obserwować wznoszenie, napęd, hamowanie limitem i lądowanie na księżycu (z K5-22 scalonym — teren księżyca z gotowością; bez terenu księżyca statek zawisa na 2 R); `ship <id>` na końcu (`parked=yes`); zrzuty ekranu do PR.
 
