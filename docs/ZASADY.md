@@ -25,6 +25,7 @@ Każda sesja pracy zaczyna się od przeczytania tego pliku i planu pakietu. Niej
 - Jedynym composition root jest `GameComposition` (`game/src/Boot/`); węzły `/Root/Server` i `/Root/Client` dostają zależności metodą `Initialize` przed wejściem do drzewa. Węzeł serwera tyka z priorytetem fizyki -100, klienta 0, więc w hoście tick serwera poprzedza `Poll` klienta lokalnego; host ma jedną instancję terenu (`SharedTerrainProvider`).
 - Każda zmiana świata to operacja z `Horyzont.Core.Operations`, stosowana przez `ServerSimulation` i zapisywana w dzienniku. Nie ma innej drogi zmiany stanu świata.
 - Lot, zużycie paliwa i pozy statków poza dziennikiem — wyłącznie `UpdateConstructKinematics`/`UpdateShipState` z `ShipFlightSystem` (K5-24); paliwo dodaje tylko operacja `ShipFuelAddOp`.
+- Wsiadanie, wysiadanie, wyskok i zwolnienie fotela to wyłącznie `EntityReparentOp` z intencji 11/12/16 albo z `ShipLaunchGuard` (operacja serwera); pozę fotela i punkt wyjścia liczy resolver (K5-25).
 - Kanoniczny stan każdego bytu to rama rodzica (`FrameRef`), licznik przepięć `ParentSeq` i poza lokalna w tej ramie (`System.Numerics.Vector3` i `Quaternion`, metry). Pozycja w świecie jest zawsze wartością pochodną: zapis, dziennik i sieć znają wyłącznie pozycje lokalne.
 - Ramy składa się tylko w podwójnej precyzji (`Vector3D`, `QuaternionD` i `FrameMath` w Core, od K5-20). Pojedyncza precyzja wystarcza wewnątrz ramy planety albo budowli.
 - Konwersja między Godotem (`double`) a ramą planety (`System.Numerics`, `float`) odbywa się wyłącznie przez `PlanetFrames` (`game/src/Shared/Frames/`, K2-11), z kontrolą skończoności. Nigdzie indziej nie rzutuje się wektorów ani kwaternionów Godota na `System.Numerics`.
@@ -58,6 +59,7 @@ Każda zmiana w `src/Horyzont.Core/` wymaga przeglądu Opus 5.5, bo cały Core d
 | `src/Horyzont.Core/Space/` (typy zapisywane: `StarSystemParams`, `BodyPlacement`; `StarSystemLayout.V1` i `StarSystemGenesis` zamrożone jak `PlanetGenesis`, K5-21) | zmiana zapisu: wersja formatu blobu 10 i `ProtocolConstants.ProtocolVersion`; zmiana rozmieszczenia albo parametrów ciał: nowy `StarSystemLayout` (`V2` obok `V1`), nigdy edycja `V1` |
 | `M0002_Space` (K5-21) uzupełnia układ starych światów przez `StarSystemLayout.V1` | nic: migracji się nie edytuje; inny układ = nowa wersja układu w nowej migracji |
 | `src/Horyzont.Core/Ships/Flight/` (model lotu wspólny z predykcją pilota, K5-24) | zmiana zachowania: opis w PR i `ProtocolConstants.ProtocolVersion`, bo predykcja klienta i serwer muszą liczyć tak samo |
+| `src/Horyzont.Core/Motion/` (`CharacterMotor` wspólny z predykcją klienta, w tym szybowanie `Gliding`, K5-25) | zmiana zachowania: `ProtocolConstants.ProtocolVersion`, bo predykcja własnej postaci i serwer muszą liczyć tak samo |
 
 Zmiana `OperationApplier.cs` albo sygnatury `ITerrainService.ApplyEdit` bez podbicia wersji formatu operacji jest dozwolona tylko wtedy, gdy zamrożony korpus złoty dzienników terenu (`TerrainJournalGoldenCorpusTests`) i złote skróty `DeterminismTests` przechodzą bez żadnej zmiany w swoich plikach (`git diff <commit korpusu>..HEAD` na tych ścieżkach pusty).
 
