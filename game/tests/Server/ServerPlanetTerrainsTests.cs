@@ -165,6 +165,7 @@ public class ServerPlanetTerrainsTests
             AssertThat(ready).IsTrue();
             AssertThat(node.Terrain.IsAreaMeshed(new Aabb(TerrainVectors.ToGodot(ground) - new Godot.Vector3(8, 8, 8), new Godot.Vector3(16, 16, 16)), 0)).IsTrue();
             GD.Print($"K5-22 readiness: data loaded before collision observed = {sawLoadedNotReady}");
+            AssertThat(sawLoadedNotReady).IsTrue();
             viewer.QueueFree();
         }
         finally
@@ -251,24 +252,121 @@ public class ServerPlanetTerrainsTests
             var up = NumVector3.Normalize(new NumVector3(0.3f, 1f, 0.2f));
             AssertThat(planets.TryGetGroundRadius(moon.Planet, up, out var ground)).IsTrue();
 
-            // A ship 50 m over the ground at 30 m/s (in a valley or over a hill: the column spans down to R − MaxRelief).
+            // A ship 50 m over the ground descending at 30 m/s (in a valley or over a hill: the column spans down to R − MaxRelief).
             var ship = up * (ground + 50f);
             var altitude = ship.Length() - (r - PlanetGeneratorV1.MaxReliefMeters);
-            var column = TerrainColumn.UnderShip(ship, 10f, 30f, altitude, r, PlanetGeneratorV1.MaxReliefMeters);
+            var query = ShipTerrainQuery.Of(ship, 10f, up * -30f, altitude, r, PlanetGeneratorV1.MaxReliefMeters);
+            var column = query.Column;
             AssertThat(column.Center.Length() - column.Radius <= ground).IsTrue();
+            AssertThat(column.Radius > TerrainSweep.FullBoxMaxRadius).IsTrue();
             AssertThat(planets.GetReadiness(moon.Planet, column.Center, column.Radius)).IsEqual(PlanetTerrainReadiness.Streaming);
+            AssertThat(planets.GetShipReadiness(moon.Planet, query)).IsEqual(PlanetTerrainReadiness.Streaming);
 
-            planets.ShipViewers.Apply(new EntityId(77), moon.Planet, column, node!, ground);
+            // Within 50 m of the ground the ground viewer covers the sweep box: one viewer.
+            planets.ShipViewers.Apply(new EntityId(77), moon.Planet, query, node!, ground);
             AssertThat(planets.ShipViewers.TryGetViewer(new EntityId(77), out var viewer)).IsTrue();
+            AssertThat(planets.ShipViewers.TryGetSweepViewer(new EntityId(77), out _)).IsFalse();
             var local = node!.ToLocal(viewer!.GlobalPosition);
             AssertThat(Math.Abs(local.Length() - ground) < 1.0).IsTrue();
 
-            var ready = await scene.WaitFramesUntil(() => planets.GetReadiness(moon.Planet, column.Center, column.Radius) == PlanetTerrainReadiness.Ready, 1800);
+            // The column-sized query and the ship query (column and sweep box) both become ready.
+            var ready = await scene.WaitFramesUntil(() => planets.GetShipReadiness(moon.Planet, query) == PlanetTerrainReadiness.Ready, 1800);
             AssertThat(ready).IsTrue();
+            AssertThat(planets.GetReadiness(moon.Planet, column.Center, column.Radius)).IsEqual(PlanetTerrainReadiness.Ready);
 
             // Deactivation takes the viewers of the planet with it.
             planets.ShipViewers.RemovePlanet(moon.Planet);
             AssertThat(planets.ShipViewers.Count).IsEqual(0);
+        }
+        finally
+        {
+            await rig.DisposeAsync();
+        }
+    }
+
+    /// <summary>README Y11 (Opus review of K5-22): a ridge at hull height far from the ground viewer is not ready until the sweep viewer builds it.</summary>
+    [TestCase(Timeout = 300000)]
+    [RequireGodotRuntime]
+    public async Task ShipReadiness_SidewaysAlongValleyWall_NotReadyUntilSweepViewerBuildsIt()
+    {
+        await using var scene = EngineTestScene.Create();
+        var rig = Rig.Create(scene);
+        try
+        {
+            var planets = rig.Terrain.Planets;
+            var moon = rig.Moon;
+            var r = (float)moon.RadiusMeters;
+            using var lease = planets.Acquire(moon.Planet, PlanetLeaseReason.Dev);
+            AssertThat(planets.TryGetNode(moon.Planet, out var node)).IsTrue();
+            var (up, ground) = LowGround(planets, moon.Planet, r);
+
+            // 350 m over the valley floor, flying sideways at 30 m/s: the sweep box is where a valley wall would meet the hull.
+            var ship = up * (ground + 350f);
+            var side = NumVector3.Normalize(NumVector3.Cross(up, NumVector3.UnitZ));
+            var query = ShipTerrainQuery.Of(ship, 10f, side * 30f, ship.Length() - (r - PlanetGeneratorV1.MaxReliefMeters), r, PlanetGeneratorV1.MaxReliefMeters);
+            AssertThat(query.HasSweep).IsTrue();
+
+            // The ground viewer alone: the column (ground under the ship) gets ready, the ship query does not.
+            planets.ShipViewers.Apply(new EntityId(78), moon.Planet, query.Column, node!, ground);
+            var groundReady = await scene.WaitFramesUntil(
+                () => planets.GetReadiness(moon.Planet, query.Column.Center, query.Column.Radius) == PlanetTerrainReadiness.Ready, 1800);
+            AssertThat(groundReady).IsTrue();
+            await scene.WaitFrames(120);
+            AssertThat(planets.GetShipReadiness(moon.Planet, query)).IsEqual(PlanetTerrainReadiness.Streaming);
+
+            // With the query, the second viewer stands at the sweep centre and builds the box.
+            planets.ShipViewers.Apply(new EntityId(78), moon.Planet, query, node!, ground);
+            AssertThat(planets.ShipViewers.TryGetSweepViewer(new EntityId(78), out var sweep)).IsTrue();
+            AssertThat(node!.ToLocal(sweep!.GlobalPosition).DistanceTo(TerrainVectors.ToGodot(query.Sweep.Center)) < 1.0).IsTrue();
+            var ready = await scene.WaitFramesUntil(() => planets.GetShipReadiness(moon.Planet, query) == PlanetTerrainReadiness.Ready, 1800);
+            AssertThat(ready).IsTrue();
+            var half = query.Sweep.HalfSize;
+            var box = new Aabb(TerrainVectors.ToGodot(query.Sweep.Center) - new Godot.Vector3(half, half, half), new Godot.Vector3(2 * half, 2 * half, 2 * half));
+            AssertThat(node.Terrain.IsAreaMeshed(box, 0)).IsTrue();
+            planets.ShipViewers.RemovePlanet(moon.Planet);
+            AssertThat(planets.ShipViewers.Count).IsEqual(0);
+        }
+        finally
+        {
+            await rig.DisposeAsync();
+        }
+    }
+
+    /// <summary>README Y11: a ship down a player shaft, far under the generated ground, waits for the box around itself.</summary>
+    [TestCase(Timeout = 300000)]
+    [RequireGodotRuntime]
+    public async Task ShipReadiness_DeepPlayerShaft_WaitsForTheBoxAroundTheShip()
+    {
+        await using var scene = EngineTestScene.Create();
+        var rig = Rig.Create(scene);
+        try
+        {
+            var planets = rig.Terrain.Planets;
+            var moon = rig.Moon;
+            var r = (float)moon.RadiusMeters;
+            using var lease = planets.Acquire(moon.Planet, PlanetLeaseReason.Dev);
+            AssertThat(planets.TryGetNode(moon.Planet, out var node)).IsTrue();
+            var up = NumVector3.Normalize(new NumVector3(-0.4f, 1f, 0.3f));
+            AssertThat(planets.TryGetGroundRadius(moon.Planet, up, out var ground)).IsTrue();
+
+            // A viewer on the generated ground builds the surface, not the bottom of a 150 m shaft.
+            var surface = new VoxelViewer { ViewDistance = 64, RequiresVisuals = false, RequiresCollisions = true };
+            scene.Add(surface);
+            surface.GlobalPosition = node!.GlobalPosition + TerrainVectors.ToGodot(up * ground);
+            var ship = up * (ground - 150f);
+            var query = ShipTerrainQuery.Of(ship, 6f, up * -4f, ship.Length() - (r - PlanetGeneratorV1.MaxReliefMeters), r, PlanetGeneratorV1.MaxReliefMeters);
+            AssertThat(query.HasSweep).IsTrue();
+            await scene.WaitFramesUntil(() => planets.GetReadiness(moon.Planet, up * ground, 8f) == PlanetTerrainReadiness.Ready, 1800);
+            await scene.WaitFrames(60);
+            AssertThat(planets.GetShipReadiness(moon.Planet, query)).IsEqual(PlanetTerrainReadiness.Streaming);
+
+            planets.ShipViewers.Apply(new EntityId(79), moon.Planet, query, node, ground);
+            AssertThat(planets.ShipViewers.TryGetSweepViewer(new EntityId(79), out var sweep)).IsTrue();
+            AssertThat(node.ToLocal(sweep!.GlobalPosition).DistanceTo(TerrainVectors.ToGodot(ship)) <= 8.5).IsTrue();
+            var ready = await scene.WaitFramesUntil(() => planets.GetShipReadiness(moon.Planet, query) == PlanetTerrainReadiness.Ready, 1800);
+            AssertThat(ready).IsTrue();
+            surface.QueueFree();
+            planets.ShipViewers.RemovePlanet(moon.Planet);
         }
         finally
         {
@@ -353,6 +451,26 @@ public class ServerPlanetTerrainsTests
         {
             await rig.DisposeAsync();
         }
+    }
+
+    /// <summary>A direction whose generated ground is below a radius (a valley), searched on a fixed spiral.</summary>
+    private static (NumVector3 Up, float Ground) LowGround(Horyzont.Game.Server.Terrain.ServerPlanetTerrains planets, PlanetId planet, float below)
+    {
+        var best = (Up: NumVector3.UnitY, Ground: float.MaxValue);
+        for (var i = 0; i < 256 && best.Ground >= below; i++)
+        {
+            var y = 1f - ((i + 0.5f) / 128f);
+            var ring = MathF.Sqrt(MathF.Max(1f - (y * y), 0f));
+            var angle = i * 2.39996323f;
+            var up = new NumVector3(MathF.Cos(angle) * ring, y, MathF.Sin(angle) * ring);
+            if (planets.TryGetGroundRadius(planet, up, out var ground) && ground < best.Ground)
+            {
+                best = (up, ground);
+            }
+        }
+
+        AssertThat(best.Ground < below).IsTrue();
+        return best;
     }
 
     private sealed class Rig : IAsyncDisposable

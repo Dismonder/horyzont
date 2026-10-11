@@ -51,11 +51,29 @@ public static class ShipTerrainColumns
         Construct ship, WorldState state, ServerFrameHistory history, double tickSeconds, float maxReliefMeters, out PlanetId planet,
         out TerrainColumn column)
     {
+        var found = TryGetQuery(ship, state, history, tickSeconds, maxReliefMeters, out planet, out var query);
+        column = query.Column;
+        return found;
+    }
+
+    /// <summary>Computes the terrain query (column and sweep box, README Y11) of a ship-mode construct whose parent is a planet.</summary>
+    /// <param name="ship">The construct.</param>
+    /// <param name="state">The world (planet radius).</param>
+    /// <param name="history">The frame history (velocity); a ship without history has velocity 0.</param>
+    /// <param name="tickSeconds">Seconds per tick.</param>
+    /// <param name="maxReliefMeters">Highest relief of the generator over and under R.</param>
+    /// <param name="planet">Receives the planet of the query.</param>
+    /// <param name="query">Receives the query in the planet frame.</param>
+    /// <returns>False for a construct that is not a ship or not in a planet frame.</returns>
+    public static bool TryGetQuery(
+        Construct ship, WorldState state, ServerFrameHistory history, double tickSeconds, float maxReliefMeters, out PlanetId planet,
+        out ShipTerrainQuery query)
+    {
         ArgumentNullException.ThrowIfNull(ship);
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(history);
         planet = default;
-        column = default;
+        query = default;
         if (ship.Mode != ConstructMode.Ship || ship.Parent.Kind != FrameKind.Planet || !state.Planets.TryGet(new PlanetId(ship.Parent.Id), out var body))
         {
             return false;
@@ -63,11 +81,17 @@ public static class ShipTerrainColumns
 
         var local = BoundingCenter(ship);
         var center = ship.LocalToParent(local);
-        var speed = (float)history.PointVelocity(FrameRef.Of(ship.Id), Vector3D.FromFloat(local), tickSeconds).Length();
+        var v = history.PointVelocity(FrameRef.Of(ship.Id), Vector3D.FromFloat(local), tickSeconds);
+        var velocity = new Vector3((float)v.X, (float)v.Y, (float)v.Z);
+        if (!float.IsFinite(velocity.X) || !float.IsFinite(velocity.Y) || !float.IsFinite(velocity.Z))
+        {
+            velocity = Vector3.Zero;
+        }
+
         var lowest = body.RadiusMeters - maxReliefMeters;
         var altitude = MathF.Max(center.Length() - lowest, 0f);
         planet = body.Id;
-        column = TerrainColumn.UnderShip(center, BoundingRadius(ship), float.IsFinite(speed) ? speed : 0f, altitude, body.RadiusMeters, maxReliefMeters);
+        query = ShipTerrainQuery.Of(center, BoundingRadius(ship), velocity, altitude, body.RadiusMeters, maxReliefMeters);
         return true;
     }
 }

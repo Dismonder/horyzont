@@ -168,10 +168,12 @@ public sealed partial class ServerPlanetTerrains : IServerTickParticipant, IPlan
 
     /// <summary>
     /// Readiness of the terrain in a query sphere (README Y11). Voxel Tools builds LOD 0 (the only collision LOD) only within
-    /// <see cref="PlanetTerrainFactory.LodDistance"/> of a viewer, so a column sphere of hundreds of metres is never meshed at LOD 0 as a
-    /// whole; the check is made where the ship meets the ground: the generated ground under the centre (<see cref="PlanetSurfaceSampler"/>)
-    /// with a box of <see cref="GroundCoreMeters"/> (at most the query radius). A sphere whose radial span does not reach that ground is
-    /// ready (nothing to collide with in it), unless the stream faulted. Main thread.
+    /// <see cref="PlanetTerrainFactory.LodDistance"/> of a viewer. A sphere of at most <see cref="TerrainSweep.FullBoxMaxRadius"/> (the
+    /// sweep box of a ship) is checked as a whole box. A larger sphere (a column of hundreds of metres, never meshed at LOD 0 as a whole)
+    /// is checked where the ship meets the ground: the generated ground under the centre (<see cref="PlanetSurfaceSampler"/>) with a box
+    /// of <see cref="TerrainGround.Core"/> (<see cref="TerrainGround"/>, the same test as the ground viewer of a ship); a column whose
+    /// widened radial span does not reach that ground is ready, unless the stream faulted. Flight asks both through
+    /// <see cref="PlanetTerrainReadinessQueries.GetShipReadiness"/>. Main thread.
     /// </summary>
     /// <param name="planet">The planet.</param>
     /// <param name="localCenter">Centre of the sphere in the planet frame.</param>
@@ -188,6 +190,13 @@ public sealed partial class ServerPlanetTerrains : IServerTickParticipant, IPlan
         var distance = localCenter.Length();
         if (!float.IsFinite(distance) || !float.IsFinite(radius) || distance - radius > clear || distance < 1f)
         {
+            return _service.GetReadiness(planet, localCenter, radius, clear);
+        }
+
+        if (radius <= TerrainSweep.FullBoxMaxRadius)
+        {
+            // A small sphere (the sweep box of a ship) fits in the LOD 0 ring of one viewer: the whole box, whatever the generated
+            // ground under it (valley walls at hull height, player edits).
             return _service.GetReadiness(planet, localCenter, radius, clear);
         }
 

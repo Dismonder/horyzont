@@ -10,9 +10,11 @@ using Horyzont.Server.Space;
 namespace Horyzont.Game.Server.Terrain;
 
 /// <summary>
-/// One collision viewer (no visuals) per ship-mode construct in the frame of an active planet (K5-22 decision 5, README Y11): it stands
-/// in the <see cref="TerrainColumn"/> under the ship (<see cref="ShipTerrainColumns"/>), the same sphere the flight readiness query
-/// covers, so the column is built before the ship reaches it. Position and range are refreshed every
+/// Collision viewers (no visuals) of ship-mode constructs in the frame of an active planet (K5-22 decision 5, README Y11): the ground
+/// viewer stands in the <see cref="TerrainColumn"/> under the ship (<see cref="ShipTerrainColumns"/>), on the ground point of
+/// <see cref="TerrainGround"/>; in the band near the terrain a second viewer stands at the <see cref="TerrainSweep"/> centre unless the
+/// ground viewer is within <see cref="TerrainSweep.SingleViewerMeters"/> of it — the places the flight readiness query
+/// (<see cref="PlanetTerrainReadinessQueries.GetShipReadiness"/>) checks. Position and range are refreshed every
 /// <see cref="UpdateIntervalTicks"/> ticks; the viewer goes when the ship leaves the planet frame, stops being a ship or the planet is
 /// deactivated. Viewers are children of a node outside the terrain nodes, placed through the global transform of the terrain node of
 /// their planet. Main thread.
@@ -37,7 +39,22 @@ public sealed class ServerShipViewers
     /// <summary>Gets the number of ship viewers.</summary>
     public int Count => _viewers.Count;
 
-    /// <summary>Counts the ship viewers on a planet.</summary>
+    /// <summary>Gets the number of sweep viewers (second viewers of ships in the band).</summary>
+    public int SweepCount
+    {
+        get
+        {
+            var count = 0;
+            foreach (var entry in _viewers.Values)
+            {
+                count += entry.Sweep is null ? 0 : 1;
+            }
+
+            return count;
+        }
+    }
+
+    /// <summary>Counts the ship viewers (ground and sweep) on a planet.</summary>
     /// <param name="planet">The planet.</param>
     /// <returns>The count.</returns>
     public int CountOn(PlanetId planet)
@@ -45,7 +62,7 @@ public sealed class ServerShipViewers
         var count = 0;
         foreach (var entry in _viewers.Values)
         {
-            count += entry.Planet == planet ? 1 : 0;
+            count += entry.Planet != planet ? 0 : entry.Sweep is null ? 1 : 2;
         }
 
         return count;
@@ -58,6 +75,16 @@ public sealed class ServerShipViewers
     public bool TryGetViewer(EntityId ship, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out VoxelViewer? viewer)
     {
         viewer = _viewers.TryGetValue(ship.Value, out var entry) ? entry.Viewer : null;
+        return viewer is not null;
+    }
+
+    /// <summary>The sweep viewer of a ship.</summary>
+    /// <param name="ship">The ship.</param>
+    /// <param name="viewer">The viewer.</param>
+    /// <returns>False when the ship has none (out of the band, or its ground viewer covers the sweep box).</returns>
+    public bool TryGetSweepViewer(EntityId ship, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out VoxelViewer? viewer)
+    {
+        viewer = _viewers.TryGetValue(ship.Value, out var entry) ? entry.Sweep : null;
         return viewer is not null;
     }
 
@@ -80,10 +107,10 @@ public sealed class ServerShipViewers
         for (var i = 0; i < constructs.Count; i++)
         {
             var ship = constructs[i];
-            if (ShipTerrainColumns.TryGet(ship, state, history, tickSeconds, PlanetGeneratorV1.MaxReliefMeters, out var planet, out var column)
+            if (ShipTerrainColumns.TryGetQuery(ship, state, history, tickSeconds, PlanetGeneratorV1.MaxReliefMeters, out var planet, out var query)
                 && planets.TryGetNode(planet, out var node))
             {
-                Apply(ship.Id, planet, column, node!, planets.TryGetGroundRadius(planet, column.Center, out var ground) ? ground : float.NaN);
+                Apply(ship.Id, planet, query, node!, planets.TryGetGroundRadius(planet, query.Column.Center, out var ground) ? ground : float.NaN);
             }
         }
 
@@ -103,8 +130,21 @@ public sealed class ServerShipViewers
     /// <param name="node">The terrain node of the planet (in the scene tree).</param>
     /// <param name="groundRadius">Radius of the generated ground under the column; NaN when unknown.</param>
     public void Apply(EntityId ship, PlanetId planet, in TerrainColumn column, PlanetTerrain node, float groundRadius)
+        => Apply(ship, planet, new ShipTerrainQuery(column, default, false), node, groundRadius);
+
+    /// <summary>
+    /// Places the viewers of a ship for its query (README Y11): the ground viewer as for the column; in the band, a sweep viewer at the
+    /// sweep centre unless the ground viewer is within <see cref="TerrainSweep.SingleViewerMeters"/> of it (removed otherwise).
+    /// </summary>
+    /// <param name="ship">The ship.</param>
+    /// <param name="planet">The planet of the query.</param>
+    /// <param name="query">The query, in the planet frame of <paramref name="node"/>.</param>
+    /// <param name="node">The terrain node of the planet (in the scene tree).</param>
+    /// <param name="groundRadius">Radius of the generated ground under the column; NaN when unknown.</param>
+    public void Apply(EntityId ship, PlanetId planet, in ShipTerrainQuery query, PlanetTerrain node, float groundRadius)
     {
         ArgumentNullException.ThrowIfNull(node);
+        var column = query.Column;
         if (!_viewers.TryGetValue(ship.Value, out var entry) || !GodotObject.IsInstanceValid(entry.Viewer))
         {
             var viewer = new VoxelViewer { Name = $"ShipViewer_{ship.Value}", RequiresVisuals = false, RequiresCollisions = true };
@@ -118,6 +158,22 @@ public sealed class ServerShipViewers
         entry.Viewer.ViewDistance = (uint)MathF.Ceiling(column.ViewerDistance);
         var position = TerrainGround.ViewerPoint(column, groundRadius);
         entry.Viewer.GlobalPosition = node.GlobalTransform * TerrainVectors.ToGodot(position);
+        if (!query.NeedsSweepViewer(position))
+        {
+            Free(entry.Sweep);
+            entry.Sweep = null;
+            return;
+        }
+
+        if (entry.Sweep is null || !GodotObject.IsInstanceValid(entry.Sweep))
+        {
+            entry.Sweep = new VoxelViewer { Name = $"ShipSweepViewer_{ship.Value}", RequiresVisuals = false, RequiresCollisions = true };
+            _parent.AddChild(entry.Sweep);
+        }
+
+        // The data of the whole box must load too: its corner plus the margin of the column viewers.
+        entry.Sweep.ViewDistance = (uint)MathF.Ceiling((query.Sweep.HalfSize * MathF.Sqrt(3f)) + TerrainColumn.ViewerMarginMeters);
+        entry.Sweep.GlobalPosition = node.GlobalTransform * TerrainVectors.ToGodot(query.Sweep.Center);
     }
 
     /// <summary>Removes the viewers of a planet (before its terrain is deactivated).</summary>
@@ -140,13 +196,19 @@ public sealed class ServerShipViewers
 
         foreach (var id in _gone)
         {
-            var viewer = _viewers[id].Viewer;
+            var entry = _viewers[id];
             _viewers.Remove(id);
-            if (GodotObject.IsInstanceValid(viewer))
-            {
-                viewer.GetParent()?.RemoveChild(viewer);
-                viewer.QueueFree();
-            }
+            Free(entry.Viewer);
+            Free(entry.Sweep);
+        }
+    }
+
+    private static void Free(VoxelViewer? viewer)
+    {
+        if (viewer is not null && GodotObject.IsInstanceValid(viewer))
+        {
+            viewer.GetParent()?.RemoveChild(viewer);
+            viewer.QueueFree();
         }
     }
 
@@ -157,5 +219,7 @@ public sealed class ServerShipViewers
         public PlanetId Planet { get; set; }
 
         public bool Seen { get; set; }
+
+        public VoxelViewer? Sweep { get; set; }
     }
 }

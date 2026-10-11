@@ -13,8 +13,11 @@ public enum PlanetTerrainReadiness : byte
     Streaming = 1,
 
     /// <summary>
-    /// The node is active, the voxel data in the sphere is loaded and the collision of every LOD 0 block intersecting the sphere is
-    /// built; a sphere entirely above <c>R + MaxRelief + 64 m</c> is ready as soon as the node is active.
+    /// The node is active and the LOD 0 collision is built: for a sphere of at most <see cref="TerrainSweep.FullBoxMaxRadius"/> (the
+    /// sweep box of a ship) in every LOD 0 block intersecting its box; for a larger sphere (a column) in the ground box of
+    /// <see cref="TerrainGround"/> when the column reaches the generated ground. A sphere entirely above <c>R + MaxRelief + 64 m</c> is
+    /// ready as soon as the node is active. A ship is ready when its column and, in the band, its sweep box are
+    /// (<see cref="PlanetTerrainReadinessQueries.GetShipReadiness"/>).
     /// </summary>
     Ready = 2,
 
