@@ -149,6 +149,12 @@ public sealed partial class MapController : CanvasLayer, IMapOpener, IClientSess
 
         if (@event.IsActionPressed(_toggle))
         {
+            // Typing the toggle key into a text box (the marker name) must not close the map.
+            if (_dialog.Visible || GetViewport().GuiGetFocusOwner() is LineEdit)
+            {
+                return;
+            }
+
             if (_gate.IsOpen || _canOpen())
             {
                 Toggle();

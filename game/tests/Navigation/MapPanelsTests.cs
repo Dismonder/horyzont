@@ -1,14 +1,16 @@
-using System.Numerics;
-
 using GdUnit4;
+
+using Godot;
 
 using Horyzont.Client.Frames;
 using Horyzont.Client.Markers;
 using Horyzont.Client.Navigation;
 using Horyzont.Client.Replication;
 using Horyzont.Client.Space;
+using Horyzont.Client.Tools;
 using Horyzont.Client.UI;
 using Horyzont.Core.Ids;
+using Horyzont.Core.Intents;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Space;
 using Horyzont.Core.World.Markers;
@@ -19,6 +21,8 @@ using Horyzont.Game.UI.Map;
 using Microsoft.Extensions.Time.Testing;
 
 using static GdUnit4.Assertions;
+
+using Vector3 = System.Numerics.Vector3;
 
 namespace Horyzont.Game.Tests.Navigation;
 
@@ -68,6 +72,58 @@ public class MapPanelsTests
         AssertThat(panel.DrawnMarkers == 2).IsTrue();
         AssertThat(panel.DrewSun).IsTrue();
         AssertThat(panel.ToScreen(model.Bodies[0].X, model.Bodies[0].Z).X > 0.0).IsTrue();
+    }
+
+    private sealed class IdentityPoses : IWorldPoseSource
+    {
+        public bool TryGetWorldPose(Horyzont.Core.Ids.FrameRef frame, double renderTick, out Horyzont.Core.Frames.PoseD pose)
+        {
+            pose = Horyzont.Core.Frames.PoseD.Identity;
+            return true;
+        }
+    }
+
+    private sealed class NeverSends : IIntentSender
+    {
+        public bool CanSend => false;
+
+        public uint Submit(Intent intent) => throw new InvalidOperationException("Typing must not send.");
+    }
+
+    [TestCase(Timeout = 60000)]
+    [RequireGodotRuntime]
+    public async Task MapController_ToggleKeyInMarkerNameBox_KeepsMapOpen()
+    {
+        await using var scene = EngineTestScene.Create();
+        var time = new FakeTimeProvider();
+        var entities = new EntityMirror(time);
+        var stars = new ClientStarSystem();
+        var markers = new ClientMarkerStore();
+        var navigation = new NavigationCoordinator(new IdentityPoses(), markers, null, new NoViewpointPosition());
+        var gate = new MapInputGate();
+        var map = new MapController(gate);
+        map.Initialize(stars, new IdentityPoses(), markers, entities, new NoViewpointPosition(), navigation, new NeverSends(), () => 0, () => true, () => { });
+        scene.Add(map);
+        await scene.WaitFrames(2);
+
+        map.Open();
+        map.Dialog.OpenNew(new PlanetId(1), new System.Numerics.Vector3(0f, 10f, 0f));
+        await scene.WaitFrames(2);
+
+        var key = new InputEventKey { PhysicalKeycode = Key.N, Pressed = true };
+        map._Input(key);
+
+        AssertThat(map.IsOpen).IsTrue();
+        AssertThat(map.Dialog.Visible).IsTrue();
+    }
+
+    private sealed class NoViewpointPosition : INavigationViewpoint
+    {
+        public bool TryGetWorldPosition(double renderTick, out Horyzont.Core.Frames.Vector3D position)
+        {
+            position = Horyzont.Core.Frames.Vector3D.Zero;
+            return true;
+        }
     }
 
     [TestCase]
