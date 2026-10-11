@@ -13,13 +13,17 @@ namespace Horyzont.Game.Planet.Impostors;
 /// <summary>The arrays of an impostor mesh, built off the main thread (planet frame, metres — never world positions).</summary>
 public sealed class PlanetImpostorMeshData
 {
-    internal PlanetImpostorMeshData(int vertices, int indices)
+    internal PlanetImpostorMeshData(int quadsPerSide, int vertices, int indices)
     {
+        QuadsPerSide = quadsPerSide;
         Vertices = new Vector3[vertices];
         Normals = new Vector3[vertices];
         Colors = new Color[vertices];
         Indices = new int[indices];
     }
+
+    /// <summary>Gets the quads along a face side (<see cref="PlanetImpostorMeshBuilder.QuadsPerSide"/> or <see cref="PlanetImpostorMeshBuilder.FarQuadsPerSide"/>).</summary>
+    public int QuadsPerSide { get; }
 
     /// <summary>Gets the vertex positions, planet-local.</summary>
     public Vector3[] Vertices { get; }
@@ -38,7 +42,8 @@ public sealed class PlanetImpostorMeshData
 }
 
 /// <summary>
-/// The impostor of a body (K5-22 decision 12): a cube-sphere of 6 faces × 64 × 64 quads (65 × 65 vertices per face), each vertex at
+/// The impostor of a body (K5-22 decision 12): a cube-sphere of 6 faces × 64 × 64 quads (65 × 65 vertices per face; 32 × 32 quads,
+/// 33 × 33 vertices, for a body whose camera altitude is over 2 R — <see cref="FarQuadsPerSide"/>), each vertex at
 /// <c>d · (R + h(d))</c> from <see cref="PlanetSurfaceSampler"/>, coloured with the base colour of the surface material one metre under the
 /// surface (read from the generator through <see cref="GeneratorProbe"/>), normals from the neighbouring triangles. Faces are built in
 /// parallel, each with its own probe; any thread.
@@ -47,6 +52,9 @@ public static class PlanetImpostorMeshBuilder
 {
     /// <summary>Quads along a face side.</summary>
     public const int QuadsPerSide = 64;
+
+    /// <summary>Quads along a face side of the impostor of a far body (camera altitude over 2 R, the impostor alone; Opus review of K5-22).</summary>
+    public const int FarQuadsPerSide = 32;
 
     /// <summary>Vertices along a face side.</summary>
     public const int VerticesPerSide = QuadsPerSide + 1;
@@ -65,10 +73,18 @@ public static class PlanetImpostorMeshBuilder
     /// <param name="i">Column 0–64.</param>
     /// <param name="j">Row 0–64.</param>
     /// <returns>The direction.</returns>
-    public static NumVector3 Direction(int face, int i, int j)
+    public static NumVector3 Direction(int face, int i, int j) => Direction(face, i, j, QuadsPerSide);
+
+    /// <summary>The unit direction of a vertex of a face (cube-sphere) of a given resolution.</summary>
+    /// <param name="face">Face 0–5 (+X, −X, +Y, −Y, +Z, −Z).</param>
+    /// <param name="i">Column 0–<paramref name="quads"/>.</param>
+    /// <param name="j">Row 0–<paramref name="quads"/>.</param>
+    /// <param name="quads">Quads along a face side.</param>
+    /// <returns>The direction.</returns>
+    public static NumVector3 Direction(int face, int i, int j, int quads)
     {
-        var u = (2f * i / QuadsPerSide) - 1f;
-        var v = (2f * j / QuadsPerSide) - 1f;
+        var u = (2f * i / quads) - 1f;
+        var v = (2f * j / quads) - 1f;
         var p = face switch
         {
             0 => new NumVector3(1f, v, -u),
@@ -83,12 +99,15 @@ public static class PlanetImpostorMeshBuilder
 
     /// <summary>Builds the mesh arrays of a body.</summary>
     /// <param name="sampler">The surface sampler of the body.</param>
+    /// <param name="quadsPerSide">Quads along a face side (<see cref="QuadsPerSide"/> near, <see cref="FarQuadsPerSide"/> far).</param>
     /// <returns>The arrays.</returns>
-    public static PlanetImpostorMeshData Build(PlanetSurfaceSampler sampler)
+    public static PlanetImpostorMeshData Build(PlanetSurfaceSampler sampler, int quadsPerSide = QuadsPerSide)
     {
         ArgumentNullException.ThrowIfNull(sampler);
+        ArgumentOutOfRangeException.ThrowIfLessThan(quadsPerSide, 1);
         var start = Stopwatch.GetTimestamp();
-        var data = new PlanetImpostorMeshData(VertexCount, TriangleCount * 3);
+        var side = quadsPerSide + 1;
+        var data = new PlanetImpostorMeshData(quadsPerSide, Faces * side * side, Faces * quadsPerSide * quadsPerSide * 2 * 3);
         Parallel.For(0, Faces, face =>
         {
             using var probe = new GeneratorProbe(sampler.Graph);
@@ -117,37 +136,39 @@ public static class PlanetImpostorMeshBuilder
 
     private static void BuildFace(int face, PlanetSurfaceSampler sampler, GeneratorProbe probe, PlanetImpostorMeshData data)
     {
-        var first = face * VerticesPerSide * VerticesPerSide;
-        for (var j = 0; j < VerticesPerSide; j++)
+        var quads = data.QuadsPerSide;
+        var side = quads + 1;
+        var first = face * side * side;
+        for (var j = 0; j < side; j++)
         {
-            for (var i = 0; i < VerticesPerSide; i++)
+            for (var i = 0; i < side; i++)
             {
-                var direction = Direction(face, i, j);
+                var direction = Direction(face, i, j, quads);
                 var radius = sampler.SurfaceRadius(direction, PlanetSurfaceSampler.ImpostorCoarseStrideMeters, PlanetSurfaceSampler.ImpostorFineStrideMeters);
                 var point = direction * radius;
                 var under = direction * (radius - 1f);
                 var material = probe.Sample((int)MathF.Round(under.X), (int)MathF.Round(under.Y), (int)MathF.Round(under.Z)).Material;
-                var index = first + (j * VerticesPerSide) + i;
+                var index = first + (j * side) + i;
                 data.Vertices[index] = new Vector3(point.X, point.Y, point.Z);
                 data.Colors[index] = PlanetTerrainMaterial.BaseColor(material);
             }
         }
 
-        var cursor = face * QuadsPerSide * QuadsPerSide * 6;
-        for (var j = 0; j < QuadsPerSide; j++)
+        var cursor = face * quads * quads * 6;
+        for (var j = 0; j < quads; j++)
         {
-            for (var i = 0; i < QuadsPerSide; i++)
+            for (var i = 0; i < quads; i++)
             {
-                var a = first + (j * VerticesPerSide) + i;
+                var a = first + (j * side) + i;
                 var b = a + 1;
-                var c = a + VerticesPerSide;
+                var c = a + side;
                 var d = c + 1;
                 cursor = Triangle(data, cursor, a, b, d);
                 cursor = Triangle(data, cursor, a, d, c);
             }
         }
 
-        var last = first + (VerticesPerSide * VerticesPerSide);
+        var last = first + (side * side);
         for (var v = first; v < last; v++)
         {
             data.Normals[v] = data.Normals[v].LengthSquared() > 0 ? data.Normals[v].Normalized() : data.Vertices[v].Normalized();

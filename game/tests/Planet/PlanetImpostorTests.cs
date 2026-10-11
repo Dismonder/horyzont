@@ -60,19 +60,28 @@ public class PlanetImpostorTests
         }
     }
 
+    /// <summary>
+    /// The camera at the first body: it gets 65 x 65 vertices per face, the three bodies beyond 2 R get 33 x 33 (Opus review of K5-22).
+    /// The 2 s budget is not measured locally (Y15): the first number comes from the game job; tagged Slow.
+    /// </summary>
     [TestCase(Timeout = 600000)]
+    [TestCategory("Slow")]
     [RequireGodotRuntime]
     public async Task PlanetImpostor_FourBodies_BuiltInBackgroundUnder2s()
     {
         var bodies = StarSystemGenesis.CreateWorldBodies(Seed, GeneratorProfiles.Current).Bodies;
         var samplers = bodies.Select(b => new PlanetSurfaceSampler(b, GeneratorProfiles.CreateGenerator(b))).ToArray();
         var watch = Stopwatch.StartNew();
-        var built = await Task.WhenAll(samplers.Select(s => Task.Run(() => PlanetImpostorMeshBuilder.Build(s))));
+        var built = await Task.WhenAll(samplers.Select((s, i) => Task.Run(
+            () => PlanetImpostorMeshBuilder.Build(s, i == 0 ? PlanetImpostorMeshBuilder.QuadsPerSide : PlanetImpostorMeshBuilder.FarQuadsPerSide))));
         watch.Stop();
 
         Godot.GD.Print($"K5-22 impostors: {built.Length} bodies in {watch.Elapsed.TotalMilliseconds:F0} ms "
             + $"(each {string.Join(", ", built.Select(b => b.BuildMilliseconds.ToString("F0", System.Globalization.CultureInfo.InvariantCulture)))} ms)");
         AssertThat(built.Length).IsEqual(4);
+        AssertThat(built[0].Vertices.Length).IsEqual(6 * 65 * 65);
+        AssertThat(built[1].Vertices.Length).IsEqual(6 * 33 * 33);
+        AssertThat(built[1].Indices.Length).IsEqual(6 * 32 * 32 * 2 * 3);
         AssertThat(watch.Elapsed.TotalSeconds < 2.0).IsTrue();
     }
 }

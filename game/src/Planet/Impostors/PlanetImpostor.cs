@@ -33,6 +33,9 @@ public sealed partial class PlanetImpostor : MeshInstance3D
         }
     }
 
+    /// <summary>Gets the quads along a face side of the mesh.</summary>
+    public int QuadsPerSide { get; private set; }
+
     /// <summary>Gets the build time of the mesh in milliseconds.</summary>
     public double BuildMilliseconds { get; private set; }
 
@@ -52,6 +55,7 @@ public sealed partial class PlanetImpostor : MeshInstance3D
             Name = "Impostor",
             Planet = planet,
             BuildMilliseconds = data.BuildMilliseconds,
+            QuadsPerSide = data.QuadsPerSide,
             Mesh = PlanetImpostorMeshBuilder.ToMesh(data),
             MaterialOverride = own,
             CastShadow = ShadowCastingSetting.Off,

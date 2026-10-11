@@ -76,6 +76,7 @@ public sealed partial class GameComposition
             clientNode.AddChild(impostors);
             ClientImpostors = impostors;
             planets.ImpostorReady = planet => impostors.TryGetImpostor(planet, out _);
+            impostors.Near = planets.CameraNear;
         }
     }
 

@@ -34,6 +34,8 @@ public sealed partial class ClientPlanetTerrains : Node, ITerrainViewerSource
     private Func<ClientViewpoint> _viewpoint = static () => default;
     private Func<bool> _collisions = static () => false;
     private bool _render;
+    private ClientViewpoint _lastViewpoint;
+    private bool _hasViewpoint;
     private PlanetId _viewPlanet;
     private NumVector3 _viewFeet;
     private bool _hasView;
@@ -42,6 +44,16 @@ public sealed partial class ClientPlanetTerrains : Node, ITerrainViewerSource
     /// Gets or sets whether the impostor of a body is placed (decision 13): without it the terrain of the body is drawn whole (weight 0).
     /// </summary>
     public Func<PlanetId, bool> ImpostorReady { get; set; } = static _ => false;
+
+    /// <summary>
+    /// Whether the camera of the last step is near a body: altitude over its surface under 2 R (where its voxel terrain can show; the
+    /// impostor of a farther body is drawn alone and built coarser, <c>PlanetImpostors.Near</c>).
+    /// </summary>
+    /// <param name="planet">The body.</param>
+    /// <returns>True when near; false when far or unknown.</returns>
+    public bool CameraNear(PlanetId planet)
+        => _hasViewpoint && _lastViewpoint.HasBody && TryToBody(_lastViewpoint, planet, _lastViewpoint.Camera, out var eye, out var radius)
+            && eye.Length() - radius < 2.0 * radius;
 
     /// <summary>The impostor share of a body for this frame (decision 13), quantized; 1 for a body without an active terrain.</summary>
     /// <param name="planet">The body.</param>
@@ -121,6 +133,8 @@ public sealed partial class ClientPlanetTerrains : Node, ITerrainViewerSource
         }
 
         var viewpoint = _viewpoint();
+        _lastViewpoint = viewpoint;
+        _hasViewpoint = true;
         var forced = viewpoint.Forced;
         var count = FillBodies();
         var known = TryCameraInSystem(viewpoint, out var camera);

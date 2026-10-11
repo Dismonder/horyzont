@@ -17,7 +17,7 @@ namespace Horyzont.Game.Planet.Impostors;
 /// </summary>
 public sealed partial class PlanetImpostors : Node
 {
-    private readonly Dictionary<(string Profile, ulong Seed, float Radius), Build> _builds = [];
+    private readonly Dictionary<(string Profile, ulong Seed, float Radius, int Quads), Build> _builds = [];
     private readonly SortedDictionary<ulong, PlanetImpostor> _impostors = [];
     private Func<IReadOnlyList<PlanetParams>?> _planets = static () => null;
     private Func<FrameNodes?> _nodes = static () => null;
@@ -37,6 +37,13 @@ public sealed partial class PlanetImpostors : Node
         _blend = blend ?? throw new ArgumentNullException(nameof(blend));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
+
+    /// <summary>
+    /// Gets or sets whether the camera is near a body (altitude under 2 R): its impostor has <see cref="PlanetImpostorMeshBuilder.QuadsPerSide"/>
+    /// quads per face side, a far body <see cref="PlanetImpostorMeshBuilder.FarQuadsPerSide"/> (a quarter of the samples; Opus review of
+    /// K5-22). A body that comes near keeps its coarse impostor until the fine one is built. All bodies are near by default.
+    /// </summary>
+    public Func<PlanetId, bool> Near { get; set; } = static _ => true;
 
     /// <summary>Gets the impostor of a body when it is built and placed.</summary>
     /// <param name="planet">The body.</param>
@@ -88,16 +95,26 @@ public sealed partial class PlanetImpostors : Node
 
         foreach (var planet in planets)
         {
-            var key = (planet.GeneratorProfile, planet.Seed, planet.RadiusMeters);
+            var quads = Near(planet.Id) ? PlanetImpostorMeshBuilder.QuadsPerSide : PlanetImpostorMeshBuilder.FarQuadsPerSide;
+            var key = (planet.GeneratorProfile, planet.Seed, planet.RadiusMeters, quads);
             if (!_builds.TryGetValue(key, out var build))
             {
                 var sampler = new PlanetSurfaceSampler(planet, GeneratorProfiles.CreateGenerator(planet));
-                build = new Build(sampler, Task.Run(() => PlanetImpostorMeshBuilder.Build(sampler)));
+                build = new Build(sampler, Task.Run(() => PlanetImpostorMeshBuilder.Build(sampler, quads)));
                 _builds.Add(key, build);
             }
 
             if (!TryGetImpostor(planet.Id, out var impostor))
             {
+                impostor = Place(planet, build);
+            }
+            else if (impostor!.QuadsPerSide != quads && build.Task.IsCompletedSuccessfully)
+            {
+                // The other resolution is ready: swap (the old one stays until then, so the body never loses its impostor).
+                var old = impostor;
+                _impostors.Remove(planet.Id.Value);
+                old.GetParent()?.RemoveChild(old);
+                old.QueueFree();
                 impostor = Place(planet, build);
             }
 
