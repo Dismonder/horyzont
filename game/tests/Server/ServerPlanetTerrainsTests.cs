@@ -4,6 +4,7 @@ using Godot;
 
 using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
+using Horyzont.Core.Operations;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.Space;
 using Horyzont.Core.World;
@@ -267,6 +268,42 @@ public class ServerPlanetTerrainsTests
             // Deactivation takes the viewers of the planet with it.
             planets.ShipViewers.RemovePlanet(moon.Planet);
             AssertThat(planets.ShipViewers.Count).IsEqual(0);
+        }
+        finally
+        {
+            await rig.DisposeAsync();
+        }
+    }
+
+    [TestCase(Timeout = 300000)]
+    [RequireGodotRuntime]
+    public async Task Replay_EditsOnInactivePlanet_ActivatesWithLeaseAndReplays()
+    {
+        await using var scene = EngineTestScene.Create();
+        var rig = Rig.Create(scene);
+        try
+        {
+            var planets = rig.Terrain.Planets;
+            var moon = rig.Moon.Planet;
+            AssertThat(planets.IsActive(moon)).IsFalse();
+            AssertThat(planets.TryGetGroundRadius(moon, NumVector3.UnitY, out var ground)).IsTrue();
+            var edit = new TerrainEditOp(moon, TerrainShape.Sphere, new NumVector3(0, ground, 0), 2f, TerrainEditMode.Remove, 0);
+            IReadOnlyList<JournalEntry> tail = [new JournalEntry(new OpId(1), rig.State.CurrentTick, null, edit)];
+            AssertThat(TerrainReplay.EditedPlanets(tail).Contains(moon)).IsTrue();
+
+            await rig.Terrain.ReplayAsync(rig.Sim, tail, CancellationToken.None);
+
+            // The edit is in the state of the moon, the moon was activated for it and the replay lease is gone.
+            AssertThat(rig.State.LastOpId).IsEqual(new OpId(1));
+            AssertThat(rig.State.TerrainVersions.All.Any(version => version.Key.Planet == moon)).IsTrue();
+            AssertThat(planets.IsActive(moon)).IsTrue();
+            AssertThat(planets.Policy.LeaseCount(moon)).IsEqual(0);
+            AssertThat(planets.IsReplaying).IsFalse();
+
+            // Nobody demands it any more: off after the linger, and the edit survives the deactivation.
+            rig.Ticks(3700);
+            AssertThat(planets.IsActive(moon)).IsFalse();
+            AssertThat(rig.State.TerrainVersions.All.Any(version => version.Key.Planet == moon)).IsTrue();
         }
         finally
         {
