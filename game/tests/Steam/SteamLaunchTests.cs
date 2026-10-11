@@ -23,7 +23,7 @@ public class SteamLaunchTests
         AssertThat(LaunchOptions.IsModeRequested(args)).IsTrue();
         var launch = LaunchOptions.Parse(args);
         AssertThat(launch.Mode).IsEqual(ProcessMode.Client);
-        AssertThat(launch.ConnectLobbyId).IsEqual(123UL);
+        AssertThat(launch.ConnectLobbyId?.ToString()).IsEqual("123");
         AssertThat(launch.EnableSteam).IsTrue();
         AssertThat(launch.ConnectHost).IsNull();
     }
@@ -63,7 +63,7 @@ public class SteamLaunchTests
         var launch = LaunchOptions.Parse(["+connect_lobby", "76561198000000001", "--password", "pw"]);
 
         AssertThat(launch.Mode).IsEqual(ProcessMode.Client);
-        AssertThat(launch.ConnectLobbyId).IsEqual(76561198000000001UL);
+        AssertThat(launch.ConnectLobbyId?.ToString()).IsEqual("76561198000000001");
         AssertThat(launch.Password).IsEqual("pw");
         AssertThat(launch.LobbyVisibility).IsEqual(LobbyVisibility.FriendsOnly);
         AssertThat(launch.SteamAppId).IsEqual(480u);
