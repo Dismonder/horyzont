@@ -383,6 +383,7 @@ public sealed partial class GameComposition
 
         composition.ServerFrames = serverFrames;
         composition.ServerFrameNodes = serverFrameNodes;
+        composition.ConfigureSpace();
         composition.ConfigureReplication();
         composition.ConfigureTerrainReplication();
         composition.ConfigureMotion();
@@ -412,6 +413,7 @@ public sealed partial class GameComposition
         return composition;
     }
 
+    partial void ConfigureSpace();
     partial void ConfigureReplication();
     partial void ConfigureTerrainReplication();
     partial void ConfigureMotion();

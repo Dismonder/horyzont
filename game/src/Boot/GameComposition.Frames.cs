@@ -48,7 +48,7 @@ public sealed partial class GameComposition
 
     private void ConfigureClientFrames(ClientReplication replication, ConstructMirror? mirror)
     {
-        var frames = new ClientFrames(replication.Entities, mirror);
+        var frames = new ClientFrames(replication.Entities, mirror, ClientStarSystem);
         replication.Decoder.AddSink(frames);
         Client!.AddListener(frames);
         LocalPlayer!.AttachFrames(frames);
