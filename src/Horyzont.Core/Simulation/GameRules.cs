@@ -31,6 +31,12 @@ public sealed record GameRules
     /// <summary>Block edits available at once.</summary>
     public int BlockEditBurst { get; init; } = 10;
 
+    /// <summary>Marker intents refilled per second (K5-27).</summary>
+    public int MarkerIntentsPerSecond { get; init; } = 4;
+
+    /// <summary>Marker intents available at once (K5-27).</summary>
+    public int MarkerIntentBurst { get; init; } = 8;
+
     /// <summary>Largest distance between an intent's ray origin and the player's eye.</summary>
     public float MaxRayOriginErrorMeters { get; init; } = 2f;
 

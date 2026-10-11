@@ -119,6 +119,18 @@ public static class OperationCodec
                 w.WriteQuaternion(sm.Rotation);
                 break;
 
+            case MarkerSetOp ms:
+                w.WriteByte((byte)OperationKind.MarkerSet);
+                w.WriteByte(CurrentFormatVersion);
+                StateCodec.WriteMarker(w, ms.ToRecord());
+                break;
+
+            case MarkerRemoveOp mr:
+                w.WriteByte((byte)OperationKind.MarkerRemove);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(mr.Marker.Value);
+                break;
+
             default:
                 throw new ArgumentException($"Unknown operation type {op.GetType().Name}.", nameof(op));
         }
@@ -130,7 +142,7 @@ public static class OperationCodec
     public static Operation Read(ref ByteReader r)
     {
         byte kindByte = r.ReadByte();
-        if (kindByte is < (byte)OperationKind.TerrainEdit or > (byte)OperationKind.EntityReparent and not (byte)OperationKind.ShipModeSet)
+        if (kindByte is < (byte)OperationKind.TerrainEdit or > (byte)OperationKind.EntityReparent and not (byte)OperationKind.ShipModeSet and not (byte)OperationKind.MarkerSet and not (byte)OperationKind.MarkerRemove)
         {
             throw new ProtocolViolationException($"Unknown operation kind {kindByte}.");
         }
@@ -226,6 +238,13 @@ public static class OperationCodec
                 var smOrigin = r.ReadVector3();
                 var smRotation = r.ReadQuaternion();
                 return new ShipModeSetOp(smConstruct, (ConstructMode)smModeByte, smParent, smParentSeq, smOrigin, smRotation);
+
+            case OperationKind.MarkerSet:
+                var marker = StateCodec.ReadMarker(ref r);
+                return new MarkerSetOp(marker.Id, marker.Owner, marker.Planet, marker.Position, marker.Name, marker.Icon, marker.Color);
+
+            case OperationKind.MarkerRemove:
+                return new MarkerRemoveOp(new MarkerId(r.ReadVarUInt()));
 
             default:
                 throw new ProtocolViolationException($"Unhandled operation kind {kind}.");

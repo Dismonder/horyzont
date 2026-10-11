@@ -79,4 +79,7 @@ public enum RejectReason : byte
 
     /// <summary>The construct has no engine (or the change would remove the last engine of a ship); K5-23.</summary>
     NoEngine = 37,
+
+    /// <summary>The player or the world has reached the marker limit (256 private per player, 256 shared); K5-27.</summary>
+    MarkerLimit = 36,
 }

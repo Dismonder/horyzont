@@ -106,7 +106,7 @@ public sealed class ServerSimulation
             return IntentResult.Rejected(reason);
         }
 
-        var operation = IntentResolver.Resolve(State, intent, facts);
+        var operation = IntentResolver.Resolve(State, player, intent, facts);
         if (!_applier.CheckPreconditions(operation, out var failure))
         {
             throw new InvalidOperationException($"A validated {operation.Kind} breaks a precondition: {failure}");
@@ -247,6 +247,7 @@ public sealed class ServerSimulation
         {
             _bucketList[i].Terrain.Refill();
             _bucketList[i].Blocks.Refill();
+            _bucketList[i].Markers.Refill();
         }
     }
 
