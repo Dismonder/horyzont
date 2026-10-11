@@ -138,6 +138,7 @@ public static class ShipStatsCalculator
                 0f, Vector3.Zero, default, thrustResult, (float)torque, (float)fuel, blocks, cockpits, engines, stabilizers, tanks, pulses, gears, seats)
             {
                 ControlFrame = controlFrame,
+                ControlCell = hasCockpit ? cockpitCell : null,
             };
         }
 
@@ -157,6 +158,7 @@ public static class ShipStatsCalculator
             thrustResult, (float)torque, (float)fuel, blocks, cockpits, engines, stabilizers, tanks, pulses, gears, seats)
         {
             ControlFrame = controlFrame,
+            ControlCell = hasCockpit ? cockpitCell : null,
             BoundingRadius = BoundingRadius(comX, comY, comZ, minX, minY, minZ, maxX, maxY, maxZ),
         };
     }

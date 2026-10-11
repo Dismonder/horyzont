@@ -79,7 +79,7 @@ public sealed class ReparentTests
         f.SetBlock(c, new CellPos(0, 1, 0));
         f.Sim.ApplyServerOperation(Board(f.PlayerOf(p2).Entity, c, 1, new CellPos(0, 1, 0)));
 
-        Assert.Equal(RejectReason.IntersectsPlayer, f.Sim.Submit(p1, new RemoveBlockIntent(c, new CellPos(0, 1, 0))).Reason);
+        Assert.Equal(RejectReason.SeatOccupied, f.Sim.Submit(p1, new RemoveBlockIntent(c, new CellPos(0, 1, 0))).Reason);
         Assert.Throws<InvalidOperationException>(() => f.Sim.ApplyServerOperation(new BlockClearOp(c, new CellPos(0, 1, 0))));
     }
 
@@ -92,7 +92,7 @@ public sealed class ReparentTests
         var c = f.BuildOnTerrain(p1, 2);
         f.Sim.ApplyServerOperation(Board(f.PlayerOf(p2).Entity, c, 1, null));
 
-        Assert.Equal(RejectReason.IntersectsPlayer, f.Sim.Submit(p1, new RemoveBlockIntent(c, new CellPos(0, 0, 0))).Reason);
+        Assert.Equal(RejectReason.ConstructNotEmpty, f.Sim.Submit(p1, new RemoveBlockIntent(c, new CellPos(0, 0, 0))).Reason);
         Assert.Throws<InvalidOperationException>(() => f.Sim.ApplyServerOperation(new BlockClearOp(c, new CellPos(0, 0, 0))));
     }
 

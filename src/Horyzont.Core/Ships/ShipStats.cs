@@ -30,4 +30,10 @@ public sealed record ShipStats(
 
     /// <summary>Gets the radius of a sphere about <see cref="CenterOfMass"/> that contains every block, metres (K5-24).</summary>
     public float BoundingRadius { get; init; }
+
+    /// <summary>
+    /// Cell of the control cockpit: the cockpit <see cref="ControlFrame"/> comes from (the smallest cell); its occupant is the
+    /// pilot (K5-25 decision 10). Null without a cockpit.
+    /// </summary>
+    public World.Constructs.CellPos? ControlCell { get; init; }
 }

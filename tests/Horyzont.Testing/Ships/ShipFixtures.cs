@@ -102,11 +102,18 @@ public static class ShipFixtures
     /// <param name="origin">Construct origin in the planet frame.</param>
     /// <param name="mode">Construct mode.</param>
     /// <returns>The world.</returns>
-    public static WorldState CreateWorld(IReadOnlyList<ShipBlock>? blocks, Vector3 origin = default, ConstructMode mode = ConstructMode.Static)
+    /// <param name="extraPlanets">Planets added after the home planet (K5-25: another planet for the Y9 tests).</param>
+    public static WorldState CreateWorld(
+        IReadOnlyList<ShipBlock>? blocks, Vector3 origin = default, ConstructMode mode = ConstructMode.Static, IReadOnlyList<PlanetParams>? extraPlanets = null)
     {
         var builder = new WorldStateBuilder(WorldFactory.DefaultWorldId, 42);
         builder.SetProgress(default, default, blocks is null ? 1UL : 2UL, 1);
         builder.AddPlanet(WorldFactory.HomePlanetParams);
+        foreach (var planet in extraPlanets ?? [])
+        {
+            builder.AddPlanet(planet);
+        }
+
         for (var i = 0; i < BlockKeys.Length; i++)
         {
             builder.AddBlockType(new RegistryEntry((ushort)(i + 1), BlockKeys[i]));

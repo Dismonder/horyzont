@@ -20,8 +20,14 @@ internal static class IntentResolver
         RemoveBlockIntent remove => new BlockClearOp(remove.Construct, remove.Cell),
         ShipModeIntent ship => ResolveShipMode(state, ship),
         RefuelIntent refuel => new ShipFuelAddOp(refuel.Ship, facts.Amount, facts.Amount),
+        SeatEnterIntent => Reparent(facts, facts.Cell),
+        SeatExitIntent or SeatEvictIntent => Reparent(facts, null),
         _ => throw new InvalidOperationException($"Intent {intent.GetType().Name} passed validation but has no resolution."),
     };
+
+    /// <summary>K5-25: every seat intent is one reparent; the validator found the pose, the frame and the velocity.</summary>
+    private static EntityReparentOp Reparent(IntentFacts facts, CellPos? seat) =>
+        new(facts.Entity, facts.Frame, facts.ParentSeq + 1, facts.Point, facts.Rotation, facts.Velocity, seat);
 
     private static ShipModeSetOp ResolveShipMode(WorldState state, ShipModeIntent intent)
     {
