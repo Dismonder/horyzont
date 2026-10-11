@@ -53,7 +53,7 @@ public sealed class ProtocolContractTests
         AssertValues((ConstructMode.Static, 0), (ConstructMode.Ship, 1));
         AssertValues((BlockShape.Cube, 1), (BlockShape.Mesh, 2));
         AssertValues((BlobKind.ConstructHeader, 1), (BlobKind.Player, 2), (BlobKind.ConstructChunk, 3), (BlobKind.PlanetParams, 4),
-            (BlobKind.TerrainBlock, 5));
+            (BlobKind.TerrainBlock, 5), (BlobKind.StarSystemParams, 10));
         AssertValues((TerrainShape.Sphere, 1));
         AssertValues((TerrainEditMode.Remove, 1), (TerrainEditMode.Add, 2));
         AssertValues((EntityKind.Player, 1), (EntityKind.Construct, 2));
