@@ -55,7 +55,8 @@ public static class TerrainVersionDigest
     /// <param name="key">LOD zero key.</param>
     /// <param name="version">Version.</param>
     /// <param name="envelopeHash"><see cref="TerrainBlockHash"/> of the envelope; 0 when unknown.</param>
+    /// <param name="voxels">Voxel digest of the block; null when the writer holds no voxels.</param>
     /// <returns>The entry.</returns>
-    public static DigestEntry Entry(TerrainBlockKey key, uint version, ulong envelopeHash) =>
-        new(DigestKind.Terrain, FormatKey(key), version, envelopeHash, ((long)key.Planet.Value, key.Lod, key.X, key.Y, key.Z));
+    public static DigestEntry Entry(TerrainBlockKey key, uint version, ulong envelopeHash, ulong? voxels = null) =>
+        new(DigestKind.Terrain, FormatKey(key), version, envelopeHash, ((long)key.Planet.Value, key.Lod, key.X, key.Y, key.Z), Voxels: voxels);
 }

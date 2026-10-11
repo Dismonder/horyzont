@@ -135,7 +135,7 @@ public sealed class BotClient : IClientSessionListener, IFullSnapshotSink
             return;
         }
 
-        var command = _script.At(scriptTick, SenseHome());
+        var command = _script.At(scriptTick, BotControls.SenseHome(_own.Feet, _home));
         _clientTick++;
         var wire = new PlayerInput(
             _clientTick, command.MoveX, command.MoveY, command.Yaw, command.Pitch,
@@ -259,18 +259,6 @@ public sealed class BotClient : IClientSessionListener, IFullSnapshotSink
         _everDisconnected = true;
     }
 
-    private BotSense SenseHome()
-    {
-        var feet = _own.Feet;
-        var up = TerrainMath.UpAt(feet);
-        var toHome = _home - feet;
-        var tangent = toHome - (up * Vector3.Dot(toHome, up));
-        var reference = SurfaceFrame.Reference(up);
-        var side = Vector3.Cross(up, reference);
-        var yaw = MathF.Atan2(Vector3.Dot(tangent, side), Vector3.Dot(tangent, reference));
-        return new BotSense(yaw, tangent.Length());
-    }
-
     private void TryConnect()
     {
         if (_started && _time.GetTimestamp() < _reconnectAt)
@@ -292,20 +280,10 @@ public sealed class BotClient : IClientSessionListener, IFullSnapshotSink
     {
         var aim = BuildAim(_own.Planet, _own.Feet, motor.Yaw, motor.Pitch, _options.Rules);
         var tools = _tools!;
-        var frame = default(ToolInputFrame);
+        var frame = BotControls.FrameFor(action);
         switch (action)
         {
-            case BotAction.Dig:
-                frame = frame with { SelectTool = ToolKind.TerrainManipulator, PrimaryPressed = true };
-                break;
-            case BotAction.Fill:
-                frame = frame with { SelectTool = ToolKind.TerrainManipulator, SecondaryPressed = true };
-                break;
-            case BotAction.PlaceBlock:
-                frame = frame with { SelectTool = ToolKind.Builder, SecondaryPressed = true };
-                break;
-            case BotAction.RemoveBlock:
-                frame = frame with { SelectTool = ToolKind.Builder, PrimaryPressed = true };
+            case BotAction.Dig or BotAction.Fill or BotAction.PlaceBlock or BotAction.RemoveBlock:
                 break;
             case BotAction.AbuseNotFinite:
                 aim = aim with { Direction = new Vector3(float.NaN, 0f, 0f) };

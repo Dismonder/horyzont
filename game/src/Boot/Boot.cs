@@ -19,7 +19,7 @@ public partial class Boot : Node
     public const int ExitFaulted = 70;
 
     private const string Usage =
-        "Horyzont modes (after --; without a mode the menu opens): --solo [--world <id>] [--dev-speed <1-64>] [--screenshot <png> [--screenshot-after <s>]] | --host [--world <id>] [--port 27015] [--bind <ipv4>] [--password <text>] | --connect <host:port> [--password <text>] [--dev]"
+        "Horyzont modes (after --; without a mode the menu opens): --solo [--world <id>] [--dev-speed <1-64>] [--screenshot <png> [--screenshot-after <s>]] | --host [--world <id>] [--port 27015] [--bind <ipv4>] [--password <text>] | --connect <host:port> [--password <text>] [--dev [--bot <seed> [--bot-role builder|explorer|abuser] [--bot-out <dir>] [--bot-epoch <unix ms>]]]"
         + " | +connect_lobby <id> [--password <text>] (Steam) | --host/--connect [--steam] [--steam-app-id <id>] [--lobby-visibility private|friends|public]"
         + " | --server --config <server.json> [--data-dir <dir>] [--restore-latest-backup] [--dev] | --write-default-config <path>";
 

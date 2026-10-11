@@ -385,6 +385,7 @@ public sealed partial class GameComposition
         composition.ConfigureTerrainReplication();
         composition.ConfigureMotion();
         composition.ConfigurePlatform();
+        composition.ConfigureBots();
 
         if (env.Characters && env.Render && launch.ScreenshotPath is { } screenshot && clientNode is not null)
         {
@@ -414,6 +415,8 @@ public sealed partial class GameComposition
     partial void ConfigureTerrainReplication();
     partial void ConfigureMotion();
     partial void ConfigurePlatform();
+
+    partial void ConfigureBots();
     static partial void ConfigurePlatform(LaunchOptions launch, GameEnvironment env, ref ICompositionPlatform platform);
 
     /// <summary>Walking and sprinting speed scaled by <c>--dev-speed</c> (the accelerations scale with it so the character reaches the speed as fast as before).</summary>

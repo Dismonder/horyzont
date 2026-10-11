@@ -32,4 +32,30 @@ public sealed class BotClientTests
         Assert.Equal(MathF.Sin(pitch), Vector3.Dot(aim.Direction, up), 3);
         Assert.Equal(0f, Vector3.Dot(aim.LookForward, up), 3);
     }
+
+    [Fact]
+    public void LookDelta_FedToTheOrientationTracker_ReachesTheCommandedYawAndPitch()
+    {
+        var tracker = new Horyzont.Client.Camera.OrientationTracker(new Horyzont.Core.Motion.MovementRules());
+        var up = System.Numerics.Vector3.UnitX;
+        tracker.Reset(Horyzont.Core.Motion.SurfaceFrame.FromYaw(up, 2.5f), 0.1f);
+
+        var (yaw, pitch) = Horyzont.Bots.Scripting.BotControls.LookDelta(tracker.BodyRotation, up, tracker.Pitch, -2.9f, -0.7f);
+        tracker.Advance(up, yaw, pitch);
+
+        Assert.Equal(-2.9f, tracker.YawFor(up), 3);
+        Assert.Equal(-0.7f, tracker.Pitch, 3);
+        Assert.True(MathF.Abs(yaw) < MathF.PI, "the turn takes the short way round");
+    }
+
+    [Fact]
+    public void FrameFor_ToolActions_PressWhatAPlayerPresses()
+    {
+        var dig = Horyzont.Bots.Scripting.BotControls.FrameFor(Horyzont.Bots.Scripting.BotAction.Dig);
+        var place = Horyzont.Bots.Scripting.BotControls.FrameFor(Horyzont.Bots.Scripting.BotAction.PlaceBlock);
+
+        Assert.True(dig.PrimaryPressed && dig.SelectTool == Horyzont.Client.Tools.ToolKind.TerrainManipulator);
+        Assert.True(place.SecondaryPressed && place.SelectTool == Horyzont.Client.Tools.ToolKind.Builder);
+        Assert.Equal(default, Horyzont.Bots.Scripting.BotControls.FrameFor(Horyzont.Bots.Scripting.BotAction.AbuseBadRadius));
+    }
 }

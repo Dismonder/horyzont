@@ -28,7 +28,8 @@ public sealed record LaunchOptions
     private static readonly string[] _valued =
     [
         "--connect", "--world", "--port", "--bind", "--password", "--config", "--data-dir", "--profile", "--seed", "--write-default-config",
-        "--dev-speed", "--screenshot", "--screenshot-after", "--steam-app-id", "--lobby-visibility",
+        "--dev-speed", "--screenshot", "--screenshot-after", "--steam-app-id", "--lobby-visibility", "--bot", "--bot-role", "--bot-out",
+        "--bot-epoch", "--bot-control-seconds",
     ];
 
     /// <summary>Gets the mode of the process.</summary>
@@ -96,6 +97,24 @@ public sealed record LaunchOptions
 
     /// <summary>Gets the Steam application id (<c>--steam-app-id</c>).</summary>
     public uint SteamAppId { get; init; } = DefaultSteamAppId;
+
+    /// <summary>
+    /// Gets the seed of the bot mode (K4-19, <c>--bot &lt;seed&gt;</c>): the <c>BotScript</c> of the bot libraries drives the real client
+    /// instead of the keyboard. Only with <c>--connect</c> and <c>--dev</c>; null for a player.
+    /// </summary>
+    public ulong? BotSeed { get; init; }
+
+    /// <summary>Gets the role of the bot (<c>--bot-role builder|explorer|abuser</c>, default builder).</summary>
+    public Horyzont.Bots.Scripting.BotRole BotRole { get; init; } = Horyzont.Bots.Scripting.BotRole.Builder;
+
+    /// <summary>Gets the directory of the bot report and dumps (<c>--bot-out</c>); null for the working directory.</summary>
+    public string? BotOut { get; init; }
+
+    /// <summary>Gets the shared epoch of the bot timetable in Unix milliseconds (<c>--bot-epoch</c>); 0 for two seconds after start.</summary>
+    public long BotEpochUnixMilliseconds { get; init; }
+
+    /// <summary>Gets the control period of the bot timetable in seconds (<c>--bot-control-seconds</c>, default 900, as the runner).</summary>
+    public int BotControlSeconds { get; init; } = 900;
 
     /// <summary>Gets the path to write a default server configuration to; the process then exits.</summary>
     public string? WriteDefaultConfig { get; init; }
@@ -274,6 +293,8 @@ public sealed record LaunchOptions
             throw new ArgumentException("--server needs --config <server.json>.");
         }
 
+        var bot = ParseBot(reader, connect is not null);
+
         return new LaunchOptions
         {
             Mode = mode,
@@ -298,7 +319,66 @@ public sealed record LaunchOptions
             EnableSteam = reader.Has("--steam") || connectLobby is not null,
             LobbyVisibility = ParseVisibility(reader.ValueOf("--lobby-visibility")),
             SteamAppId = ParseAppId(reader.ValueOf("--steam-app-id")),
+            BotSeed = bot.Seed,
+            BotRole = bot.Role,
+            BotOut = bot.Out,
+            BotEpochUnixMilliseconds = bot.Epoch,
+            BotControlSeconds = bot.Control,
         };
+    }
+
+    private static (ulong? Seed, Horyzont.Bots.Scripting.BotRole Role, string? Out, long Epoch, int Control) ParseBot(DevModeArguments reader, bool connect)
+    {
+        var seedText = reader.ValueOf("--bot");
+        if (seedText is null)
+        {
+            if (reader.Has("--bot-role") || reader.Has("--bot-out") || reader.Has("--bot-epoch") || reader.Has("--bot-control-seconds"))
+            {
+                throw new ArgumentException("--bot-role, --bot-out, --bot-epoch and --bot-control-seconds need --bot <seed>.");
+            }
+
+            return (null, Horyzont.Bots.Scripting.BotRole.Builder, null, 0, 900);
+        }
+
+        // The bot mode is a development tool: it never replaces the input of a player by accident.
+        if (!connect || !reader.Has("--dev"))
+        {
+            throw new ArgumentException("--bot <seed> needs --connect <host:port> and --dev.");
+        }
+
+        if (!ulong.TryParse(seedText, NumberStyles.None, CultureInfo.InvariantCulture, out var seed))
+        {
+            throw new ArgumentException("--bot must be a seed (a non-negative whole number).");
+        }
+
+        var role = reader.ValueOf("--bot-role") switch
+        {
+            null or "builder" => Horyzont.Bots.Scripting.BotRole.Builder,
+            "explorer" => Horyzont.Bots.Scripting.BotRole.Explorer,
+            "abuser" => Horyzont.Bots.Scripting.BotRole.Abuser,
+            _ => throw new ArgumentException("--bot-role must be builder, explorer or abuser."),
+        };
+        var output = reader.ValueOf("--bot-out");
+        if (output is not null && (output.Length == 0 || output.IndexOfAny(Path.GetInvalidPathChars()) >= 0))
+        {
+            throw new ArgumentException("--bot-out is not a valid path.");
+        }
+
+        long epoch = 0;
+        if (reader.ValueOf("--bot-epoch") is { } epochText
+            && (!long.TryParse(epochText, NumberStyles.None, CultureInfo.InvariantCulture, out epoch) || epoch <= 0))
+        {
+            throw new ArgumentException("--bot-epoch must be Unix milliseconds.");
+        }
+
+        var control = 900;
+        if (reader.ValueOf("--bot-control-seconds") is { } controlText
+            && (!int.TryParse(controlText, NumberStyles.None, CultureInfo.InvariantCulture, out control) || control is < 60 or > 86_400))
+        {
+            throw new ArgumentException("--bot-control-seconds must be from 60 to 86400.");
+        }
+
+        return (seed, role, output is null ? null : Path.GetFullPath(output), epoch, control);
     }
 
     private static void CheckKnown(string[] args)

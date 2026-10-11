@@ -14,6 +14,31 @@ namespace Horyzont.Game.Tests.Boot;
 public class LaunchOptionsTests
 {
     [TestCase]
+    public void Boot_BotWithoutDev_RejectedWithUsage()
+    {
+        AssertThrown(() => LaunchOptions.Parse(["--connect", "127.0.0.1:27015", "--bot", "5"]))
+            .IsInstanceOf<ArgumentException>().HasMessage("--bot <seed> needs --connect <host:port> and --dev.");
+        AssertThrown(() => LaunchOptions.Parse(["--solo", "--bot", "5"])).IsInstanceOf<ArgumentException>();
+        AssertThrown(() => LaunchOptions.Parse(["--connect", "127.0.0.1:27015", "--dev", "--bot-role", "builder"]))
+            .IsInstanceOf<ArgumentException>();
+        AssertThrown(() => LaunchOptions.Parse(["--connect", "127.0.0.1:27015", "--dev", "--bot", "5", "--bot-role", "pilot"]))
+            .IsInstanceOf<ArgumentException>();
+    }
+
+    [TestCase]
+    public void Parse_BotWithConnectAndDev_ReadsSeedRoleOutAndEpoch()
+    {
+        var options = LaunchOptions.Parse(
+            ["--connect", "127.0.0.1:27015", "--dev", "--bot", "7", "--bot-role", "explorer", "--bot-out", "bots/e1", "--bot-epoch", "1760000000000"]);
+
+        AssertThat(options.BotSeed).IsEqual(7UL);
+        AssertThat(options.BotRole).IsEqual(Horyzont.Bots.Scripting.BotRole.Explorer);
+        AssertThat(options.BotOut).IsEqual(Path.GetFullPath("bots/e1"));
+        AssertThat(options.BotEpochUnixMilliseconds).IsEqual(1760000000000L);
+        AssertThat(LaunchOptions.Parse(["--connect", "127.0.0.1:27015"]).BotSeed).IsNull();
+    }
+
+    [TestCase]
     public void Parse_SoloWithWorld_ReadsModeAndWorld()
     {
         var id = Guid.NewGuid();

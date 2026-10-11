@@ -84,6 +84,20 @@ public sealed class DigestTests
     }
 
     [Fact]
+    public void Dump_VoxelDigest_IsWrittenAndRead_ButNotCombined()
+    {
+        var key = new TerrainBlockKey(_planet, 0, 1, 1, 1);
+        var with = TerrainVersionDigest.Entry(key, 2, 7, voxels: 0x1234UL);
+        using var writer = new StringWriter();
+
+        DigestDump.Write(writer, [with]);
+
+        Assert.EndsWith(",\"voxels\":\"0000000000001234\"}\n", writer.ToString(), StringComparison.Ordinal);
+        Assert.Equal(with, DigestDump.Read(new StringReader(writer.ToString())).Single());
+        Assert.Equal(DigestDump.Combine([with]), DigestDump.Combine([TerrainVersionDigest.Entry(key, 2, 7)]));
+    }
+
+    [Fact]
     public void Dump_SameEntriesInAnyOrder_SameText()
     {
         var a = ConstructDigest.Entry(Replica(1, version: 1).Value);

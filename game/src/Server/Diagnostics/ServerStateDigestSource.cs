@@ -35,7 +35,7 @@ public sealed class ServerStateDigestSource(ServerRuntime runtime, VoxelServerTe
     {
         ArgumentNullException.ThrowIfNull(writer);
         var entries = runtime.State.Constructs.All.Select(ConstructDigest.Entry).ToList();
-        entries.AddRange(Blocks().Select(b => TerrainVersionDigest.Entry(b.Key, b.Version, b.EnvelopeHash)));
+        entries.AddRange(Blocks().Select(b => TerrainVersionDigest.Entry(b.Key, b.Version, b.EnvelopeHash, b.Voxels)));
         DigestDump.Write(writer, entries);
     }
 

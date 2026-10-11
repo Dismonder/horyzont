@@ -18,6 +18,12 @@ Check breaks (phase B): the bots follow one timetable from the shared epoch; eve
 drain. Two seconds before the end of each period every bot writes its dump (runnerN/dumps/breakNNN/botI.jsonl) and the orchestrator
 asks the server for "digest --dump dumps/breakNNN/server.jsonl"; tools/coop/compare_dumps.py compares them (state_identical_at_breaks).
 The edit latency of the runner (submit at the author to arrival at the other bots, RTT --latency-ms x 2) is reported, not gated.
+
+Bots in the engine (phase C, --engine-bots N): N more game clients "--connect ... --dev --bot <seed>" driven by the same script, with
+voxels, meshing and prediction; their dumps join every break (and add voxel digests), their engine-bot.json the summary. They do not
+reconnect after a restart or kill of the server, so runs with engine bots use --restart-at 0 --kill-at 0. The engine scenarios of
+K4-19 are runs of this script: CoopTwoEngineClients_OneMinute = --minutes 1 --bots 0 --engine-bots 2 --control-minutes 1,
+CoopTwoEngineClients_TenMinutes = --minutes 10 --bots 0 --engine-bots 2 (both --restart-at 0 --kill-at 0).
 Writes summary.json and summary.md into --out. Exit code 0 only when every check passed.
 """
 
@@ -495,6 +501,7 @@ class Run:
         self.control_s, self.quiet_s, self.drain_s = control_windows(args.minutes, control_minutes)
         self.breaks: list[dict] = []
         self.busy = False  # a restart or kill is in progress: no check break
+        self.engine_bots: list[Proc] = []
 
     # --- commands ---
 
@@ -590,8 +597,8 @@ class Run:
     def run(self) -> int:
         args = self.args
         try:
-            if args.engine_bots != 0:
-                raise Failure("--engine-bots > 0 needs the engine bots of phase C; use --engine-bots 0")
+            if args.bots + args.engine_bots == 0:
+                raise Failure("no bots: --bots plus --engine-bots must be at least 1")
             if args.bots + args.engine_bots > 8:
                 raise Failure("the server holds 8 players: --bots plus --engine-bots must be at most 8")
             if args.build_runner:
@@ -615,7 +622,11 @@ class Run:
             self.collect_server_lines()
 
             epoch_ms = int(time.time() * 1000) + 15_000
-            self.start_runner(epoch_ms)
+            self.epoch_ms = epoch_ms
+            if args.bots > 0:
+                self.start_runner(epoch_ms)
+            for i in range(args.engine_bots):
+                self.start_engine_bot(i, epoch_ms)
             run_start = time.monotonic()
             total = args.minutes * 60.0
             restart_at, kill_at = plan_events(args.profile, args.restart_at, args.kill_at, total)
@@ -628,6 +639,10 @@ class Run:
                     index, _at = pending_breaks.pop(0)
                     self.check_break(index)
                 self.collect_server_lines()
+                for engine in self.engine_bots:
+                    engine.new_lines()
+                    if not engine.alive and not (restarted or killed):
+                        raise Failure(f"{engine.label} ended early with exit {engine.process.returncode}")  # type: ignore[union-attr]
                 if self.runner is not None:
                     self.runner.new_lines()
                     if not self.runner.alive:
@@ -668,7 +683,7 @@ class Run:
         """Dumps the server state at the moment the bots dump theirs and compares the dumps of the break."""
         name = f"break{index:03d}"
         minute = round((index * self.control_s) / 60.0, 2)
-        if self.server is None or not self.server.alive or self.busy or self.runner is None:
+        if self.server is None or not self.server.alive or self.busy:
             self.breaks.append({"break": index, "minute": minute, "passed": None, "detail": "skipped: server restarting"})
             return
         folder = self.out / "dumps" / name
@@ -684,12 +699,18 @@ class Run:
             self.collect_server_lines()
             for _at, text in self.server_lines[mark:]:
                 digest = DIGEST.search(text) or digest
-        bot_folder = self.out / f"runner{self.runner_generation}" / "dumps" / name
+        folders = [self.out / f"runner{self.runner_generation}" / "dumps" / name] if self.args.bots > 0 else []
+        folders += [self.out / f"engine{i}" / "dumps" / name for i in range(self.args.engine_bots)]
+        expected = self.args.bots + self.args.engine_bots
+
+        def found() -> list[Path]:
+            return sorted(p for folder in folders for p in folder.glob("*.jsonl"))
+
         limit = time.monotonic() + 15
-        while time.monotonic() < limit and len(list(bot_folder.glob("*.jsonl"))) < self.args.bots:
+        while time.monotonic() < limit and len(found()) < expected:
             time.sleep(0.1)
-        bots = sorted(bot_folder.glob("*.jsonl"))
-        if digest is None or not server_dump.is_file() or len(bots) < self.args.bots:
+        bots = found()
+        if digest is None or not server_dump.is_file() or len(bots) < expected:
             self.breaks.append({
                 "break": index, "minute": minute, "passed": False,
                 "detail": f"digest line {'seen' if digest else 'missing'}, server dump {server_dump.is_file()}, {len(bots)} bot dumps",
@@ -703,6 +724,25 @@ class Run:
             "first_difference": result["first_difference"], "digest": digest.group(0),
         })
         print(f"check break {index} (minute {minute}): {'PASS' if result['passed'] else 'FAIL'} {result['first_difference'] or ''}", flush=True)
+
+    def start_engine_bot(self, index: int, epoch_ms: int) -> None:
+        """A game client in bot mode: builders and explorers alternate (P6), seeds after those of the runner."""
+        out = self.out / f"engine{index}"
+        out.mkdir(parents=True, exist_ok=True)
+        role = "builder" if index % 2 == 0 else "explorer"
+        command, cwd = self.godot_command(
+            "--connect", f"127.0.0.1:{self.port}", "--dev", "--bot", str(self.args.seed + 100 + index), "--bot-role", role,
+            "--bot-out", str(out), "--bot-epoch", str(epoch_ms), "--bot-control-seconds", str(max(60, int(self.control_s))),
+        )
+        self.engine_bots.append(self.start_proc(f"engine{index}", command, cwd))
+
+    def load_engine_reports(self) -> list[dict]:
+        reports = []
+        for i in range(self.args.engine_bots):
+            path = self.out / f"engine{i}" / "engine-bot.json"
+            if path.is_file():
+                reports.append(json.loads(path.read_text(encoding="utf-8")))
+        return reports
 
     def start_runner(self, epoch_ms: int) -> None:
         self.runner_generation += 1
@@ -768,6 +808,9 @@ class Run:
                 self.runner.wait_exit(60)
             except Failure:
                 self.runner.kill()
+        for engine in self.engine_bots:
+            if engine.alive:
+                engine.kill()
         if self.server is not None and self.server.alive:
             self.server.send("stop")
             try:
@@ -815,8 +858,14 @@ class Run:
             if last_progress is not None:
                 self.checks.append(Check("bots_in_game_at_end", int(last_progress.group(1)) == int(last_progress.group(2)), last_progress.group(0)))
             del in_game
-        else:
+        elif args.bots > 0:
             self.checks.append(Check("runner_report", False, "no bots.json was written"))
+        engines = self.load_engine_reports()
+        if args.engine_bots > 0:
+            self.checks.append(Check(
+                "engine_bots_in_game", len(engines) == args.engine_bots and all(e["frames"] > 0 for e in engines),
+                f"{len(engines)} of {args.engine_bots} reports; frames {[e['frames'] for e in engines]}",
+            ))
         ticks = aggregate_ticks(self.tick_windows)
         if args.profile == "tick":
             self.checks.append(Check("tick_mean_within_budget", 0 < ticks["ticks"] and ticks["mean"] <= TICK_BUDGET_MS, f"mean {ticks['mean']:.3f} ms (budget {TICK_BUDGET_MS} ms)"))
@@ -834,7 +883,7 @@ class Run:
             "engine_exit_av": self.engine_exit_av,
             "verdict": "PASS" if passed else "FAIL", "minutes": args.minutes, "bots": args.bots, "profile": args.profile,
             "port": self.port, "tick": ticks, "rejections": rejection_totals(report), "checks": [c.__dict__ for c in self.checks],
-            "breaks": self.breaks, "edit_latency_ms": latency, "control_seconds": self.control_s,
+            "breaks": self.breaks, "edit_latency_ms": latency, "control_seconds": self.control_s, "engine_bots": engines,
         }
         (self.out / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
         (self.out / "summary.md").write_text(render_markdown(summary), encoding="utf-8")
@@ -853,7 +902,7 @@ def main() -> int:
     parser.add_argument("--project", type=Path, default=Path(__file__).resolve().parent.parent.parent / "game")
     parser.add_argument("--minutes", type=float, default=3.0)
     parser.add_argument("--bots", type=int, default=8, help="bots of the .NET runner")
-    parser.add_argument("--engine-bots", type=int, default=0, help="bots in the engine (phase C); must be 0 for now")
+    parser.add_argument("--engine-bots", type=int, default=0, help="game clients in bot mode (phase C); they need --restart-at 0 --kill-at 0")
     parser.add_argument("--profile", choices=("smoke", "tick"), default="smoke")
     parser.add_argument("--affinity", type=lambda text: int(text, 0), default=0x3F, help="core mask of the server in profile tick (6 cores by default)")
     parser.add_argument("--seed", type=int, default=1)

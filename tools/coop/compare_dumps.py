@@ -95,6 +95,9 @@ def compare(server: Dump, bots: list[Dump], zone_radius: float = ZONE_RADIUS, vo
                 differences.append(
                     f"{bot.name}: {key[0]} {key[1]} v{entry['version']}/{entry['hash']}, server v{expected['version']}/{expected['hash']}"
                 )
+            elif "voxels" in expected and "voxels" in entry and str(expected["voxels"]) != str(entry["voxels"]):
+                # Bots in the engine hold voxels: their blocks must also equal the server voxel for voxel.
+                differences.append(f"{bot.name}: terrain {key[1]} voxels {entry['voxels']}, server {expected['voxels']}")
 
     builders = [b for b in bots if b.role == "builder" and b.in_game and b.feet is not None]
     missing: list[str] = []
@@ -187,6 +190,16 @@ def self_test() -> int:
         raise AssertionError("accepted " + bad)
 
     assert position("terrain", "1/0/-1/2/3", {}, 1.0) == (-8.0, 40.0, 56.0)
+
+    # Voxels are compared where both sides hold them (the game server and bots in the engine).
+    voxel_server = parse_dump("server", ['{"kind":"terrain","key":"1/0/250/0/0","version":2,"hash":"00000000000000cc","voxels":"0000000000000001"}'])
+    engine = parse_dump("e", [
+        '{"kind":"bot","key":"bot8","role":"builder","in_game":true,"feet":[4000,0,0]}',
+        '{"kind":"terrain","key":"1/0/250/0/0","version":2,"hash":"00000000000000cc","voxels":"0000000000000002"}',
+    ])
+    assert not compare(voxel_server, [engine])["passed"]
+    dotnet = parse_dump("d", [header, '{"kind":"terrain","key":"1/0/250/0/0","version":2,"hash":"00000000000000cc"}'])
+    assert compare(voxel_server, [dotnet])["passed"]
     print("compare_dumps self-test OK")
     return 0
 

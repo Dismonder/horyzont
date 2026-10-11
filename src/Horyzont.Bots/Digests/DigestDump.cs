@@ -71,7 +71,10 @@ public static class DigestDump
                     position = new Vector3(pos[0].GetSingle(), pos[1].GetSingle(), pos[2].GetSingle());
                 }
 
-                entries.Add(new DigestEntry(kind, key, version, hash, ParseSortKey(kind, key), position));
+                ulong? voxels = root.TryGetProperty("voxels", out var voxelText)
+                    ? ulong.Parse(voxelText.GetString() ?? string.Empty, NumberStyles.HexNumber, CultureInfo.InvariantCulture)
+                    : null;
+                entries.Add(new DigestEntry(kind, key, version, hash, ParseSortKey(kind, key), position, voxels));
             }
             catch (Exception exception) when (exception is JsonException or KeyNotFoundException or FormatException or InvalidOperationException)
             {
@@ -108,6 +111,11 @@ public static class DigestDump
     {
         var kind = entry.Kind == DigestKind.Construct ? "construct" : "terrain";
         var position = entry.Position is { } p ? ",\"pos\":" + Vector(p) : string.Empty;
+        if (entry.Voxels is { } voxels)
+        {
+            position += string.Create(CultureInfo.InvariantCulture, $",\"voxels\":\"{voxels:x16}\"");
+        }
+
         return string.Create(
             CultureInfo.InvariantCulture,
             $"{{\"kind\":\"{kind}\",\"key\":\"{entry.Key}\",\"version\":{entry.Version},\"hash\":\"{entry.Hash:x16}\"{position}}}");

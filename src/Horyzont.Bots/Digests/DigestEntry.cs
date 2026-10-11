@@ -24,8 +24,13 @@ public enum DigestKind
 /// <param name="Position">
 /// Where the entry is in its parent frame (the origin of a construct), for the coverage of the shared zone; not part of any digest.
 /// </param>
+/// <param name="Voxels">
+/// Voxel digest of a terrain block (<c>TerrainBlockCodec.Digest</c>) where the writer holds voxels (game server, bots in the engine);
+/// null for bots without an engine. Not part of <see cref="DigestDump.Combine"/>.
+/// </param>
 public readonly record struct DigestEntry(
-    DigestKind Kind, string Key, uint Version, ulong Hash, (long A, long B, long C, long D, long E) SortKey, Vector3? Position = null);
+    DigestKind Kind, string Key, uint Version, ulong Hash, (long A, long B, long C, long D, long E) SortKey, Vector3? Position = null,
+    ulong? Voxels = null);
 
 /// <summary>Orders entries by kind, then by the natural order of their keys.</summary>
 public sealed class DigestEntryComparer : IComparer<DigestEntry>
