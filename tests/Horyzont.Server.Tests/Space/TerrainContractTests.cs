@@ -36,9 +36,46 @@ public sealed class TerrainContractTests
         Assert.Equal(R + Relief + 20f, column.Center.Length(), 2);
         Assert.Equal(1f, Vector3.Dot(Vector3.Normalize(column.Center), Vector3.Normalize(ship)), 4);
         Assert.Equal(28f, column.Radius, 3);
+    }
 
-        var below = TerrainColumn.UnderShip(new Vector3(0f, R + 100f, 0f), 8f, 0f, 100f, R, Relief);
-        Assert.Equal(R + Relief, below.Center.Y, 2);
+    [Fact]
+    public void TerrainColumn_ShipInValley_SpansFromLowestGroundToShip()
+    {
+        // r < R + MaxRelief: the ground under the ship may lie anywhere down to R − MaxRelief (owner decision, README Y11).
+        var ship = new Vector3(0f, R + 100f, 0f);
+
+        var column = TerrainColumn.UnderShip(ship, 8f, 0f, 100f, R, Relief);
+
+        Assert.Equal(R - 100f, column.Center.Y, 2);
+        Assert.Equal(200f + 8f, column.Radius, 3);
+        Assert.True(column.Center.Y - column.Radius <= R - Relief);
+        Assert.True(column.Center.Y + column.Radius >= R + 100f);
+    }
+
+    [Fact]
+    public void TerrainColumn_ShipJustAboveRelief_ColumnStillReachesLowestGround()
+    {
+        // r − d/2 ≤ R + MaxRelief although the ship is above the relief: the column spans from R − MaxRelief up to r.
+        var ship = new Vector3(R + Relief + 40f, 0f, 0f);
+
+        var column = TerrainColumn.UnderShip(ship, 8f, 500f, 200f, R, Relief);
+
+        Assert.Equal(R + 20f, column.Center.X, 2);
+        Assert.Equal(Relief + 20f + 8f, column.Radius, 3);
+        Assert.True(column.Center.X - column.Radius <= R - Relief);
+    }
+
+    [Fact]
+    public void TerrainColumn_ShipHighAbove_KeepsFarShipColumn()
+    {
+        var ship = new Vector3(0f, 0f, R + 20000f);
+
+        var column = TerrainColumn.UnderShip(ship, 12f, 2000f, 20000f, R, Relief);
+
+        Assert.Equal(4064f, column.Depth, 3);
+        Assert.Equal(R + 20000f - 2032f, column.Center.Z, 1);
+        Assert.Equal(12f + 2032f, column.Radius, 3);
+        Assert.True(column.Center.Z - column.Radius > R + Relief);
     }
 
     [Fact]
