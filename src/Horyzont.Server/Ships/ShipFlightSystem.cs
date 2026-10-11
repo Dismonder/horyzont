@@ -84,6 +84,9 @@ public sealed class ShipFlightSystem : IServerTickParticipant
     /// <summary>Gets or sets the pilot input (development pilots wrap the default one).</summary>
     public IShipControlSource Control { get; set; }
 
+    /// <summary>Gets or sets the launch guard (K5-25 decision 9); null = no guard.</summary>
+    public IShipLaunchGuard? LaunchGuard { get; set; }
+
     /// <summary>Gets the flight rules.</summary>
     public FlightRules Rules => _rules;
 
@@ -154,7 +157,10 @@ public sealed class ShipFlightSystem : IServerTickParticipant
         return false;
     }
 
-    /// <summary>The flight view of a ship in the current tick (valid while the control source is asked).</summary>
+    /// <summary>
+    /// The flight view of a ship in the current tick (valid while the control source is asked). After the tick: the motion after
+    /// the step and the environment of that step (gate, launch block after the guard, horizontal cap), K5-25 decision 15.
+    /// </summary>
     /// <param name="ship">The ship.</param>
     /// <param name="view">Receives the view.</param>
     /// <returns>False for a construct the flight does not know.</returns>
@@ -267,6 +273,14 @@ public sealed class ShipFlightSystem : IServerTickParticipant
             else
             {
                 motion.Flags &= ~ShipFlightFlags.Autoland;
+
+                // K5-25 decision 9 (R3): a pilot trying to take off from a parked ship (gear up) asks the guard; the fuel reserve wins.
+                if (LaunchGuard is { } guard && (motion.Flags & ShipFlightFlags.Parked) != 0 && environment.LaunchBlock == ShipLaunchBlock.None
+                    && (control.Buttons & ShipButtons.LandingGear) == 0)
+                {
+                    environment = environment with { LaunchBlock = guard.Evaluate(id, tick) };
+                    entry.Environment = environment;
+                }
             }
 
             var from = motion.Pose;
@@ -291,7 +305,8 @@ public sealed class ShipFlightSystem : IServerTickParticipant
             var index = _model is { } model && model.TryGetBody(planet.Id, out var body) ? body.BodyIndex : 0;
             environment = FlightEnvironments.InPlanet(planet, index, com, _rules);
             var gate = _gate.Query(ship.Id, planet.Id, motion, stats, out var cap);
-            environment = environment with { Gate = gate, HorizontalSpeedCap = cap };
+            // K5-25 R2: the cap travels as a float in ShipCorrection, so the server steps with the same rounded number.
+            environment = environment with { Gate = gate, HorizontalSpeedCap = (double)(float)cap };
         }
         else if (ship.Parent.Kind == FrameKind.System && _model is { } system)
         {

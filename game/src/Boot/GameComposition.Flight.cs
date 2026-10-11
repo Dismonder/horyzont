@@ -27,7 +27,8 @@ public sealed partial class GameComposition
             runtime => CreateShipGate(runtime),
             _launch.Dev,
             GameServerHooks.TickRate,
-            _env.Loggers.CreateLogger<ShipFlightHost>());
+            _env.Loggers.CreateLogger<ShipFlightHost>(),
+            inputs: static runtime => new SessionShipInputs(runtime.Session));
         server.AddTickParticipant(Flight);
     }
 
