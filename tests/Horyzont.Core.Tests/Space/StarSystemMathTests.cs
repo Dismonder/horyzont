@@ -1,4 +1,5 @@
 using FsCheck.Fluent;
+
 using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Space;
@@ -17,7 +18,7 @@ public sealed class StarSystemMathTests
             Gen.Choose(0, 3).SelectMany(body => Gen.Choose(0, 1_000_000).Select(fraction => (body, fraction))),
             pair =>
             {
-                var (radius, g0) = Bodies[pair.body];
+                var (radius, g0) = TestBodies[pair.body];
                 var r = 3.3 * radius * pair.fraction / 1_000_000d;
                 var step = Math.Abs(StarSystemMath.Gravity(r + Millimetre, radius, g0) - StarSystemMath.Gravity(r, radius, g0));
                 Assert.True(step <= 1e-5, $"body {pair.body}, r {r}: step {step}");
@@ -26,7 +27,7 @@ public sealed class StarSystemMathTests
     [Fact]
     public void StarSystemMath_Gravity_NoJumpAtZoneBoundaries()
     {
-        foreach (var (radius, g0) in Bodies)
+        foreach (var (radius, g0) in TestBodies)
         {
             foreach (var factor in new[] { 1.0, StarSystemRules.GravityFadeStartFactor, StarSystemRules.ZoneRadiusFactor })
             {
@@ -41,7 +42,7 @@ public sealed class StarSystemMathTests
     [Fact]
     public void StarSystemMath_Gravity_ExactAtBoundaries()
     {
-        foreach (var (radius, g0) in Bodies)
+        foreach (var (radius, g0) in TestBodies)
         {
             Assert.Equal(g0, StarSystemMath.Gravity(radius, radius, g0));
             Assert.Equal(0.16 * g0, StarSystemMath.Gravity(2.5 * radius, radius, g0), 1e-12);
@@ -103,7 +104,7 @@ public sealed class StarSystemMathTests
         Assert.Throws<ArgumentOutOfRangeException>(() => StarSystemMath.SunDirection(0, rate, 0f));
     }
 
-    private static readonly (double Radius, double G0)[] Bodies = [(4000, 9.81f), (1400, 1.62f), (3500, 9.0f), (4500, 12.0f)];
+    private static (double Radius, double G0)[] TestBodies { get; } = [(4000, 9.81f), (1400, 1.62f), (3500, 9.0f), (4500, 12.0f)];
 
     // Oracle: the formula of DayNightCycle.SunDirection before K5-21 (game/src/Planet/Sky/DayNightCycle.cs).
     private static System.Numerics.Vector3 OldSunDirection(ulong tick, int tickRate, float dayLengthSeconds)
