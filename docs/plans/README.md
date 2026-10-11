@@ -342,6 +342,7 @@ Kolejność K5: (wykonawcy dopisują tu po scaleniu: pakiet, PR, `ProtocolVersio
 - K5-21 — PR #30, `ProtocolVersion` = 9 (main 8 po K5-20 + 1, D4; scalenie K5-20 i `origin/main`).
 - K5-22 — PR #31, `ProtocolVersion` = 10 (main 9 po K5-21 + 1, D4; scalenie K5-21 i `origin/main`). Kroki 9 (część benchmarku) i 10 wstrzymane do scalenia K4-19.
 - K5-24 — PR: (numer przy otwarciu), `ProtocolVersion` = 11 (main 10 po K5-22 + 1, D4; scalenie gałęzi K5-22 i `origin/main`; op 21 `ShipFuelAdd`, intencja 13 `Refuel`, odmowa 39 `ShipNotParked`, blob 12 `ShipState`).
+- K5-26 — PR: (numer przy otwarciu), `ProtocolVersion` = 13 (K5-27 = 12 przed K5-26 w kolejce + 1, D4; przeliczane przy scaleniu; komunikat 31 `ShipStatus`, fotel w `EntitySpawn.KindData` gracza).
 
 ## Szablon planu pakietu
 
