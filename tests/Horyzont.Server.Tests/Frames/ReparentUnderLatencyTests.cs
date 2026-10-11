@@ -154,7 +154,7 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
     private sealed record Report(int Reparents, int Refused, Stats Remote, Stats Own);
 
     /// <summary>Jump and error statistics of one perspective.</summary>
-    private sealed record Stats
+    internal sealed record Stats
     {
         public List<double> Jumps { get; init; } = [];
 
@@ -206,7 +206,7 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
         }
     }
 
-    private sealed class Participant(ServerTickPhase phase, Action<ServerRuntime> tick) : IServerTickParticipant
+    internal sealed class Participant(ServerTickPhase phase, Action<ServerRuntime> tick) : IServerTickParticipant
     {
         public ServerTickPhase Phase => phase;
 
@@ -214,12 +214,32 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
     }
 
     /// <summary>Server world positions, frames and sequences of the scripted players per tick.</summary>
-    private sealed class Truth(FrameGraph graph)
+    internal sealed class Truth(FrameGraph graph)
     {
         private readonly Dictionary<(EntityId, ulong), (Vector3D World, FrameRef Frame, uint Seq)> _ticks = [];
         private readonly Dictionary<EntityId, Vector3D> _last = [];
+        private readonly Dictionary<EntityId, (FrameRef Frame, uint Seq)> _lastFrame = [];
+        private readonly Dictionary<(EntityId, ulong), double> _teleports = [];
 
         public double MaxSpeed { get; private set; }
+
+        /// <summary>
+        /// Gets a value indicating whether reparents move the body (K5-25 seats: enter, switch and exit place it at the seat or the exit
+        /// point): their displacement is a teleport, kept out of <see cref="MaxSpeed"/> and allowed to a jump over its tick.
+        /// </summary>
+        public bool SeatTeleports { get; init; }
+
+        /// <summary>Sum of the teleports of an entity at the ticks in (from, to].</summary>
+        public double TeleportBetween(EntityId entity, double from, double to)
+        {
+            var sum = 0.0;
+            for (var tick = (ulong)Math.Floor(from) + 1; tick <= (ulong)Math.Ceiling(to); tick++)
+            {
+                sum += _teleports.TryGetValue((entity, tick), out var distance) ? distance : 0;
+            }
+
+            return sum;
+        }
 
         public Dictionary<(FrameRef, ulong), PoseD> Frames { get; } = [];
 
@@ -242,12 +262,21 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
 
                 var world = FrameMath.TransformPoint(frame, Vector3D.FromFloat(p.Position));
                 _ticks[(entity, state.CurrentTick.Value)] = (world, p.Frame, p.ParentSeq);
+                var reparented = _lastFrame.TryGetValue(entity, out var lastFrame) && (lastFrame.Frame != p.Frame || lastFrame.Seq != p.ParentSeq);
                 if (_last.TryGetValue(entity, out var last))
                 {
-                    MaxSpeed = Math.Max(MaxSpeed, Vector3D.Distance(last, world) * TickRate);
+                    if (SeatTeleports && reparented)
+                    {
+                        _teleports[(entity, state.CurrentTick.Value)] = Vector3D.Distance(last, world);
+                    }
+                    else
+                    {
+                        MaxSpeed = Math.Max(MaxSpeed, Vector3D.Distance(last, world) * TickRate);
+                    }
                 }
 
                 _last[entity] = world;
+                _lastFrame[entity] = (p.Frame, p.ParentSeq);
             }
         }
 
@@ -413,7 +442,7 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
     }
 
     /// <summary>One client: its replication, frames and either a remote render loop or its own entity.</summary>
-    private sealed class ClientView : IFullSnapshotSink
+    internal sealed class ClientView : IFullSnapshotSink
     {
         private bool _clockStarted;
         private ulong _lastSnapshot;
@@ -496,7 +525,7 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
             // Every sample of a tracked player must be in the frame and sequence the server had at that tick.
             foreach (var entity in full.Entities)
             {
-                if (_buffers.ContainsKey(entity.Entity))
+                if (_buffers.ContainsKey(entity.Entity) || (SeatCamera && entity.Entity == Client.Hello!.YourEntity))
                 {
                     if (!_sampleTicks.TryGetValue(entity.Entity, out var ticks))
                     {
@@ -558,7 +587,8 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
 
                 // Scripted bodies change their world velocity at the reparent tick (a kink no interpolation can know): between two
                 // samples on both sides of a reparent only the jump is measured, the error against the server is not.
-                var straddles = !truth.TryAt(entity, from, out var a) || !truth.TryAt(entity, to, out var b) || a.Frame != b.Frame || a.Seq != b.Seq;
+                var straddles = !truth.TryAt(entity, from, out var a) || !truth.TryAt(entity, to, out var b) || a.Frame != b.Frame || a.Seq != b.Seq
+                    || (truth.SeatTeleports && !SameFrame(truth, entity, cursor, sample.Frame, sample.ParentSeq));
                 _remote = Measure(_remote, entity, world, straddles ? null : server, cursor, truth.MaxSpeed);
                 if (straddles)
                 {
@@ -595,8 +625,37 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
             return false;
         }
 
+        /// <summary>Gets a value indicating whether an own body in a construct frame is seated and drawn by the seat camera (K5-25).</summary>
+        public bool SeatCamera { get; init; }
+
         public void RenderOwn(Truth truth)
         {
+            if (SeatCamera && _own is { Frame.Kind: FrameKind.Construct } seated)
+            {
+                // K5-25 decision 18: the seated body follows the ship at the render cursor, like the remote passengers.
+                var cursor = _adapter.Clock.RenderTick;
+                if (!Covered(Client.Hello!.YourEntity, cursor, out _, out _))
+                {
+                    // Like the remote players: a ship pose across a snapshot gap is extrapolated, not a seat effect.
+                    _ownStats = _ownStats with { Uncovered = _ownStats.Uncovered + 1 };
+                    return;
+                }
+
+                // Before the server seated the body at the cursor (the own state is newer), only the jump is measured.
+                if (Horyzont.Client.Ships.SeatView.TryGetSeatedWorldPose(_graph, _graph, seated, null, cursor, out var pose)
+                    && truth.TryWorldAt(Client.Hello!.YourEntity, cursor, out var atCursor))
+                {
+                    var same = SameFrame(truth, Client.Hello!.YourEntity, cursor, seated.Frame, seated.ParentSeq);
+                    _ownStats = Measure(_ownStats, Client.Hello!.YourEntity, pose.Position, same ? atCursor : null, cursor, truth.MaxSpeed);
+                    if (!same)
+                    {
+                        _ownStats = _ownStats with { Straddling = _ownStats.Straddling + 1 };
+                    }
+                }
+
+                return;
+            }
+
             if (_own is not { } own || !_graph.TryGetWorldPose(own.Frame, own.ServerTick.Value, out var frame)
                 || !truth.TryWorldAt(Client.Hello!.YourEntity, own.ServerTick.Value, out var server))
             {
@@ -614,14 +673,34 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
             }
         }
 
+        private static bool SameFrame(Truth truth, EntityId entity, double tick, FrameRef frame, uint seq) =>
+            truth.TryAt(entity, (ulong)Math.Floor(tick), out var a) && a.Frame == frame && a.Seq == seq
+            && (!truth.TryAt(entity, (ulong)Math.Ceiling(tick), out var b) || (b.Frame == frame && b.Seq == seq));
+
         private Stats Measure(Stats stats, EntityId entity, Vector3D world, Vector3D? server, double tick, double maxSpeed)
         {
             var error = server is { } truth ? Vector3D.Distance(world, truth) : 0;
+            if (_truth is { SeatTeleports: true } && error > 0.5 && error > stats.MaxError)
+            {
+                _truth.TryAt(entity, (ulong)tick, out var at);
+                stats = stats with { Worst = FormattableString.Invariant($"ERROR e={entity.Value} tick={tick:F2} error={error:F2} server={at.Frame.Kind}:{at.Frame.Id}/{at.Seq} world={world} truth={server}") };
+            }
+
             var jump = 0.0;
             if (_previous.TryGetValue(entity, out var previous) && tick >= previous.Tick)
             {
-                jump = Math.Max(0, Vector3D.Distance(world, previous.World) - (maxSpeed * (tick - previous.Tick) / TickRate));
+                // A seat teleport may be drawn up to the interpolation delay early (the first sample after an idle stretch, or the
+                // newest own state under the seat camera at the render cursor) or late (interpolated over a snapshot gap): frames within
+                // that window of a server teleport may move by its distance.
+                var early = (_adapter.Clock.DelaySeconds * TickRate) + 3;
+                var teleport = _truth is { SeatTeleports: true } seats ? seats.TeleportBetween(entity, previous.Tick - early, tick + early) : 0;
+                jump = Math.Max(0, Vector3D.Distance(world, previous.World) - (maxSpeed * (tick - previous.Tick) / TickRate) - teleport);
                 stats.Jumps.Add(jump);
+                if (_truth is { SeatTeleports: true } && jump > 0.5 && jump > stats.MaxJump)
+                {
+                    _truth.TryAt(entity, (ulong)tick, out var at);
+                    stats = stats with { Worst = FormattableString.Invariant($"JUMP e={entity.Value} tick={tick:F2} prev={previous.Tick:F2} teleport={teleport:F2} server={at.Frame.Kind}:{at.Frame.Id}/{at.Seq} world={world} prevWorld={previous.World}") };
+                }
             }
 
             _previous[entity] = (world, tick);

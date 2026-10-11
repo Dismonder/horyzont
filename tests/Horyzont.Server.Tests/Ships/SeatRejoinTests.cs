@@ -3,10 +3,10 @@ using System.Numerics;
 
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
-using Horyzont.Testing;
 using Horyzont.Core.Serialization;
 using Horyzont.Core.Simulation;
 using Horyzont.Server.Console;
+using Horyzont.Testing;
 
 namespace Horyzont.Server.Tests.Ships;
 
