@@ -51,7 +51,19 @@ public class DescentTests
     [TestCase(Timeout = 3600000)]
     [TestCategory("Slow")]
     [RequireGodotRuntime]
-    public async Task Descent8km_TwentyTrials_NoCollisionGapsAtTouchdown()
+    public Task Descent8km_TwentyTrials_NoCollisionGapsAtTouchdown() => RunTrials(gated: false);
+
+    /// <summary>
+    /// The descent gated by the flight readiness query (README Y11, <see cref="PlanetTerrainReadinessQueries.GetShipReadiness"/>): the probe
+    /// moves down only while the query is <see cref="PlanetTerrainReadiness.Ready"/>, and from 50 m over the ground <c>Ready</c> must never be
+    /// reported without a collision under the probe (Opus review of K5-22).
+    /// </summary>
+    [TestCase(Timeout = 3600000)]
+    [TestCategory("Slow")]
+    [RequireGodotRuntime]
+    public Task Descent8km_ReadinessGated_ReadyNeverWithoutCollision() => RunTrials(gated: true);
+
+    private static async Task RunTrials(bool gated)
     {
         var trials = int.TryParse(System.Environment.GetEnvironmentVariable("HORYZONT_DESCENT_TRIALS"), out var n) && n > 0 ? n : 3;
         await using var scene = EngineTestScene.Create();
@@ -79,7 +91,7 @@ public class DescentTests
             for (var trial = 0; trial < trials; trial++)
             {
                 var body = trial % 2 == 0 ? moon : planetC;
-                var result = await Descend(scene, terrain, viewers, body, new Random(1000 + trial));
+                var result = await Descend(scene, terrain, viewers, body, new Random(1000 + trial), gated);
                 report.Add(string.Create(CultureInfo.InvariantCulture,
                     $"trial {trial} planet {body.Planet.Value}: {(result.Ok ? "ok" : "FAIL")} descent {result.Seconds:F1} s, worst wait {result.WorstWaitTicks} ticks, {result.Reason}"));
                 failures += result.Ok ? 0 : 1;
@@ -91,7 +103,8 @@ public class DescentTests
             await terrain.ShutdownAsync();
         }
 
-        var text = string.Create(CultureInfo.InvariantCulture, $"K5-22 descent 8 km: {trials - failures}/{trials} ok") + "\n" + string.Join('\n', report);
+        var text = string.Create(CultureInfo.InvariantCulture, $"K5-22 descent 8 km{(gated ? " (readiness-gated)" : string.Empty)}: {trials - failures}/{trials} ok")
+            + "\n" + string.Join('\n', report);
         GD.Print(text);
         if (System.Environment.GetEnvironmentVariable("HORYZONT_DESCENT_REPORT") is { Length: > 0 } file)
         {
@@ -101,7 +114,8 @@ public class DescentTests
         AssertThat(failures).OverrideFailureMessage(text).IsEqual(0);
     }
 
-    private static async Task<Result> Descend(EngineTestScene scene, VoxelServerTerrain terrain, ServerShipViewers viewers, BodyInfo body, Random random)
+    private static async Task<Result> Descend(
+        EngineTestScene scene, VoxelServerTerrain terrain, ServerShipViewers viewers, BodyInfo body, Random random, bool gated)
     {
         var planets = terrain.Planets;
         using var lease = planets.Acquire(body.Planet, PlanetLeaseReason.Dev);
@@ -124,15 +138,46 @@ public class DescentTests
         {
             var speed = Math.Clamp(h / Tau, 100.0, 2000.0);
             var centre = direction * (ground + (float)h);
+            var query = ShipTerrainQuery.Of(
+                centre, ShipRadius, direction * -(float)speed, MathF.Max(centre.Length() - lowest, 0f), radius, PlanetGeneratorV1.MaxReliefMeters);
             if (ticks % ServerShipViewers.UpdateIntervalTicks == 0)
             {
-                var column = TerrainColumn.UnderShip(centre, ShipRadius, (float)speed, MathF.Max(centre.Length() - lowest, 0f), radius, PlanetGeneratorV1.MaxReliefMeters);
-                viewers.Apply(new EntityId(9000), body.Planet, column, node, ground);
+                if (gated)
+                {
+                    viewers.Apply(new EntityId(9000), body.Planet, query, node, ground);
+                }
+                else
+                {
+                    viewers.Apply(new EntityId(9000), body.Planet, query.Column, node, ground);
+                }
             }
 
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
             ticks++;
-            if (h <= CheckBelow)
+            if (gated)
+            {
+                var readiness = planets.GetShipReadiness(body.Planet, query);
+                if (readiness == PlanetTerrainReadiness.Ready && h <= CheckBelow && !Hits(node, centre, direction, ground, mask))
+                {
+                    return new Result(false, ticks * TickSeconds, worstWait, string.Create(CultureInfo.InvariantCulture, $"Ready without collision at h {h:F1} m"));
+                }
+
+                if (readiness != PlanetTerrainReadiness.Ready)
+                {
+                    // CollisionPending (K5-24): hover until ready, at most the readiness timeout.
+                    waiting++;
+                    worstWait = Math.Max(worstWait, waiting);
+                    if (readiness == PlanetTerrainReadiness.Faulted || waiting > MaxWaitTicks)
+                    {
+                        return new Result(false, ticks * TickSeconds, worstWait, string.Create(CultureInfo.InvariantCulture, $"{readiness} for {waiting} ticks at h {h:F1} m"));
+                    }
+
+                    continue;
+                }
+
+                waiting = 0;
+            }
+            else if (h <= CheckBelow)
             {
                 if (Hits(node, centre, direction, ground, mask))
                 {
