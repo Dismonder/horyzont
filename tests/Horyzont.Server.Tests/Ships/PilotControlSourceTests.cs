@@ -1,6 +1,6 @@
 using Horyzont.Core.Ids;
-using Horyzont.Core.Ships;
 using Horyzont.Core.Protocol.Messages;
+using Horyzont.Core.Ships;
 using Horyzont.Core.Ships.Flight;
 using Horyzont.Core.World.Ships;
 
