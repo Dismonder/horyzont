@@ -55,6 +55,23 @@ public class FramePoseHistoryTests
     }
 
     [Fact]
+    public void FramePoseHistory_CustomSampleCount_KeepsALongerWindow()
+    {
+        var history = new FramePoseHistory(capacity: 1, samples: 90);
+        var frame = FrameRef.Of(new EntityId(3));
+        for (ulong tick = 1; tick <= 100; tick++)
+        {
+            history.Record(new Tick(tick), frame, new PoseD(new Vector3D(tick, 0, 0), QuaternionD.Identity));
+        }
+
+        Assert.Equal(90, history.Samples);
+        Assert.True(history.TryGetWorldPose(frame, 11.5, out var old));
+        Assert.Equal(11.5, old.Position.X, 9);
+        Assert.False(history.TryGetWorldPose(frame, 10.5, out _));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new FramePoseHistory(samples: 1));
+    }
+
+    [Fact]
     public void FramePoseHistory_Capacity_RefusesNewFramesWhenFull()
     {
         var history = new FramePoseHistory(capacity: 2);

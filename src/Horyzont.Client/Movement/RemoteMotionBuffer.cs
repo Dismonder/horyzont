@@ -47,6 +47,7 @@ public sealed class RemoteMotionBuffer
     {
         if (!Finite(sample.Position) || !Finite(sample.Velocity) || !float.IsFinite(sample.Rotation.LengthSquared())
             || MathF.Abs(sample.Rotation.Length() - 1f) > 0.01f) { return false; }
+        var rebased = false;
         if (Count > 0)
         {
             var last = At(Count - 1);
@@ -54,7 +55,7 @@ public sealed class RemoteMotionBuffer
             if (sample.Frame != last.Frame || sample.ParentSeq != last.ParentSeq)
             {
                 if (_frames is null) { _head = 0; Count = 0; ReparentSnaps++; }
-                else { Rebase(sample.Frame, sample.ParentSeq, _frames); }
+                else { Rebase(sample.Frame, sample.ParentSeq, _frames); rebased = true; }
             }
         }
         if (Count > 0)
@@ -64,6 +65,11 @@ public sealed class RemoteMotionBuffer
             if (sample.MotionFlags == (byte)MovementMode.DevFlying && last.MotionFlags == sample.MotionFlags)
             {
                 distanceLimit = Math.Max(distanceLimit, _flightSpeed * ((sample.ServerTick.Value - last.ServerTick.Value) / _tickRate));
+            }
+            if (rebased)
+            {
+                // Rebased samples keep their world motion, which in the new frame may be a ship's speed (K5-20).
+                distanceLimit += last.Velocity.Length() * ((sample.ServerTick.Value - last.ServerTick.Value) / _tickRate);
             }
             if (Vector3.Distance(sample.Position, last.Position) > distanceLimit)
             {

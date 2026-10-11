@@ -15,6 +15,7 @@ public sealed class FramePoseHistory : IFrameHistoryView
     /// <summary>Default number of frame slots.</summary>
     public const int DefaultCapacity = 64;
 
+    private readonly int _samples;
     private readonly Dictionary<FrameRef, int> _slots;
     private readonly int[] _free;
     private readonly ulong[] _ticks;
@@ -25,14 +26,17 @@ public sealed class FramePoseHistory : IFrameHistoryView
 
     /// <summary>Creates an empty history.</summary>
     /// <param name="capacity">Number of frame slots.</param>
-    public FramePoseHistory(int capacity = DefaultCapacity)
+    /// <param name="samples">Samples kept per frame (the server keeps <see cref="HistoryTicks"/>; a client covers its interpolation delay).</param>
+    public FramePoseHistory(int capacity = DefaultCapacity, int samples = HistoryTicks)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(samples, 2);
+        _samples = samples;
         Capacity = capacity;
         _slots = new Dictionary<FrameRef, int>(capacity);
         _free = new int[capacity];
-        _ticks = new ulong[capacity * HistoryTicks];
-        _poses = new PoseD[capacity * HistoryTicks];
+        _ticks = new ulong[capacity * _samples];
+        _poses = new PoseD[capacity * _samples];
         _head = new int[capacity];
         _count = new int[capacity];
         for (var i = 0; i < capacity; i++)
@@ -42,6 +46,9 @@ public sealed class FramePoseHistory : IFrameHistoryView
 
         _freeCount = capacity;
     }
+
+    /// <summary>Gets the number of samples kept per frame.</summary>
+    public int Samples => _samples;
 
     /// <summary>Gets the number of frame slots.</summary>
     public int Capacity { get; }
@@ -74,10 +81,10 @@ public sealed class FramePoseHistory : IFrameHistoryView
             _count[slot] = 0;
         }
 
-        var start = slot * HistoryTicks;
+        var start = slot * _samples;
         if (_count[slot] > 0)
         {
-            var newest = start + ((_head[slot] + HistoryTicks - 1) % HistoryTicks);
+            var newest = start + ((_head[slot] + _samples - 1) % _samples);
             if (tick.Value < _ticks[newest])
             {
                 return false;
@@ -93,8 +100,8 @@ public sealed class FramePoseHistory : IFrameHistoryView
         var index = start + _head[slot];
         _ticks[index] = tick.Value;
         _poses[index] = worldPose;
-        _head[slot] = (_head[slot] + 1) % HistoryTicks;
-        _count[slot] = Math.Min(_count[slot] + 1, HistoryTicks);
+        _head[slot] = (_head[slot] + 1) % _samples;
+        _count[slot] = Math.Min(_count[slot] + 1, _samples);
         return true;
     }
 
@@ -108,12 +115,12 @@ public sealed class FramePoseHistory : IFrameHistoryView
         }
 
         // Walk from the newest sample back to the oldest one.
-        var start = slot * HistoryTicks;
+        var start = slot * _samples;
         var count = _count[slot];
         var later = -1;
         for (var k = 1; k <= count; k++)
         {
-            var index = start + ((_head[slot] + HistoryTicks - k) % HistoryTicks);
+            var index = start + ((_head[slot] + _samples - k) % _samples);
             var sampleTick = (double)_ticks[index];
             if (sampleTick == tick)
             {

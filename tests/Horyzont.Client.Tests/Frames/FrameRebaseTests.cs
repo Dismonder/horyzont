@@ -97,6 +97,22 @@ public sealed class FrameRebaseTests
     }
 
     [Fact]
+    public void RemoteMotionBuffer_LeavingAFastShip_IsNotATeleport()
+    {
+        var buffer = new RemoteMotionBuffer(frames: new MovingShip());
+        for (ulong tick = 100; tick <= 106; tick += 2)
+        {
+            Assert.True(buffer.Push(InShip(tick)));
+        }
+
+        // Off the ship 6 ticks later: 3 m away from the last sample in the planet frame, at the ship's speed.
+        var world = FrameMath.TransformPoint(MovingShip.ShipAt(112), Vector3D.FromFloat(InShip(106).Position));
+        Assert.True(buffer.Push(InPlanet(112) with { Position = new Vector3((float)world.X, (float)world.Y, (float)world.Z), ParentSeq = 2 }));
+        Assert.Equal(5, buffer.Count);
+        Assert.Equal(0, buffer.ReparentSnaps);
+    }
+
+    [Fact]
     public void RemoteMotionBuffer_ReparentWithoutHistory_DropsOlderAndCountsSnap()
     {
         var buffer = new RemoteMotionBuffer(frames: new MovingShip(from: 106));

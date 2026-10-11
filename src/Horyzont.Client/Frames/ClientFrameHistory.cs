@@ -13,6 +13,12 @@ namespace Horyzont.Client.Frames;
 /// </summary>
 public sealed class ClientFrameHistory : IFullSnapshotSink, IFrameHistoryView
 {
+    /// <summary>
+    /// Snapshots kept per frame: 1.5 s at 60 snapshots per second. The window must cover the render delay (interpolation delay plus
+    /// one-way latency and jitter) so that samples a reparent rebases still have frame poses (plan risk: buffer + 250 ms).
+    /// </summary>
+    public const int DefaultSamples = 90;
+
     private readonly EntityMirror _entities;
     private readonly IPlanetPlacement _placement;
     private readonly FramePoseHistory _history;
@@ -21,13 +27,14 @@ public sealed class ClientFrameHistory : IFullSnapshotSink, IFrameHistoryView
     /// <param name="entities">The entity mirror (kinds of snapshot entities, despawns).</param>
     /// <param name="placement">Planet poses in their system frame.</param>
     /// <param name="capacity">Number of frames recorded at once.</param>
-    public ClientFrameHistory(EntityMirror entities, IPlanetPlacement placement, int capacity = FramePoseHistory.DefaultCapacity)
+    /// <param name="samples">Snapshots kept per frame.</param>
+    public ClientFrameHistory(EntityMirror entities, IPlanetPlacement placement, int capacity = FramePoseHistory.DefaultCapacity, int samples = DefaultSamples)
     {
         ArgumentNullException.ThrowIfNull(entities);
         ArgumentNullException.ThrowIfNull(placement);
         _entities = entities;
         _placement = placement;
-        _history = new FramePoseHistory(capacity);
+        _history = new FramePoseHistory(capacity, samples);
         _entities.Despawned += OnDespawned;
     }
 
