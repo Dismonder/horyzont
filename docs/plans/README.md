@@ -340,6 +340,7 @@ Kolejność K5: (wykonawcy dopisują tu po scaleniu: pakiet, PR, `ProtocolVersio
 
 - K5-20 — PR: (numer przy otwarciu), `ProtocolVersion` = 6 na gałęzi (main 5 + 1); przy scaleniu po K5-23 wartość = (main) + 1 po rebase (D4).
 - K5-21 — PR: (numer przy otwarciu), `ProtocolVersion` = 7 na stosie K5-20 (K5-20 = 6, + 1); przy scaleniu wartość = (main) + 1 po rebase (D4).
+- K5-22 — PR: (numer przy otwarciu), `ProtocolVersion` = 8 na stosie K5-21 (K5-21 = 7, + 1); przy scaleniu wartość = (main) + 1 po rebase (D4). Kroki 9 (część benchmarku) i 10 wstrzymane do scalenia K4-19.
 
 ## Szablon planu pakietu
 
