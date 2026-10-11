@@ -3,6 +3,7 @@ using System.Numerics;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
+using Horyzont.Core.World.Ships;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -308,6 +309,32 @@ public sealed class ServerSimulation
         }
 
         state.SetPose(origin, rotation);
+        return true;
+    }
+
+    /// <summary>
+    /// Flight state of a ship outside the journal (K5-24 decision 11; fuel and velocities are not in the state hash). False for a
+    /// construct that is unknown or not in <see cref="ConstructMode.Ship"/>, for a record of another construct and for invalid values.
+    /// An unchanged record is not marked for the checkpoint.
+    /// </summary>
+    /// <param name="construct">The ship.</param>
+    /// <param name="record">The record.</param>
+    /// <returns>True when stored.</returns>
+    public bool UpdateShipState(EntityId construct, in ShipStateRecord record)
+    {
+        EnsureNotFaulted();
+        if (record.Construct != construct || !record.IsValid || !State.Constructs.TryGet(construct, out var ship) || ship.Mode != ConstructMode.Ship)
+        {
+            return false;
+        }
+
+        if (State.ShipStates.TryGet(construct, out var current) && current == record)
+        {
+            return true;
+        }
+
+        State.ShipStates.Set(record);
+        State.Tracker.MarkShipState(construct);
         return true;
     }
 
