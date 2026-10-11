@@ -1,13 +1,14 @@
-using Godot;
-
 using Horyzont.Core.Checkpoints;
+using Horyzont.Core.Ids;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.World.Terrain;
+using Horyzont.Game.Server.Terrain;
 using Horyzont.Game.Terrain;
 using Horyzont.Persistence.Terrain;
 using Horyzont.Persistence.Writing;
 using Horyzont.Server;
+using Horyzont.Server.Space;
 using Horyzont.Server.Terrain;
 
 namespace Horyzont.Game.Server;
@@ -23,7 +24,6 @@ public sealed class VoxelServerTerrain : IServerTerrain, ITerrainReplicationSour
 {
     private readonly ServerTerrainBlocks _blocks;
     private readonly TerrainBlockStore _store;
-    private readonly IReadOnlyList<PlanetTerrain> _nodes;
     private readonly TimeProvider _time;
     private readonly TerrainBlockCodec _codec = new();
     private readonly Dictionary<ulong, GeneratedBlockSource> _generated = [];
@@ -32,25 +32,28 @@ public sealed class VoxelServerTerrain : IServerTerrain, ITerrainReplicationSour
     /// <param name="service">Terrain service with the planets added.</param>
     /// <param name="blocks">Edited blocks of the world.</param>
     /// <param name="store">Block store of the world file.</param>
-    /// <param name="nodes">The planet nodes (in the scene tree under the server node).</param>
+    /// <param name="planets">The planet terrains, created on demand (K5-22).</param>
     /// <param name="time">Clock of the area loader.</param>
     /// <param name="derived">Persistent mipmaps of the planets; stepped by the game and closed in step 7a of the shutdown.</param>
     public VoxelServerTerrain(
-        VoxelTerrainService service, ServerTerrainBlocks blocks, TerrainBlockStore store, IReadOnlyList<PlanetTerrain> nodes, TimeProvider time,
+        VoxelTerrainService service, ServerTerrainBlocks blocks, TerrainBlockStore store, ServerPlanetTerrains planets, TimeProvider time,
         DerivedTerrain? derived = null)
     {
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(blocks);
         ArgumentNullException.ThrowIfNull(store);
-        ArgumentNullException.ThrowIfNull(nodes);
+        ArgumentNullException.ThrowIfNull(planets);
         ArgumentNullException.ThrowIfNull(time);
         Voxel = service;
         _blocks = blocks;
         _store = store;
-        _nodes = nodes;
+        Planets = planets;
         _time = time;
         Derived = derived;
     }
+
+    /// <summary>Gets the planet terrains (activation, leases, readiness — K5-22).</summary>
+    public ServerPlanetTerrains Planets { get; }
 
     /// <summary>Gets the persistent mipmaps of the edited terrain (K3-16); null when the terrain has none.</summary>
     public DerivedTerrain? Derived { get; }
@@ -81,7 +84,32 @@ public sealed class VoxelServerTerrain : IServerTerrain, ITerrainReplicationSour
     public async Task ReplayAsync(ServerSimulation simulation, IReadOnlyList<JournalEntry> tail, CancellationToken ct)
     {
         var loader = new TerrainAreaLoader(Voxel, _time, TerrainAreaLoader.DefaultDeadline);
-        var check = await TerrainReplay.ReplayAsync(simulation, tail, loader, TerrainEditSemantics.Current, ct).ConfigureAwait(true);
+        TerrainTailCheck check;
+        using (Planets.BeginReplay())
+        {
+            // K5-22 decision 4: every planet edited in the tail is held active by a lease while the replay runs.
+            var leases = new List<PlanetTerrainLease>();
+            try
+            {
+                foreach (var planet in TerrainReplay.EditedPlanets(tail))
+                {
+                    if (simulation.State.Planets.TryGet(planet, out _))
+                    {
+                        leases.Add(Planets.Acquire(planet, PlanetLeaseReason.Replay));
+                    }
+                }
+
+                check = await TerrainReplay.ReplayAsync(simulation, tail, loader, TerrainEditSemantics.Current, ct).ConfigureAwait(true);
+            }
+            finally
+            {
+                foreach (var lease in leases)
+                {
+                    lease.Dispose();
+                }
+            }
+        }
+
         if (check.IsMismatch)
         {
             throw new InvalidOperationException($"The journal tail does not match the terrain semantics after the runtime accepted it: {check.Describe()}");
@@ -148,14 +176,7 @@ public sealed class VoxelServerTerrain : IServerTerrain, ITerrainReplicationSour
             _store.Close();
         }
 
-        foreach (var node in _nodes)
-        {
-            if (GodotObject.IsInstanceValid(node))
-            {
-                node.GetParent()?.RemoveChild(node);
-                node.QueueFree();
-            }
-        }
+        Planets.FreeAll();
 
         if (drained)
         {
@@ -172,14 +193,11 @@ public sealed class VoxelServerTerrain : IServerTerrain, ITerrainReplicationSour
             return true;
         }
 
-        foreach (var node in _nodes)
+        if (Planets.TryGetGenerator(new PlanetId(planet), out var generator))
         {
-            if (node.Planet.Value == planet && GodotObject.IsInstanceValid(node) && node.Terrain.Generator is { } generator)
-            {
-                source = new GeneratedBlockSource(generator, _codec);
-                _generated.Add(planet, source);
-                return true;
-            }
+            source = new GeneratedBlockSource(generator, _codec);
+            _generated.Add(planet, source);
+            return true;
         }
 
         source = null;

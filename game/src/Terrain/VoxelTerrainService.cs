@@ -9,6 +9,7 @@ using Horyzont.Core.World;
 using Horyzont.Core.World.Terrain;
 using Horyzont.Game.Planet;
 using Horyzont.Persistence.Terrain;
+using Horyzont.Server.Space;
 
 using Microsoft.Extensions.Logging;
 
@@ -79,7 +80,7 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
     public TerrainBlockKey? FirstFault => FirstStreamError ?? _blocks.FirstCorruptKey;
 
     /// <summary>
-    /// Wraps a terrain node made by <see cref="PlanetTerrainFactory.Create"/> and attaches the stream; the caller adds the returned
+    /// Wraps a terrain node made by <see cref="PlanetTerrainFactory"/> and attaches the stream; the caller adds the returned
     /// node to the scene tree (Voxel Tools starts streaming when the terrain enters the tree). Main thread.
     /// </summary>
     /// <param name="planet">The planet.</param>
@@ -121,13 +122,91 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
         var stream = new TerrainStream(planet.Id, _blocks, _codec, new DerivedLodCache(), _logger, derived);
         configured.Stream = stream;
         var node = new PlanetTerrain(planet.Id, configured, stream);
-        _planets.Add(planet.Id.Value, new Entry(planet, node));
+        _planets.Add(planet.Id.Value, new Entry(planet, node, derived));
         if (derived is not null)
         {
             derived.ReloadRequested += node.ReloadFromStream;
         }
 
         return node;
+    }
+
+    /// <summary>
+    /// Removes the terrain of a planet (K5-22 decision 3): unhooks the mipmap reloads, takes the node out of the tree, closes its stream
+    /// and frees the node. The edited blocks live in <see cref="ServerTerrainBlocks"/>, so nothing is lost; <see cref="AddPlanet"/> may
+    /// add the planet again with a new node. The caller refuses this during a replay or while a lease holds the planet. Main thread.
+    /// </summary>
+    /// <param name="planet">The planet.</param>
+    /// <returns>False when the planet had no terrain.</returns>
+    public bool RemovePlanet(PlanetId planet)
+    {
+        EnsureMainThread();
+        if (!_planets.Remove(planet.Value, out var entry))
+        {
+            return false;
+        }
+
+        var node = entry.Node;
+        if (entry.Derived is { } derived)
+        {
+            derived.ReloadRequested -= node.ReloadFromStream;
+        }
+
+        node.GetParent()?.RemoveChild(node);
+        node.Stream.Close();
+        node.QueueFree();
+        return true;
+    }
+
+    /// <summary>
+    /// Readiness of the terrain of a planet in a sphere (K5-22 decision 6, README Y11): <c>Ready</c> only when every LOD 0 block in the
+    /// box of the sphere is loaded and its mesh, with the collision shape, applied (<see cref="VoxelLodTerrain.IsAreaMeshed"/>; Voxel
+    /// Tools marks a mesh block up to date in the same main-thread call that sets its collider while the collision update delay is 0).
+    /// A sphere entirely above <paramref name="clearRadius"/> is ready as soon as the node exists. Main thread; allocation-free.
+    /// </summary>
+    /// <param name="planet">The planet.</param>
+    /// <param name="center">Centre in the planet frame.</param>
+    /// <param name="radius">Radius in metres.</param>
+    /// <param name="clearRadius">Distance from the planet centre above which nothing is built (R + MaxRelief + 64).</param>
+    /// <returns>The readiness.</returns>
+    public PlanetTerrainReadiness GetReadiness(PlanetId planet, Vector3 center, float radius, float clearRadius)
+    {
+        EnsureMainThread();
+        if (_shutDown || !_planets.TryGetValue(planet.Value, out var entry))
+        {
+            return PlanetTerrainReadiness.Inactive;
+        }
+
+        if (entry.Node.Stream.FirstError is not null || _blocks.FirstCorruptKey is not null || _blocks.IsSaturated)
+        {
+            return PlanetTerrainReadiness.Faulted;
+        }
+
+        if (!float.IsFinite(center.X) || !float.IsFinite(center.Y) || !float.IsFinite(center.Z) || !float.IsFinite(radius) || radius < 0f)
+        {
+            return PlanetTerrainReadiness.Streaming;
+        }
+
+        if (center.Length() - radius > clearRadius)
+        {
+            return PlanetTerrainReadiness.Ready;
+        }
+
+        var terrain = entry.Node.Terrain;
+        if (terrain.CollisionUpdateDelay != 0 || !IsBlockAreaEditable(entry, center, radius))
+        {
+            return PlanetTerrainReadiness.Streaming;
+        }
+
+        // The box of the sphere clipped to the voxel bounds of the planet (no mesh blocks exist outside them).
+        var bounds = terrain.GetVoxelBounds();
+        var box = new Aabb(TerrainVectors.ToGodot(center - new Vector3(radius)), TerrainVectors.ToGodot(new Vector3(2f * radius))).Intersection(bounds);
+        if (box.Size.X <= 0 || box.Size.Y <= 0 || box.Size.Z <= 0)
+        {
+            return PlanetTerrainReadiness.Ready;
+        }
+
+        return terrain.IsAreaMeshed(box, 0) ? PlanetTerrainReadiness.Ready : PlanetTerrainReadiness.Streaming;
     }
 
     /// <summary>The terrain node of a planet. Main thread.</summary>
@@ -390,8 +469,10 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
         return entry.Node.Tool.IsAreaEditable(BlockBox(min, max));
     }
 
-    private sealed class Entry(PlanetParams planet, PlanetTerrain node)
+    private sealed class Entry(PlanetParams planet, PlanetTerrain node, DerivedLodRebuilder? derived)
     {
+        public DerivedLodRebuilder? Derived { get; } = derived;
+
         public PlanetParams Planet { get; } = planet;
 
         public PlanetTerrain Node { get; } = node;

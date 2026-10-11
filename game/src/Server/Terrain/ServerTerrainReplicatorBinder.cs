@@ -1,5 +1,6 @@
 using System.Numerics;
 
+using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
@@ -56,6 +57,9 @@ public sealed class ServerTerrainReplicatorBinder : IServerTickParticipant, ISer
         _buildHash = buildHash;
     }
 
+    /// <summary>Gets or sets the frame graph of the running world (K5-22: feet expressed in the viewed planet frame); null before it exists.</summary>
+    public Func<FrameGraph?> Frames { get; set; } = static () => null;
+
     /// <summary>Gets the replicator once the world has started; null before.</summary>
     public ServerTerrainReplicator? Replicator => _replicator;
 
@@ -102,31 +106,36 @@ public sealed class ServerTerrainReplicatorBinder : IServerTickParticipant, ISer
         }
 
         var terrain = _terrainFactory.Terrain ?? throw new InvalidOperationException("The server terrain does not exist yet.");
-        _host = new Host(runtime, _characters, _freeCameraAllowed);
+        _host = new Host(runtime, _characters, _freeCameraAllowed, Frames);
         _replicator = new ServerTerrainReplicator(
             _host, terrain, runtime.State, _budget, _time, _loggers.CreateLogger<ServerTerrainReplicator>(), _buildHash);
         runtime.Simulation.Applied += _replicator.OnOperationApplied;
         return _replicator;
     }
 
-    private sealed class Host(ServerRuntime runtime, ServerCharactersBinder? characters, bool freeCameraAllowed) : ITerrainReplicationHost
+    private sealed class Host(ServerRuntime runtime, ServerCharactersBinder? characters, bool freeCameraAllowed, Func<FrameGraph?> graph) : ITerrainReplicationHost
     {
         public bool FreeCameraAllowed => freeCameraAllowed;
 
         public bool IsLocalPlayer(PlayerId player) => runtime.IsLocalPlayer(player);
 
-        public bool TryGetFeet(PlayerId player, out PlanetId planet, out Vector3 feet)
+        public TerrainFeet GetFeet(PlayerId player, PlanetId planet, out Vector3 feetInPlanet, out float extraTolerance)
         {
-            if (characters?.Characters is { } active && active.TryGetState(player, out var state))
+            feetInPlanet = default;
+            extraTolerance = 0f;
+            if (characters?.Characters is not { } active || !active.TryGetState(player, out var body))
             {
-                planet = state.Planet;
-                feet = state.Feet;
-                return true;
+                return TerrainFeet.NoBody;
             }
 
-            planet = default;
-            feet = default;
-            return false;
+            if (graph() is { } frames && runtime.State.Players.TryGet(player, out var state))
+            {
+                return TerrainViewFeet.Resolve(frames, runtime.State, state.Frame, body.Planet, body.Feet, planet, out feetInPlanet, out extraTolerance);
+            }
+
+            // Before the frames exist only the planet of the body can be viewed.
+            feetInPlanet = body.Feet;
+            return body.Planet == planet ? TerrainFeet.Found : TerrainFeet.TooFar;
         }
 
         public void Send(PlayerId player, Message message) => runtime.Session.Send(player, message);

@@ -464,17 +464,17 @@ public sealed class ServerTerrainReplicatorTests
 
         public bool IsLocalPlayer(PlayerId player) => Local.Contains(player);
 
-        public bool TryGetFeet(PlayerId player, out PlanetId planet, out Vector3 feet)
+        public TerrainFeet GetFeet(PlayerId player, PlanetId planet, out Vector3 feetInPlanet, out float extraTolerance)
         {
+            extraTolerance = 0f;
             if (Feet.TryGetValue(player, out var found))
             {
-                (planet, feet) = found;
-                return true;
+                feetInPlanet = found.Feet;
+                return found._planet == planet ? TerrainFeet.Found : TerrainFeet.TooFar;
             }
 
-            planet = default;
-            feet = default;
-            return false;
+            feetInPlanet = default;
+            return TerrainFeet.NoBody;
         }
 
         public void Send(PlayerId player, Message message) => _sent.Add((player, message));

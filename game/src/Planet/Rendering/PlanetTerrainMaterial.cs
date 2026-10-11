@@ -21,6 +21,12 @@ public static class PlanetTerrainMaterial
         new(0.14f, 0.14f, 0.17f),
     ];
 
+    /// <summary>The base colour of a texture index (impostor vertex colours, K5-22 decision 12); grey for an unknown index.</summary>
+    /// <param name="textureIndex">The texture index (<see cref="TerrainMaterials"/>).</param>
+    /// <returns>The colour.</returns>
+    public static Color BaseColor(int textureIndex) =>
+        textureIndex >= 0 && textureIndex < _baseColors.Length ? _baseColors[textureIndex] : new Color(0.5f, 0.5f, 0.5f);
+
     /// <summary>Builds the material. Main thread.</summary>
     public static ShaderMaterial Create()
     {
