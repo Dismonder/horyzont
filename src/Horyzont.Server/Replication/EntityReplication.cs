@@ -57,6 +57,7 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
     private InterestSubject[] _subjects = new InterestSubject[64];
     private InterestViewer[] _viewers = new InterestViewer[8];
     private int _entityCount;
+    private int _subjectCount;
     private bool _forceUpdate;
     private bool _detached;
 
@@ -288,6 +289,7 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
     private void UpdateLifecycle()
     {
         Grow(ref _subjects, _entityCount);
+        _subjectCount = _entityCount;
         for (var i = 0; i < _entityCount; i++)
         {
             ref readonly var entity = ref _entities[i];
@@ -485,7 +487,7 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
             _session.Send(player, MakeSpawn(in entity));
             state.Known.Add(entity.Id, entity.Kind);
             AddMobile(state, entity.Id);
-            _constructs.Enqueue(player, entity.Id);
+            EnqueueTransfer(player, entity.Id);
             return;
         }
 
@@ -580,7 +582,7 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         if (kind == EntityKind.Construct)
         {
             // A request for a transfer in progress means the client gave up on it (stall): restart with a new part 0.
-            _constructs.Enqueue(player, entity);
+            EnqueueTransfer(player, entity);
         }
         else if (_index.TryGetValue(entity, out var index))
         {
@@ -646,7 +648,7 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         if (kind == EntityKind.Construct && !_constructs.IsLive(player, op.Entity))
         {
             // No complete copy yet (a transfer in progress): the transfer restarts with the new header.
-            _constructs.Enqueue(player, op.Entity);
+            EnqueueTransfer(player, op.Entity);
         }
         else
         {
@@ -685,8 +687,53 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         }
         else
         {
-            _constructs.Enqueue(player, change.Construct);
+            EnqueueTransfer(player, change.Construct);
         }
+    }
+
+    /// <summary>
+    /// Enqueues a complete state with its K5-26 priority: the ship the recipient's body is in, other ships by distance in the region
+    /// (from this round's subjects), static constructs last.
+    /// </summary>
+    private void EnqueueTransfer(PlayerId player, EntityId construct)
+    {
+        if (!_simulation.State.Constructs.TryGet(construct, out var value) || value.Mode != ConstructMode.Ship)
+        {
+            _constructs.Enqueue(player, construct, ConstructTransferPriority.Static, 0f);
+            return;
+        }
+
+        var distance = float.PositiveInfinity;
+        var priority = ConstructTransferPriority.Ship;
+        if (TryFindOwnIndex(player, out var own))
+        {
+            if (TryFindShip(_entities[own].Frame.Frame, out var ship) && _entities[ship].Id == construct)
+            {
+                priority = ConstructTransferPriority.Own;
+            }
+            else if (_index.TryGetValue(construct, out var index) && own < _subjectCount && index < _subjectCount
+                && _subjects[own].Region == _subjects[index].Region)
+            {
+                distance = Vector3.Distance(_subjects[own].Position, _subjects[index].Position);
+            }
+        }
+
+        _constructs.Enqueue(player, construct, priority, distance);
+    }
+
+    private bool TryFindOwnIndex(PlayerId player, out int index)
+    {
+        for (var i = 0; i < _entityCount; i++)
+        {
+            if (_entities[i].Kind == EntityKind.Player && _entities[i].Owner == player)
+            {
+                index = i;
+                return true;
+            }
+        }
+
+        index = -1;
+        return false;
     }
 
     private sealed class NoPlanetPlacement : IPlanetPlacement

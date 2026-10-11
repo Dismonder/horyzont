@@ -62,6 +62,7 @@ public sealed class ConstructStateSender
     private readonly ByteWriter _writer = new(64 * 1024);
     private readonly Dictionary<PlayerId, Recipient> _recipients = [];
     private readonly List<PlayerId> _order = [];
+    private long _sequence;
 
     /// <summary>Initializes a new instance of the <see cref="ConstructStateSender"/> class.</summary>
     /// <param name="session">Session the frames go through.</param>
@@ -86,13 +87,41 @@ public sealed class ConstructStateSender
     /// <summary>Gets the number of transfers that were replaced by a newer state.</summary>
     public long RestartedTransfers { get; private set; }
 
-    /// <summary>Starts, or restarts with a newer state, the transfer of a construct to a recipient.</summary>
+    /// <summary>
+    /// Starts, or restarts with a newer state, the transfer of a construct to a recipient: a known link keeps its priority, a new one is
+    /// a static construct.
+    /// </summary>
     /// <param name="player">Recipient.</param>
     /// <param name="construct">Construct entity.</param>
     public void Enqueue(PlayerId player, EntityId construct)
     {
+        if (_recipients.TryGetValue(player, out var recipient) && recipient.Links.TryGetValue(construct, out var link))
+        {
+            Enqueue(player, construct, link.Priority, link.Distance);
+            return;
+        }
+
+        Enqueue(player, construct, ConstructTransferPriority.Static, 0f);
+    }
+
+    /// <summary>
+    /// Starts, or restarts with a newer state, the transfer of a construct to a recipient (K5-26 decision 5). Transfers that have sent a
+    /// part go on first (never preempted), then by <paramref name="priority"/>, ships by <paramref name="distance"/>, then by arrival.
+    /// </summary>
+    /// <param name="player">Recipient.</param>
+    /// <param name="construct">Construct entity.</param>
+    /// <param name="priority">Priority class.</param>
+    /// <param name="distance">Distance from the recipient in the region (ships); infinity when unknown.</param>
+    public void Enqueue(PlayerId player, EntityId construct, ConstructTransferPriority priority, float distance)
+    {
         var recipient = Get(player);
-        if (recipient.Links.TryGetValue(construct, out var link))
+        if (!recipient.Links.TryGetValue(construct, out var link))
+        {
+            link = new Link(construct);
+            recipient.Links.Add(construct, link);
+            recipient.Order.Add(link);
+        }
+        else
         {
             if (link.State != LinkState.Live)
             {
@@ -100,13 +129,13 @@ public sealed class ConstructStateSender
             }
 
             Release(recipient, link);
-            link.State = LinkState.Pending;
-            return;
         }
 
-        link = new Link(construct);
-        recipient.Links.Add(construct, link);
-        recipient.Order.Add(link);
+        link.State = LinkState.Pending;
+        link.Priority = priority;
+        link.Distance = float.IsNaN(distance) ? float.PositiveInfinity : distance;
+        link.Sequence = ++_sequence;
+        recipient.Unsorted = true;
     }
 
     /// <summary>Forgets the link of a construct: a running transfer is cancelled and its memory released.</summary>
@@ -256,6 +285,13 @@ public sealed class ConstructStateSender
 
     private void Advance(PlayerId player, Recipient recipient, ref int plan)
     {
+        if (recipient.Unsorted)
+        {
+            // Only after an enqueue or a first part: never in the steady state of live copies.
+            recipient.Order.Sort(LinkOrder.Instance);
+            recipient.Unsorted = false;
+        }
+
         // Pending -> capture -> plan: bounded per call.
         for (var i = 0; i < recipient.Order.Count; i++)
         {
@@ -399,6 +435,12 @@ public sealed class ConstructStateSender
         _session.SendEncoded(player, MessageType.ConstructState, link.Frame);
         link.Frame = null;
         link.PartIndex++;
+        if (link.PartIndex == 1)
+        {
+            // Started: it now goes before every transfer that has not sent anything.
+            recipient.Unsorted = true;
+        }
+
         if (link.PartIndex < link.PartEnds.Count)
         {
             return PartResult.Sent;
@@ -493,6 +535,34 @@ public sealed class ConstructStateSender
         public int Staged { get; set; }
 
         public int Buffered { get; set; }
+
+        public bool Unsorted { get; set; }
+    }
+
+    /// <summary>Started transfers first, then priority, distance and arrival; live and finished links keep their relative order.</summary>
+    private sealed class LinkOrder : IComparer<Link>
+    {
+        public static readonly LinkOrder Instance = new();
+
+        public int Compare(Link? x, Link? y)
+        {
+            ArgumentNullException.ThrowIfNull(x);
+            ArgumentNullException.ThrowIfNull(y);
+            var order = IsStarted(y).CompareTo(IsStarted(x));
+            if (order == 0)
+            {
+                order = x.Priority.CompareTo(y.Priority);
+            }
+
+            if (order == 0)
+            {
+                order = x.Distance.CompareTo(y.Distance);
+            }
+
+            return order != 0 ? order : x.Sequence.CompareTo(y.Sequence);
+        }
+
+        private static bool IsStarted(Link link) => link.State == LinkState.Sending && link.PartIndex > 0;
     }
 
     private sealed class Link(EntityId id)
@@ -522,5 +592,11 @@ public sealed class ConstructStateSender
         public byte[]? Frame { get; set; }
 
         public List<OperationApplied> Buffer { get; } = [];
+
+        public ConstructTransferPriority Priority { get; set; } = ConstructTransferPriority.Static;
+
+        public float Distance { get; set; }
+
+        public long Sequence { get; set; }
     }
 }
