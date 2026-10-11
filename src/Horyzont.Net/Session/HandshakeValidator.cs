@@ -12,8 +12,8 @@ namespace Horyzont.Net.Session;
 public static class HandshakeValidator
 {
     /// <summary>
-    /// Checks, in this order: build hash, password (constant-time comparison of SHA-256 digests), Steam identity,
-    /// bans, an identity already connected, the player limit.
+    /// Checks, in this order: build hash, password (constant-time comparison of SHA-256 digests), Steam identity
+    /// (the SteamID of a Steam endpoint must match the claim, and a Steam claim needs a Steam endpoint), bans, an identity already connected, the player limit.
     /// </summary>
     /// <param name="hello">The client's hello.</param>
     /// <param name="context">Server state.</param>
@@ -34,6 +34,12 @@ public static class HandshakeValidator
         }
 
         if (context.RemoteEndpoint is SteamEndpoint steam && hello.Identity != new PlatformIdentity(IdentityPlatform.Steam, steam.SteamId))
+        {
+            return HandshakeRejectCode.IdentityMismatch;
+        }
+
+        // A Steam identity is proven only by the Steam P2P endpoint: over UDP or in memory it would be a plain claim.
+        if (hello.Identity.Platform == IdentityPlatform.Steam && context.RemoteEndpoint is not SteamEndpoint)
         {
             return HandshakeRejectCode.IdentityMismatch;
         }

@@ -1,5 +1,6 @@
 using Godot;
 
+using Horyzont.Client.UI;
 using Horyzont.Core.Protocol.Messages;
 
 namespace Horyzont.Game.Client.Character;
@@ -30,6 +31,9 @@ public sealed partial class LocalInputReader : Node, ILocalInputSource
     private float _pitch;
     private int _wheel;
 
+    /// <summary>Gets or sets the gate that blocks all gameplay input while a menu or modal has focus (K3-18); null for none.</summary>
+    public IGameplayInputGate? Gate { get; set; }
+
     /// <summary>Gets or sets the mouse sensitivity in radians per pixel.</summary>
     public float Sensitivity { get; set; } = RadiansPerPixel;
 
@@ -38,6 +42,15 @@ public sealed partial class LocalInputReader : Node, ILocalInputSource
 
     /// <inheritdoc />
     public override void _Ready()
+    {
+        if (DisplayServer.GetName() != "headless" && Gate?.IsBlocked != true)
+        {
+            Capture();
+        }
+    }
+
+    /// <summary>Takes the mouse again after a menu or modal closed.</summary>
+    public void Recapture()
     {
         if (DisplayServer.GetName() != "headless")
         {
@@ -48,6 +61,11 @@ public sealed partial class LocalInputReader : Node, ILocalInputSource
     /// <inheritdoc />
     public override void _Input(InputEvent @event)
     {
+        if (Gate?.IsBlocked == true)
+        {
+            return;
+        }
+
         switch (@event)
         {
             case InputEventMouseMotion motion when MouseCaptured && Time.GetTicksMsec() >= _ignoreMotionUntil
@@ -69,6 +87,11 @@ public sealed partial class LocalInputReader : Node, ILocalInputSource
     /// <inheritdoc />
     public override void _UnhandledInput(InputEvent @event)
     {
+        if (Gate?.IsBlocked == true)
+        {
+            return;
+        }
+
         if (@event.IsActionPressed(_release) && MouseCaptured)
         {
             Input.MouseMode = Input.MouseModeEnum.Visible;
@@ -93,6 +116,14 @@ public sealed partial class LocalInputReader : Node, ILocalInputSource
     /// <inheritdoc />
     public LocalInputSample Take()
     {
+        if (Gate?.IsBlocked == true)
+        {
+            _yaw = 0f;
+            _pitch = 0f;
+            _wheel = 0;
+            return LocalInputSample.None;
+        }
+
         var buttons = InputButtons.None;
         if (Input.IsActionPressed(_jump))
         {

@@ -7,6 +7,7 @@ using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Simulation;
 using Horyzont.Net.Session;
+using Horyzont.Server.UI;
 
 using Microsoft.Extensions.Logging;
 
@@ -20,6 +21,7 @@ public sealed class GameServerHooks : IServerGameHooks
 
     private readonly ServerSimulation _simulation;
     private readonly Func<bool> _acceptsChanges;
+    private readonly Func<ServerStatusInfo> _status;
     private readonly ILogger<GameServerHooks> _logger;
     private readonly IReadOnlyList<IServerPlayerObserver> _observers;
     private readonly NewPlayerSpawn? _spawn;
@@ -31,16 +33,18 @@ public sealed class GameServerHooks : IServerGameHooks
     /// <param name="logger">Logger.</param>
     /// <param name="observers">Systems told when a player is ready and before a player leaves; none when null.</param>
     /// <param name="spawn">Pose of a player who joins for the first time; the simulation's own spawn point when null.</param>
+    /// <param name="status">Public availability snapshot; defaults to a generic writer warning.</param>
     /// <param name="handlers">Client message handlers in registration order; none when null.</param>
     public GameServerHooks(
         ServerSimulation simulation, Func<bool> acceptsChanges, ILogger<GameServerHooks> logger,
-        IReadOnlyList<IServerPlayerObserver>? observers = null, NewPlayerSpawn? spawn = null, IReadOnlyList<IServerClientMessageHandler>? handlers = null)
+        IReadOnlyList<IServerPlayerObserver>? observers = null, NewPlayerSpawn? spawn = null, IReadOnlyList<IServerClientMessageHandler>? handlers = null, Func<ServerStatusInfo>? status = null)
     {
         ArgumentNullException.ThrowIfNull(simulation);
         ArgumentNullException.ThrowIfNull(acceptsChanges);
         ArgumentNullException.ThrowIfNull(logger);
         _simulation = simulation;
         _acceptsChanges = acceptsChanges;
+        _status = status ?? (static () => new ServerStatusInfo(true, 2, "Writer unavailable"));
         _logger = logger;
         _observers = observers ?? [];
         _spawn = spawn;
@@ -57,7 +61,8 @@ public sealed class GameServerHooks : IServerGameHooks
     {
         if (!_acceptsChanges())
         {
-            throw new InvalidOperationException("server is read-only");
+            var status = _status();
+            throw new JoinUnavailableException(status.Reason, status.Detail);
         }
 
         var operation = _simulation.PreparePlayerJoin(identity, displayName);

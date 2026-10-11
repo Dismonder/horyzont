@@ -33,6 +33,19 @@ public sealed class ReplicationBudgetTests
     }
 
     [Fact]
+    public void Forget_AfterDebt_RestoresFullBucketAndDropsState()
+    {
+        var time = new FakeTimeProvider();
+        var budget = new TokenBucketReplicationBudget(time);
+        var player = new PlayerId(1);
+        Assert.True(budget.TryConsume(player, ReplicationTraffic.Bulk, 65536));
+        Assert.False(budget.TryConsume(player, ReplicationTraffic.Bulk, 1));
+        budget.Forget(player);
+        Assert.True(budget.TryConsume(player, ReplicationTraffic.Bulk, 65536));
+        budget.Forget(new PlayerId(99));
+    }
+
+    [Fact]
     public void TryConsume_LargeBulk_RequiresCapacityAndDebitsActualBytes()
     {
         var time = new FakeTimeProvider();

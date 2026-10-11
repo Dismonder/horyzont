@@ -3,6 +3,7 @@ using Godot;
 using Horyzont.Client.Session;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
+using Horyzont.Game.Client.Terrain;
 
 using Microsoft.Extensions.Logging;
 
@@ -33,6 +34,12 @@ public sealed partial class ClientNode : Node, IClientSessionListener
     /// <summary>Gets or sets the terrain the client sees; must be set before the server hello arrives.</summary>
     public IClientTerrainProvider? TerrainProvider { get; set; }
 
+    /// <summary>
+    /// Gets or sets the terrain replication of a remote client (K3-16); null for a host and solo player, who share the terrain of the
+    /// server. It reports the cache and the viewers before the client says ready.
+    /// </summary>
+    public ClientTerrainReplicator? TerrainReplicator { get; set; }
+
     /// <summary>Gives the node its dependencies.</summary>
     /// <param name="runtime">The client runtime.</param>
     /// <param name="logger">Logger.</param>
@@ -57,10 +64,18 @@ public sealed partial class ClientNode : Node, IClientSessionListener
     }
 
     /// <inheritdoc />
-    public override void _ExitTree() => _runtime?.RemoveListener(this);
+    public override void _ExitTree()
+    {
+        _runtime?.RemoveListener(this);
+        TerrainReplicator?.Dispose();
+    }
 
     /// <inheritdoc />
-    public override void _PhysicsProcess(double delta) => _runtime?.Poll();
+    public override void _PhysicsProcess(double delta)
+    {
+        _runtime?.Poll();
+        TerrainReplicator?.OnFrame();
+    }
 
     /// <inheritdoc />
     public void OnServerHello(ServerHello hello)
@@ -78,6 +93,8 @@ public sealed partial class ClientNode : Node, IClientSessionListener
             return;
         }
 
+        // The cache report and the first viewers go out before ready, so the server answers with the manifest of what changed.
+        TerrainReplicator?.Prepare(hello);
         runtime.Session.SendReady();
         Announce?.Invoke(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"CLIENT IN GAME player={hello.YourPlayer.Value}"));
     }

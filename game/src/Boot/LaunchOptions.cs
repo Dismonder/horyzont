@@ -1,5 +1,6 @@
 using System.Globalization;
 
+using Horyzont.Client.Steam;
 using Horyzont.Server;
 
 namespace Horyzont.Game.Boot;
@@ -15,13 +16,19 @@ public sealed record LaunchOptions
 
     private static readonly string[] _flags =
     [
-        "--solo", "--host", "--server", "--restore-latest-backup", "--recover-from-checkpoint", "--dev", "--dev-tools-demo",
+        "--solo", "--host", "--server", "--restore-latest-backup", "--recover-from-checkpoint", "--dev", "--dev-tools-demo", "--steam",
     ];
+
+    /// <summary>The Steam-style argument that carries a lobby id; it has no <c>--</c> separator and may stand outside the user arguments.</summary>
+    public const string ConnectLobbyOption = "+connect_lobby";
+
+    /// <summary>Steam application id used until the real one is configured (Spacewar).</summary>
+    public const uint DefaultSteamAppId = 480;
 
     private static readonly string[] _valued =
     [
         "--connect", "--world", "--port", "--bind", "--password", "--config", "--data-dir", "--profile", "--seed", "--write-default-config",
-        "--dev-speed", "--screenshot", "--screenshot-after",
+        "--dev-speed", "--screenshot", "--screenshot-after", "--steam-app-id", "--lobby-visibility",
     ];
 
     /// <summary>Gets the mode of the process.</summary>
@@ -78,6 +85,18 @@ public sealed record LaunchOptions
     /// <summary>Gets the seconds after the start when the screenshot is taken and the process quits (<c>--screenshot-after</c>).</summary>
     public float ScreenshotAfterSeconds { get; init; } = 20f;
 
+    /// <summary>Gets the lobby a remote client joins at start (<c>+connect_lobby</c>); null when none.</summary>
+    public ulong? ConnectLobbyId { get; init; }
+
+    /// <summary>Gets a value indicating whether Steam lobbies and P2P are used (<c>--steam</c>, implied by <c>+connect_lobby</c>).</summary>
+    public bool EnableSteam { get; init; }
+
+    /// <summary>Gets the visibility of the lobby a Steam host creates.</summary>
+    public LobbyVisibility LobbyVisibility { get; init; } = LobbyVisibility.FriendsOnly;
+
+    /// <summary>Gets the Steam application id (<c>--steam-app-id</c>).</summary>
+    public uint SteamAppId { get; init; } = DefaultSteamAppId;
+
     /// <summary>Gets the path to write a default server configuration to; the process then exits.</summary>
     public string? WriteDefaultConfig { get; init; }
 
@@ -88,7 +107,74 @@ public sealed record LaunchOptions
     {
         ArgumentNullException.ThrowIfNull(args);
         return args.Contains("--solo") || args.Contains("--host") || args.Contains("--server") || args.Contains("--connect")
-            || args.Contains("--write-default-config");
+            || args.Contains("--write-default-config") || args.Contains(ConnectLobbyOption);
+    }
+
+    /// <summary>Tells whether the menu (no mode on the command line) starts the Steam services: on <c>--steam</c>, or when Steam launched the process.</summary>
+    /// <param name="args">User arguments of a launch without a mode.</param>
+    /// <param name="steamAppIdVariable">Value of the <c>SteamAppId</c> variable Steam sets for the games it starts; null when absent.</param>
+    /// <param name="appId">The Steam application id to initialize with.</param>
+    /// <returns>True when Steam is wanted.</returns>
+    public static bool WantsMenuSteam(IReadOnlyList<string> args, string? steamAppIdVariable, out uint appId)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        appId = DefaultSteamAppId;
+        var option = -1;
+        for (var i = 0; i < args.Count; i++)
+        {
+            if (args[i] == "--steam-app-id")
+            {
+                option = i;
+            }
+        }
+
+        string? text = option >= 0 && option + 1 < args.Count ? args[option + 1] : null;
+        var launchedBySteam = uint.TryParse(steamAppIdVariable, NumberStyles.None, CultureInfo.InvariantCulture, out var fromSteam) && fromSteam != 0;
+        if (text is null && launchedBySteam)
+        {
+            appId = fromSteam;
+        }
+        else if (text is not null && uint.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var given) && given != 0)
+        {
+            appId = given;
+        }
+
+        return launchedBySteam || args.Contains("--steam");
+    }
+
+    /// <summary>
+    /// Adds the Steam launch pair <c>+connect_lobby &lt;id&gt;</c> from the full command line to the user arguments: Steam starts the
+    /// game with it and without the <c>--</c> separator, so Godot does not list it among the user arguments. Only that token and its
+    /// one value are taken over.
+    /// </summary>
+    /// <param name="commandLine">All arguments of the process (<c>OS.GetCmdlineArgs()</c>).</param>
+    /// <param name="userArgs">User arguments after <c>--</c> (<c>OS.GetCmdlineUserArgs()</c>).</param>
+    /// <returns>The user arguments, extended by the pair when it was found elsewhere.</returns>
+    public static string[] WithConnectLobby(IReadOnlyList<string> commandLine, IReadOnlyList<string> userArgs)
+    {
+        ArgumentNullException.ThrowIfNull(commandLine);
+        ArgumentNullException.ThrowIfNull(userArgs);
+        var result = userArgs.ToList();
+        if (result.Contains(ConnectLobbyOption))
+        {
+            return [.. result];
+        }
+
+        for (var i = 0; i < commandLine.Count; i++)
+        {
+            if (commandLine[i] == ConnectLobbyOption)
+            {
+                result.Add(ConnectLobbyOption);
+                if (i + 1 < commandLine.Count)
+                {
+                    result.Add(commandLine[i + 1]);
+                }
+
+                break;
+            }
+        }
+
+        return [.. result];
     }
 
     /// <summary>Parses and validates the arguments.</summary>
@@ -122,6 +208,12 @@ public sealed record LaunchOptions
             modes.Add(ProcessMode.Client);
         }
 
+        var connectLobby = ParseLobbyId(reader.ValueOf(ConnectLobbyOption));
+        if (reader.Has(ConnectLobbyOption))
+        {
+            modes.Add(ProcessMode.Client);
+        }
+
         var writeConfig = reader.ValueOf("--write-default-config");
         if (writeConfig is not null)
         {
@@ -135,7 +227,7 @@ public sealed record LaunchOptions
 
         if (modes.Count != 1)
         {
-            throw new ArgumentException("Exactly one of --solo, --host, --connect <host:port>, --server is required.");
+            throw new ArgumentException("Exactly one of --solo, --host, --connect <host:port>, +connect_lobby <id>, --server is required.");
         }
 
         var mode = modes[0];
@@ -169,6 +261,9 @@ public sealed record LaunchOptions
         RequireOnly(reader, "--dev-tools-demo", mode, ProcessMode.Solo, ProcessMode.Host);
         RequireOnly(reader, "--screenshot", mode, ProcessMode.Solo, ProcessMode.Host, ProcessMode.Client);
         RequireOnly(reader, "--screenshot-after", mode, ProcessMode.Solo, ProcessMode.Host, ProcessMode.Client);
+        RequireOnly(reader, "--steam", mode, ProcessMode.Host, ProcessMode.Client);
+        RequireOnly(reader, "--steam-app-id", mode, ProcessMode.Host, ProcessMode.Client);
+        RequireOnly(reader, "--lobby-visibility", mode, ProcessMode.Host);
         var screenshot = reader.ValueOf("--screenshot");
         if (screenshot is not null && (screenshot.Length == 0 || screenshot.IndexOfAny(Path.GetInvalidPathChars()) >= 0))
         {
@@ -199,6 +294,10 @@ public sealed record LaunchOptions
             DevToolsDemo = reader.Has("--dev-tools-demo"),
             ScreenshotPath = screenshot is null ? null : Path.GetFullPath(screenshot),
             ScreenshotAfterSeconds = reader.Number("--screenshot-after", 1f, 3600f) ?? 20f,
+            ConnectLobbyId = connectLobby,
+            EnableSteam = reader.Has("--steam") || connectLobby is not null,
+            LobbyVisibility = ParseVisibility(reader.ValueOf("--lobby-visibility")),
+            SteamAppId = ParseAppId(reader.ValueOf("--steam-app-id")),
         };
     }
 
@@ -207,9 +306,14 @@ public sealed record LaunchOptions
         for (var i = 0; i < args.Length; i++)
         {
             var arg = args[i];
+            if (arg == ConnectLobbyOption)
+            {
+                continue;
+            }
+
             if (!arg.StartsWith("--", StringComparison.Ordinal))
             {
-                if (i > 0 && Array.IndexOf(_valued, args[i - 1]) >= 0)
+                if (i > 0 && (Array.IndexOf(_valued, args[i - 1]) >= 0 || args[i - 1] == ConnectLobbyOption))
                 {
                     continue;
                 }
@@ -230,6 +334,45 @@ public sealed record LaunchOptions
         {
             throw new ArgumentException($"{option} does not apply to the mode {mode}.");
         }
+    }
+
+    private static ulong? ParseLobbyId(string? text)
+    {
+        if (text is null)
+        {
+            return null;
+        }
+
+        if (!ulong.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var id) || id == 0)
+        {
+            throw new ArgumentException("+connect_lobby must be a non-zero lobby id (a 64-bit number).");
+        }
+
+        return id;
+    }
+
+    private static LobbyVisibility ParseVisibility(string? text) => text switch
+    {
+        null => LobbyVisibility.FriendsOnly,
+        "private" => LobbyVisibility.Private,
+        "friends" => LobbyVisibility.FriendsOnly,
+        "public" => LobbyVisibility.Public,
+        _ => throw new ArgumentException("--lobby-visibility must be private, friends or public."),
+    };
+
+    private static uint ParseAppId(string? text)
+    {
+        if (text is null)
+        {
+            return DefaultSteamAppId;
+        }
+
+        if (!uint.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var id) || id == 0)
+        {
+            throw new ArgumentException("--steam-app-id must be a positive 32-bit number.");
+        }
+
+        return id;
     }
 
     private static Guid? ParseWorld(string? text)

@@ -87,9 +87,18 @@ public sealed partial class CameraRig : Node3D
 
         var point = hit["position"].AsVector3();
         var back = (from - point).Normalized();
-        var pulled = point + (back * ArmMargin);
-        return from.DistanceTo(pulled) > from.DistanceTo(point) ? PlanetFrames.ToPlanetLocal(planet, point) : PlanetFrames.ToPlanetLocal(planet, pulled);
+        var distance = from.DistanceTo(point);
+        var pulled = distance <= ArmMargin ? from : point + (back * ArmMargin);
+        return PlanetFrames.ToPlanetLocal(planet, pulled);
     }
+
+    /// <summary>Constrains a smoothed FPP or TPP camera from the physical aim eye.</summary>
+    /// <param name="planet">Physical planet frame.</param>
+    /// <param name="physicalEye">Unsmoothed eye used by tools.</param>
+    /// <param name="visualOrigin">Wanted presentation position, including the correction.</param>
+    /// <returns>A camera position on the eye side of the first wall.</returns>
+    public NumVector3 ResolvePresentation(PlanetId planet, NumVector3 physicalEye, NumVector3 visualOrigin) =>
+        ResolveArm(planet, physicalEye, visualOrigin);
 
     /// <summary>Places the camera.</summary>
     /// <param name="planet">The planet of the frame.</param>

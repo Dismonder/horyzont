@@ -16,6 +16,7 @@
     <ProjectReference Include="../../src/Horyzont.Persistence/Horyzont.Persistence.csproj" />
     <ProjectReference Include="../../src/Horyzont.Net/Horyzont.Net.csproj" />
     <ProjectReference Include="../../src/Horyzont.Core/Horyzont.Core.csproj" />
+    <ProjectReference Include="../../src/Horyzont.Client/Horyzont.Client.csproj" />
     <ProjectReference Include="../Horyzont.Testing/Horyzont.Testing.csproj" />
   </ItemGroup>
   <ItemGroup>
@@ -24,6 +25,7 @@
     <Compile Include="../../game/src/Server/Characters/IServerCharacterSource.cs" Link="Game/IServerCharacterSource.cs" />
     <Compile Include="../../game/src/Server/Characters/ServerCharacterState.cs" Link="Game/ServerCharacterState.cs" />
     <Compile Include="../../game/src/Server/Characters/SpawnSupport.cs" Link="Game/SpawnSupport.cs" />
+    <Compile Include="../../game/src/Server/Replication/ServerReplicationSource.cs" Link="Game/ServerReplicationSource.cs" />
     <Compile Include="../../game/src/Shared/Physics/CollisionLayers.cs" Link="Game/CollisionLayers.cs" />
   </ItemGroup>
 </Project>

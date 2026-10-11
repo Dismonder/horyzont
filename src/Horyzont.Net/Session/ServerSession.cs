@@ -166,6 +166,22 @@ public sealed class ServerSession
         }
     }
 
+    /// <summary>Sends a trusted encoded game frame on its required transport channel.</summary>
+    /// <param name="player">Recipient.</param>
+    /// <param name="channel">Required delivery channel.</param>
+    /// <param name="frame">Complete type/version/payload bytes.</param>
+    /// <exception cref="ArgumentException">Invalid type, channel or length.</exception>
+    public void SendEncoded(PlayerId player, TransportChannel channel, ReadOnlySpan<byte> frame)
+    {
+        if (frame.Length < 2 || !MessageRouter.TryGetType(frame, out var type)
+            || !MessageRouter.IsGameMessageFromServer(type) || channel != ToTransport(MessageChannels.For(type)))
+        {
+            throw new ArgumentException("Encoded frame routing or channel is invalid.", nameof(frame));
+        }
+
+        SendEncoded(player, type, frame);
+    }
+
     /// <summary>Sends a game message once encoded to every InGame player for whom <paramref name="subject"/> is visible.</summary>
     /// <param name="subject">The entity the message is about.</param>
     /// <param name="message">A server-to-client game message.</param>
@@ -236,6 +252,12 @@ public sealed class ServerSession
         _byPlayer.TryGetValue(player, out var peer)
             ? TimeSpan.FromMilliseconds(_transport.GetStats(peer.Connection).RttMs)
             : TimeSpan.Zero;
+
+    /// <summary>Returns the transport counters of a player's connection (bytes are cumulative per connection).</summary>
+    /// <param name="player">The player.</param>
+    /// <returns>The statistics, or all zero for an unknown player.</returns>
+    public TransportStats GetTransportStats(PlayerId player) =>
+        _byPlayer.TryGetValue(player, out var peer) ? _transport.GetStats(peer.Connection) : default;
 
     /// <summary>
     /// Ends every session with <paramref name="code"/> (a leaving host uses <see cref="DisconnectCode.HostLeft"/>) and
@@ -527,7 +549,20 @@ public sealed class ServerSession
             return;
         }
 
-        var player = _hooks.OnPlayerJoining(hello.Identity, hello.DisplayName);
+        PlayerId player;
+        try
+        {
+            player = _hooks.OnPlayerJoining(hello.Identity, hello.DisplayName);
+        }
+        catch (JoinUnavailableException unavailable)
+        {
+            // A controlled refusal has no player, operations or leave callback to unwind.
+            SendMessage(peer, new JoinUnavailable(unavailable.Reason, unavailable.Detail));
+            peer.State = PeerState.Closing;
+            peer.LocalCode = DisconnectCode.Normal;
+            peer.CloseAt = _now + _options.CloseDelay.Ticks;
+            return;
+        }
         if (player.IsNone || _byPlayer.ContainsKey(player))
         {
             throw new InvalidOperationException($"OnPlayerJoining returned an unusable player id {player.Value}.");

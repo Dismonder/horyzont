@@ -101,7 +101,7 @@ public sealed class GameServerHooksTests
         _accepts = false;
         var before = StateHasher.Hash(_sim.State);
 
-        Assert.Throws<InvalidOperationException>(() => Hooks.OnPlayerJoining(_alice, "alice"));
+        Assert.Throws<Horyzont.Net.Session.JoinUnavailableException>(() => Hooks.OnPlayerJoining(_alice, "alice"));
 
         Assert.Equal(before, StateHasher.Hash(_sim.State));
         Assert.Empty(_journal.Entries);
