@@ -46,7 +46,9 @@ internal sealed class ClientTerrainView : IClientTerrainView
     /// <remarks>
     /// Voxel Tools copies the parameters of the terrain material into a material of every mesh block when the block is made, so a
     /// parameter set later never reaches existing blocks; <c>set_material</c> with another material does (it reallocates the block
-    /// materials). Each of the 17 levels gets its own copy of the material of the planet, made on first use and kept.
+    /// materials). Each of the 17 levels gets its own copy of the material of the planet, made on first use and kept. The caller
+    /// (<c>ClientPlanetTerrains</c>) applies the ±0.25 level hysteresis of <see cref="ImpostorBlend.QuantizeWithHysteresis"/> before
+    /// this, so the impostor gets the same level and the two layers stay complementary.
     /// </remarks>
     public void SetImpostorBlend(float impostorWeight)
     {

@@ -36,6 +36,29 @@ public static class ImpostorBlend
     public static float Quantize(float weight) =>
         float.IsNaN(weight) ? 1f : MathF.Round(Math.Clamp(weight, 0f, 1f) * Levels) / Levels;
 
+    /// <summary>Hysteresis of <see cref="QuantizeWithHysteresis"/> in levels (each side of the rounding boundary).</summary>
+    public const float HysteresisLevels = 0.25f;
+
+    /// <summary>
+    /// <see cref="Quantize"/> with a hysteresis of <see cref="HysteresisLevels"/>: the previous level is kept until the weight is more than
+    /// half a level plus the hysteresis away from it, so a camera hovering at a rounding boundary does not swap the terrain material every
+    /// frame (Opus review of K5-22). Applied once per body and given to both layers, which stay complementary.
+    /// </summary>
+    /// <param name="weight">The weight in [0, 1]; NaN counts as 1.</param>
+    /// <param name="previous">The previous quantized weight; NaN when there is none.</param>
+    /// <returns>The quantized weight.</returns>
+    public static float QuantizeWithHysteresis(float weight, float previous)
+    {
+        var quantized = Quantize(weight);
+        if (float.IsNaN(previous) || float.IsNaN(weight))
+        {
+            return quantized;
+        }
+
+        var held = Quantize(previous);
+        return MathF.Abs((Math.Clamp(weight, 0f, 1f) - held) * Levels) <= 0.5f + HysteresisLevels ? held : quantized;
+    }
+
     /// <summary>Weight of the voxel terrain for a camera altitude (complement of <see cref="ImpostorWeight"/>).</summary>
     /// <param name="altitude">Camera altitude over R in metres.</param>
     /// <param name="radius">Surface radius R in metres.</param>

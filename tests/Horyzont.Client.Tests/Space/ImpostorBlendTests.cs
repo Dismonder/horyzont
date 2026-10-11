@@ -66,4 +66,35 @@ public sealed class ImpostorBlendTests
         Assert.Equal(1f, ImpostorBlend.Quantize(1f));
         Assert.Equal(1f, ImpostorBlend.Quantize(float.NaN));
     }
+
+    [Fact]
+    public void ImpostorBlend_QuantizeWithHysteresis_HoldsTheLevelWithinAQuarterLevel()
+    {
+        const float step = 1f / ImpostorBlend.Levels;
+
+        // From level 8, the plain rounding boundary is 8.5; the level changes only past 8.75 (or below 7.25).
+        Assert.Equal(8 * step, ImpostorBlend.QuantizeWithHysteresis(8.6f * step, 8 * step));
+        Assert.Equal(8 * step, ImpostorBlend.QuantizeWithHysteresis(8.74f * step, 8 * step));
+        Assert.Equal(9 * step, ImpostorBlend.QuantizeWithHysteresis(8.76f * step, 8 * step));
+        Assert.Equal(8 * step, ImpostorBlend.QuantizeWithHysteresis(7.3f * step, 8 * step));
+        Assert.Equal(7 * step, ImpostorBlend.QuantizeWithHysteresis(7.2f * step, 8 * step));
+
+        // A camera jittering around a boundary never flips the level back and forth.
+        var level = ImpostorBlend.Quantize(8.4f * step);
+        var changes = 0;
+        for (var i = 0; i < 100; i++)
+        {
+            var next = ImpostorBlend.QuantizeWithHysteresis((i % 2 == 0 ? 8.4f : 8.6f) * step, level);
+            changes += next == level ? 0 : 1;
+            level = next;
+        }
+
+        Assert.Equal(0, changes);
+
+        // Jumps and the ends are exact; NaN previous means no history.
+        Assert.Equal(1f, ImpostorBlend.QuantizeWithHysteresis(1f, 0f));
+        Assert.Equal(0f, ImpostorBlend.QuantizeWithHysteresis(0f, 1f));
+        Assert.Equal(ImpostorBlend.Quantize(0.53f), ImpostorBlend.QuantizeWithHysteresis(0.53f, float.NaN));
+        Assert.Equal(1f, ImpostorBlend.QuantizeWithHysteresis(float.NaN, 0f));
+    }
 }

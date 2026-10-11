@@ -163,7 +163,9 @@ public sealed partial class ClientPlanetTerrains : Node, ITerrainViewerSource
             var weight = 0f;
             if (_render && ImpostorReady(id) && viewpoint.HasBody && TryToBody(viewpoint, id, viewpoint.Camera, out var eye, out var radius))
             {
-                weight = ImpostorBlend.Quantize(ImpostorBlend.ImpostorWeight(eye.Length() - radius, radius));
+                // ±0.25 level of hysteresis: a camera at a level boundary does not swap the terrain material every frame.
+                var previous = _weights.TryGetValue(planet, out var held) ? held : float.NaN;
+                weight = ImpostorBlend.QuantizeWithHysteresis(ImpostorBlend.ImpostorWeight(eye.Length() - radius, radius), previous);
             }
 
             _weights[planet] = weight;
