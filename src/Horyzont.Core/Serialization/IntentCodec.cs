@@ -2,6 +2,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
 using Horyzont.Core.World.Constructs;
+using Horyzont.Core.World.Markers;
 
 namespace Horyzont.Core.Serialization;
 
@@ -16,6 +17,8 @@ public static class IntentCodec
         PlaceBlock = 2,
         RemoveBlock = 3,
         ShipMode = 10,
+        MarkerSet = 14,
+        MarkerRemove = 15,
         Refuel = 13,
     }
 
@@ -106,6 +109,29 @@ public static class IntentCodec
                 w.WriteVector3(sm.RayDirection);
                 break;
 
+            case MarkerSetIntent ms:
+                if (!MarkerRules.IsValidStyle(ms.Icon, ms.Color))
+                {
+                    throw new ArgumentException("Invalid marker icon or colour.", nameof(intent));
+                }
+
+                w.WriteByte((byte)IntentCode.MarkerSet);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(ms.Marker.Value);
+                w.WriteBool(ms.Shared);
+                w.WriteVarUInt(ms.Planet.Value);
+                w.WriteVector3(ms.Position);
+                w.WriteString(ms.Name, MarkerRules.MaxNameBytes);
+                w.WriteByte((byte)ms.Icon);
+                w.WriteByte((byte)ms.Color);
+                break;
+
+            case MarkerRemoveIntent mr:
+                w.WriteByte((byte)IntentCode.MarkerRemove);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(mr.Marker.Value);
+                break;
+
             case RefuelIntent rf:
                 w.WriteByte((byte)IntentCode.Refuel);
                 w.WriteByte(CurrentFormatVersion);
@@ -127,7 +153,7 @@ public static class IntentCodec
     public static Intent Read(ref ByteReader r)
     {
         byte codeByte = r.ReadByte();
-        if (codeByte is < (byte)IntentCode.TerrainTool or > (byte)IntentCode.RemoveBlock and not ((byte)IntentCode.ShipMode or (byte)IntentCode.Refuel))
+        if (codeByte is < (byte)IntentCode.TerrainTool or > (byte)IntentCode.RemoveBlock and not ((byte)IntentCode.ShipMode or (byte)IntentCode.MarkerSet or (byte)IntentCode.MarkerRemove or (byte)IntentCode.Refuel))
         {
             throw new ProtocolViolationException($"Unknown intent code {codeByte}.");
         }
@@ -204,6 +230,30 @@ public static class IntentCodec
                 var smOrigin = r.ReadVector3();
                 var smDirection = r.ReadVector3();
                 return new ShipModeIntent(smConstruct, smCell, (ConstructMode)smModeByte, smOrigin, smDirection);
+
+            case IntentCode.MarkerSet:
+                var msMarker = new MarkerId(r.ReadVarUInt());
+                bool msShared = r.ReadBool();
+                var msPlanet = new PlanetId(r.ReadVarUInt());
+                var msPosition = r.ReadVector3();
+                string msName = r.ReadString(MarkerRules.MaxNameBytes);
+                byte msIcon = r.ReadByte();
+                byte msColor = r.ReadByte();
+                if (msIcon > (byte)MarkerIcon.Poi || msColor > (byte)MarkerColor.Orange || msMarker.Value > MarkerIdAllocator.MaxValue)
+                {
+                    throw new ProtocolViolationException("Invalid marker intent.");
+                }
+
+                return new MarkerSetIntent(msMarker, msShared, msPlanet, msPosition, msName, (MarkerIcon)msIcon, (MarkerColor)msColor);
+
+            case IntentCode.MarkerRemove:
+                var mrMarker = new MarkerId(r.ReadVarUInt());
+                if (mrMarker.IsNone || mrMarker.Value > MarkerIdAllocator.MaxValue)
+                {
+                    throw new ProtocolViolationException("Invalid marker intent.");
+                }
+
+                return new MarkerRemoveIntent(mrMarker);
 
             case IntentCode.Refuel:
                 var rfShip = new EntityId(r.ReadVarUInt());

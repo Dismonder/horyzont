@@ -75,6 +75,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             PlaceBlockIntent { Target: TerrainTarget target } place => ValidatePlaceOnTerrain(place, target, hasPlanet, playerPlanet, eye, out facts),
             RemoveBlockIntent remove => ValidateRemove(remove, hasPlanet, playerPlanet, eye, out facts),
             ShipModeIntent ship => ValidateShipMode(ship, hasPlanet, playerPlanet, eye, out facts),
+            MarkerSetIntent or MarkerRemoveIntent => MarkerIntentRules.Validate(state, playerId, intent),
             RefuelIntent refuel => ValidateRefuel(refuel, hasPlanet, playerPlanet, eye, out facts),
             _ => RejectReason.InvalidParameters,
         };
@@ -85,6 +86,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
     {
         TerrainToolIntent => buckets.Terrain,
         PlaceBlockIntent or RemoveBlockIntent or ShipModeIntent or RefuelIntent => buckets.Blocks,
+        MarkerSetIntent or MarkerRemoveIntent => buckets.Markers,
         _ => null,
     };
 
@@ -109,6 +111,9 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             case ShipModeIntent ship:
                 rayOrigin = ship.RayOrigin;
                 return Geometry.IsFinite(ship.RayOrigin) && Geometry.IsDirection(ship.RayDirection) && Enum.IsDefined(ship.TargetMode);
+            case MarkerSetIntent or MarkerRemoveIntent:
+                bucket = buckets.Markers;
+                return MarkerIntentRules.HasValidParameters(intent);
             case RefuelIntent refuel:
                 rayOrigin = refuel.RayOrigin;
                 return Geometry.IsFinite(refuel.RayOrigin) && Geometry.IsDirection(refuel.RayDirection);

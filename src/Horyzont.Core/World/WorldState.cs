@@ -6,6 +6,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Space;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
+using Horyzont.Core.World.Markers;
 using Horyzont.Core.World.Ships;
 using Horyzont.Core.World.Terrain;
 
@@ -26,7 +27,7 @@ public sealed class WorldState
     private readonly ChangeTracker _tracker = new();
     private WorldCheckpoint? _inFlight;
 
-    internal WorldState(WorldId id, ulong galaxySeed, OpId lastOpId, Tick tick, ulong nextEntityId, ulong nextPlayerId)
+    internal WorldState(WorldId id, ulong galaxySeed, OpId lastOpId, Tick tick, ulong nextEntityId, ulong nextPlayerId, ulong nextMarkerId = 1)
     {
         Id = id;
         GalaxySeed = galaxySeed;
@@ -34,12 +35,14 @@ public sealed class WorldState
         CurrentTick = tick;
         EntityIds = new EntityIdAllocator(nextEntityId);
         PlayerIds = new PlayerIdAllocator(nextPlayerId);
+        MarkerIds = new MarkerIdAllocator(nextMarkerId);
         Planets = new PlanetRegistry();
         BlockTypes = new BlockTypeRegistry();
         Materials = new MaterialRegistry();
         Constructs = new ConstructStore(_tracker);
         Players = new PlayerStore(_tracker);
         TerrainVersions = new TerrainVersionTable(_tracker);
+        Markers = new MarkerStore(_tracker);
     }
 
     /// <summary>World id.</summary>
@@ -59,6 +62,9 @@ public sealed class WorldState
 
     /// <summary>Player ids.</summary>
     public PlayerIdAllocator PlayerIds { get; }
+
+    /// <summary>Marker ids (K5-27).</summary>
+    public MarkerIdAllocator MarkerIds { get; }
 
     /// <summary>Planets.</summary>
     public PlanetRegistry Planets { get; }
@@ -89,6 +95,9 @@ public sealed class WorldState
 
     /// <summary>Versions of edited terrain blocks.</summary>
     public TerrainVersionTable TerrainVersions { get; }
+
+    /// <summary>Map markers (K5-27).</summary>
+    public MarkerStore Markers { get; }
 
     /// <summary>True between <see cref="CaptureCheckpoint"/> and its completion or requeue.</summary>
     public bool IsCheckpointInFlight => _inFlight is not null;
@@ -337,6 +346,22 @@ public sealed class WorldState
             terrain.Add(new TerrainBlockVersion(key, TerrainVersions.Get(key)));
         }
 
+        var markerIds = _tracker.Markers.ToArray();
+        Array.Sort(markerIds, static (a, b) => a.Value.CompareTo(b.Value));
+        var upsertedMarkers = new List<MarkerRecord>();
+        var removedMarkers = new List<MarkerId>();
+        foreach (var id in markerIds)
+        {
+            if (Markers.TryGet(id, out var marker))
+            {
+                upsertedMarkers.Add(marker);
+            }
+            else
+            {
+                removedMarkers.Add(id);
+            }
+        }
+
         // Ship states: changed records of existing ships; records of removed constructs are dropped here (K5-24 decision 11).
         foreach (var id in removedConstructs)
         {
@@ -366,7 +391,8 @@ public sealed class WorldState
         _tracker.Clear();
         _inFlight = new WorldCheckpoint(
             LastOpId, CurrentTick, EntityIds.NextValue, PlayerIds.NextValue,
-            upsertedConstructs, removedConstructs, upsertedChunks, removedChunks, players, terrain, upsertedShips, removedShips);
+            upsertedConstructs, removedConstructs, upsertedChunks, removedChunks, players, terrain,
+            upsertedMarkers, removedMarkers, MarkerIds.NextValue, upsertedShips, removedShips);
         return _inFlight;
     }
 
@@ -414,6 +440,16 @@ public sealed class WorldState
         foreach (var version in failed.TerrainVersions)
         {
             _tracker.MarkTerrain(version.Key);
+        }
+
+        foreach (var marker in failed.UpsertedMarkers)
+        {
+            _tracker.MarkMarker(marker.Id);
+        }
+
+        foreach (var id in failed.RemovedMarkers)
+        {
+            _tracker.MarkMarker(id);
         }
 
         foreach (var ship in failed.ShipStatesToWrite)

@@ -35,6 +35,8 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             PlayerLeaveOp op => CheckPlayerLeave(op),
             EntityReparentOp op => CheckReparent(op),
             ShipModeSetOp op => CheckShipModeSet(op),
+            MarkerSetOp op => CheckMarkerSet(op),
+            MarkerRemoveOp op => CheckMarkerRemove(op),
             ShipFuelAddOp op => CheckShipFuelAdd(op),
             _ => $"Unknown operation {operation.GetType().Name}.",
         } ?? string.Empty;
@@ -92,6 +94,14 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 switched!.SetMode(op.Mode, op.Origin, op.Rotation);
                 constructChanges = [new ConstructChange(switched.Id, switched.Version, false)];
                 break;
+            case MarkerSetOp op:
+                state.MarkerIds.MarkUsed(op.Marker);
+                state.Markers.Upsert(op.ToRecord());
+                break;
+            case MarkerRemoveOp op:
+                state.Markers.Remove(op.Marker);
+                break;
+
             case ShipFuelAddOp op:
                 ApplyShipFuelAdd(op);
                 break;
@@ -411,6 +421,35 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
 
         return IsPose(op.Origin, op.Rotation) ? null : "invalid pose";
     }
+
+    private string? CheckMarkerSet(MarkerSetOp op)
+    {
+        if (op.Marker.IsNone || !state.Planets.TryGet(op.Planet, out _))
+        {
+            return "marker id none or unknown planet";
+        }
+
+        if (!MarkerRules.IsValidPosition(op.Position) || !MarkerRules.IsValidName(op.Name) || !MarkerRules.IsValidStyle(op.Icon, op.Color))
+        {
+            return "invalid marker position, name or style";
+        }
+
+        if (state.Markers.TryGet(op.Marker, out var existing))
+        {
+            return existing.Owner == op.Owner ? null : "the owner of a marker cannot change";
+        }
+
+        if (!state.MarkerIds.IsUnused(op.Marker))
+        {
+            return "marker id below the next id and unknown";
+        }
+
+        var count = op.Owner is { } owner ? state.Markers.CountPrivate(owner) : state.Markers.CountShared;
+        var limit = op.Owner is null ? MarkerRules.MaxShared : MarkerRules.MaxPrivatePerPlayer;
+        return count >= limit ? "marker limit reached" : null;
+    }
+
+    private string? CheckMarkerRemove(MarkerRemoveOp op) => state.Markers.TryGet(op.Marker, out _) ? null : "unknown marker";
 
     private bool IsSelfOrDescendant(FrameRef frame, EntityId construct)
     {

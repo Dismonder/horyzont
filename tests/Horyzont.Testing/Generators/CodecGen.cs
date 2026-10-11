@@ -14,6 +14,7 @@ using Horyzont.Core.Serialization;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
+using Horyzont.Core.World.Markers;
 using Horyzont.Core.World.Terrain;
 
 namespace Horyzont.Testing.Generators;
@@ -198,6 +199,8 @@ public static class CodecGen
         PlayerLeaveOp.Select(o => (Operation)o),
         EntityReparentOp.Select(o => (Operation)o),
         ShipModeSetOp.Select(o => (Operation)o),
+        MarkerSetOp.Select(o => (Operation)o),
+        MarkerRemoveOp.Select(o => (Operation)o),
         ShipFuelAddOp.Select(o => (Operation)o));
 
     /// <summary>Terrain edit operations.</summary>
@@ -271,6 +274,8 @@ public static class CodecGen
         PlaceBlockIntent.Select(i => (Intent)i),
         RemoveBlockIntent.Select(i => (Intent)i),
         ShipModeIntent.Select(i => (Intent)i),
+        MarkerSetIntent.Select(i => (Intent)i),
+        MarkerRemoveIntent.Select(i => (Intent)i),
         RefuelIntent.Select(i => (Intent)i));
 
     /// <summary>Terrain tool intents.</summary>
@@ -317,6 +322,34 @@ public static class CodecGen
         from origin in Vector
         from rotation in UnitQuaternion
         select new ShipModeSetOp(id, mode, parent, parentSeq, origin, rotation);
+
+    /// <summary>Markers (ids within the marker id range; the name is any 1..32 byte text).</summary>
+    public static Gen<MarkerRecord> Marker { get; } =
+        from id in Gen.Choose(1, int.MaxValue)
+        from owner in Optional(Gen.Choose(1, int.MaxValue))
+        from planet in PlanetId
+        from position in Vector
+        from name in Text(1, MarkerRules.MaxNameBytes)
+        from icon in Gen.Choose(0, 7)
+        from color in Gen.Choose(0, 7)
+        select new MarkerRecord(
+            new MarkerId((ulong)id), owner is { } o ? new PlayerId((ulong)o) : null, planet, position, name, (MarkerIcon)icon, (MarkerColor)color);
+
+    /// <summary>Marker set operations.</summary>
+    public static Gen<MarkerSetOp> MarkerSetOp { get; } =
+        Marker.Select(m => new MarkerSetOp(m.Id, m.Owner, m.Planet, m.Position, m.Name, m.Icon, m.Color));
+
+    /// <summary>Marker remove operations.</summary>
+    public static Gen<MarkerRemoveOp> MarkerRemoveOp { get; } = Gen.Choose(1, int.MaxValue).Select(v => new MarkerRemoveOp(new MarkerId((ulong)v)));
+
+    /// <summary>Marker set intents.</summary>
+    public static Gen<MarkerSetIntent> MarkerSetIntent { get; } =
+        from m in Marker
+        from edit in Gen.Elements(false, true)
+        select new MarkerSetIntent(edit ? m.Id : MarkerId.None, m.Owner is null, m.Planet, m.Position, m.Name, m.Icon, m.Color);
+
+    /// <summary>Marker remove intents.</summary>
+    public static Gen<MarkerRemoveIntent> MarkerRemoveIntent { get; } = Gen.Choose(1, int.MaxValue).Select(v => new MarkerRemoveIntent(new MarkerId((ulong)v)));
 
     /// <summary>Fuel add operations (K5-24): units finite and positive, capacity finite and non-negative.</summary>
     public static Gen<ShipFuelAddOp> ShipFuelAddOp { get; } =
@@ -475,7 +508,11 @@ public static class CodecGen
          select (Message)new TerrainView(new PlanetId(1), Math.Max(1u, seq), position, 2048, position, 64)),
         ServerStatus.Select(m => (Message)m),
         JoinUnavailable.Select(m => (Message)m),
-        Full64.Select(seed => (Message)new StarSystemState(Horyzont.Core.Space.StarSystemGenesis.CreateWorldBodies(seed, "core:planet/1").System)));
+        Full64.Select(seed => (Message)new StarSystemState(Horyzont.Core.Space.StarSystemGenesis.CreateWorldBodies(seed, "core:planet/1").System)),
+        (from first in Marker
+         from second in Marker
+         from count in Gen.Choose(0, 2)
+         select (Message)new MarkersState(new[] { first, second }.Take(count).ToArray())));
 
     /// <summary>Server status messages: any flag and reason, detail of 0 to the codec maximum in UTF-8 bytes.</summary>
     public static Gen<ServerStatus> ServerStatus { get; } =
