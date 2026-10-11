@@ -227,7 +227,7 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
             return false;
         }
 
-        solid = Sample(entry.Node.Tool, TerrainVectors.ToGodot(position)) < 0;
+        solid = TerrainRaycaster.Sample(entry.Node.Tool, TerrainVectors.ToGodot(position)) < 0;
         return true;
     }
 

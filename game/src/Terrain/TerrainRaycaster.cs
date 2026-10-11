@@ -100,7 +100,7 @@ internal static class TerrainRaycaster
         return true;
     }
 
-    private static double Sample(VoxelTool tool, Godot.Vector3 p)
+    internal static double Sample(VoxelTool tool, Godot.Vector3 p)
     {
         var x0 = Math.Floor(p.X);
         var y0 = Math.Floor(p.Y);
