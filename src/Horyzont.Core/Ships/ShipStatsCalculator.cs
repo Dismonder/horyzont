@@ -47,6 +47,10 @@ public static class ShipStatsCalculator
         double torque = 0, fuel = 0;
         int blocks = 0, cockpits = 0, engines = 0, stabilizers = 0, tanks = 0, pulses = 0, gears = 0;
         var seats = new List<ShipSeat>();
+        var hasCockpit = false;
+        var cockpitCell = default(CellPos);
+        byte cockpitOrientation = 0;
+        int minX = int.MaxValue, minY = int.MaxValue, minZ = int.MaxValue, maxX = int.MinValue, maxY = int.MinValue, maxZ = int.MinValue;
 
         foreach (var (chunkPos, chunk) in construct.Chunks)
         {
@@ -64,6 +68,12 @@ public static class ShipStatsCalculator
                 double m = def.MassKg;
                 double cx = cell.X + 0.5, cy = cell.Y + 0.5, cz = cell.Z + 0.5;
                 blocks++;
+                minX = Math.Min(minX, cell.X);
+                minY = Math.Min(minY, cell.Y);
+                minZ = Math.Min(minZ, cell.Z);
+                maxX = Math.Max(maxX, cell.X + 1);
+                maxY = Math.Max(maxY, cell.Y + 1);
+                maxZ = Math.Max(maxZ, cell.Z + 1);
                 mass += m;
                 mx += m * cx;
                 my += m * cy;
@@ -82,6 +92,13 @@ public static class ShipStatsCalculator
                     case BlockFunctionKind.Cockpit:
                         cockpits++;
                         seats.Add(new ShipSeat(cell, SeatRole.Pilot));
+                        if (!hasCockpit || CompareCells(cell, cockpitCell) < 0)
+                        {
+                            hasCockpit = true;
+                            cockpitCell = cell;
+                            cockpitOrientation = block.Orientation;
+                        }
+
                         break;
                     case BlockFunctionKind.Seat:
                         seats.Add(new ShipSeat(cell, function.Seat));
@@ -111,13 +128,17 @@ public static class ShipStatsCalculator
         }
 
         seats.Sort(_seatOrder);
+        var controlFrame = hasCockpit ? BlockOrientation.ToQuaternion(cockpitOrientation) : Quaternion.Identity;
         var thrustResult = new ShipThrust(
             (float)thrust[(byte)Face.PosX], (float)thrust[(byte)Face.NegX], (float)thrust[(byte)Face.PosY],
             (float)thrust[(byte)Face.NegY], (float)thrust[(byte)Face.PosZ], (float)thrust[(byte)Face.NegZ]);
         if (mass <= 0)
         {
             return new ShipStats(
-                0f, Vector3.Zero, default, thrustResult, (float)torque, (float)fuel, blocks, cockpits, engines, stabilizers, tanks, pulses, gears, seats);
+                0f, Vector3.Zero, default, thrustResult, (float)torque, (float)fuel, blocks, cockpits, engines, stabilizers, tanks, pulses, gears, seats)
+            {
+                ControlFrame = controlFrame,
+            };
         }
 
         // Tensor about the origin of construct space, then shifted to the centre of mass (parallel axis theorem). Every block
@@ -133,6 +154,30 @@ public static class ShipStatsCalculator
         return new ShipStats(
             (float)mass, new Vector3((float)comX, (float)comY, (float)comZ),
             new ShipInertia((float)ixx, (float)iyy, (float)izz, (float)ixy, (float)ixz, (float)iyz),
-            thrustResult, (float)torque, (float)fuel, blocks, cockpits, engines, stabilizers, tanks, pulses, gears, seats);
+            thrustResult, (float)torque, (float)fuel, blocks, cockpits, engines, stabilizers, tanks, pulses, gears, seats)
+        {
+            ControlFrame = controlFrame,
+            BoundingRadius = BoundingRadius(comX, comY, comZ, minX, minY, minZ, maxX, maxY, maxZ),
+        };
+    }
+
+    private static int CompareCells(CellPos a, CellPos b)
+    {
+        var x = a.X.CompareTo(b.X);
+        if (x != 0)
+        {
+            return x;
+        }
+
+        var y = a.Y.CompareTo(b.Y);
+        return y != 0 ? y : a.Z.CompareTo(b.Z);
+    }
+
+    private static float BoundingRadius(double cx, double cy, double cz, int minX, int minY, int minZ, int maxX, int maxY, int maxZ)
+    {
+        var dx = Math.Max(cx - minX, maxX - cx);
+        var dy = Math.Max(cy - minY, maxY - cy);
+        var dz = Math.Max(cz - minZ, maxZ - cz);
+        return (float)Math.Sqrt((dx * dx) + (dy * dy) + (dz * dz));
     }
 }

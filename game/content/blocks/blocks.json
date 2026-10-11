@@ -28,6 +28,7 @@
     { "key": "core:ship_pulse_drive", "shape": "cube", "mass": 800, "material": "ship_engine", "function": { "kind": "pulse_drive", "speedCap": 2000 } },
     { "key": "core:ship_hull", "shape": "cube", "mass": 200, "material": "metal" },
     { "key": "core:ship_window", "shape": "cube", "mass": 150, "material": "ship_glass" },
-    { "key": "core:ship_door", "shape": "cube", "mass": 200, "material": "ship_dark", "function": { "kind": "door" } }
+    { "key": "core:ship_door", "shape": "cube", "mass": 200, "material": "ship_dark", "function": { "kind": "door" } },
+    { "key": "core:ship_refuel_station", "shape": "cube", "mass": 1500, "material": "ship_engine", "function": { "kind": "refuel_station" } }
   ]
 }

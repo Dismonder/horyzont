@@ -20,4 +20,14 @@ namespace Horyzont.Core.Ships;
 public sealed record ShipStats(
     float MassKg, Vector3 CenterOfMass, ShipInertia Inertia, ShipThrust Thrust, float TorqueNewtonMeters, float FuelCapacity,
     int BlockCount, int Cockpits, int Engines, int Stabilizers, int FuelTanks, int PulseDrives, int LandingGears,
-    IReadOnlyList<ShipSeat> Seats);
+    IReadOnlyList<ShipSeat> Seats)
+{
+    /// <summary>
+    /// Gets the control frame (K5-24 decision 2, P2): the rotation from the cockpit axes (+X right, +Y up, −Z forward) to the
+    /// construct axes, from the orientation of the first cockpit by cell; identity without a cockpit.
+    /// </summary>
+    public Quaternion ControlFrame { get; init; } = Quaternion.Identity;
+
+    /// <summary>Gets the radius of a sphere about <see cref="CenterOfMass"/> that contains every block, metres (K5-24).</summary>
+    public float BoundingRadius { get; init; }
+}

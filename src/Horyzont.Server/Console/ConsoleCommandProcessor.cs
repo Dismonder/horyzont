@@ -6,8 +6,10 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Ships;
+using Horyzont.Core.Ships.Flight;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Server.Frames;
+using Horyzont.Server.Ships;
 
 using Microsoft.Extensions.Logging;
 
@@ -153,6 +155,16 @@ public sealed class ConsoleCommandProcessor
     /// </summary>
     private string Ship(string[] parts)
     {
+        if (parts.Length == 4 && parts[1].Equals("fuel", StringComparison.OrdinalIgnoreCase))
+        {
+            return ShipFuel(parts[2], parts[3]);
+        }
+
+        if (parts.Length == 4 && parts[1].Equals("pilot", StringComparison.OrdinalIgnoreCase) && _devCommands)
+        {
+            return ShipPilot(parts[2], parts[3]);
+        }
+
         if (parts.Length != 2 || !ulong.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var id))
         {
             return "usage: ship <construct id>";
@@ -172,7 +184,86 @@ public sealed class ConsoleCommandProcessor
         var stats = _runtime.ShipStats.TryGet(construct, out var cached)
             ? cached
             : ShipStatsCalculator.Compute(state, _runtime.Simulation.Content);
-        return FormatShip(construct, state.Mode, stats);
+        var line = FormatShip(construct, state.Mode, stats);
+        return _runtime.TryGetTickParticipant<ShipFlightHost>(out var host) && host.Flight is { } flight
+            && flight.TryGetStatus(construct, out var status)
+            ? line + " " + FormatFlight(status, _runtime.State.ShipStates.TryGet(construct, out var record) ? record.LinearVelocity.Length() : 0f)
+            : line;
+    }
+
+    /// <summary>Formats the flight part of the <c>ship</c> line (K5-24; fixed format): <c>fuel=… v=… limit=… parked=… gate=…</c>.</summary>
+    /// <param name="status">The flight status.</param>
+    /// <param name="speed">Speed in m/s.</param>
+    /// <returns>The text.</returns>
+    public static string FormatFlight(in ShipFlightStatus status, float speed)
+    {
+        var gate = (status.Flags & ShipFlightFlags.TerrainUnavailable) != 0 ? "unavailable"
+            : (status.Flags & ShipFlightFlags.TerrainHold) != 0 ? "hold"
+            : "ready";
+        var parked = (status.Flags & ShipFlightFlags.Parked) != 0 ? "yes" : "no";
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"fuel={status.Fuel:0.#}/{status.FuelCapacity:0.#} v={speed:0.#} limit={status.SpeedLimit:0.#} parked={parked} gate={gate}");
+    }
+
+    /// <summary><c>ship fuel &lt;id&gt; &lt;units&gt;</c>: adds fuel through the server operation 21 (journaled), clipped to the tanks.</summary>
+    private string ShipFuel(string idText, string unitsText)
+    {
+        if (!ulong.TryParse(idText, NumberStyles.None, CultureInfo.InvariantCulture, out var id)
+            || !float.TryParse(unitsText, NumberStyles.Float, CultureInfo.InvariantCulture, out var units) || !float.IsFinite(units) || units <= 0)
+        {
+            return "usage: ship fuel <construct id> <units>";
+        }
+
+        if (_runtime.RuntimeState is not ServerRuntimeState.Running)
+        {
+            return "the server is not running";
+        }
+
+        var ship = new EntityId(id);
+        if (!_runtime.ShipStats.TryGet(ship, out var stats))
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"construct {id} is not a ship");
+        }
+
+        _runtime.Simulation.ApplyServerOperation(new ShipFuelAddOp(ship, units, stats.FuelCapacity));
+        var fuel = _runtime.State.ShipStates.TryGet(ship, out var record) ? record.Fuel : 0f;
+        return string.Create(CultureInfo.InvariantCulture, $"ship {id} fuel={fuel:0.#}/{stats.FuelCapacity:0.#}");
+    }
+
+    /// <summary><c>ship pilot &lt;id&gt; &lt;planet:id|stop&gt;</c> (development): the transit pilot flies the ship to a body.</summary>
+    private string ShipPilot(string idText, string target)
+    {
+        if (!ulong.TryParse(idText, NumberStyles.None, CultureInfo.InvariantCulture, out var id))
+        {
+            return "usage: ship pilot <construct id> <planet:id|stop>";
+        }
+
+        if (!_runtime.TryGetTickParticipant<ShipFlightHost>(out var host) || host.Dev is not { } dev)
+        {
+            return "development pilots are not running";
+        }
+
+        var ship = new EntityId(id);
+        if (target.Equals("stop", StringComparison.OrdinalIgnoreCase))
+        {
+            return dev.Stop(ship) ? string.Create(CultureInfo.InvariantCulture, $"ship {id} pilot stopped") : string.Create(CultureInfo.InvariantCulture, $"ship {id} has no pilot");
+        }
+
+        if (!target.StartsWith("planet:", StringComparison.OrdinalIgnoreCase)
+            || !ulong.TryParse(target.AsSpan(7), NumberStyles.None, CultureInfo.InvariantCulture, out var planet))
+        {
+            return "usage: ship pilot <construct id> <planet:id|stop>";
+        }
+
+        if (!_runtime.ShipStats.TryGet(ship, out _))
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"construct {id} is not a ship");
+        }
+
+        return dev.Start(ship, new PlanetId(planet))
+            ? string.Create(CultureInfo.InvariantCulture, $"ship {id} pilot to planet {planet}")
+            : string.Create(CultureInfo.InvariantCulture, $"unknown planet {planet}");
     }
 
     /// <summary>Formats the <c>ship</c> line.</summary>

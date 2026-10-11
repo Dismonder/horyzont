@@ -239,6 +239,10 @@ public sealed partial class BlockTypeCatalog
                 function = BlockFunction.Door;
                 allowed = [];
                 break;
+            case "refuel_station":
+                function = BlockFunction.RefuelStation;
+                allowed = [];
+                break;
             default:
                 throw Invalid($"{path}.kind", $"unknown function kind '{kind}'");
         }

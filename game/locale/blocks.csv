@@ -16,4 +16,5 @@ BLOCK_SHIP_PULSE_DRIVE,Pulse drive,Napęd pulsacyjny
 BLOCK_SHIP_HULL,Ship hull,Kadłub statku
 BLOCK_SHIP_WINDOW,Ship window,Okno statku
 BLOCK_SHIP_DOOR,Ship door,Drzwi statku
+BLOCK_SHIP_REFUEL_STATION,Refuel station,Stacja tankowania
 BLOCK_MISSING,Missing block,Brakujący blok

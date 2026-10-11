@@ -48,4 +48,7 @@ public sealed record GameRules
     /// generator (K5-23). Ship blocks farther from the planet centre than radius + this + 2 m cannot be embedded in terrain.
     /// </summary>
     public float TerrainMaxReliefMeters { get; init; } = 300f;
+
+    /// <summary>Largest distance from the centre of a refuel station cell to the bounding sphere of the ship, metres (K5-24 P3).</summary>
+    public float RefuelRangeMeters { get; init; } = 15f;
 }

@@ -79,4 +79,7 @@ public enum RejectReason : byte
 
     /// <summary>The construct has no engine (or the change would remove the last engine of a ship); K5-23.</summary>
     NoEngine = 37,
+
+    /// <summary>The ship is not parked (return to the static mode, refuelling); K5-24.</summary>
+    ShipNotParked = 39,
 }

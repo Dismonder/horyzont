@@ -14,6 +14,8 @@ internal sealed class ChangeTracker
 
     internal HashSet<TerrainBlockKey> Terrain { get; } = [];
 
+    internal HashSet<EntityId> ShipStates { get; } = [];
+
     internal void MarkConstruct(EntityId id) => Constructs.Add(id);
 
     internal void MarkChunk(ConstructChunkKey key) => Chunks.Add(key);
@@ -22,11 +24,14 @@ internal sealed class ChangeTracker
 
     internal void MarkTerrain(TerrainBlockKey key) => Terrain.Add(key);
 
+    internal void MarkShipState(EntityId id) => ShipStates.Add(id);
+
     internal void Clear()
     {
         Constructs.Clear();
         Chunks.Clear();
         Players.Clear();
         Terrain.Clear();
+        ShipStates.Clear();
     }
 }

@@ -94,7 +94,8 @@ public sealed class BlockTypeCatalogTests
                 { "key": "a:cargo", "shape": "cube", "mass": 200, "material": "stone", "function": { "kind": "cargo", "tier": 2 } },
                 { "key": "a:gear", "shape": "cube", "mass": 150, "material": "stone", "function": { "kind": "landing_gear" } },
                 { "key": "a:pulse", "shape": "cube", "mass": 800, "material": "stone", "function": { "kind": "pulse_drive", "speedCap": 2000 } },
-                { "key": "a:door", "shape": "cube", "mass": 200, "material": "stone", "function": { "kind": "door" } }
+                { "key": "a:door", "shape": "cube", "mass": 200, "material": "stone", "function": { "kind": "door" } },
+                { "key": "a:refuel", "shape": "cube", "mass": 1500, "material": "stone", "function": { "kind": "refuel_station" } }
               ]
             }
             """;
@@ -113,6 +114,7 @@ public sealed class BlockTypeCatalogTests
         Assert.Equal(BlockFunction.LandingGear, Def("a:gear").Function);
         Assert.Equal(BlockFunction.CreatePulseDrive(2000f), Def("a:pulse").Function);
         Assert.Equal(BlockFunction.Door, Def("a:door").Function);
+        Assert.Equal(BlockFunction.RefuelStation, Def("a:refuel").Function);
         Assert.Equal(BlockContentTable.MissingMassKg, catalog.Missing.Def.MassKg);
     }
 
@@ -166,6 +168,7 @@ public sealed class BlockTypeCatalogTests
             ("core:ship_hull", 200f, BlockFunction.None),
             ("core:ship_window", 150f, BlockFunction.None),
             ("core:ship_door", 200f, BlockFunction.Door),
+            ("core:ship_refuel_station", 1500f, BlockFunction.RefuelStation),
         ];
         foreach (var (key, mass, function) in expected)
         {

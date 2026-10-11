@@ -38,6 +38,19 @@ public readonly record struct TerrainColumn(Vector3 Center, float Radius, float 
     public static TerrainColumn UnderShip(Vector3 shipCenter, float shipRadius, float speed, float altitude, float planetRadius, float maxReliefMeters)
     {
         var depth = MathF.Min(MathF.Max(altitude, 0f), (LookaheadSeconds * MathF.Max(speed, 0f)) + MarginMeters);
+        return Below(shipCenter, shipRadius, depth, planetRadius, maxReliefMeters);
+    }
+
+    /// <summary>The column of a given depth under a ship (the load settler: the whole drop, K5-24 decision 18).</summary>
+    /// <param name="shipCenter">Centre of the bounding sphere of the ship in the planet frame.</param>
+    /// <param name="shipRadius">Radius of the bounding sphere of the ship.</param>
+    /// <param name="depth">The depth d (at least 0).</param>
+    /// <param name="planetRadius">Surface radius R.</param>
+    /// <param name="maxReliefMeters">Highest relief over R of the generator.</param>
+    /// <returns>The column.</returns>
+    public static TerrainColumn Below(Vector3 shipCenter, float shipRadius, float depth, float planetRadius, float maxReliefMeters)
+    {
+        depth = MathF.Max(depth, 0f);
         var r = shipCenter.Length();
         var up = r > 1e-3f ? shipCenter / r : Vector3.UnitY;
         var hull = MathF.Max(shipRadius, 0f);

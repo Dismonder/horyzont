@@ -391,6 +391,17 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     /// <summary>Gets a value indicating whether the own body is attached to a construct frame (K5-20).</summary>
     public bool IsAttached => _attached is not null;
 
+    /// <summary>The construct frame the own body is attached to and the server tick of the newest own state (flight HUD, K5-24).</summary>
+    /// <param name="frame">Receives the frame.</param>
+    /// <param name="serverTick">Receives the tick.</param>
+    /// <returns>False when the body is not attached.</returns>
+    public bool TryGetAttached(out Horyzont.Core.Ids.FrameRef frame, out double serverTick)
+    {
+        frame = _attached?.Frame ?? default;
+        serverTick = _attached?.ServerTick.Value ?? 0;
+        return _attached is not null;
+    }
+
     /// <inheritdoc />
     public override void _Process(double delta)
     {
