@@ -193,7 +193,7 @@ S10 usuwa blokadę K3-17: K3-00 posiada punkty w GameComposition.cs i neutralne 
 
 Testy `Replicate_*Within200ms*` (K3-15, K3-16) mieszają czas sieci (wirtualny) i czas meshingu/kolizji Voxel Tools (rzeczywisty, wątki robocze). Reguła: czas = opóźnienie dostarczenia z `LinkConditions` (deterministyczne, `FakeTimeProvider`: 50 ms w jedną stronę + jitter) + zmierzony rzeczywisty czas od odbioru komunikatu do `ChunkMeshApplied`/podmiany kolizji (`Time.GetTicksUsec` silnika), suma ≤ 200 ms; raport obu składników osobno. Test `Slow`, termin 60 s, opisany wyjątek od ZASADY pkt 8 (czas silnika). `LinkConditions.LossRate` dotyczy **wyłącznie** kanału zawodnego (`LinkConditions.cs:6`, `InMemoryTransport.cs:361`); kanał niezawodny w testach nie ma retransmisji.
 
-Kolejność K3: planowana K3-15 → 4, K3-16 → 5, K3-14 bez zmiany, K3-17 bez zmiany, K3-18 → 6; wykonawca po każdym scaleniu dopisuje rzeczywisty wiersz wersji (D4). K3-00 pozostawia 3.
+Kolejność K3: planowana K3-15 → 4, K3-16 → 5, K3-14 bez zmiany, K3-17 bez zmiany, K3-18 → 6; wykonawca po każdym scaleniu dopisuje rzeczywisty wiersz wersji (D4). K3-00 pozostawia 3. Stan faktyczny: main po K3-17 ma 5 (K3-16), K3-18 podbija do 6 (typy 22 `ServerStatus`, 23 `JoinUnavailable`).
 
 ## Pakiety K5
 
@@ -338,9 +338,9 @@ Testy `game/tests/Frames|Space|Ships|Terrain|Planet|Navigation` szeregowo na jed
 
 Kolejność K5: (wykonawcy dopisują tu po scaleniu: pakiet, PR, `ProtocolVersion`).
 
-- K5-20 — PR: (numer przy otwarciu), `ProtocolVersion` = 6 na gałęzi (main 5 + 1); przy scaleniu po K5-23 wartość = (main) + 1 po rebase (D4).
-- K5-21 — PR: (numer przy otwarciu), `ProtocolVersion` = 7 na stosie K5-20 (K5-20 = 6, + 1); przy scaleniu wartość = (main) + 1 po rebase (D4).
-- K5-22 — PR: (numer przy otwarciu), `ProtocolVersion` = 8 na stosie K5-21 (K5-21 = 7, + 1); przy scaleniu wartość = (main) + 1 po rebase (D4). Kroki 9 (część benchmarku) i 10 wstrzymane do scalenia K4-19.
+- K5-20 — PR #26, `ProtocolVersion` = 8 (main 7 po K5-23 + 1, D4; scalenie `origin/main` z K3-17, K3-18 i K5-23).
+- K5-21 — PR #30, `ProtocolVersion` = 9 (main 8 po K5-20 + 1, D4; scalenie K5-20 i `origin/main`).
+- K5-22 — PR: (numer przy otwarciu), `ProtocolVersion` = 10 (main 9 po K5-21 + 1, D4; scalenie K5-21 i `origin/main`). Kroki 9 (część benchmarku) i 10 wstrzymane do scalenia K4-19.
 
 ## Szablon planu pakietu
 

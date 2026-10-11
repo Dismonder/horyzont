@@ -34,7 +34,7 @@ public class DevCameraTests
         var player = composition.LocalPlayer!;
         AssertThat(await fixture.WaitUntil(() => player.IsActive, 180)).IsTrue();
         var dev = player.DevCamera!;
-        var planet = composition.Server!.State.Planets.All[0];
+        var planet = ModeFixture.Home(composition.Server!.State);
         // K5-22: the viewers live in ClientPlanetTerrains, which places them on its next frame.
         AssertThat(await fixture.WaitUntil(() => player.VisualViewer is not null, 30)).IsTrue();
 

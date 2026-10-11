@@ -1,4 +1,5 @@
 using Horyzont.Core.Ids;
+using Horyzont.Core.Intents;
 using Horyzont.Core.World.Constructs;
 
 namespace Horyzont.Core.Serialization;
@@ -6,6 +7,11 @@ namespace Horyzont.Core.Serialization;
 /// <summary>Internal shared primitive encoders and decoders for Core types.</summary>
 internal static class CoreCodecPrimitives
 {
+    /// <summary>True for every defined <see cref="RejectReason"/>: 0-21 (Planet) and the Space reasons 30, 31, 37.</summary>
+    public static bool IsKnownRejectReason(byte value) =>
+        value <= (byte)RejectReason.ServerReadOnly
+        || value is (byte)RejectReason.NoCockpit or (byte)RejectReason.ShipAnchored or (byte)RejectReason.NoEngine;
+
     public static void WriteFrameRef(ByteWriter w, FrameRef f)
     {
         if (f.Kind < FrameKind.System || f.Kind > FrameKind.Construct)

@@ -39,4 +39,23 @@ public sealed class ConstructReplicaTests
         chunk.Blocks[0] = 0xF0000001;
         Assert.Throws<InvalidDataException>(() => ConstructReplica.Create(header, [chunk]));
     }
+
+    [Fact]
+    public void ConstructReplica_ShipModeSetOp_UpdatesModeAndPose()
+    {
+        var parent = FrameRef.Of(new PlanetId(1));
+        var header = new ConstructHeaderRecord(new EntityId(5), parent, 3, ConstructMode.Static, Vector3.Zero, Quaternion.Identity, 7);
+        var replica = ConstructReplica.Create(header, []);
+        var origin = new Vector3(1, 2, 3);
+        Assert.False(replica.TrySetMode(ConstructMode.Ship, parent, 3, origin, Quaternion.Identity, 9));
+        Assert.False(replica.TrySetMode(ConstructMode.Ship, parent, 2, origin, Quaternion.Identity, 8));
+        Assert.False(replica.TrySetMode(ConstructMode.Static, parent, 3, origin, Quaternion.Identity, 8));
+        Assert.False(replica.TrySetMode(ConstructMode.Ship, parent, 3, new Vector3(float.NaN, 0, 0), Quaternion.Identity, 8));
+        Assert.Equal(ConstructMode.Static, replica.Value.Mode);
+        Assert.Equal(7u, replica.Value.Version);
+        Assert.True(replica.TrySetMode(ConstructMode.Ship, parent, 3, origin, Quaternion.Identity, 8));
+        Assert.Equal(ConstructMode.Ship, replica.Value.Mode);
+        Assert.Equal(origin, replica.Value.Origin);
+        Assert.Equal(8u, replica.Value.Version);
+    }
 }

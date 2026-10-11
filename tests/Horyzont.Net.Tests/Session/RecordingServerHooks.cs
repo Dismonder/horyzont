@@ -28,8 +28,14 @@ public sealed class RecordingServerHooks : IServerGameHooks
     /// <summary>When set, <see cref="CreateHello"/> builds the hello for the returned player instead (a hook breaking its contract).</summary>
     public Func<PlayerId, PlayerId>? HelloPlayer { get; set; }
 
+    public Exception? JoinFailure { get; set; }
+
     public PlayerId OnPlayerJoining(PlatformIdentity identity, string displayName)
     {
+        if (JoinFailure is { } failure)
+        {
+            throw failure;
+        }
         var player = new PlayerId(_nextPlayer++);
         Calls.Add("OnPlayerJoining");
         Joined.Add((identity, player));

@@ -4,6 +4,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
 using Horyzont.Core.World;
+using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Terrain;
 
@@ -26,26 +27,45 @@ public sealed class ServerSimulation
     private readonly Dictionary<PlayerId, PlayerBuckets> _buckets = [];
     private readonly List<PlayerBuckets> _bucketList = [];
 
-    /// <summary>Creates the simulation over a state.</summary>
+    /// <summary>Creates the simulation over a state with an empty block content table (no ship has a cockpit or an engine).</summary>
     /// <param name="state">World state.</param>
     /// <param name="terrain">Terrain service.</param>
     /// <param name="journal">Journal sink.</param>
     /// <param name="rules">Game rules.</param>
     /// <param name="logger">Logger.</param>
     public ServerSimulation(WorldState state, ITerrainService terrain, IJournalSink journal, GameRules rules, ILogger<ServerSimulation> logger)
+        : this(state, terrain, journal, rules, logger, BlockContentTable.Empty)
+    {
+    }
+
+    /// <summary>Creates the simulation over a state with the block definitions of the game content.</summary>
+    /// <param name="state">World state.</param>
+    /// <param name="terrain">Terrain service.</param>
+    /// <param name="journal">Journal sink.</param>
+    /// <param name="rules">Game rules.</param>
+    /// <param name="logger">Logger.</param>
+    /// <param name="content">
+    /// Block definitions by type id. Read by intent validators only (the ship mode needs cockpits, engines and block masses);
+    /// the operation applier never sees it.
+    /// </param>
+    public ServerSimulation(
+        WorldState state, ITerrainService terrain, IJournalSink journal, GameRules rules, ILogger<ServerSimulation> logger,
+        BlockContentTable content)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(terrain);
         ArgumentNullException.ThrowIfNull(journal);
         ArgumentNullException.ThrowIfNull(rules);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(content);
         State = state;
+        Content = content;
         Rules = rules;
         _terrain = terrain;
         _journal = journal;
         _logger = logger;
         _applier = new OperationApplier(state, terrain);
-        _validator = new IntentValidator(state, terrain, rules);
+        _validator = new IntentValidator(state, terrain, rules, content);
     }
 
     /// <summary>World state.</summary>
@@ -53,6 +73,9 @@ public sealed class ServerSimulation
 
     /// <summary>Game rules.</summary>
     public GameRules Rules { get; }
+
+    /// <summary>Block definitions the validators read.</summary>
+    public BlockContentTable Content { get; }
 
     /// <summary>
     /// Raised on the calling thread after an operation of <see cref="Submit"/> or <see cref="ApplyServerOperation"/> was applied,

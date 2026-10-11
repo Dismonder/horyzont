@@ -41,3 +41,6 @@ export_presets.cfg.bak
 Thumbs.db
 /game/gdunit4_testadapter_v5/
 /build/
+
+# Steam: local application id file next to the executable (never committed; see K3-17)
+steam_appid.txt

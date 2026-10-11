@@ -3,8 +3,8 @@ namespace Horyzont.Core.Protocol;
 /// <summary>Limits of the network protocol and of the persisted formats.</summary>
 public static class ProtocolConstants
 {
-    /// <summary>Protocol version; bumped by every change of a message format. 2: RejectReason.ServerReadOnly (K2-10). 3: InputButtons.DevFly and the 0x3F button mask (K2-11). 6: ship-mode constructs in snapshots (K5-20; main 5 after K3-16 + 1 per D4). 8: TerrainView of a planet other than the region of the player accepted up to 4.4 R (K5-22 on the K5-21 stack; main + 1 at merge).</summary>
-    public const ushort ProtocolVersion = 8;
+    /// <summary>Protocol version; bumped by every change of a message format. 2: RejectReason.ServerReadOnly (K2-10). 3: InputButtons.DevFly and the 0x3F button mask (K2-11). 4: K3-15 replication messages. 5: K3-16 terrain manifest sync. 6: ServerStatus/JoinUnavailable (K3-18). 7: ShipModeSetOp, ShipModeIntent and reject reasons 30, 31, 37 (K5-23). 8: ship-mode constructs in snapshots (K5-20; main 7 after K5-23 + 1 per D4). 9: StarSystemState message 32 and checkpoint blob 10 (K5-21; main 8 after K5-20 + 1 per D4). 10: TerrainView of a planet other than the region of the player accepted up to 4.4 R (K5-22; main 9 after K5-21 + 1 per D4).</summary>
+    public const ushort ProtocolVersion = 10;
 
     /// <summary>Maximum entries per terrain manifest page (K3-16).</summary>
     public const int MaxTerrainSyncEntries = 1024;

@@ -31,13 +31,10 @@ public sealed partial class GameComposition
             var frames = ServerFrames;
             ZoneTransitions = new ServerZoneTransitions(
                 () => frames is null ? null : TransitionsOf(frames, server), GameServerHooks.TickRate, _env.Loggers.CreateLogger<ServerZoneTransitions>());
-            server.AddTickParticipant(ZoneTransitions);
 
             // Last in phase Frames: the frame nodes follow the zone transitions before the characters step (K5-20 review).
-            if (ServerFrameNodes is { } nodes)
-            {
-                server.AddTickParticipant(new FrameNodesComposer(nodes, ServerTickPhase.Frames));
-            }
+            ServerZoneTransitions.RegisterFramesPhase(
+                server, ZoneTransitions, ServerFrameNodes is { } nodes ? new FrameNodesComposer(nodes, ServerTickPhase.Frames) : null);
         }
 
         if (Client is not null)

@@ -27,7 +27,7 @@ public sealed class GeneratorSanityTests
         Assert.Equal(Enum.GetValues<MessageType>().Order(), Draw(CodecGen.Message).Select(m => m.Type).Distinct().Order());
 
     [Fact]
-    public void Operations_CoverAllSevenKinds() =>
+    public void Operations_CoverAllEightKinds() =>
         Assert.Equal(Enum.GetValues<OperationKind>().Order(), Draw(CodecGen.Operation).Select(o => o.Kind).Distinct().Order());
 
     [Fact]
@@ -37,6 +37,7 @@ public sealed class GeneratorSanityTests
 
         Assert.Contains(intents, i => i is TerrainToolIntent);
         Assert.Contains(intents, i => i is RemoveBlockIntent);
+        Assert.Contains(intents, i => i is ShipModeIntent);
         Assert.Contains(intents, i => i is PlaceBlockIntent { Target: ConstructFaceTarget });
         Assert.Contains(intents, i => i is PlaceBlockIntent { Target: TerrainTarget });
     }

@@ -11,6 +11,7 @@ namespace Horyzont.Client.Tools;
 /// <param name="MaterialSteps">Steps in the material palette.</param>
 /// <param name="YawSteps">Quarter turns of the block about its up axis.</param>
 /// <param name="UpSteps">Steps of the block up face.</param>
+/// <param name="ShipModeToggle">The ship mode key went down since the last tick (K5-23).</param>
 public readonly record struct ToolInputFrame(
     bool PrimaryPressed,
     bool PrimaryHeld,
@@ -21,4 +22,5 @@ public readonly record struct ToolInputFrame(
     int PaletteSteps,
     int MaterialSteps,
     int YawSteps,
-    int UpSteps);
+    int UpSteps,
+    bool ShipModeToggle = false);

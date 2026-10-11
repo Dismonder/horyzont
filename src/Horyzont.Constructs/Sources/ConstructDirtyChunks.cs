@@ -50,6 +50,9 @@ public static class ConstructDirtyChunks
             case EntityReparentOp reparent:
                 reposed?.Add(reparent.Entity);
                 break;
+            case ShipModeSetOp shipMode:
+                reposed?.Add(shipMode.Construct);
+                break;
             default:
                 break;
         }

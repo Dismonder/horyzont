@@ -42,4 +42,10 @@ public sealed record GameRules
 
     /// <summary>Eye height above the feet.</summary>
     public float EyeHeight { get; init; } = 1.62f;
+
+    /// <summary>
+    /// Highest terrain above the planet radius, metres. Core does not know the generator; the game sets this from the planet
+    /// generator (K5-23). Ship blocks farther from the planet centre than radius + this + 2 m cannot be embedded in terrain.
+    /// </summary>
+    public float TerrainMaxReliefMeters { get; init; } = 300f;
 }

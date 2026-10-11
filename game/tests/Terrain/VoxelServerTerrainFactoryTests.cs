@@ -68,7 +68,7 @@ public class VoxelServerTerrainFactoryTests
             {
                 stream = node.Stream;
                 // All planets are now built outside the tree. Exercise an already active stream read explicitly so the
-                // factory's actual catch path must still protect the store when the second planet fails.
+                // factory's actual catch path must still protect the store when the construction fails.
                 reading = Task.Run(() =>
                 {
                     using var buffer = new VoxelBuffer();

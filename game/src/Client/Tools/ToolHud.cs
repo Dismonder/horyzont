@@ -3,8 +3,10 @@ using System.Text;
 
 using Godot;
 
+using Horyzont.Client.Ships;
 using Horyzont.Client.Tools;
 using Horyzont.Core.Intents;
+using Horyzont.Core.World.Constructs;
 
 namespace Horyzont.Game.Client.Tools;
 
@@ -15,6 +17,8 @@ namespace Horyzont.Game.Client.Tools;
 /// </summary>
 public sealed partial class ToolHud : CanvasLayer
 {
+    private const int ToggleMessageTicks = 180;
+
     private readonly ToolNode _tools;
     private readonly StringBuilder _text = new();
     private readonly Dictionary<string, string> _translations = [];
@@ -100,7 +104,10 @@ public sealed partial class ToolHud : CanvasLayer
         var hint = preview.Kind != ToolPreviewKind.None ? preview.Hint : RejectReason.None;
         var waiting = controller.WaitingForServer;
         var refusal = _tools.Pending?.LastRejection ?? RejectReason.None;
-        var shown = new Shown(settings.Tool, settings.Radius, settings.FillMaterial, settings.BlockType, settings.Orientation, hint, waiting, refusal);
+        var ship = _tools.Ship?.Aimed;
+        var toggle = _tools.Ticks - _tools.LastShipToggleTick < ToggleMessageTicks ? _tools.LastShipToggle : null;
+        var shown = new Shown(
+            settings.Tool, settings.Radius, settings.FillMaterial, settings.BlockType, settings.Orientation, hint, waiting, refusal, ship, toggle);
         if (_hasShown && shown.Equals(_shown))
         {
             return;
@@ -132,6 +139,16 @@ public sealed partial class ToolHud : CanvasLayer
             _text.Append('\n').Append(T("TOOL_WAITING"));
         }
 
+        if (ship is not null)
+        {
+            AppendShip(ship);
+        }
+
+        if (toggle is ShipModeToggleResult.NotACockpit or ShipModeToggleResult.NoConstruct)
+        {
+            _text.Append('\n').Append(T("SHIP_NOT_COCKPIT"));
+        }
+
         if (refusal != RejectReason.None)
         {
             _text.Append('\n').Append(T("TOOL_LAST_REFUSAL")).Append(": ").Append(RejectText(refusal));
@@ -142,6 +159,17 @@ public sealed partial class ToolHud : CanvasLayer
         {
             _label.Text = text;
         }
+    }
+
+    /// <summary>The developer line of the ship under the crosshair (numbers from the client's own copy: the server decides).</summary>
+    private void AppendShip(AimedShip ship)
+    {
+        var stats = ship.Stats;
+        _text.Append('\n').Append("G ").Append(T("SHIP_TOGGLE")).Append("   ").Append(T("SHIP_MODE")).Append(": ")
+            .Append(T(ship.Mode == ConstructMode.Ship ? "SHIP_MODE_SHIP" : "SHIP_MODE_STATIC")).Append("   ").Append(T("SHIP_MASS")).Append(' ')
+            .Append(stats.MassKg.ToString("F0", CultureInfo.InvariantCulture)).Append(" kg   ").Append(T("SHIP_THRUST")).Append(" +Y ")
+            .Append(stats.Thrust.PosY.ToString("F0", CultureInfo.InvariantCulture)).Append(" N   ").Append(T("SHIP_ENGINES")).Append(' ')
+            .Append(stats.Engines).Append("   ").Append(T("SHIP_SEATS")).Append(' ').Append(stats.Seats.Count);
     }
 
     private string T(string key)
@@ -190,5 +218,6 @@ public sealed partial class ToolHud : CanvasLayer
     }
 
     private readonly record struct Shown(
-        ToolKind Tool, float Radius, byte Material, ushort Block, byte Orientation, RejectReason Hint, bool Waiting, RejectReason Refusal);
+        ToolKind Tool, float Radius, byte Material, ushort Block, byte Orientation, RejectReason Hint, bool Waiting, RejectReason Refusal,
+        AimedShip? Ship, ShipModeToggleResult? Toggle);
 }

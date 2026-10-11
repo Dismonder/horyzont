@@ -286,6 +286,31 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// A trilinear SDF sample (the one the raycast uses) below zero. Answers only where the surrounding blocks are loaded, so a
+    /// statement about the ground is never made from missing data. Allocates no managed memory.
+    /// </remarks>
+    public bool TrySampleSolid(PlanetId planet, Vector3 position, out bool solid)
+    {
+        EnsureMainThread();
+        solid = false;
+        if (_shutDown || FirstFault is not null || _blocks.IsSaturated || !_planets.TryGetValue(planet.Value, out var entry)
+            || !float.IsFinite(position.X) || !float.IsFinite(position.Y) || !float.IsFinite(position.Z))
+        {
+            return false;
+        }
+
+        // The trilinear sample reads the voxel cell of the point and its +1 neighbours, so one metre around covers it.
+        if (!IsBlockAreaEditable(entry, position, 1f))
+        {
+            return false;
+        }
+
+        solid = TerrainRaycaster.Sample(entry.Node.Tool, TerrainVectors.ToGodot(position)) < 0;
+        return true;
+    }
+
+    /// <inheritdoc />
     /// <exception cref="InvalidOperationException">
     /// Unknown planet or shape, a terrain fault (<see cref="FirstFault"/>), versions other than the affected blocks, or an area that
     /// is not editable; nothing changed.

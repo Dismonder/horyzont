@@ -135,6 +135,12 @@ internal sealed class ConstructTestWorld : IDisposable
             return false;
         }
 
+        public bool TrySampleSolid(PlanetId planet, Vector3 position, out bool solid)
+        {
+            solid = false;
+            return true;
+        }
+
         public void ApplyEdit(TerrainEditOp edit, IReadOnlyList<TerrainBlockVersion> versions)
         {
         }
