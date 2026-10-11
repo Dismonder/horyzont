@@ -98,6 +98,12 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         _simulation.Applied += OnApplied;
     }
 
+    /// <summary>
+    /// Gets or sets the ship corrections (K5-25 decision 15): with the snapshot of a pilot, inside the same snapshot budget, only
+    /// while the construct link of the ship is live; null = none.
+    /// </summary>
+    public IShipCorrectionSource? ShipCorrections { get; set; }
+
     /// <summary>Gets the construct transfers (tests and reports).</summary>
     public ConstructStateSender Constructs => _constructs;
 
@@ -449,7 +455,24 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
             if (size > 0)
             {
                 _session.SendEncoded(player, TransportChannel.Unreliable, _frame.AsSpan(0, size));
+                SendShipCorrection(player);
             }
+        }
+    }
+
+    /// <summary>K5-25 decision 15: the correction rides with the snapshot of the pilot, in the snapshot budget, on a live ship link.</summary>
+    private void SendShipCorrection(PlayerId player)
+    {
+        if (ShipCorrections is not { } corrections)
+        {
+            return;
+        }
+
+        var size = corrections.Write(player, _frame, out var ship);
+        if (size > 0 && (!_receivesConstructs(player) || _constructs.IsLive(player, ship)))
+        {
+            _snapshotBudget.Debit(player, size);
+            _session.SendEncoded(player, TransportChannel.Unreliable, _frame.AsSpan(0, size));
         }
     }
 
