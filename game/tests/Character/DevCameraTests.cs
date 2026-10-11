@@ -35,7 +35,8 @@ public class DevCameraTests
         AssertThat(await fixture.WaitUntil(() => player.IsActive, 180)).IsTrue();
         var dev = player.DevCamera!;
         var planet = composition.Server!.State.Planets.All[0];
-        AssertThat(player.VisualViewer).IsNotNull();
+        // K5-22: the viewers live in ClientPlanetTerrains, which places them on its next frame.
+        AssertThat(await fixture.WaitUntil(() => player.VisualViewer is not null, 30)).IsTrue();
 
         var press = new InputEventAction { Action = "dev_camera_orbit", Pressed = true };
         Input.ParseInputEvent(press);

@@ -9,6 +9,7 @@ using Horyzont.Core.Simulation;
 using Horyzont.Core.Space;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Terrain;
+using Horyzont.Game.Client;
 using Horyzont.Game.Frames;
 using Horyzont.Game.Planet;
 using Horyzont.Game.Planet.Generators;
@@ -304,6 +305,49 @@ public class ServerPlanetTerrainsTests
             rig.Ticks(3700);
             AssertThat(planets.IsActive(moon)).IsFalse();
             AssertThat(rig.State.TerrainVersions.All.Any(version => version.Key.Planet == moon)).IsTrue();
+        }
+        finally
+        {
+            await rig.DisposeAsync();
+        }
+    }
+
+    /// <summary>Decision 10, host: one terrain instance lives while the server <b>or</b> the client wants it.</summary>
+    [TestCase(Timeout = 240000)]
+    [RequireGodotRuntime]
+    public async Task SharedTerrain_HostKeepsNodeWhileServerOrClientWants()
+    {
+        await using var scene = EngineTestScene.Create();
+        var rig = Rig.Create(scene);
+        try
+        {
+            var planets = rig.Terrain.Planets;
+            var moon = rig.Moon.Planet;
+            var client = SharedTerrainProvider.Over(rig.Terrain);
+            AssertThat(client.TryGetPlanet(moon, out _)).IsFalse();
+
+            // The client alone holds the moon past the linger.
+            AssertThat(client.Activate(moon)).IsTrue();
+            AssertThat(client.Activate(moon)).IsTrue();
+            AssertThat(client.TryGetPlanet(moon, out _)).IsTrue();
+            rig.Ticks(3600 + 120);
+            AssertThat(planets.IsActive(moon)).IsTrue();
+
+            // The server wants it while the client lets go: the node stays.
+            var server = planets.Acquire(moon, PlanetLeaseReason.Dev);
+            client.Release(moon);
+            rig.Ticks(3600 + 120);
+            AssertThat(planets.IsActive(moon)).IsTrue();
+            AssertThat(client.TryGetPlanet(moon, out _)).IsTrue();
+
+            // Nobody wants it: it goes after the linger, for both.
+            server.Dispose();
+            rig.Ticks(3600 + 120);
+            AssertThat(planets.IsActive(moon)).IsFalse();
+            await scene.WaitFrames(2);
+            AssertThat(client.TryGetPlanet(moon, out _)).IsFalse();
+            AssertThat(client.Activate(rig.State.HomePlanet)).IsTrue();
+            AssertThat(client.TryGetPlanet(rig.State.HomePlanet, out _)).IsTrue();
         }
         finally
         {

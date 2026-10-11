@@ -1,5 +1,6 @@
 using System.Diagnostics;
 
+using Horyzont.Client.Session;
 using Horyzont.Game.Server.Terrain;
 using Horyzont.Server;
 using Horyzont.Server.Frames;
@@ -50,16 +51,38 @@ public sealed partial class GameComposition
         }
 
         var planets = new Horyzont.Game.Client.Terrain.ClientPlanetTerrains { Name = "PlanetTerrains" };
+        var client = Client;
         planets.Initialize(
             () => clientNode.TerrainProvider,
             () => ClientStarSystem,
-            () => player.Planet,
-            () => player.Planet is { } planet && planet != default && ClientStarSystem is { } system && system.TryGetPose(planet, out var pose)
-                ? (true, pose.Position + Horyzont.Core.Frames.Vector3D.FromFloat(player.CameraOrigin))
-                : (false, default),
-            _env.Render);
+            () => ViewpointOf(player, client),
+            _env.Render,
+            () => client is { IsHostLocal: false });
         clientNode.AddChild(planets);
         ClientPlanets = planets;
+        player.PlanetTerrains = planets;
+    }
+
+    /// <summary>The own body and the camera in the frame of the body planet; the region planet is forced (decision 10).</summary>
+    private static Horyzont.Game.Client.Terrain.ClientViewpoint ViewpointOf(Horyzont.Game.Client.Character.LocalPlayer player, ClientRuntime? client)
+    {
+        var planet = player.Body is null ? default : player.Planet;
+        if (planet == default || client?.Hello is not { } hello)
+        {
+            return default;
+        }
+
+        var radius = 0f;
+        foreach (var parameters in hello.Planets)
+        {
+            if (parameters.Id == planet)
+            {
+                radius = (float)parameters.RadiusMeters;
+                break;
+            }
+        }
+
+        return new Horyzont.Game.Client.Terrain.ClientViewpoint(planet, planet, radius, player.CameraOrigin, player.PredictedFeet);
     }
 
     private sealed class TickClock : IServerTickParticipant

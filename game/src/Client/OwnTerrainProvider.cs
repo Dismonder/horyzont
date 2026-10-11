@@ -119,17 +119,12 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
                 Path.Combine(_cacheDirectory, "terrain-derived.db"), settings.Time, settings.Loggers.CreateLogger<DerivedLodStore>()));
         }
 
-        // K5-22 decision 10: nodes are created on activation (ClientPlanetTerrains). The home planet (element 0 of the hello, K5-21
-        // decision 10) is activated at once, so the first body never waits for a selection.
+        // K5-22 decision 10: Prepare only registers the planets; nodes are created on activation (ClientPlanetTerrains, and LocalPlayer
+        // for the planet of the own body when the body is created), whichever planet the body is on.
         _source = source;
         foreach (var planet in hello.Planets)
         {
             _known[planet.Id.Value] = planet;
-        }
-
-        if (hello.Planets.Count > 0)
-        {
-            Activate(hello.Planets[0].Id);
         }
 
         if (_derived is not null && Cache is not null)

@@ -24,6 +24,17 @@ public sealed class SharedTerrainProvider : IClientTerrainProvider
         _acquire = acquire;
     }
 
+    /// <summary>Creates the provider of a host over the running server terrain, holding planets with <c>External</c> leases (K5-22).</summary>
+    /// <param name="terrain">The server terrain.</param>
+    /// <returns>The provider.</returns>
+    public static SharedTerrainProvider Over(Horyzont.Game.Server.VoxelServerTerrain terrain)
+    {
+        ArgumentNullException.ThrowIfNull(terrain);
+        return new SharedTerrainProvider(
+            terrain.Voxel,
+            planet => terrain.Planets.TryGetGenerator(planet, out _) ? terrain.Planets.Acquire(planet, Horyzont.Server.Space.PlanetLeaseReason.External) : null);
+    }
+
     /// <inheritdoc />
     /// <remarks>The host keeps one terrain instance: the node lives while the server <b>or</b> the client wants it (K5-22 decision 10).</remarks>
     public bool Activate(PlanetId planet)
