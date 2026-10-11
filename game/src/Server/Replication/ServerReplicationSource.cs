@@ -52,9 +52,12 @@ public sealed class ServerReplicationSource(WorldState world, IServerCharacterSo
             }
 
             var construct = constructs[i];
+
+            // K5-26: a ship carries the velocity of its origin in the parent frame, so clients interpolate its flight with it.
+            var velocity = construct.Mode == ConstructMode.Ship && world.ShipStates.TryGet(construct.Id, out var ship) ? ship.LinearVelocity : Vector3.Zero;
             destination[count++] = new ReplicationEntity(
                 construct.Id, EntityKind.Construct, null, new SnapshotFrame(construct.Parent, construct.ParentSeq),
-                new EntityState(construct.Id, AllFields, 0, construct.ParentSeq, construct.Origin, construct.Rotation, Vector3.Zero, 0),
+                new EntityState(construct.Id, AllFields, 0, construct.ParentSeq, construct.Origin, construct.Rotation, velocity, 0),
                 BoundsRadius(construct));
         }
 

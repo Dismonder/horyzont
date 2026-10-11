@@ -4,8 +4,9 @@ namespace Horyzont.Core.Frames;
 
 /// <summary>
 /// World poses of moving frames over the last <see cref="HistoryTicks"/> ticks (500 ms at 60 Hz, K5-20 decision 9): a fixed number
-/// of frame slots, each a ring of samples. Lookups interpolate position linearly and rotation spherically between recorded ticks.
-/// Allocation-free after construction. Main thread only.
+/// of frame slots, each a ring of samples. Lookups interpolate position linearly and rotation spherically between recorded ticks;
+/// between two samples that both carry a velocity (K5-26: ship snapshots) the position follows the cubic Hermite curve, which is exact
+/// for a constant acceleration across lost snapshots. Allocation-free after construction. Main thread only.
 /// </summary>
 public sealed class FramePoseHistory : IFrameHistoryView
 {
@@ -20,6 +21,8 @@ public sealed class FramePoseHistory : IFrameHistoryView
     private readonly int[] _free;
     private readonly ulong[] _ticks;
     private readonly PoseD[] _poses;
+    private readonly Vector3D[] _velocities;
+    private readonly bool[] _hasVelocity;
     private readonly int[] _head;
     private readonly int[] _count;
     private int _freeCount;
@@ -37,6 +40,8 @@ public sealed class FramePoseHistory : IFrameHistoryView
         _free = new int[capacity];
         _ticks = new ulong[capacity * _samples];
         _poses = new PoseD[capacity * _samples];
+        _velocities = new Vector3D[capacity * _samples];
+        _hasVelocity = new bool[capacity * _samples];
         _head = new int[capacity];
         _count = new int[capacity];
         for (var i = 0; i < capacity; i++)
@@ -66,7 +71,15 @@ public sealed class FramePoseHistory : IFrameHistoryView
     /// <param name="frame">The frame.</param>
     /// <param name="worldPose">The world pose.</param>
     /// <returns>False for a tick older than the newest sample or a new frame when every slot is taken.</returns>
-    public bool Record(Tick tick, FrameRef frame, in PoseD worldPose)
+    public bool Record(Tick tick, FrameRef frame, in PoseD worldPose) => Record(tick, frame, worldPose, null);
+
+    /// <summary>Records the world pose and the world velocity of a frame at a tick (K5-26); see <see cref="Record(Tick, FrameRef, in PoseD)"/>.</summary>
+    /// <param name="tick">The tick.</param>
+    /// <param name="frame">The frame.</param>
+    /// <param name="worldPose">The world pose.</param>
+    /// <param name="worldVelocity">Velocity of the frame origin in the world, in metres per tick; null when unknown.</param>
+    /// <returns>False for a tick older than the newest sample or a new frame when every slot is taken.</returns>
+    public bool Record(Tick tick, FrameRef frame, in PoseD worldPose, Vector3D? worldVelocity)
     {
         if (!_slots.TryGetValue(frame, out var slot))
         {
@@ -93,6 +106,8 @@ public sealed class FramePoseHistory : IFrameHistoryView
             if (tick.Value == _ticks[newest])
             {
                 _poses[newest] = worldPose;
+                _velocities[newest] = worldVelocity ?? default;
+                _hasVelocity[newest] = worldVelocity.HasValue;
                 return true;
             }
         }
@@ -100,6 +115,8 @@ public sealed class FramePoseHistory : IFrameHistoryView
         var index = start + _head[slot];
         _ticks[index] = tick.Value;
         _poses[index] = worldPose;
+        _velocities[index] = worldVelocity ?? default;
+        _hasVelocity[index] = worldVelocity.HasValue;
         _head[slot] = (_head[slot] + 1) % _samples;
         _count[slot] = Math.Min(_count[slot] + 1, _samples);
         return true;
@@ -136,10 +153,12 @@ public sealed class FramePoseHistory : IFrameHistoryView
                 }
 
                 var laterTick = (double)_ticks[later];
-                var t = (tick - sampleTick) / (laterTick - sampleTick);
-                pose = new PoseD(
-                    Vector3D.Lerp(_poses[index].Position, _poses[later].Position, t),
-                    QuaternionD.Slerp(_poses[index].Rotation, _poses[later].Rotation, t));
+                var span = laterTick - sampleTick;
+                var t = (tick - sampleTick) / span;
+                var position = _hasVelocity[index] && _hasVelocity[later]
+                    ? Hermite(_poses[index].Position, _velocities[index] * span, _poses[later].Position, _velocities[later] * span, t)
+                    : Vector3D.Lerp(_poses[index].Position, _poses[later].Position, t);
+                pose = new PoseD(position, QuaternionD.Slerp(_poses[index].Rotation, _poses[later].Rotation, t));
                 return true;
             }
 
@@ -147,6 +166,13 @@ public sealed class FramePoseHistory : IFrameHistoryView
         }
 
         return false;
+    }
+
+    private static Vector3D Hermite(in Vector3D p0, in Vector3D m0, in Vector3D p1, in Vector3D m1, double t)
+    {
+        var t2 = t * t;
+        var t3 = t2 * t;
+        return (p0 * ((2 * t3) - (3 * t2) + 1)) + (m0 * (t3 - (2 * t2) + t)) + (p1 * ((-2 * t3) + (3 * t2))) + (m1 * (t3 - t2));
     }
 
     /// <summary>Drops every sample of a frame and frees its slot.</summary>

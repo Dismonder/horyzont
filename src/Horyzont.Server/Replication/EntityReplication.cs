@@ -411,6 +411,29 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         return false;
     }
 
+    /// <summary>Whether the entity (when a construct) and every construct of its frame chain have a complete copy at the recipient.</summary>
+    private bool IsChainLive(PlayerId player, in ReplicationEntity entity)
+    {
+        if (entity.Kind == EntityKind.Construct && !_constructs.IsLive(player, entity.Id))
+        {
+            return false;
+        }
+
+        var frame = entity.Frame.Frame;
+        for (var depth = 0; depth < 8 && frame.Kind == FrameKind.Construct; depth++)
+        {
+            var id = new EntityId(frame.Id);
+            if (!_constructs.IsLive(player, id) || !_simulation.State.Constructs.TryGet(id, out var construct))
+            {
+                return false;
+            }
+
+            frame = construct.Parent;
+        }
+
+        return true;
+    }
+
     private bool IsSnapshotCandidate(in ReplicationEntity entity) =>
         entity.Kind != EntityKind.Construct
         || (_simulation.State.Constructs.TryGet(entity.Id, out var construct) && construct.Mode == ConstructMode.Ship);
@@ -509,10 +532,13 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
 
             Grow(ref _visible, state.Mobile.Count);
             var count = 0;
+            var gated = _receivesConstructs(player);
             for (var j = 0; j < state.Mobile.Count; j++)
             {
                 // Constructs are known like players, but only ship-mode ones move outside the journal and go into snapshots (K5-20).
-                if (_index.TryGetValue(state.Mobile[j], out var index) && IsSnapshotCandidate(in _entities[index]))
+                // K5-26 decision 4: an entity goes into snapshots only once every construct of its chain is live at the recipient.
+                if (_index.TryGetValue(state.Mobile[j], out var index) && IsSnapshotCandidate(in _entities[index])
+                    && (!gated || IsChainLive(player, in _entities[index])))
                 {
                     _visible[count++] = _entities[index];
                 }

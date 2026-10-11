@@ -22,19 +22,24 @@ public sealed class ClientFrameHistory : IFullSnapshotSink, IFrameHistoryView
     private readonly EntityMirror _entities;
     private readonly IPlanetPlacement _placement;
     private readonly FramePoseHistory _history;
+    private readonly double _secondsPerTick;
 
     /// <summary>Initializes a new instance of the <see cref="ClientFrameHistory"/> class and follows despawns of the mirror.</summary>
     /// <param name="entities">The entity mirror (kinds of snapshot entities, despawns).</param>
     /// <param name="placement">Planet poses in their system frame.</param>
     /// <param name="capacity">Number of frames recorded at once.</param>
     /// <param name="samples">Snapshots kept per frame.</param>
-    public ClientFrameHistory(EntityMirror entities, IPlanetPlacement placement, int capacity = FramePoseHistory.DefaultCapacity, int samples = DefaultSamples)
+    /// <param name="ticksPerSecond">Server ticks per second (snapshot velocities are in m/s, the history in metres per tick).</param>
+    public ClientFrameHistory(
+        EntityMirror entities, IPlanetPlacement placement, int capacity = FramePoseHistory.DefaultCapacity, int samples = DefaultSamples, int ticksPerSecond = 60)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(ticksPerSecond, 1);
         ArgumentNullException.ThrowIfNull(entities);
         ArgumentNullException.ThrowIfNull(placement);
         _entities = entities;
         _placement = placement;
         _history = new FramePoseHistory(capacity, samples);
+        _secondsPerTick = 1.0 / ticksPerSecond;
         _entities.Despawned += OnDespawned;
     }
 
@@ -58,9 +63,16 @@ public sealed class ClientFrameHistory : IFullSnapshotSink, IFrameHistoryView
                 continue;
             }
 
-            if (TryGetParentWorldPose(full.Frames[state.FrameIndex].Frame, full.ServerTick.Value, out var parent))
+            var parentFrame = full.Frames[state.FrameIndex].Frame;
+            if (TryGetParentWorldPose(parentFrame, full.ServerTick.Value, out var parent))
             {
-                _history.Record(full.ServerTick, FrameRef.Of(state.Entity), FrameMath.Compose(parent, FrameMath.FromFloat(state.Position, state.Rotation)));
+                // K5-26: ships carry the velocity of their origin in the parent frame; planet and system frames do not move, so it turns
+                // into a world velocity by the parent rotation alone. Other parents keep linear interpolation.
+                Vector3D? velocity = parentFrame.Kind is FrameKind.Planet or FrameKind.System
+                    ? FrameMath.TransformDirection(parent, Vector3D.FromFloat(state.Velocity)) * _secondsPerTick
+                    : null;
+                _history.Record(
+                    full.ServerTick, FrameRef.Of(state.Entity), FrameMath.Compose(parent, FrameMath.FromFloat(state.Position, state.Rotation)), velocity);
             }
         }
     }
