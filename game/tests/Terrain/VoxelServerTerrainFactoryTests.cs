@@ -44,7 +44,7 @@ public class VoxelServerTerrainFactoryTests
         var simulation = new ServerSimulation(state, new FakeTerrainService(), new InMemoryJournal(), new GameRules(), NullLogger<ServerSimulation>.Instance);
         simulation.ApplyServerOperation(new TerrainEditOp(first.Id, TerrainShape.Sphere, new System.Numerics.Vector3(0, 4000, 0), 1, TerrainEditMode.Remove, 0));
         var key = state.TerrainVersions.All.First().Key;
-        var expected = new InvalidOperationException("Second planet creation failed");
+        var expected = new InvalidOperationException("Planet terrain creation failed");
         Task<int>? reading = null;
         TerrainStream? stream = null;
         TerrainBlockStore? storeForCleanup = null;
@@ -64,14 +64,15 @@ public class VoxelServerTerrainFactoryTests
                     }
                 }));
             },
+            // K5-21 decision 11: only the home planet gets terrain until K5-22, so the second planet is never built.
             CreatePlanet = (planet, options, material) => planet.Id == second.Id
-                ? throw expected
+                ? throw new InvalidOperationException("The second planet must not get terrain before K5-22")
                 : PlanetTerrainFactory.Create(planet, options, material),
             PlanetCreated = node =>
             {
                 stream = node.Stream;
                 // All planets are now built outside the tree. Exercise an already active stream read explicitly so the
-                // factory's actual catch path must still protect the store when the second planet fails.
+                // factory's actual catch path must still protect the store when the construction fails.
                 reading = Task.Run(() =>
                 {
                     using var buffer = new VoxelBuffer();
@@ -82,6 +83,9 @@ public class VoxelServerTerrainFactoryTests
                 {
                     throw new TimeoutException("The first planet did not enter its read");
                 }
+
+                // The construction fails while the first planet's read is still running (formerly the second planet's creation).
+                throw expected;
             },
         };
 
