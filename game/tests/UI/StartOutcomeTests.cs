@@ -42,10 +42,10 @@ public class StartOutcomeTests
         }
 
         var newer = WorldStartOutcomeMapper.Map(new WorldStartResult.FromNewerVersion(9, 5));
-        AssertThat(newer.SchemaVersion).IsEqual(9);
-        AssertThat(newer.SupportedVersion).IsEqual(5);
-        AssertThat(WorldStartOutcomeMapper.Map(new WorldStartResult.ReplayFailed(new OpId(42), "bad op")).OpId ?? 0UL).IsEqual(42UL);
-        AssertThat(WorldStartOutcomeMapper.Map(new WorldStartResult.Corrupted("x", ["a.db"])).BackupCount).IsEqual(1);
+        AssertThat(newer.SchemaVersion == 9).IsTrue();
+        AssertThat(newer.SupportedVersion == 5).IsTrue();
+        AssertThat(WorldStartOutcomeMapper.Map(new WorldStartResult.ReplayFailed(new OpId(42), "bad op")).OpId == 42UL).IsTrue();
+        AssertThat(WorldStartOutcomeMapper.Map(new WorldStartResult.Corrupted("x", ["a.db"])).BackupCount == 1).IsTrue();
         AssertThat(WorldStartOutcomeMapper.Map(new WorldStartResult.StartedReadOnly(ReadOnlyReason.TerrainSemanticsMismatch, "m")).TerrainSemanticsMismatch).IsTrue();
     }
 }
