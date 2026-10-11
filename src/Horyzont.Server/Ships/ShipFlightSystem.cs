@@ -75,7 +75,7 @@ public sealed class ShipFlightSystem : IServerTickParticipant
         _rules = rules;
         _dt = 1f / tickRate;
         _logger = logger;
-        _settler = new ShipLoadSettler(collider, rules, logger);
+        _settler = new ShipLoadSettler(collider, gate, rules, logger);
     }
 
     /// <inheritdoc />
@@ -254,7 +254,7 @@ public sealed class ShipFlightSystem : IServerTickParticipant
 
         if (entry.Settling)
         {
-            var result = _settler.Settle(id, ref motion, stats, environment, ship.Parent.Kind == FrameKind.Planet);
+            var result = _settler.Settle(id, ref motion, stats, environment, ship.Parent.Kind == FrameKind.Planet ? new PlanetId(ship.Parent.Id) : null);
             entry.Settling = result == ShipSettleResult.Holding;
         }
         else

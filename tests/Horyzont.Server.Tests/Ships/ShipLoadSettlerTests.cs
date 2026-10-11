@@ -34,7 +34,8 @@ public sealed class ShipLoadSettlerTests
     [Fact]
     public void ShipLoadSettler_InSystem_StopsInPlace()
     {
-        var settler = new ShipLoadSettler(new SphereShipCollider(new SphereGroundCollider(), null!), FlightRules.Default, new FlightRig.ListLogger());
+        var settler = new ShipLoadSettler(
+            new SphereShipCollider(new SphereGroundCollider(), null!), new HomeOnlyGate(FlightFixtures.Home.Id), FlightRules.Default, new FlightRig.ListLogger());
         var motion = new ShipMotion
         {
             Pose = new PoseD(new Vector3D(100_000, 5, 7), QuaternionD.Identity),
@@ -44,7 +45,7 @@ public sealed class ShipLoadSettlerTests
         };
         var pose = motion.Pose;
 
-        var result = settler.Settle(FlightRig.Ship, ref motion, FlightFixtures.Thirty(), FlightFixtures.Void(), inPlanet: false);
+        var result = settler.Settle(FlightRig.Ship, ref motion, FlightFixtures.Thirty(), FlightFixtures.Void(), planet: null);
 
         Assert.Equal(ShipSettleResult.Settled, result);
         Assert.Equal(pose, motion.Pose);
@@ -93,6 +94,51 @@ public sealed class ShipLoadSettlerTests
         rig.Ticks(PlanetTerrainShipGate.RetrySeconds * FlightRig.TickRate);
         Assert.True((rig.Record().Flags & ShipStateFlags.Parked) != 0);
     }
+
+    [Fact]
+    public void ShipLoadSettler_ColumnNotReadyUnderTheDrop_Waits()
+    {
+        // The flight column (64 m at v = 0) is ready; the ground 300 m under the ship, where the drop ends, is not.
+        var readiness = new FakeTerrainReadiness { By = GroundNotReady };
+        var rig = new FlightRig(heightOverGround: 300, state: Flying, gate: Gate(readiness, maxRelief: 10f));
+        var origin = rig.Construct().Origin;
+
+        rig.Ticks(30);
+
+        Assert.Equal(origin, rig.Construct().Origin);
+        Assert.Equal(Vector3.Zero, rig.Record().LinearVelocity);
+        Assert.Equal((ShipStateFlags)0, rig.Record().Flags & ShipStateFlags.Parked);
+
+        readiness.By = null;
+        rig.Ticks(1);
+
+        Assert.True((rig.Record().Flags & ShipStateFlags.Parked) != 0);
+        Assert.InRange(rig.HeightOverGround(), -0.5, 0.5);
+    }
+
+    [Fact]
+    public void ShipLoadSettler_ColumnUnderTheDropNeverReady_ReleasedToFlightAfterTimeout()
+    {
+        // Nothing loads the ground far under a ship held at v = 0: after the readiness timeout the flight takes over (autoland
+        // through the flight gate) instead of holding the ship forever.
+        var readiness = new FakeTerrainReadiness { By = GroundNotReady };
+        var rig = new FlightRig(heightOverGround: 300, state: Flying, gate: Gate(readiness, maxRelief: 10f));
+        var origin = rig.Construct().Origin;
+        var timeout = (int)FlightRules.Default.ReadinessTimeoutSeconds * FlightRig.TickRate;
+
+        rig.Ticks(timeout - 10);
+        Assert.Equal(origin, rig.Construct().Origin);
+
+        rig.Ticks(10 + FlightRig.TickRate);
+        Assert.True(rig.Construct().Origin.Y < origin.Y, "the released ship descends");
+        Assert.Equal((ShipStateFlags)0, rig.Record().Flags & ShipStateFlags.Parked);
+    }
+
+    private static PlanetTerrainReadiness GroundNotReady(Vector3 center, float radius) =>
+        center.Length() - radius < FlightFixtures.Home.RadiusMeters + 100 ? PlanetTerrainReadiness.Streaming : PlanetTerrainReadiness.Ready;
+
+    private static PlanetTerrainShipGate Gate(FakeTerrainReadiness readiness, float maxRelief) =>
+        new(readiness, ShipFixtures.CreateWorld(null), FlightRules.Default, maxRelief, FlightRig.TickRate, new FlightRig.ListLogger());
 
     private static PlanetTerrainShipGate Gate(FakeTerrainReadiness readiness) =>
         new(readiness, ShipFixtures.CreateWorld(null), FlightRules.Default, 300f, FlightRig.TickRate, new FlightRig.ListLogger());

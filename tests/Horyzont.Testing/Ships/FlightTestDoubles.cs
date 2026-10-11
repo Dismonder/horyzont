@@ -53,6 +53,9 @@ public sealed class FakeTerrainReadiness : IPlanetTerrainReadiness
     /// <summary>Gets or sets the answer.</summary>
     public PlanetTerrainReadiness Answer { get; set; } = PlanetTerrainReadiness.Ready;
 
+    /// <summary>Gets or sets an answer by sphere (centre, radius); null = <see cref="Answer"/>.</summary>
+    public Func<Vector3, float, PlanetTerrainReadiness>? By { get; set; }
+
     /// <summary>Gets the number of calls.</summary>
     public int Calls { get; private set; }
 
@@ -64,6 +67,6 @@ public sealed class FakeTerrainReadiness : IPlanetTerrainReadiness
     {
         Calls++;
         LastCenter = localCenter;
-        return Answer;
+        return By?.Invoke(localCenter, radius) ?? Answer;
     }
 }

@@ -79,12 +79,7 @@ public sealed class PlanetTerrainShipGate : IShipTerrainGate
             return ShipTerrainGate.NotLoaded;
         }
 
-        if (!_entries.TryGetValue(ship, out var entry))
-        {
-            entry = new Entry();
-            _entries.Add(ship, entry);
-        }
-
+        var entry = EntryFor(ship);
         entry.Ticks++;
         if (entry.Planet != planet || (motion.Flags & ShipFlightFlags.Parked) != 0)
         {
@@ -136,7 +131,53 @@ public sealed class PlanetTerrainShipGate : IShipTerrainGate
     }
 
     /// <inheritdoc />
+    public ShipTerrainGate QueryGround(EntityId ship, PlanetId planet, in ShipMotion motion, ShipStats stats, double depthMeters)
+    {
+        ArgumentNullException.ThrowIfNull(stats);
+        if (!_state.Planets.TryGet(planet, out var body))
+        {
+            return ShipTerrainGate.NotLoaded;
+        }
+
+        var entry = EntryFor(ship);
+        if (entry.GroundPlanet != planet)
+        {
+            entry.GroundPlanet = planet;
+            entry.GroundWaited = 0;
+        }
+
+        var com = motion.Pose.Position + motion.Pose.Rotation.Rotate(Vector3D.FromFloat(stats.CenterOfMass));
+        var center = new Vector3((float)com.X, (float)com.Y, (float)com.Z);
+        var column = TerrainColumn.Below(center, stats.BoundingRadius, (float)depthMeters, body.RadiusMeters, _maxRelief);
+        Queries++;
+        switch (_readiness.GetReadiness(planet, column.Center, column.Radius))
+        {
+            case PlanetTerrainReadiness.Ready:
+                entry.GroundWaited = 0;
+                return ShipTerrainGate.Ready;
+            case PlanetTerrainReadiness.Faulted:
+                return ShipTerrainGate.Unavailable;
+            case PlanetTerrainReadiness.Inactive:
+                return ShipTerrainGate.NotLoaded;
+            default:
+                entry.GroundWaited++;
+                return entry.GroundWaited >= _rules.ReadinessTimeoutSeconds * _tickRate ? ShipTerrainGate.NotLoaded : ShipTerrainGate.CollisionPending;
+        }
+    }
+
+    /// <inheritdoc />
     public void Forget(EntityId ship) => _entries.Remove(ship);
+
+    private Entry EntryFor(EntityId ship)
+    {
+        if (!_entries.TryGetValue(ship, out var entry))
+        {
+            entry = new Entry();
+            _entries.Add(ship, entry);
+        }
+
+        return entry;
+    }
 
     private void Warn(EntityId ship, PlanetId planet, Entry entry, PlanetTerrainReadiness readiness)
     {
@@ -163,5 +204,9 @@ public sealed class PlanetTerrainShipGate : IShipTerrainGate
         public PlanetTerrainReadiness Last { get; set; }
 
         public long? LastLog { get; set; }
+
+        public PlanetId GroundPlanet { get; set; }
+
+        public long GroundWaited { get; set; }
     }
 }
