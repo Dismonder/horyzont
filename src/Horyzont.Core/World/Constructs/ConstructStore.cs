@@ -21,6 +21,12 @@ public sealed class ConstructStore
     /// <summary>Number of constructs.</summary>
     public int Count => _sorted.Count;
 
+    /// <summary>
+    /// Gets a counter that changes whenever a construct is added or removed (not on block or pose changes): indexes over
+    /// <see cref="All"/> rebuild only when it differs. Runtime only, never saved or hashed.
+    /// </summary>
+    public ulong StructureVersion { get; private set; }
+
     /// <summary>All constructs in <see cref="EntityId"/> order.</summary>
     public IReadOnlyList<Construct> All => _sorted;
 
@@ -70,6 +76,7 @@ public sealed class ConstructStore
         }
 
         _sorted.RemoveAt(IndexOf(id));
+        StructureVersion++;
         _tracker.MarkConstruct(id);
         foreach (var chunk in construct.Chunks)
         {
@@ -86,6 +93,7 @@ public sealed class ConstructStore
 
         var index = ~IndexOf(construct.Id);
         _sorted.Insert(index, construct);
+        StructureVersion++;
     }
 
     private int IndexOf(EntityId id)
