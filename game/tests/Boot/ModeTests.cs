@@ -32,15 +32,20 @@ public class HostModeTests
         AssertThat(fixture.StartExit).IsNull();
         AssertThat(await fixture.WaitInGame()).IsTrue();
 
-        var planets = composition.Server!.State.Planets.All;
-        AssertThat(CountTerrains(composition.Root)).IsEqual(planets.Count);
+        // K5-22: terrains are activated on demand; at start only the home planet (the region of the player) has terrain, the other bodies of the star system are farther than 4 R and have none.
+        var state = composition.Server!.State;
+        var home = ModeFixture.Home(state);
+        AssertThat(state.Planets.All.Count).IsGreater(1);
+        AssertThat(CountTerrains(composition.Root)).IsEqual(1);
         AssertThat(composition.Root.GetNodeOrNull("Client/Terrain")).IsNull();
         var voxel = composition.TerrainFactory!.Terrain!.Voxel;
-        foreach (var planet in planets)
+        AssertThat(composition.ClientTerrain!.TryGetPlanet(home.Id, out var seenByClient)).IsTrue();
+        AssertThat(voxel.TryGetPlanet(home.Id, out var ofServer)).IsTrue();
+        AssertThat(ReferenceEquals(seenByClient!.Anchor.GetParent(), ofServer)).IsTrue();
+        foreach (var body in state.Planets.All.Where(planet => planet.Id != home.Id))
         {
-            AssertThat(composition.ClientTerrain!.TryGetPlanet(planet.Id, out var seenByClient)).IsTrue();
-            AssertThat(voxel.TryGetPlanet(planet.Id, out var ofServer)).IsTrue();
-            AssertThat(ReferenceEquals(seenByClient!.Anchor.GetParent(), ofServer)).IsTrue();
+            AssertThat(composition.ClientTerrain.TryGetPlanet(body.Id, out _)).IsFalse();
+            AssertThat(voxel.TryGetPlanet(body.Id, out _)).IsFalse();
         }
 
         AssertThat(composition.Server.IsLocalPlayer(composition.Client!.Hello!.YourPlayer)).IsTrue();
@@ -80,7 +85,7 @@ public class SoloModeTests
             AssertThat(await first.WaitInGame()).IsTrue();
             var composition = first.Composition;
             var server = composition.Server!;
-            var planet = server.State.Planets.All[0];
+            var planet = ModeFixture.Home(server.State);
             var surface = ModeFixture.SurfaceY(planet);
             var feet = new Vector3(0, surface + 0.05f, 0);
 
@@ -117,7 +122,7 @@ public class SoloModeTests
             var composition = second.Composition;
             var server = composition.Server!;
             AssertThat(StateHasher.Hash(server.State)).IsEqual(hashAfterStop);
-            var planet = server.State.Planets.All[0];
+            var planet = ModeFixture.Home(server.State);
             var surface = ModeFixture.SurfaceY(planet);
             var service = composition.TerrainFactory!.Terrain!.Voxel;
             AssertThat(service.TryGetPlanet(planet.Id, out var node)).IsTrue();
@@ -149,12 +154,14 @@ public class ClientModeTests
         var config = Path.Combine(serverDir, "server.json");
         File.WriteAllText(config, ModeFixture.SimpleConfig(port));
 
-        var server = await ModeFixture.StartAsync(scene, serverDir, false, "--server", "--config", config, "--data-dir", serverDir);
+        // K5-22 decision 10: a client creates the terrain of a planet only on activation, which the own body (the characters) drives,
+        // so both sides compose with the characters.
+        var server = await ModeFixture.StartWithCharactersAsync(scene, serverDir, false, false, "--server", "--config", config, "--data-dir", serverDir);
         AssertThat(server.StartExit).IsNull();
         AssertThat(server.Printed.Any(line => line.StartsWith("SERVER READY world=", StringComparison.Ordinal))).IsTrue();
 
-        var client = await ModeFixture.StartAsync(
-            scene, clientDir, true, "--connect", "127.0.0.1:" + port.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        var client = await ModeFixture.StartWithCharactersAsync(
+            scene, clientDir, true, false, "--connect", "127.0.0.1:" + port.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "--profile", Path.Combine(clientDir, "profile.json"));
         AssertThat(client.StartExit).IsNull();
         AssertThat(await client.WaitInGame()).IsTrue();
@@ -163,11 +170,20 @@ public class ClientModeTests
         var planets = composition.Client!.Hello!.Planets;
         AssertThat(planets.Count).IsEqual(server.Composition.Server!.State.Planets.All.Count);
         AssertThat(composition.Root.GetNodeOrNull("Client/Terrain")).IsNotNull();
-        foreach (var planet in planets)
+        // K5-21 decision 10: element 0 of the hello is the home planet; K5-22: at start it is the only one with an active terrain (the other bodies are farther than 4 R).
+        AssertThat(planets[0].Id).IsEqual(server.Composition.Server!.State.HomePlanet);
+        // K5-22 decision 10: the client creates the terrain of the home planet when its own body is created (the first own state),
+        // which may come a few frames after InGame.
+        AssertThat(await client.WaitUntil(() => composition.ClientTerrain!.TryGetPlanet(planets[0].Id, out _), 120)).IsTrue();
+        AssertThat(composition.ClientTerrain!.TryGetPlanet(planets[0].Id, out var own)).IsTrue();
+        AssertThat(own!.Anchor.IsInsideTree()).IsTrue();
+        // K5-22: the client terrain node hangs under the client frame node of its planet (Client/Frames/System_n/Planet_<id>), not the server's.
+        var planetNode = own.Anchor.GetParent()!.GetParent()!.GetPath().ToString();
+        AssertThat(planetNode).Contains("/Client/Frames/");
+        AssertThat(planetNode).EndsWith("/Planet_" + planets[0].Id.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        foreach (var body in planets.Skip(1))
         {
-            AssertThat(composition.ClientTerrain!.TryGetPlanet(planet.Id, out var own)).IsTrue();
-            AssertThat(own!.Anchor.IsInsideTree()).IsTrue();
-            AssertThat(own.Anchor.GetParent()!.GetParent()!.GetPath().ToString().EndsWith("Client/Terrain", StringComparison.Ordinal)).IsTrue();
+            AssertThat(composition.ClientTerrain.TryGetPlanet(body.Id, out _)).IsFalse();
         }
 
         AssertThat(server.Composition.Server.IsLocalPlayer(composition.Client.Hello!.YourPlayer)).IsFalse();
@@ -205,7 +221,7 @@ public class ModeTests
         AssertThat(await fixture.WaitInGame()).IsTrue();
         var composition = fixture.Composition;
         var server = composition.Server!;
-        var planet = server.State.Planets.All[0];
+        var planet = ModeFixture.Home(server.State);
         var surface = ModeFixture.SurfaceY(planet);
         var feet = new Vector3(0, surface + 0.05f, 0);
         AssertThat(server.Simulation.UpdatePlayerKinematics(composition.Client!.Hello!.YourPlayer, FrameRef.Of(planet.Id), 0, feet, Quaternion.Identity, 0f)).IsTrue();

@@ -42,7 +42,7 @@ public class ServerCharactersFrameTests
         var local = new Vector3(0.5f, 1f, 0.5f);
         rig.Sim.ApplyServerOperation(new EntityReparentOp(
             state!.Entity, FrameRef.Of(construct), state.ParentSeq + 1, local, Quaternion.Identity, Vector3.Zero, null));
-        AssertThat(await rig.WaitTicks(3)).IsTrue();
+        AssertThat(await rig.WaitTicks(rig.Ticks + 3)).IsTrue();
 
         var body = rig.BodyOf(player);
         AssertThat(body.Attached).IsTrue();
@@ -60,7 +60,7 @@ public class ServerCharactersFrameTests
         // Back to the planet: the body walks again from the pose of the operation, with its collision.
         rig.Sim.ApplyServerOperation(new EntityReparentOp(
             state.Entity, FrameRef.Of(TerrainTestWorld.Planet.Id), state.ParentSeq + 1, feet, state.BodyRotation, Vector3.Zero, null));
-        AssertThat(await rig.WaitTicks(2)).IsTrue();
+        AssertThat(await rig.WaitTicks(rig.Ticks + 2)).IsTrue();
         AssertThat(body.Attached).IsFalse();
         AssertThat(body.CollisionLayer).IsEqual(1u << (CollisionLayers.ServerBodies - 1));
         AssertThat(await rig.WaitUnfrozenAsync(player)).IsTrue();
@@ -80,7 +80,7 @@ public class ServerCharactersFrameTests
         rig.Sim.State.Players.TryGet(player, out var state);
         rig.Sim.ApplyServerOperation(new EntityReparentOp(
             state!.Entity, FrameRef.Of(_other.Id), state.ParentSeq + 1, feet, state.BodyRotation, Vector3.Zero, null));
-        AssertThat(await rig.WaitTicks(2)).IsTrue();
+        AssertThat(await rig.WaitTicks(rig.Ticks + 2)).IsTrue();
 
         // The other planet has no terrain in this server (K5-22 activates it): the normal spawn path refuses, the old body is gone.
         AssertThat(rig.Characters.TryGetState(player, out _)).IsFalse();
@@ -91,12 +91,12 @@ public class ServerCharactersFrameTests
 
         // The refused spawn is retried every tick (logged once): back on a planet with terrain, the body exists again.
         AssertThat(rig.Characters.PendingCount).IsEqual(1);
-        AssertThat(await rig.WaitTicks(3)).IsTrue();
+        AssertThat(await rig.WaitTicks(rig.Ticks + 3)).IsTrue();
         AssertThat(rig.Log.Count(9303)).IsEqual(1);
         rig.Sim.State.Players.TryGet(player, out state);
         rig.Sim.ApplyServerOperation(new EntityReparentOp(
             state!.Entity, FrameRef.Of(TerrainTestWorld.Planet.Id), state.ParentSeq + 1, feet, state.BodyRotation, Vector3.Zero, null));
-        AssertThat(await rig.WaitTicks(2)).IsTrue();
+        AssertThat(await rig.WaitTicks(rig.Ticks + 2)).IsTrue();
         AssertThat(rig.Characters.Count).IsEqual(1);
         AssertThat(rig.Characters.PendingCount).IsEqual(0);
         AssertThat(rig.Characters.TryGetState(player, out var back)).IsTrue();
@@ -124,7 +124,7 @@ public class ServerCharactersFrameTests
         var local = new Vector3(0.5f, 1f, 0.5f);
         rig.Sim.ApplyServerOperation(new EntityReparentOp(
             state!.Entity, FrameRef.Of(construct), state.ParentSeq + 1, local, Quaternion.Identity, Vector3.Zero, null));
-        AssertThat(await rig.WaitTicks(2)).IsTrue();
+        AssertThat(await rig.WaitTicks(rig.Ticks + 2)).IsTrue();
         AssertThat(rig.BodyOf(player).Attached).IsTrue();
 
         // A new body (reconnect) is spawned attached on the last planet instead of being refused.
@@ -134,7 +134,7 @@ public class ServerCharactersFrameTests
         AssertThat(rig.Characters.PendingCount).IsEqual(0);
         var body = rig.BodyOf(player);
         AssertThat(body.Attached).IsTrue();
-        AssertThat(await rig.WaitTicks(2)).IsTrue();
+        AssertThat(await rig.WaitTicks(rig.Ticks + 2)).IsTrue();
         AssertThat((double)body.GlobalPosition.DistanceTo(GodotFrames.ToGodot(Vector3D.FromFloat(origin + local)))).IsLess(1e-3);
     }
 }

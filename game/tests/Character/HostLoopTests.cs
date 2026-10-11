@@ -28,7 +28,7 @@ public class HostLoopTests
 
         AssertThat(await fixture.WaitUntil(() => player.IsActive, 120)).IsTrue();
         AssertThat(player.ServerMode).IsNotEqual(MovementMode.Frozen);
-        var planet = composition.Server!.State.Planets.All[0];
+        var planet = ModeFixture.Home(composition.Server!.State);
         var standing = player.PredictedFeet;
         var generated = Horyzont.Game.Server.Characters.SpawnLocator.AboveSurface(planet, System.Numerics.Vector3.UnitX).Length() - Horyzont.Game.Server.Characters.SpawnLocator.SpawnClearance;
         Record($"solo_spawn standing_radius={standing.Length().ToString("F3", CultureInfo.InvariantCulture)} generated_surface={generated.ToString("F3", CultureInfo.InvariantCulture)} feet={standing}");

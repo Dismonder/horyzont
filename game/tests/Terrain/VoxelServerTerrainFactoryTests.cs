@@ -48,7 +48,9 @@ public class VoxelServerTerrainFactoryTests
         Task<int>? reading = null;
         TerrainStream? stream = null;
         TerrainBlockStore? storeForCleanup = null;
-        var factory = new VoxelServerTerrainFactory(scene.Root, PlanetTerrainOptions.Server, time, NullLoggerFactory.Instance)
+        // K5-22: the server terrain parent must be a Node3D (the fallback parent of planet nodes while there are no frame nodes).
+        var parent = scene.Add(new Node3D { Name = "Terrain" });
+        var factory = new VoxelServerTerrainFactory(parent, PlanetTerrainOptions.Server, time, NullLoggerFactory.Instance)
         {
             StoreCreated = store =>
             {
@@ -68,7 +70,7 @@ public class VoxelServerTerrainFactoryTests
             {
                 stream = node.Stream;
                 // All planets are now built outside the tree. Exercise an already active stream read explicitly so the
-                // factory's actual catch path must still protect the store when the second planet fails.
+                // factory's actual catch path must still protect the store when the construction fails.
                 reading = Task.Run(() =>
                 {
                     using var buffer = new VoxelBuffer();
@@ -102,7 +104,7 @@ public class VoxelServerTerrainFactoryTests
             AssertThat(stream.SourceReads).IsEqual(1);
             AssertThat(factory.FailureCleanup.IsCompleted).IsFalse();
             AssertThat(factory.FailedStoreCount).IsEqual(1);
-            AssertThat(scene.Root.GetChildCount()).IsEqual(0);
+            AssertThat(parent.GetChildCount()).IsEqual(0);
             if (drainTimesOut)
             {
                 time.Advance(TimeSpan.FromSeconds(6));

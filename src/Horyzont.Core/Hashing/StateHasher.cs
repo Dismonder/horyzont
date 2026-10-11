@@ -183,6 +183,7 @@ public static class StateHasher
 
     private static void StarSystem(XxHash64 hash, StarSystemParams system)
     {
+        U64(hash, system.System.Value);
         Span<byte> one = stackalloc byte[1];
         one[0] = system.LayoutVersion;
         hash.Append(one);

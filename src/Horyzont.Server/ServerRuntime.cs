@@ -9,6 +9,7 @@ using Horyzont.Net.Session;
 using Horyzont.Net.Transport;
 using Horyzont.Persistence.Writing;
 using Horyzont.Server.Ships;
+using Horyzont.Server.UI;
 
 using Microsoft.Extensions.Logging;
 
@@ -82,10 +83,23 @@ public sealed partial class ServerRuntime
         _time = time;
         _loggers = loggers;
         _logger = loggers.CreateLogger<ServerRuntime>();
+        var status = new ServerStatusBroadcaster(() => CurrentStatus, (player, message) => Session.Send(player, message));
+        AddTickParticipant(status);
+        AddPlayerObserver(status);
     }
 
     /// <summary>Gets the life cycle state.</summary>
     public ServerRuntimeState RuntimeState { get; private set; }
+
+    /// <summary>Gets the public availability status, without private diagnostic data.</summary>
+    public ServerStatusInfo CurrentStatus => _readOnlyStart
+        ? new(true, 1, "Terrain semantics mismatch")
+        : RuntimeState switch
+        {
+            ServerRuntimeState.Running => new(false, 0, "Running"),
+            ServerRuntimeState.SafeMode => new(true, 2, "Writer unavailable"),
+            _ => new(true, 3, "Not running"),
+        };
 
     /// <summary>Gets the process exit code: 0, or 70 after a fault or a failed shutdown step (3 and 4 come from <see cref="WorldStartResult.ExitCode"/>).</summary>
     public int ExitCode { get; private set; }
@@ -113,6 +127,9 @@ public sealed partial class ServerRuntime
 
     /// <summary>Gets a value indicating whether the world runs in safe mode without a writer (a journal tail that was not replayed).</summary>
     public bool IsReadOnlyStart => _readOnlyStart;
+
+    /// <summary>Gets the tick participants in run order (tests).</summary>
+    internal IReadOnlyList<IServerTickParticipant> TickParticipants => _participants;
 
     /// <summary>Registers a system that takes part in every tick: by <see cref="IServerTickParticipant.Phase"/>, in registration order within a phase.</summary>
     /// <param name="participant">The participant.</param>

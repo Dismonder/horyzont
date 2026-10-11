@@ -34,7 +34,7 @@ public sealed class ShipTerrainColumnsTests
         var state = TestShips.CreateWorld(new TestShip(TestShips.Moving, TestShips.HomeFrame, new Vector3(0f, 9000f, 0f), Quaternion.Identity));
         var rig = new FrameRig(state);
         Assert.True(state.Constructs.TryGet(TestShips.Moving, out var ship));
-        TestShips.ForceMode(ship, ConstructMode.Ship);
+        Assert.Equal(ConstructMode.Ship, ship.Mode);
 
         Assert.True(ShipTerrainColumns.TryGet(ship, state, rig.History, rig.TickSeconds, Relief, out _, out var column));
 
@@ -50,7 +50,8 @@ public sealed class ShipTerrainColumnsTests
     {
         var rig = new FrameRig();
         Assert.True(rig.State.Constructs.TryGet(TestShips.Parked, out var parked));
-        TestShips.ForceMode(parked, ConstructMode.Static);
+        rig.Sim.ApplyServerOperation(TestShips.ModeOp(parked, ConstructMode.Static));
+        Assert.Equal(ConstructMode.Static, parked.Mode);
 
         Assert.False(ShipTerrainColumns.TryGet(parked, rig.State, rig.History, rig.TickSeconds, Relief, out _, out _));
     }

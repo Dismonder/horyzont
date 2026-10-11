@@ -298,7 +298,7 @@ public class ToolScenarioTests
         var rig = await ToolRig.StartSoloAsync(scene, ModeFixture.NewDirectory(), Guid.NewGuid(), lookDown: false);
         var server = rig.Composition.Server!;
         var state = server.State;
-        var planet = state.Planets.All[0];
+        var planet = ModeFixture.Home(state);
         var service = rig.Composition.TerrainFactory!.Terrain!.Voxel;
         var feet = new NumVector3(0f, planet.RadiusMeters - planet.CoreDepthMeters - 5f, 0f);
         AssertThat(service.TryGetPlanet(planet.Id, out var planetNode)).IsTrue();

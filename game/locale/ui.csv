@@ -1,0 +1,91 @@
+keys,en,pl
+ui.title,Horyzont,Horyzont
+ui.solo,Solo,Solo
+ui.host,Host,Gospodarz
+ui.join,Join,Dołącz
+ui.quit,Quit,Wyjdź
+ui.back,Back,Wróć
+ui.cancel,Cancel,Anuluj
+ui.worlds,Worlds,Światy
+ui.new_world,New world,Nowy świat
+ui.start,Start,Start
+ui.create,Create,Utwórz
+ui.seed,Seed,Ziarno
+ui.seed_hint,"Empty for a random seed","Puste pole losuje ziarno"
+ui.seed_invalid,"The seed must be a whole number","Ziarno musi być liczbą całkowitą"
+ui.no_worlds,No worlds yet,Brak światów
+ui.world_unavailable,unavailable,niedostępny
+ui.worlds_truncated,"Only the first 1024 worlds are shown","Pokazano tylko pierwsze 1024 światy"
+ui.world_entry,"{0}   {1}","{0}   {1}"
+ui.host_label,Host or address,Adres lub nazwa hosta
+ui.port_label,Port,Port
+ui.password_label,Password,Hasło
+ui.connect,Connect,Połącz
+ui.friends,Friends,Znajomi
+ui.steam_join,Join via Steam,Dołącz przez Steam
+ui.steam_unavailable,"Steam is not available; LAN and IP still work","Steam jest niedostępny; LAN i adres IP działają"
+ui.enable_steam,Use Steam lobby,Użyj lobby Steam
+ui.visibility_private,Private,Prywatne
+ui.visibility_friends,Friends only,Tylko znajomi
+ui.visibility_public,Public,Publiczne
+ui.join_invalid_host,"Enter a host name or IP address (no URL)","Podaj nazwę hosta lub adres IP (bez adresu URL)"
+ui.join_invalid_port,"The port must be 1 to 65535","Port musi mieścić się w zakresie 1 do 65535"
+ui.join_invalid_password,"The password is at most 64 bytes","Hasło ma najwyżej 64 bajty"
+ui.loading,Loading,Ładowanie
+ui.loading_world,"Starting the world…","Uruchamianie świata…"
+ui.loading_connect,"Connecting to the server…","Łączenie z serwerem…"
+ui.stopping,"Closing the session…","Zamykanie sesji…"
+ui.paused,Paused,Pauza
+ui.resume,Resume,Wznów
+ui.save,Save,Zapisz
+ui.save_requested,"Save requested","Zlecono zapis"
+ui.invite,Invite,Zaproś
+ui.return_menu,Return to menu,Wróć do menu
+ui.error_title,Error,Błąd
+ui.started,Started,Uruchomiono
+ui.read_only,"The world is read only. Changes are not possible.","Świat jest tylko do odczytu. Zmiany są niemożliwe."
+ui.corrupted,"The world file is damaged.","Plik świata jest uszkodzony."
+ui.backups_found,"Backups available: {0}","Dostępne kopie: {0}"
+ui.no_backups,"No backups exist.","Brak kopii zapasowych."
+ui.newer_version,"This world needs a newer version of the game.","Świat wymaga nowszej wersji gry."
+ui.version_detail,"World format {0}, this game reads up to {1}.","Format świata {0}, ta gra czyta do {1}."
+ui.replay_failed,"The world journal could not be replayed.","Nie udało się odtworzyć dziennika świata."
+ui.replay_op,"Failed operation: {0}","Operacja, która zawiodła: {0}"
+ui.aborted,"The start was cancelled.","Start został anulowany."
+ui.start_failed,"The world could not be started.","Nie udało się uruchomić świata."
+ui.disconnected,"Disconnected from the server.","Rozłączono z serwerem."
+ui.timeout,"The connection timed out.","Przekroczono czas połączenia."
+ui.protocol_violation,"The connection was closed because of a protocol error.","Połączenie zamknięto z powodu błędu protokołu."
+ui.kicked,"You were removed from the game.","Usunięto cię z gry."
+ui.host_left,"The host ended the session.","Host zakończył sesję."
+ui.reject_unknown,"The server refused the connection.","Serwer odmówił połączenia."
+ui.reject_wrong_protocol,"The server uses another protocol version. Update the game.","Serwer używa innej wersji protokołu. Zaktualizuj grę."
+ui.reject_wrong_build,"The server runs another build of the game.","Serwer działa na innej wersji gry."
+ui.reject_full,"The server is full.","Serwer jest pełny."
+ui.reject_bad_password,"Wrong password.","Błędne hasło."
+ui.reject_banned,"You are banned on this server.","Masz zakaz wstępu na tym serwerze."
+ui.reject_already_connected,"This account is already connected.","To konto jest już połączone."
+ui.reject_identity,"The identity could not be verified.","Nie udało się zweryfikować tożsamości."
+ui.join_unavailable,"The server cannot accept players now.","Serwer nie może teraz przyjmować graczy."
+ui.join_unavailable_terrain,"The world is read only because its terrain data come from another version. Joining is not possible.","Świat jest tylko do odczytu, bo dane terenu pochodzą z innej wersji. Dołączenie jest niemożliwe."
+ui.join_unavailable_writer,"The server cannot save now. Joining is not possible.","Serwer nie może teraz zapisywać. Dołączenie jest niemożliwe."
+ui.release_failed,"The previous session could not be closed. Restart the game.","Nie udało się zamknąć poprzedniej sesji. Uruchom grę ponownie."
+ui.restore,"Restore latest backup","Przywróć ostatnią kopię"
+ui.restore_confirm,"Replace the database with the latest backup? The damaged file is kept.","Zastąpić bazę ostatnią kopią? Uszkodzony plik zostanie zachowany."
+ui.restore_failed,"The backup could not be restored.","Nie udało się przywrócić kopii."
+ui.recover,"Recover from checkpoint","Odzyskaj z checkpointu"
+ui.recover_confirm,"Discard changes after the checkpoint? A pre-recover backup is made first.","Odrzucić zmiany po checkpoincie? Najpierw powstanie kopia pre-recover."
+ui.invite_confirm,"Leave this world and join the friend's game?","Opuścić ten świat i dołączyć do gry znajomego?"
+ui.yes,Yes,Tak
+ui.no,No,Nie
+ui.writer_banner,"Saving does not work. Changes are suspended.","Zapis nie działa. Zmiany są wstrzymane."
+ui.writer_retry,"Retry save","Ponów zapis"
+ui.lobby_failed,"The Steam lobby could not be used.","Nie udało się użyć lobby Steam."
+ui.hud_fps,FPS,FPS
+ui.hud_tick,Tick,Tick
+ui.hud_tick_ms,"Server tick","Tick serwera"
+ui.hud_rtt,RTT,RTT
+ui.hud_bandwidth,"Net out/in","Sieć wy/we"
+ui.hud_tools,"Tools: pending {0}, refused {1}","Narzędzia: oczekujące {0}, odrzucone {1}"
+ui.hud_read_only,"read only","tylko do odczytu"
+ui.hud_limits_note,"The server applies its own limits; the preview is approximate.","Serwer stosuje własne limity; podgląd jest orientacyjny."
