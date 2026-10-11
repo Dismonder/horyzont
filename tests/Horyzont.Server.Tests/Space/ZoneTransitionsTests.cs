@@ -137,7 +137,7 @@ public sealed class ZoneTransitionsTests
     }
 
     [Fact]
-    public void ZoneTransitions_Step_EightShipsAllocatesNothing()
+    public void ZoneTransitions_Step_SteadyStateEightShipsAllocatesNothing()
     {
         var home = Home();
         var moon = Moon();
