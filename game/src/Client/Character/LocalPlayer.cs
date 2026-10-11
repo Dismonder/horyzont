@@ -49,8 +49,7 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     private readonly PresentationCorrection _presentation = new();
     private uint _parentSeq;
     private bool _hasParent;
-    private ClientFrameGraph? _frames;
-    private Func<double>? _renderTick;
+    private ClientFrames? _frames;
     private OwnState? _attached;
     private long _smallCorrections;
     private long _largeCorrections;
@@ -387,14 +386,11 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     /// Gives the client frames (K5-20): with them the own body follows a construct frame it is attached to (frozen, no input sent)
     /// and a reparent does not snap the camera unless the pose really moved.
     /// </summary>
-    /// <param name="frames">Client frames.</param>
-    /// <param name="renderTick">Server tick the remote world is rendered at (the interpolation cursor).</param>
-    public void AttachFrames(ClientFrameGraph frames, Func<double> renderTick)
+    /// <param name="frames">Client frames of the session.</param>
+    public void AttachFrames(ClientFrames frames)
     {
         ArgumentNullException.ThrowIfNull(frames);
-        ArgumentNullException.ThrowIfNull(renderTick);
         _frames = frames;
-        _renderTick = renderTick;
     }
 
     /// <summary>Gets a value indicating whether the own body is attached to a construct frame (K5-20).</summary>
@@ -513,7 +509,7 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         var body = _body!;
         if (OwnFrames.IsAttached(own))
         {
-            if (_frames is null || !OwnFrames.TryToPlanet(_frames, own, own.ServerTick.Value, out var feet, out var rotation))
+            if (_frames?.Graph is not { } graph || !OwnFrames.TryToPlanet(graph, own, own.ServerTick.Value, out var feet, out var rotation))
             {
                 return;
             }
@@ -584,8 +580,10 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
 
     private void FollowAttachedFrame()
     {
-        if (_attached is not { } own || _frames is null || _renderTick is null
-            || !OwnFrames.TryToPlanet(_frames, own, _renderTick(), out var feet, out var rotation))
+        // The frame at the tick of the newest own state (its newest pose past the history): the same time base as an unattached
+        // body that follows the server, so attaching and leaving do not jump (K5-20 step 11, own-entity measurement).
+        if (_attached is not { } own || _frames?.Graph is not { } graph
+            || !OwnFrames.TryToPlanet(graph, own, own.ServerTick.Value, out var feet, out var rotation))
         {
             return;
         }

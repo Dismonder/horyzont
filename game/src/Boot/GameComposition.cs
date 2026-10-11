@@ -28,6 +28,7 @@ using Horyzont.Net.Transport.Udp;
 using Horyzont.Persistence.Backup;
 using Horyzont.Server;
 using Horyzont.Server.Console;
+using Horyzont.Server.Frames;
 
 using Microsoft.Extensions.Logging;
 
@@ -210,6 +211,7 @@ public sealed partial class GameComposition
         // started with --dev too (ServerHello does not carry the permission); the server has to run with --dev as well.
         var devFlight = launch.Mode is ProcessMode.DedicatedServer or ProcessMode.Client ? launch.Dev : env.DevBuild;
         ServerCharactersBinder? characters = null;
+        ServerFramesBinder? serverFrames = null;
         LocalPlayer? localPlayer = null;
         ClientDayNight? dayNight = null;
         HostConstructs? constructs = null;
@@ -317,12 +319,14 @@ public sealed partial class GameComposition
                 characters.Register(server);
             }
 
+            serverFrames = RegisterServerFrames(server);
+
             DedicatedConsole? console = null;
             if (dedicated && env.ConsoleInput is not null)
             {
                 console = new DedicatedConsole(
                     new ConsoleInputPump(env.ConsoleInput, loggers.CreateLogger<ConsoleInputPump>()),
-                    new ConsoleCommandProcessor(server, loggers.CreateLogger<ConsoleCommandProcessor>(), launch.Dev),
+                    new ConsoleCommandProcessor(server, loggers.CreateLogger<ConsoleCommandProcessor>(), launch.Dev, () => serverFrames.Transitions),
                     env.Print);
             }
 
@@ -375,6 +379,7 @@ public sealed partial class GameComposition
             client.AddListener(composition._fullSnapshots);
         }
 
+        composition.ServerFrames = serverFrames;
         composition.ConfigureReplication();
         composition.ConfigureTerrainReplication();
         composition.ConfigureMotion();

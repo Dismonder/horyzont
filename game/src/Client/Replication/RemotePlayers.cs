@@ -43,6 +43,9 @@ public sealed partial class RemotePlayers : Node3D, IClientSessionListener
     /// <returns>True when a node exists.</returns>
     public bool TryGetNode(EntityId entity, out Node3D? node) => _nodes.TryGetValue(entity, out node);
 
+    /// <summary>Gets or sets the client frames (K5-20): rings rebase across reparents and players in construct frames are shown.</summary>
+    public Horyzont.Client.Frames.ClientFrames? Frames { get; set; }
+
     /// <summary>Gives the node its dependencies; call before it enters the tree.</summary>
     /// <param name="client">Client runtime whose hello and disconnect drive the node.</param>
     /// <param name="mirror">Mirror of the entities.</param>
@@ -151,9 +154,9 @@ public sealed partial class RemotePlayers : Node3D, IClientSessionListener
         {
             if (_render && _motion is not null)
             {
-                var ring = new RemoteMotionBuffer();
+                var ring = new RemoteMotionBuffer(frames: Frames);
                 var view = new RemotePlayerPresentation { Name = $"Player_{spawn.Entity.Value}" };
-                view.Initialize(ring, _motion.Clock);
+                view.Initialize(ring, _motion.Clock, Frames);
                 _motion.Register(spawn.Entity, ring);
                 _rings[spawn.Entity] = ring;
                 _nodes.Add(spawn.Entity, view);

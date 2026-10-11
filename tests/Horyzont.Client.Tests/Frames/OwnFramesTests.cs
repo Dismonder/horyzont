@@ -2,6 +2,7 @@ using System.Numerics;
 
 using Horyzont.Client.Frames;
 using Horyzont.Client.Movement;
+using Horyzont.Client.Replication;
 using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Motion;
@@ -87,5 +88,40 @@ public sealed class OwnFramesTests
         Assert.Equal(_planet, inShip.Planet);
         Assert.Equal(1u, inShip.ParentSeq);
         Assert.Equal(OwnStateVerdict.UnknownPlanet, validator.Validate(Snap(4, 103, FrameRef.Of(new SystemId(1)), 2, Vector3.Zero), out _));
+    }
+}
+
+public sealed class ClientFramesTests
+{
+    [Fact]
+    public void ClientFrames_BuiltAtFirstHello_FedAndClearedPerSession()
+    {
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var entities = new EntityMirror(time);
+        var frames = new ClientFrames(entities, new ConstructMirror(time));
+        var ship = new EntityId(5);
+        Assert.False(frames.TryGetWorldPose(FrameRef.Of(new PlanetId(1)), 0, out _));
+        Assert.Null(frames.Graph);
+
+        var planet = new Horyzont.Core.World.PlanetParams(new PlanetId(1), new SystemId(1), 7, "core:test/1");
+        frames.OnServerHello(new ServerHello(default, new Tick(0), 60, new PlayerId(1), new EntityId(1), [planet], [], []));
+        var graph = frames.Graph;
+        Assert.NotNull(graph);
+        Assert.True(frames.TryGetWorldPose(FrameRef.Of(new PlanetId(1)), 0, out var home));
+        Assert.Equal(PoseD.Identity, home);
+
+        entities.Apply(new EntitySpawn(ship, EntityKind.Construct, 0, null, new SnapshotFrame(FrameRef.Of(new PlanetId(1)), 0),
+            new EntityState(ship, (EntityStateFields)15, 0, 0, new Vector3(1, 2, 3), Quaternion.Identity, Vector3.Zero, 0), []));
+        var full = new Snapshot(1, new Tick(10), 0, 0, [new SnapshotFrame(FrameRef.Of(new PlanetId(1)), 0)],
+            [new EntityState(ship, (EntityStateFields)15, 0, 0, new Vector3(1, 2, 3), Quaternion.Identity, Vector3.Zero, 0)]);
+        entities.OnFullSnapshot(full);
+        frames.OnFullSnapshot(full);
+        Assert.True(frames.TryGetWorldPose(FrameRef.Of(ship), 10, out var pose));
+        Assert.Equal(new Vector3D(1, 2, 3), pose.Position);
+
+        frames.OnDisconnected(Horyzont.Core.Protocol.DisconnectCode.ServerShutdown);
+        Assert.False(frames.TryGetWorldPose(FrameRef.Of(ship), 10, out _));
+        frames.OnServerHello(new ServerHello(default, new Tick(0), 60, new PlayerId(1), new EntityId(1), [planet], [], []));
+        Assert.Same(graph, frames.Graph);
     }
 }
