@@ -255,12 +255,25 @@ public class ServerCharactersTests
         AssertThat(rig.Characters.TryGetState(player, out var spawned)).IsTrue();
         AssertThat(spawned.Mode).IsEqual(MovementMode.Frozen);
 
-        AssertThat(await rig.WaitTicks(rig.Ticks + 28)).IsTrue();
-        AssertThat(rig.Characters.TryGetState(player, out var waiting)).IsTrue();
-        AssertThat(waiting.Mode).IsEqual(MovementMode.Frozen);
-        AssertThat(rig.Log.Count(9306)).IsEqual(0);
+        // Sampled inside the physics frame of the 28th step: one slow process frame runs several physics steps at once, so a
+        // check after WaitTicks could already see a later tick (past the 30-tick deadline).
+        var steps = 0;
+        MovementMode? waitingMode = null;
+        var waitingLogs = -1;
+        rig.AfterStep = _ =>
+        {
+            if (++steps == 28 && rig.Characters.TryGetState(player, out var waiting))
+            {
+                waitingMode = waiting.Mode;
+                waitingLogs = rig.Log.Count(9306);
+            }
+        };
 
-        AssertThat(await rig.WaitTicks(rig.Ticks + 10)).IsTrue();
+        AssertThat(await rig.WaitTicks(rig.Ticks + 38)).IsTrue();
+        rig.AfterStep = null;
+        AssertThat(waitingMode).IsEqual(MovementMode.Frozen);
+        AssertThat(waitingLogs).IsEqual(0);
+
         AssertThat(rig.Characters.TryGetState(player, out var released)).IsTrue();
         AssertThat(released.Mode).IsEqual(MovementMode.Falling);
         AssertThat(rig.Log.Count(9306)).IsEqual(1);
