@@ -190,6 +190,15 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
         /// <summary>Gets the largest move of a smear frame above the speed allowance, metres.</summary>
         public double MaxSmear { get; init; }
 
+        /// <summary>Gets the smear frames that broke the per-teleport bounds (count, monotonic approach, summed moves).</summary>
+        public int SmearViolations { get; init; }
+
+        /// <summary>Gets the smear violations, for the failure message.</summary>
+        public string FirstSmearViolation { get; init; } = string.Empty;
+
+        /// <summary>Gets the largest teleport distance of the run, metres.</summary>
+        public double MaxTeleport { get; init; }
+
         public Stats Merge(Stats other) => new()
         {
             Jumps = [.. Jumps, .. other.Jumps],
@@ -202,6 +211,9 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
             Resyncs = Resyncs + other.Resyncs,
             Smears = Smears + other.Smears,
             MaxSmear = Math.Max(MaxSmear, other.MaxSmear),
+            SmearViolations = SmearViolations + other.SmearViolations,
+            FirstSmearViolation = FirstSmearViolation + other.FirstSmearViolation,
+            MaxTeleport = Math.Max(MaxTeleport, other.MaxTeleport),
             Worst = other.MaxError > MaxError ? other.Worst : Worst,
         };
 
@@ -210,7 +222,7 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
             var sorted = Jumps.Order().ToArray();
             var p99 = sorted.Length == 0 ? 0 : sorted[(int)Math.Min(sorted.Length - 1, Math.Floor(sorted.Length * 0.99))];
             return FormattableString.Invariant(
-                $"frames={Frames} maxJump={MaxJump:F3} p99Jump={p99:F3} maxError={MaxError:F3} wrongFrames={WrongFrames} wrongFrameApplied={WrongFrameApplied} reparentSnaps={ReparentSnaps} resyncs={Resyncs} vmax={MaxSpeed:F1} underruns={Underruns} uncovered={Uncovered} straddling={Straddling} maxSnapshotGap={MaxSnapshotGap} smears={Smears} maxSmear={MaxSmear:F3} worst: {Worst}");
+                $"frames={Frames} maxJump={MaxJump:F3} p99Jump={p99:F3} maxError={MaxError:F3} wrongFrames={WrongFrames} wrongFrameApplied={WrongFrameApplied} reparentSnaps={ReparentSnaps} resyncs={Resyncs} vmax={MaxSpeed:F1} underruns={Underruns} uncovered={Uncovered} straddling={Straddling} maxSnapshotGap={MaxSnapshotGap} smears={Smears} maxSmear={MaxSmear:F3} maxTeleport={MaxTeleport:F3} smearViolations={SmearViolations} {FirstSmearViolation} worst: {Worst}");
         }
     }
 
@@ -266,11 +278,17 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
         /// the server position before it and one of the <paramref name="span"/> positions from it on (a teleport the remote buffer
         /// draws as a slide between the samples around it).
         /// </summary>
-        public bool OnTeleportPath(EntityId entity, double from, double to, in Vector3D world, int span, double tolerance)
+        public bool OnTeleportPath(EntityId entity, double from, double to, in Vector3D world, int span, double tolerance) =>
+            TryTeleportPath(entity, from, to, world, span, tolerance, out _, out _, out _);
+
+        /// <summary>As <see cref="OnTeleportPath"/>, also giving the matched teleport tick, its distance and landing point.</summary>
+        public bool TryTeleportPath(
+            EntityId entity, double from, double to, in Vector3D world, int span, double tolerance, out ulong teleportTick, out double distance, out Vector3D landing)
         {
             for (var tick = (ulong)Math.Floor(from) + 1; tick <= (ulong)Math.Ceiling(to); tick++)
             {
-                if (!_teleports.ContainsKey((entity, tick)) || !_ticks.TryGetValue((entity, tick - 1), out var before))
+                if (!_teleports.TryGetValue((entity, tick), out distance) || !_ticks.TryGetValue((entity, tick - 1), out var before)
+                    || !_ticks.TryGetValue((entity, tick), out var landed))
                 {
                     continue;
                 }
@@ -280,13 +298,21 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
                     if (_ticks.TryGetValue((entity, k), out var after)
                         && Vector3D.Distance(before.World, world) + Vector3D.Distance(world, after.World) <= Vector3D.Distance(before.World, after.World) + tolerance)
                     {
+                        teleportTick = tick;
+                        landing = landed.World;
                         return true;
                     }
                 }
             }
 
+            teleportTick = 0;
+            distance = 0;
+            landing = default;
             return false;
         }
+
+        /// <summary>Gets the largest teleport distance recorded.</summary>
+        public double MaxTeleport => _teleports.Count == 0 ? 0 : _teleports.Values.Max();
 
         private bool Lands(EntityId entity, ulong teleport, in Vector3D world, int span, double tolerance)
         {
@@ -518,6 +544,7 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
         private readonly Dictionary<EntityId, RemoteMotionBuffer> _buffers = [];
         private readonly Dictionary<EntityId, (Vector3D World, double Tick)> _previous = [];
         private readonly HashSet<(EntityId, ulong)> _credited = [];
+        private readonly Dictionary<(EntityId, ulong), (int Count, double Last, double Moved, double Allowed)> _smearTracks = [];
         private readonly OwnStateValidator _validator;
         private Truth? _truth;
         private OwnState? _own;
@@ -741,6 +768,39 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
             truth.TryAt(entity, (ulong)Math.Floor(tick), out var a) && a.Frame == frame && a.Seq == seq
             && (!truth.TryAt(entity, (ulong)Math.Ceiling(tick), out var b) || (b.Frame == frame && b.Seq == seq));
 
+        private Stats TrackSmear(
+            Stats stats, EntityId entity, ulong teleportTick, double teleportDistance, Vector3D landing, Vector3D world, Vector3D previousWorld, int span, double tolerance, double tick, double travel)
+        {
+            // Per credited teleport: at most span + 1 smear frames, each closer to (or as far from) the landing point than the last,
+            // and together moving no more than the teleport distance plus the entity's own travel (v_max over the elapsed time).
+            var move = Vector3D.Distance(world, previousWorld);
+            var distanceToLanding = Vector3D.Distance(world, landing);
+            _smearTracks.TryGetValue((entity, teleportTick), out var track);
+            var problem = string.Empty;
+            if (track.Count + 1 > span + 1)
+            {
+                problem = $"count {track.Count + 1} > {span + 1}";
+            }
+            else if (track.Count > 0 && distanceToLanding > track.Last + tolerance)
+            {
+                problem = $"moved away {track.Last:F3} -> {distanceToLanding:F3}";
+            }
+            else if (track.Moved + move > teleportDistance + track.Allowed + travel + tolerance)
+            {
+                problem = $"moves {track.Moved + move:F3} > teleport {teleportDistance:F3} + travel {track.Allowed + travel:F3}";
+            }
+
+            _smearTracks[(entity, teleportTick)] = (track.Count + 1, distanceToLanding, track.Moved + move, track.Allowed + travel);
+            return problem.Length == 0
+                ? stats
+                : stats with
+                {
+                    SmearViolations = stats.SmearViolations + 1,
+                    FirstSmearViolation = stats.FirstSmearViolation
+                        + FormattableString.Invariant($"[SMEAR e={entity.Value} teleportTick={teleportTick} tick={tick:F2} {problem}]"),
+                };
+        }
+
         private Stats Measure(Stats stats, EntityId entity, Vector3D world, Vector3D? server, double tick, double maxSpeed)
         {
             var error = server is { } truth ? Vector3D.Distance(world, truth) : 0;
@@ -767,9 +827,11 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
                     ? seats.CreditTeleports(entity, previous.Tick - early, tick + early, world, span, tolerance, _credited)
                     : 0;
                 jump = Math.Max(0, raw - teleport);
-                if (jump > 0 && _truth is { SeatTeleports: true } path && path.OnTeleportPath(entity, previous.Tick - early, tick + early, world, span, tolerance))
+                if (jump > 0 && _truth is { SeatTeleports: true } path
+                    && path.TryTeleportPath(entity, previous.Tick - early, tick + early, world, span, tolerance, out var teleportTick, out var teleportDistance, out var landing))
                 {
                     stats = stats with { Smears = stats.Smears + 1, MaxSmear = Math.Max(stats.MaxSmear, jump) };
+                    stats = TrackSmear(stats, entity, teleportTick, teleportDistance, landing, world, previous.World, span, tolerance, tick, maxSpeed * (tick - previous.Tick) / TickRate);
                     jump = 0;
                 }
 
@@ -784,6 +846,7 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
             _previous[entity] = (world, tick);
             return stats with
             {
+                MaxTeleport = _truth?.MaxTeleport ?? 0,
                 Frames = stats.Frames + 1,
                 MaxJump = Math.Max(stats.MaxJump, jump),
                 MaxError = Math.Max(stats.MaxError, error),

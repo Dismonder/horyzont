@@ -32,6 +32,7 @@ public sealed class SeatsUnderLatencyTests(ITestOutputHelper output)
     private const int Players = 4;
     private const double TickRate = 60;
     private const double Limit = 0.5;
+    private const double SmearTolerance = 0.5;
     private const int LoopTicks = 360;
     private const int CycleTicks = 600;
     private const float LoopSpeed = 20f;
@@ -61,6 +62,8 @@ public sealed class SeatsUnderLatencyTests(ITestOutputHelper output)
             Assert.True(stats.Frames > 1000, stats.ToString());
             Assert.True(stats.MaxJump <= Limit, stats.ToString());
             Assert.True(stats.MaxError <= Limit, stats.ToString());
+            Assert.Equal(0, stats.SmearViolations);
+            Assert.True(stats.MaxSmear <= stats.MaxTeleport + SmearTolerance, stats.ToString());
             Assert.Equal(0L, stats.ReparentSnaps);
             Assert.Equal(0, stats.WrongFrames);
             Assert.Equal(0, stats.WrongFrameApplied);
