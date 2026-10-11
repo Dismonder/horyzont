@@ -253,6 +253,12 @@ public sealed class ServerSession
             ? TimeSpan.FromMilliseconds(_transport.GetStats(peer.Connection).RttMs)
             : TimeSpan.Zero;
 
+    /// <summary>Returns the transport counters of a player's connection (bytes are cumulative per connection).</summary>
+    /// <param name="player">The player.</param>
+    /// <returns>The statistics, or all zero for an unknown player.</returns>
+    public TransportStats GetTransportStats(PlayerId player) =>
+        _byPlayer.TryGetValue(player, out var peer) ? _transport.GetStats(peer.Connection) : default;
+
     /// <summary>
     /// Ends every session with <paramref name="code"/> (a leaving host uses <see cref="DisconnectCode.HostLeft"/>) and
     /// refuses new connections the same way. Keep calling <see cref="Poll"/> until <see cref="IsShutdownComplete"/>.
@@ -543,7 +549,20 @@ public sealed class ServerSession
             return;
         }
 
-        var player = _hooks.OnPlayerJoining(hello.Identity, hello.DisplayName);
+        PlayerId player;
+        try
+        {
+            player = _hooks.OnPlayerJoining(hello.Identity, hello.DisplayName);
+        }
+        catch (JoinUnavailableException unavailable)
+        {
+            // A controlled refusal has no player, operations or leave callback to unwind.
+            SendMessage(peer, new JoinUnavailable(unavailable.Reason, unavailable.Detail));
+            peer.State = PeerState.Closing;
+            peer.LocalCode = DisconnectCode.Normal;
+            peer.CloseAt = _now + _options.CloseDelay.Ticks;
+            return;
+        }
         if (player.IsNone || _byPlayer.ContainsKey(player))
         {
             throw new InvalidOperationException($"OnPlayerJoining returned an unusable player id {player.Value}.");

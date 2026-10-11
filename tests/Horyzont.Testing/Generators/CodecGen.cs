@@ -433,7 +433,22 @@ public static class CodecGen
              [new TerrainSyncEntry(new TerrainBlockKey(new PlanetId(1), 0, x, 0, 0), seq, hash)])),
         (from seq in VarU32
          from position in Vector
-         select (Message)new TerrainView(new PlanetId(1), Math.Max(1u, seq), position, 2048, position, 64)));
+         select (Message)new TerrainView(new PlanetId(1), Math.Max(1u, seq), position, 2048, position, 64)),
+        ServerStatus.Select(m => (Message)m),
+        JoinUnavailable.Select(m => (Message)m));
+
+    /// <summary>Server status messages: any flag and reason, detail of 0 to the codec maximum in UTF-8 bytes.</summary>
+    public static Gen<ServerStatus> ServerStatus { get; } =
+        from readOnly in Gen.Elements(false, true)
+        from reason in Gen.Choose(0, 255)
+        from detail in Text(0, ProtocolConstants.MaxRejectDetailBytes)
+        select new ServerStatus(readOnly, (byte)reason, detail);
+
+    /// <summary>Join refusals: any reason, detail of 0 to the codec maximum in UTF-8 bytes.</summary>
+    public static Gen<JoinUnavailable> JoinUnavailable { get; } =
+        from reason in Gen.Choose(0, 255)
+        from detail in Text(0, ProtocolConstants.MaxRejectDetailBytes)
+        select new JoinUnavailable((byte)reason, detail);
 
     /// <summary>Client hello messages.</summary>
     public static Gen<ClientHello> ClientHello { get; } =

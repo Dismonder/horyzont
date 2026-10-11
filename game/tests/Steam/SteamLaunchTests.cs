@@ -29,6 +29,18 @@ public class SteamLaunchTests
     }
 
     [TestCase]
+    public void MenuSteam_OnlyOnTheFlagOrWhenSteamLaunchedTheProcess()
+    {
+        AssertThat(LaunchOptions.WantsMenuSteam([], null, out var plain)).IsFalse();
+        AssertThat(plain).IsEqual(LaunchOptions.DefaultSteamAppId);
+        AssertThat(LaunchOptions.WantsMenuSteam(["--steam", "--steam-app-id", "1234"], null, out var flagged)).IsTrue();
+        AssertThat(flagged).IsEqual(1234u);
+        AssertThat(LaunchOptions.WantsMenuSteam([], "4321", out var launched)).IsTrue();
+        AssertThat(launched).IsEqual(4321u);
+        AssertThat(LaunchOptions.WantsMenuSteam([], "not a number", out _)).IsFalse();
+    }
+
+    [TestCase]
     public void Launch_SteamStyleArgs_TakesOnlyTheTokenAndItsValue()
     {
         string[] commandLine = ["horyzont.exe", "+connect_lobby", "123", "--solo", "--password", "x"];

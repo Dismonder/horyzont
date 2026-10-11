@@ -12,7 +12,7 @@ public sealed class MessageRouterTests
         for (var value = 0; value <= 255; value++)
         {
             var known = MessageRouter.TryGetType([(byte)value], out var type);
-            Assert.Equal(value is >= 1 and <= 21 or 24 or 25, known);
+            Assert.Equal(value is >= 1 and <= 25, known);
             if (known)
             {
                 Assert.Equal((MessageType)value, type);

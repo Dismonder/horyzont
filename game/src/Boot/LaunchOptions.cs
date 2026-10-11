@@ -110,6 +110,38 @@ public sealed record LaunchOptions
             || args.Contains("--write-default-config") || args.Contains(ConnectLobbyOption);
     }
 
+    /// <summary>Tells whether the menu (no mode on the command line) starts the Steam services: on <c>--steam</c>, or when Steam launched the process.</summary>
+    /// <param name="args">User arguments of a launch without a mode.</param>
+    /// <param name="steamAppIdVariable">Value of the <c>SteamAppId</c> variable Steam sets for the games it starts; null when absent.</param>
+    /// <param name="appId">The Steam application id to initialize with.</param>
+    /// <returns>True when Steam is wanted.</returns>
+    public static bool WantsMenuSteam(IReadOnlyList<string> args, string? steamAppIdVariable, out uint appId)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        appId = DefaultSteamAppId;
+        var option = -1;
+        for (var i = 0; i < args.Count; i++)
+        {
+            if (args[i] == "--steam-app-id")
+            {
+                option = i;
+            }
+        }
+
+        string? text = option >= 0 && option + 1 < args.Count ? args[option + 1] : null;
+        var launchedBySteam = uint.TryParse(steamAppIdVariable, NumberStyles.None, CultureInfo.InvariantCulture, out var fromSteam) && fromSteam != 0;
+        if (text is null && launchedBySteam)
+        {
+            appId = fromSteam;
+        }
+        else if (text is not null && uint.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var given) && given != 0)
+        {
+            appId = given;
+        }
+
+        return launchedBySteam || args.Contains("--steam");
+    }
+
     /// <summary>
     /// Adds the Steam launch pair <c>+connect_lobby &lt;id&gt;</c> from the full command line to the user arguments: Steam starts the
     /// game with it and without the <c>--</c> separator, so Godot does not list it among the user arguments. Only that token and its
