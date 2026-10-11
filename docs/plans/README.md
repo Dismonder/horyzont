@@ -338,6 +338,7 @@ Testy `game/tests/Frames|Space|Ships|Terrain|Planet|Navigation` szeregowo na jed
 Kolejność K5: (wykonawcy dopisują tu po scaleniu: pakiet, PR, `ProtocolVersion`).
 
 - K5-20 — PR: (numer przy otwarciu), `ProtocolVersion` = 6 na gałęzi (main 5 + 1); przy scaleniu po K5-23 wartość = (main) + 1 po rebase (D4).
+- K5-21 — PR: (numer przy otwarciu), `ProtocolVersion` = 7 na stosie K5-20 (K5-20 = 6, + 1); przy scaleniu wartość = (main) + 1 po rebase (D4).
 
 ## Szablon planu pakietu
 
