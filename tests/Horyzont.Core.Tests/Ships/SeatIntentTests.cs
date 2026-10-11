@@ -224,6 +224,16 @@ public sealed class SeatIntentTests
     }
 
     [Fact]
+    public void SeatExitIntent_ShipInSystemFrame_RejectedEjectTooFast()
+    {
+        var (f, p) = Rig();
+        Sit(f, p, _cockpit);
+        ShipFixtures.MoveToSystemFrame(f.Sim, new Vector3(0f, 900_000f, 0f));
+
+        AssertRejected(f, p, new SeatExitIntent(_ship), RejectReason.EjectTooFast);
+    }
+
+    [Fact]
     public void SeatExitIntent_InFlight_Over200m_RejectedEjectTooFast()
     {
         var (f, p) = Rig(height: 205f);

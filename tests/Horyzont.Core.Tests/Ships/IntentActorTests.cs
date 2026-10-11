@@ -55,6 +55,18 @@ public sealed class IntentActorTests
     }
 
     [Fact]
+    public void IntentActor_ShipInSystemFrame_WrongPlanet()
+    {
+        var (f, p) = SeatIntentTests.Rig();
+        SeatIntentTests.Sit(f, p, _cockpit);
+        ShipFixtures.MoveToSystemFrame(f.Sim, new Vector3(0f, 900_000f, 0f));
+
+        Assert.Equal(FrameKind.System, f.State.Constructs.TryGet(_ship, out var ship) ? ship!.Parent.Kind : FrameKind.Planet);
+        SeatIntentTests.AssertRejected(
+            f, p, new SeatEnterIntent(_ship, _nav, _cockpitEye, SimFixture.Direction(_cockpitEye, SeatIntentTests.Centre(_nav))), RejectReason.WrongPlanet);
+    }
+
+    [Fact]
     public void IntentActor_SeatedBlockEdit_InvalidParameters()
     {
         var (f, p) = SeatIntentTests.Rig();

@@ -95,6 +95,20 @@ public static class ShipFixtures
     public static BlockContentTable ContentFor(WorldState state) => BlockContentTable.Create(state.BlockTypes, _definitions);
 
     /// <summary>
+    /// Moves the construct <see cref="ConstructId"/> (with everyone in its frame) into the frame of the star system at a point of that
+    /// frame (K5-25 owner decision: the fixture of the "ship in the system frame" tests).
+    /// </summary>
+    /// <param name="simulation">The simulation over a world of <see cref="CreateWorld"/>.</param>
+    /// <param name="position">Origin of the construct in the system frame.</param>
+    public static void MoveToSystemFrame(Horyzont.Core.Simulation.ServerSimulation simulation, Vector3 position)
+    {
+        ArgumentNullException.ThrowIfNull(simulation);
+        simulation.State.Constructs.TryGet(ConstructId, out var construct);
+        simulation.ApplyServerOperation(new Horyzont.Core.Operations.EntityReparentOp(
+            ConstructId, FrameRef.Of(WorldFactory.HomePlanetParams.System), construct!.ParentSeq + 1, position, Quaternion.Identity, Vector3.Zero, null));
+    }
+
+    /// <summary>
     /// A world with one planet, the fixture block types and, optionally, the construct <see cref="ConstructId"/> built like a
     /// loaded checkpoint (static, on the home planet).
     /// </summary>
