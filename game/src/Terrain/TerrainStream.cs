@@ -122,11 +122,12 @@ public sealed partial class TerrainStream : VoxelStreamScript
 
                     if (_derived.IsDirty(key))
                     {
-                        // Changed by an edit and not rebuilt yet: wait for the rebuild instead of showing the unedited planet.
-                        // Not a fault of the terrain (no error is recorded). The engine keeps a placeholder for the block, so the
-                        // rebuilder asks for a reload once everything is rebuilt.
+                        // Changed by an edit and not rebuilt yet: the generator fills it for now and the rebuilder asks for a reload
+                        // once it is rebuilt. Not an error: Voxel Tools loads LODs as a pyramid and cascades edits upwards assuming
+                        // every parent of a loaded block is present; a load error leaves a hole there and the next edit below it
+                        // aborts the process (FATAL "src_block != nullptr" in VoxelData::update_lods).
                         _derived.NoteMissed(key);
-                        return (int)VoxelStream.ResultCode.Error;
+                        return (int)VoxelStream.ResultCode.BlockNotFound;
                     }
                 }
 
