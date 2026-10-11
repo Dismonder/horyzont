@@ -131,6 +131,26 @@ public sealed partial class ServerRuntime
         _participants.Insert(at, participant);
     }
 
+    /// <summary>Finds the first registered tick participant of a type (console commands of systems registered by the composition).</summary>
+    /// <typeparam name="T">The participant type.</typeparam>
+    /// <param name="participant">Receives the participant.</param>
+    /// <returns>False when none is registered.</returns>
+    public bool TryGetTickParticipant<T>([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out T? participant)
+        where T : class, IServerTickParticipant
+    {
+        foreach (var item in _participants)
+        {
+            if (item is T match)
+            {
+                participant = match;
+                return true;
+            }
+        }
+
+        participant = null;
+        return false;
+    }
+
     /// <summary>Registers a client message handler on the main thread before start.</summary>
     /// <param name="handler">Handler called in registration order, without short circuiting.</param>
     /// <exception cref="InvalidOperationException">Start has already begun.</exception>

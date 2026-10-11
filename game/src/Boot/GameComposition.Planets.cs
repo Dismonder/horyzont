@@ -145,8 +145,8 @@ public sealed partial class GameComposition
 
             if (planets.ShipDemand is null && frames?.History is { } history)
             {
-                // K5-24 replaces this with UnparkedShipDemand (README Y11).
-                planets.ShipDemand = new MovingShipDemand(history);
+                // K5-24: a ship demands the terrain of its planet while it is not parked (README Y11).
+                planets.ShipDemand = new UnparkedShipDemand(runtime.State);
                 planets.History = history;
             }
 

@@ -26,8 +26,9 @@ public sealed partial class GameComposition
         {
             SpaceSync = ServerSpaceSync.Register(Server);
 
-            // Phase Frames; K5-24 registers the flight of ships before this line (README Y7, X10).
+            // Phase Frames: the flight of ships (K5-24) before the zone transitions (README Y7, X10).
             var server = Server;
+            ConfigureFlight(server);
             var frames = ServerFrames;
             ZoneTransitions = new ServerZoneTransitions(
                 () => frames is null ? null : TransitionsOf(frames, server), GameServerHooks.TickRate, _env.Loggers.CreateLogger<ServerZoneTransitions>());
