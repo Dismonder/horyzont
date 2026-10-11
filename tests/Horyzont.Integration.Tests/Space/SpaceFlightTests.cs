@@ -31,6 +31,8 @@ namespace Horyzont.Integration.Tests.Space;
 public sealed class SpaceFlightTests : IDisposable
 {
     private const ulong Seed = 21;
+    // TODO(K5-24): when the flight is journalled and this test replays past the last reparent, scale this bound with the distance
+    // from the frame origin (float origins resolve about 4 mm at 108 km) instead of a fixed millimetre.
     private const double MaxJumpMeters = 1e-3;
     private const double StepMeters = 10;
     private static readonly EntityId _ship = new(10);
@@ -117,6 +119,7 @@ public sealed class SpaceFlightTests : IDisposable
         }
 
         // The flight stops at the moon border: the last journalled pose is the live one (kinematics are not journalled).
+        // TODO(K5-24): extend the flight past the moon border (replay only matches up to the last reparent today); see MaxJumpMeters.
         Assert.Equal([FrameRef.Of(home.Planet), FrameRef.Of(created.System.System), FrameRef.Of(moon.Planet)], parents);
         Assert.Equal(0, zones.Refused);
         var reparents = all.Select(e => e.Operation).OfType<EntityReparentOp>().ToList();
