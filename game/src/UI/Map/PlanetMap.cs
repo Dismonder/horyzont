@@ -134,8 +134,12 @@ public sealed class PlanetMap
             for (var column = 0; column < PlanetMapProjection.Width; column++)
             {
                 var direction = PlanetMapProjection.Direction((column + 0.5f) / PlanetMapProjection.Width, v);
-                var surface = SurfaceBisection.FindSurfaceRadius(
-                    p => probe.Sample((int)MathF.Round(p.X), (int)MathF.Round(p.Y), (int)MathF.Round(p.Z)).Sdf, direction, radius, out _);
+                var surface = SurfaceBisection.FindOutermostSurfaceRadius(
+                    p => probe.Sample((int)MathF.Round(p.X), (int)MathF.Round(p.Y), (int)MathF.Round(p.Z)).Sdf,
+                    direction,
+                    radius,
+                    PlanetGeneratorV1.CaveMinDepth,
+                    out _);
                 _heights[(row * PlanetMapProjection.Width) + column] = surface - radius;
             }
         }

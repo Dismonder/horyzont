@@ -41,4 +41,20 @@ public sealed class SurfaceBisectionTests
     {
         Assert.Throws<ArgumentNullException>(() => SurfaceBisection.FindSurfaceRadius(null!, Vector3.UnitX, 1000f, out _));
     }
+
+    [Fact]
+    public void SurfaceBisection_Outermost_IgnoresCaveBelowCrust()
+    {
+        // Ground at 1100; a cave (air) between 1040 and 1090 sits where the plain bisection samples first (the middle, 1000..1300 range).
+        static float Field(Vector3 p)
+        {
+            var r = p.Length();
+            return r is > 1040f and < 1090f ? 1f : r - 1100f;
+        }
+
+        var found = SurfaceBisection.FindOutermostSurfaceRadius(Field, Vector3.UnitX, 1000f, 6f, out _);
+        Assert.InRange(found, 1100f - SurfaceBisection.DefaultTolerance, 1100f + SurfaceBisection.DefaultTolerance);
+        Assert.Equal(1000f, SurfaceBisection.FindOutermostSurfaceRadius(_ => 1f, Vector3.UnitX, 1000f, 6f, out _));
+        Assert.Equal(1000f, SurfaceBisection.FindOutermostSurfaceRadius(_ => -1f, Vector3.UnitX, 1000f, 6f, out _));
+    }
 }

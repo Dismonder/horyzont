@@ -67,4 +67,60 @@ public static class SurfaceBisection
 
         return 0.5f * (low + high);
     }
+
+    /// <summary>
+    /// Finds the outermost surface along a ray in a field that has air pockets (caves) below the crust. Plain bisection can take a cave for
+    /// the open air and settle on a deeper surface, so the ray is first scanned from the top in steps shorter than the cave-free crust, and only
+    /// the last step is bisected.
+    /// </summary>
+    /// <param name="sdf">The field at a point of the planet frame; positive in the air.</param>
+    /// <param name="direction">Unit direction from the centre.</param>
+    /// <param name="radius">Nominal radius of the planet.</param>
+    /// <param name="crust">Thickness below the surface that is solid without pockets, metres; the scan step is below it.</param>
+    /// <param name="samples">Receives the number of field samples used.</param>
+    /// <param name="relief">Search range around the radius.</param>
+    /// <param name="tolerance">Accuracy.</param>
+    /// <returns>The radius of the outermost surface; the nominal radius when the ray has no air-to-solid change in the range.</returns>
+    public static float FindOutermostSurfaceRadius(
+        Func<Vector3, float> sdf, Vector3 direction, float radius, float crust, out int samples, float relief = DefaultRelief, float tolerance = DefaultTolerance)
+    {
+        ArgumentNullException.ThrowIfNull(sdf);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(crust, 0f);
+        var step = 0.9f * crust;
+        var rangeLow = radius - relief;
+        var high = radius + relief;
+        samples = 1;
+        if (sdf(direction * high) <= 0f)
+        {
+            return radius;
+        }
+
+        while (high > rangeLow)
+        {
+            var low = MathF.Max(high - step, rangeLow);
+            samples++;
+            if (sdf(direction * low) <= 0f)
+            {
+                while (high - low > tolerance)
+                {
+                    var middle = 0.5f * (low + high);
+                    samples++;
+                    if (sdf(direction * middle) <= 0f)
+                    {
+                        low = middle;
+                    }
+                    else
+                    {
+                        high = middle;
+                    }
+                }
+
+                return 0.5f * (low + high);
+            }
+
+            high = low;
+        }
+
+        return radius;
+    }
 }
