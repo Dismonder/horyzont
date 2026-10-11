@@ -83,9 +83,15 @@ public enum MessageType : byte
     /// <summary>C→S, unreliable: pilot inputs (K5-25).</summary>
     ShipInputBatch = 30,
 
+    /// <summary>S→C: flight status of the ship the player sits in, 2 Hz, unreliable (K5-26).</summary>
+    ShipStatus = 31,
+
     /// <summary>S→C: the star system of the world, once after the hello (K5-21).</summary>
     StarSystemState = 32,
 
     /// <summary>S→C, unreliable: the server state of the ship of the pilot (K5-25).</summary>
     ShipCorrection = 34,
+
+    /// <summary>S→C: shared and own private map markers, once after the star system (K5-27).</summary>
+    MarkersState = 33,
 }

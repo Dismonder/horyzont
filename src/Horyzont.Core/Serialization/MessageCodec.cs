@@ -7,8 +7,11 @@ using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
+using Horyzont.Core.Ships;
+using Horyzont.Core.Ships.Flight;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
+using Horyzont.Core.World.Markers;
 using Horyzont.Core.World.Terrain;
 
 namespace Horyzont.Core.Serialization;
@@ -396,6 +399,24 @@ public static class MessageCodec
 
             case ShipCorrection sc:
                 ShipMessageCodec.WriteCorrection(w, sc);
+                break;
+
+            case ShipStatus shipStatus:
+                WriteShipStatus(w, shipStatus);
+                break;
+
+            case MarkersState markers:
+                if (markers.Markers.Count > ProtocolConstants.MaxMarkersInState)
+                {
+                    throw new ArgumentException("Too many markers.", nameof(message));
+                }
+
+                w.WriteVarUInt((ulong)markers.Markers.Count);
+                for (int i = 0; i < markers.Markers.Count; i++)
+                {
+                    StateCodec.WriteMarker(w, markers.Markers[i]);
+                }
+
                 break;
 
             case ResyncRequest request:
@@ -791,6 +812,19 @@ public static class MessageCodec
             case MessageType.ShipCorrection:
                 return ShipMessageCodec.ReadCorrection(ref r);
 
+            case MessageType.ShipStatus:
+                return ReadShipStatus(ref r);
+
+            case MessageType.MarkersState:
+                int markerCount = r.ReadCount(ProtocolConstants.MaxMarkersInState);
+                var markerList = new MarkerRecord[markerCount];
+                for (int i = 0; i < markerCount; i++)
+                {
+                    markerList[i] = StateCodec.ReadMarker(ref r);
+                }
+
+                return new MarkersState(markerList);
+
             case MessageType.ResyncRequest:
                 var requested = new EntityId(r.ReadVarUInt());
                 if (requested.IsNone)
@@ -862,6 +896,75 @@ public static class MessageCodec
                 throw new ProtocolViolationException($"Unhandled message type {type}.");
         }
     }
+
+    /// <summary>Length of a whole <see cref="ShipStatus"/> frame: type, format version and 30 payload bytes.</summary>
+    public const int ShipStatusFrameBytes = 32;
+
+    /// <summary>
+    /// Encodes a whole <see cref="ShipStatus"/> frame without allocating (K5-26 decision 9), the same bytes as <see cref="Write"/>.
+    /// </summary>
+    /// <param name="frame">Destination of at least <see cref="ShipStatusFrameBytes"/> bytes.</param>
+    /// <param name="ship">The ship.</param>
+    /// <param name="tick">Server tick of the status.</param>
+    /// <param name="status">The status.</param>
+    /// <returns>The frame length.</returns>
+    /// <exception cref="ArgumentException">A short destination, no ship, a negative or non-finite value or an undefined launch block.</exception>
+    public static int EncodeShipStatus(Span<byte> frame, EntityId ship, Tick tick, in ShipFlightStatus status)
+    {
+        if (frame.Length < ShipStatusFrameBytes || ship.IsNone || !IsStatusValue(status.Fuel) || !IsStatusValue(status.FuelCapacity)
+            || !IsStatusValue(status.SpeedLimit) || !Enum.IsDefined(status.LaunchBlock))
+        {
+            throw new ArgumentException("Ship status needs a ship, non-negative finite values and a defined launch block.", nameof(status));
+        }
+
+        frame[0] = (byte)MessageType.ShipStatus;
+        frame[1] = CurrentFormatVersion;
+        BinaryPrimitives.WriteUInt64LittleEndian(frame[2..], ship.Value);
+        BinaryPrimitives.WriteUInt64LittleEndian(frame[10..], tick.Value);
+        BinaryPrimitives.WriteSingleLittleEndian(frame[18..], status.Fuel);
+        BinaryPrimitives.WriteSingleLittleEndian(frame[22..], status.FuelCapacity);
+        BinaryPrimitives.WriteSingleLittleEndian(frame[26..], status.SpeedLimit);
+        frame[30] = (byte)status.Flags;
+        frame[31] = (byte)status.LaunchBlock;
+        return ShipStatusFrameBytes;
+    }
+
+    // K5-26 decision 8: [Ship u64][Tick u64][Fuel f32][FuelCapacity f32][SpeedLimit f32][Flags u8][LaunchBlock u8].
+    private static void WriteShipStatus(ByteWriter w, ShipStatus status)
+    {
+        if (status.Ship.IsNone || !IsStatusValue(status.Fuel) || !IsStatusValue(status.FuelCapacity) || !IsStatusValue(status.SpeedLimit)
+            || !Enum.IsDefined(status.LaunchBlock))
+        {
+            throw new ArgumentException("Ship status needs a ship, non-negative finite values and a defined launch block.", nameof(status));
+        }
+
+        w.WriteUInt64(status.Ship.Value);
+        w.WriteUInt64(status.Tick.Value);
+        w.WriteSingle(status.Fuel);
+        w.WriteSingle(status.FuelCapacity);
+        w.WriteSingle(status.SpeedLimit);
+        w.WriteByte((byte)status.Flags);
+        w.WriteByte((byte)status.LaunchBlock);
+    }
+
+    private static ShipStatus ReadShipStatus(ref ByteReader r)
+    {
+        var ship = new EntityId(r.ReadUInt64());
+        var tick = new Tick(r.ReadUInt64());
+        float fuel = r.ReadSingle();
+        float capacity = r.ReadSingle();
+        float limit = r.ReadSingle();
+        var flags = (ShipFlightFlags)r.ReadByte();
+        var block = (ShipLaunchBlock)r.ReadByte();
+        if (ship.IsNone || !IsStatusValue(fuel) || !IsStatusValue(capacity) || !IsStatusValue(limit) || !Enum.IsDefined(block))
+        {
+            throw new ProtocolViolationException("Invalid ship status.");
+        }
+
+        return new ShipStatus(ship, tick, fuel, capacity, limit, flags, block);
+    }
+
+    private static bool IsStatusValue(float v) => float.IsFinite(v) && v >= 0f;
 
     private static void WriteEntityState(ByteWriter w, EntityState state, int maxFrames)
     {

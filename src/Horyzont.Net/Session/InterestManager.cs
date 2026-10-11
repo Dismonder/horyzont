@@ -6,7 +6,8 @@ namespace Horyzont.Net.Session;
 
 /// <summary>
 /// Which subjects each player sees. A subject enters when it is in the viewer's region and
-/// <c>distance − Radius ≤ ViewRange</c>, and leaves above <c>ViewRange + hysteresis</c> or when the regions differ.
+/// <c>distance − Radius ≤ ViewRange</c>, and leaves above <c>ViewRange + max(hysteresis, 5 % ViewRange)</c> (K5-26: 500 m at 10 km,
+/// so a ship closing at 4 km/s does not flicker at the edge) or when the regions differ.
 /// Subjects are bucketed in a spatial hash with 64 m cells in planet regions and 2048 m cells in system regions;
 /// in the steady state <see cref="Update"/> does not allocate.
 /// </summary>
@@ -14,6 +15,7 @@ public sealed class InterestManager
 {
     private const float PlanetCellSize = 64f;
     private const float SystemCellSize = 2048f;
+    private const float LeaveFraction = 0.05f;
 
     private readonly float _hysteresis;
     private readonly Dictionary<CellKey, int> _cellHeads = [];
@@ -131,6 +133,13 @@ public sealed class InterestManager
     public bool IsVisible(PlayerId viewer, EntityId subject) =>
         _viewers.TryGetValue(viewer, out var state) && state.Visible.Contains(subject);
 
+    /// <summary>Distance above which a visible subject leaves: the range plus the larger of the hysteresis and 5 % of the range.</summary>
+    private float LeaveRange(float viewRange)
+    {
+        var range = Math.Max(0, viewRange);
+        return range + Math.Max(_hysteresis, LeaveFraction * range);
+    }
+
     private static float CellSize(FrameRef region) => region.Kind == FrameKind.System ? SystemCellSize : PlanetCellSize;
 
     private static int CellIndex(float coordinate, float cellSize) =>
@@ -176,7 +185,7 @@ public sealed class InterestManager
             }
 
             _cellHeads[key] = i;
-            var reach = Math.Max(0, subject.ViewRange) + Math.Max(0, subject.Radius);
+            var reach = LeaveRange(subject.ViewRange) + Math.Max(0, subject.Radius);
             if (!_regionReach.TryGetValue(subject.Region, out var current) || reach > current)
             {
                 _regionReach[subject.Region] = reach;
@@ -192,7 +201,7 @@ public sealed class InterestManager
             && float.IsFinite(position.X) && float.IsFinite(position.Y) && float.IsFinite(position.Z))
         {
             var size = CellSize(viewer.Region);
-            var range = reach + _hysteresis;
+            var range = reach;
             int minX = CellIndex(position.X - range, size), maxX = CellIndex(position.X + range, size);
             int minY = CellIndex(position.Y - range, size), maxY = CellIndex(position.Y + range, size);
             int minZ = CellIndex(position.Z - range, size), maxZ = CellIndex(position.Z + range, size);
@@ -235,7 +244,7 @@ public sealed class InterestManager
         {
             ref readonly var subject = ref _subjects[i];
             var distance = Vector3.Distance(viewerPosition, subject.Position) - subject.Radius;
-            var limit = state.Visible.Contains(subject.Entity) ? subject.ViewRange + _hysteresis : subject.ViewRange;
+            var limit = state.Visible.Contains(subject.Entity) ? LeaveRange(subject.ViewRange) : subject.ViewRange;
             if (distance <= limit)
             {
                 state.Next.Add(subject.Entity);

@@ -3,6 +3,7 @@ using System.Numerics;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol.Messages;
+using Horyzont.Core.World.Constructs;
 
 namespace Horyzont.Client.Replication;
 
@@ -20,6 +21,7 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
 
     private readonly Dictionary<EntityId, EntitySpawn> _entities = [];
     private readonly Dictionary<EntityId, Pose> _poses = [];
+    private readonly Dictionary<EntityId, CellPos> _seats = [];
     private readonly List<EntityId> _ids = [];
     private readonly Dictionary<EntityId, List<Sample>> _parked = [];
     private readonly ResyncTracker _resync = new(time ?? TimeProvider.System);
@@ -68,6 +70,17 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
         switch (message)
         {
             case EntitySpawn spawn:
+                // K5-26: a player's kind data is its seat; data from the network, validated before anything changes.
+                var seat = spawn.Kind == EntityKind.Player ? EntitySpawnSeat.Decode(spawn.KindData, spawn.Frame.Frame) : null;
+                if (seat is { } cell)
+                {
+                    _seats[spawn.Entity] = cell;
+                }
+                else
+                {
+                    _seats.Remove(spawn.Entity);
+                }
+
                 if (!_entities.ContainsKey(spawn.Entity))
                 {
                     var at = _ids.BinarySearch(spawn.Entity, IdComparer.Instance);
@@ -89,6 +102,15 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
             case OperationApplied { Operation: EntityReparentOp op }:
                 if (_poses.TryGetValue(op.Entity, out var known) && op.NewParentSeq == unchecked(known.State.ParentSeq + 1))
                 {
+                    if (op.SeatCell is { } seatCell)
+                    {
+                        _seats[op.Entity] = seatCell;
+                    }
+                    else
+                    {
+                        _seats.Remove(op.Entity);
+                    }
+
                     _poses[op.Entity] = new Pose(
                         new SnapshotFrame(op.NewParent, op.NewParentSeq),
                         known.State with
@@ -155,6 +177,12 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
         state = default;
         return false;
     }
+
+    /// <summary>The seat of a player (K5-26): from its spawn, then from live reparents. Does not allocate.</summary>
+    /// <param name="id">Entity.</param>
+    /// <param name="seat">Receives the seat cell in the player's construct frame.</param>
+    /// <returns>False when the entity is unknown or does not sit.</returns>
+    public bool TryGetSeat(EntityId id, out CellPos seat) => _seats.TryGetValue(id, out seat);
 
     /// <summary>Looks up the kind of a spawned entity, without allocating.</summary>
     /// <param name="id">Entity.</param>
@@ -256,6 +284,7 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
         var ids = _ids.ToArray();
         _entities.Clear();
         _poses.Clear();
+        _seats.Clear();
         _ids.Clear();
         _parked.Clear();
         _resync.Clear();
@@ -270,6 +299,7 @@ public sealed class EntityMirror(TimeProvider? time = null) : IFullSnapshotSink
     private void Remove(EntityId id)
     {
         _poses.Remove(id);
+        _seats.Remove(id);
         if (_entities.Remove(id))
         {
             _ids.Remove(id);

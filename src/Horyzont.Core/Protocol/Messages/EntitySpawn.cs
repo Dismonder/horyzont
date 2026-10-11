@@ -4,7 +4,7 @@ namespace Horyzont.Core.Protocol.Messages;
 
 /// <summary>
 /// An entity appears for the client; a spawn of a known entity replaces the client copy. Players and constructs have
-/// Archetype 0 and empty KindData.
+/// Archetype 0; constructs have empty KindData, players their seat (<see cref="EntitySpawnSeat"/>, K5-26: empty when not seated).
 /// </summary>
 /// <param name="Entity">Entity.</param>
 /// <param name="Kind">Entity kind.</param>

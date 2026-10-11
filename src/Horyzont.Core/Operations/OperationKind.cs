@@ -30,6 +30,12 @@ public enum OperationKind : byte
     /// <summary><see cref="ShipModeSetOp"/>.</summary>
     ShipModeSet = 20,
 
+    /// <summary><see cref="MarkerSetOp"/>.</summary>
+    MarkerSet = 22,
+
+    /// <summary><see cref="MarkerRemoveOp"/>.</summary>
+    MarkerRemove = 23,
+
     /// <summary><see cref="ShipFuelAddOp"/>.</summary>
     ShipFuelAdd = 21,
 }

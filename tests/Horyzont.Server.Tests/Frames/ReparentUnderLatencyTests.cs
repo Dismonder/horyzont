@@ -544,7 +544,7 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
         private readonly Dictionary<EntityId, RemoteMotionBuffer> _buffers = [];
         private readonly Dictionary<EntityId, (Vector3D World, double Tick)> _previous = [];
         private readonly HashSet<(EntityId, ulong)> _credited = [];
-        private readonly Dictionary<(EntityId, ulong), (int Count, double Last, double Moved, double Allowed)> _smearTracks = [];
+        private readonly Dictionary<(EntityId, ulong), (int Count, double Last, double Moved, double Allowed, double Tick)> _smearTracks = [];
         private readonly OwnStateValidator _validator;
         private Truth? _truth;
         private OwnState? _own;
@@ -769,10 +769,10 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
             && (!truth.TryAt(entity, (ulong)Math.Ceiling(tick), out var b) || (b.Frame == frame && b.Seq == seq));
 
         private Stats TrackSmear(
-            Stats stats, EntityId entity, ulong teleportTick, double teleportDistance, Vector3D landing, Vector3D world, Vector3D previousWorld, int span, double tolerance, double tick, double travel)
+            Stats stats, EntityId entity, ulong teleportTick, double teleportDistance, Vector3D landing, Vector3D world, Vector3D previousWorld, int span, double tolerance, double tick, double travel, double maxSpeed)
         {
-            // Per credited teleport: at most span + 1 smear frames, each closer to (or as far from) the landing point than the last,
-            // and together moving no more than the teleport distance plus the entity's own travel (v_max over the elapsed time).
+            // Per credited teleport: at most span + 1 smear frames, each closer to (or as far from) the landing point than the last, give or take
+            // the entity's own travel since the last smear frame, and together moving no more than the teleport distance plus the entity's own travel (v_max over the elapsed time).
             var move = Vector3D.Distance(world, previousWorld);
             var distanceToLanding = Vector3D.Distance(world, landing);
             _smearTracks.TryGetValue((entity, teleportTick), out var track);
@@ -781,7 +781,7 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
             {
                 problem = $"count {track.Count + 1} > {span + 1}";
             }
-            else if (track.Count > 0 && distanceToLanding > track.Last + tolerance)
+            else if (track.Count > 0 && distanceToLanding > track.Last + (maxSpeed * (tick - track.Tick) / TickRate) + tolerance)
             {
                 problem = $"moved away {track.Last:F3} -> {distanceToLanding:F3}";
             }
@@ -790,7 +790,7 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
                 problem = $"moves {track.Moved + move:F3} > teleport {teleportDistance:F3} + travel {track.Allowed + travel:F3}";
             }
 
-            _smearTracks[(entity, teleportTick)] = (track.Count + 1, distanceToLanding, track.Moved + move, track.Allowed + travel);
+            _smearTracks[(entity, teleportTick)] = (track.Count + 1, distanceToLanding, track.Moved + move, track.Allowed + travel, tick);
             return problem.Length == 0
                 ? stats
                 : stats with
@@ -831,7 +831,7 @@ public sealed class ReparentUnderLatencyTests(ITestOutputHelper output)
                     && path.TryTeleportPath(entity, previous.Tick - early, tick + early, world, span, tolerance, out var teleportTick, out var teleportDistance, out var landing))
                 {
                     stats = stats with { Smears = stats.Smears + 1, MaxSmear = Math.Max(stats.MaxSmear, jump) };
-                    stats = TrackSmear(stats, entity, teleportTick, teleportDistance, landing, world, previous.World, span, tolerance, tick, maxSpeed * (tick - previous.Tick) / TickRate);
+                    stats = TrackSmear(stats, entity, teleportTick, teleportDistance, landing, world, previous.World, span, tolerance, tick, maxSpeed * (tick - previous.Tick) / TickRate, maxSpeed);
                     jump = 0;
                 }
 

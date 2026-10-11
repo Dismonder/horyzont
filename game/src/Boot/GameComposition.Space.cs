@@ -29,6 +29,7 @@ public sealed partial class GameComposition
             // Phase Frames: the flight of ships (K5-24) before the zone transitions (README Y7, X10).
             var server = Server;
             ConfigureFlight(server);
+            ConfigureShipStatusServer(server);
             var frames = ServerFrames;
             ZoneTransitions = new ServerZoneTransitions(
                 () => frames is null ? null : TransitionsOf(frames, server), GameServerHooks.TickRate, _env.Loggers.CreateLogger<ServerZoneTransitions>());
@@ -42,6 +43,7 @@ public sealed partial class GameComposition
         {
             ClientStarSystem = new ClientStarSystem();
             Client.AddListener(ClientStarSystem);
+            ConfigureShipStatusClient();
             DayNight?.StarSystem = ClientStarSystem;
         }
     }

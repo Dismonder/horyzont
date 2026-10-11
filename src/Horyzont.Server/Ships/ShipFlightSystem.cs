@@ -31,7 +31,7 @@ public readonly record struct ShipFlightView(FrameRef Parent, ShipMotion Motion,
 /// first time unparked go through <see cref="ShipLoadSettler"/>. Phase <see cref="ServerTickPhase.Frames"/>, registered before the
 /// zone transitions. Main thread; allocation-free after warm-up.
 /// </summary>
-public sealed class ShipFlightSystem : IServerTickParticipant
+public sealed class ShipFlightSystem : IServerTickParticipant, IShipStatusSource
 {
     private readonly ServerSimulation _simulation;
     private readonly ShipStatsCache _stats;
@@ -303,7 +303,7 @@ public sealed class ShipFlightSystem : IServerTickParticipant
         if (ship.Parent.Kind == FrameKind.Planet && _simulation.State.Planets.TryGet(new PlanetId(ship.Parent.Id), out var planet))
         {
             var index = _model is { } model && model.TryGetBody(planet.Id, out var body) ? body.BodyIndex : 0;
-            environment = FlightEnvironments.InPlanet(planet, index, com, _rules);
+            environment = FlightEnvironments.InPlanet(planet, index, com, _rules, _model);
             var gate = _gate.Query(ship.Id, planet.Id, motion, stats, out var cap);
             // K5-25 R2: the cap travels as a float in ShipCorrection, so the server steps with the same rounded number.
             environment = environment with { Gate = gate, HorizontalSpeedCap = (double)(float)cap };

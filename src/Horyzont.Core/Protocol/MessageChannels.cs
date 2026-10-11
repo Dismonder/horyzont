@@ -10,14 +10,14 @@ public static class MessageChannels
     public static DeliveryChannel For(MessageType type) => type switch
     {
         MessageType.InputBatch or MessageType.Snapshot or MessageType.SnapshotAck or MessageType.Ping or MessageType.Pong
-            or MessageType.ShipInputBatch or MessageType.ShipCorrection
+            or MessageType.ShipInputBatch or MessageType.ShipCorrection or MessageType.ShipStatus
             => DeliveryChannel.Unreliable,
         MessageType.ClientHello or MessageType.ServerHello or MessageType.HandshakeReject or MessageType.ClientReady
             or MessageType.TerrainCacheReport or MessageType.TerrainBlockData or MessageType.TerrainChecksums
             or MessageType.ConstructState or MessageType.ConstructRemoved or MessageType.OperationApplied
             or MessageType.IntentSubmit or MessageType.IntentReply or MessageType.EntitySpawn or MessageType.EntityDespawn
             or MessageType.Disconnect or MessageType.TerrainSync or MessageType.TerrainView or MessageType.ResyncRequest or MessageType.ServerStatus or MessageType.JoinUnavailable
-            or MessageType.StarSystemState
+            or MessageType.StarSystemState or MessageType.MarkersState
             => DeliveryChannel.ReliableOrdered,
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown message type."),
     };

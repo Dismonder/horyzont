@@ -126,6 +126,32 @@ public static class StateHasher
             }
         }
 
+        // K5-27 decision 7: the marker section exists only when a marker was ever created, so older worlds hash as before.
+        if (state.MarkerIds.NextValue > 1)
+        {
+            U64(hash, state.MarkerIds.NextValue);
+            U32(hash, (uint)state.Markers.Count);
+            foreach (var marker in state.Markers.All)
+            {
+                U64(hash, marker.Id.Value);
+                if (marker.Owner is { } owner)
+                {
+                    U32(hash, 1);
+                    U64(hash, owner.Value);
+                }
+                else
+                {
+                    U32(hash, 0);
+                }
+
+                U64(hash, marker.Planet.Value);
+                Vec(hash, marker.Position);
+                Text(hash, marker.Name);
+                U32(hash, (uint)marker.Icon);
+                U32(hash, (uint)marker.Color);
+            }
+        }
+
         return hash.GetCurrentHashAsUInt64();
     }
 

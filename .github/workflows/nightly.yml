@@ -101,7 +101,7 @@ jobs:
         run: |
           editor="$PWD/engine-ci/editor/godot.windows.editor.double.x86_64.mono.console.exe"
           mkdir -p build/windows-release
-          "$editor" --headless --path game --import
+          bash tools/ci/godot_import.sh "$editor" game
           "$editor" --headless --path game --export-release windows-release ../build/windows-release/Horyzont.exe
           # Linux CI off (owner decision 2026-10-09): engine.yml no longer builds the Linux template.
           # "$editor" --headless --path game --export-release linux-release ../build/linux-release/Horyzont.x86_64
@@ -184,7 +184,7 @@ jobs:
           # upload-artifact drops the executable bit.
           chmod +x build/linux-release/Horyzont.x86_64
           mkdir -p reports
-          "$editor" --headless --path game --import
+          bash tools/ci/godot_import.sh "$editor" game
           "$editor" --headless --path game -- --generator-report "$PWD/reports"
           build/linux-release/Horyzont.x86_64 --headless -- --generator-report "$PWD/reports"
           ls reports

@@ -37,7 +37,7 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
     private readonly IEntityReplicationSource _source;
     private readonly TimeProvider _time;
     private readonly ILogger _logger;
-    private readonly float _viewRange;
+    private readonly ReplicationRanges _ranges;
     private readonly Func<PlayerId, bool> _receivesConstructs;
     private readonly ISnapshotBudget _snapshotBudget;
     private readonly IReplicationSendBudget _sendBudget;
@@ -48,12 +48,16 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
     private readonly Dictionary<EntityId, int> _index = [];
     private readonly List<EntityId> _entered = [];
     private readonly List<EntityId> _left = [];
+    private readonly List<EntityId> _withdrawn = [];
+    private readonly LifecycleOrder _parentsFirst;
+    private readonly LifecycleOrder _childrenFirst;
     private readonly byte[] _frame = new byte[1150];
     private ReplicationEntity[] _entities = new ReplicationEntity[64];
     private ReplicationEntity[] _visible = new ReplicationEntity[64];
     private InterestSubject[] _subjects = new InterestSubject[64];
     private InterestViewer[] _viewers = new InterestViewer[8];
     private int _entityCount;
+    private int _subjectCount;
     private bool _forceUpdate;
     private bool _detached;
 
@@ -65,7 +69,7 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
     /// <param name="sendBudget">Per-client reliable budget shared with other senders.</param>
     /// <param name="time">Clock of the resync rate limit.</param>
     /// <param name="logger">Logger.</param>
-    /// <param name="viewRange">Interest distance in metres, from the bounding sphere surface.</param>
+    /// <param name="viewRange">Interest distance in metres for every entity and region, from the bounding sphere surface.</param>
     /// <param name="receivesConstructs">Whether a player gets construct data; false for the local player of a host, who shares the world.</param>
     /// <param name="frames">
     /// Frame graph of the simulation's world for region positions; by default one over the world state without planet placements (a
@@ -75,6 +79,25 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         ServerSession session, ServerSimulation simulation, IEntityReplicationSource source, ISnapshotBudget snapshotBudget,
         IReplicationSendBudget sendBudget, TimeProvider time, ILogger<EntityReplication> logger, float viewRange = 500f,
         Func<PlayerId, bool>? receivesConstructs = null, FrameGraph? frames = null)
+        : this(session, simulation, source, snapshotBudget, sendBudget, time, logger, ReplicationRanges.Uniform(viewRange), receivesConstructs, frames)
+    {
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="EntityReplication"/> class with interest ranges by region and kind (K5-26).</summary>
+    /// <param name="session">Session the messages go through.</param>
+    /// <param name="simulation">Simulation whose applied operations are replicated.</param>
+    /// <param name="source">Authoritative entity copies.</param>
+    /// <param name="snapshotBudget">Snapshot byte budget.</param>
+    /// <param name="sendBudget">Per-client reliable budget shared with other senders.</param>
+    /// <param name="time">Clock of the resync rate limit.</param>
+    /// <param name="logger">Logger.</param>
+    /// <param name="ranges">Interest distances by region and kind.</param>
+    /// <param name="receivesConstructs">Whether a player gets construct data; false for the local player of a host, who shares the world.</param>
+    /// <param name="frames">Frame graph of the simulation's world for region positions (see the other constructor).</param>
+    public EntityReplication(
+        ServerSession session, ServerSimulation simulation, IEntityReplicationSource source, ISnapshotBudget snapshotBudget,
+        IReplicationSendBudget sendBudget, TimeProvider time, ILogger<EntityReplication> logger, ReplicationRanges ranges,
+        Func<PlayerId, bool>? receivesConstructs = null, FrameGraph? frames = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(simulation);
@@ -83,18 +106,21 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         ArgumentNullException.ThrowIfNull(sendBudget);
         ArgumentNullException.ThrowIfNull(time);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(ranges);
         _session = session;
         _simulation = simulation;
         _source = source;
         _time = time;
         _logger = logger;
-        _viewRange = viewRange;
+        _ranges = ranges;
         _receivesConstructs = receivesConstructs ?? (static _ => true);
         _snapshotBudget = snapshotBudget;
         _sendBudget = sendBudget;
         _snapshots = new SnapshotBuilder(snapshotBudget);
         _constructs = new ConstructStateSender(session, simulation.State, sendBudget, logger);
         _frames = frames ?? new FrameGraph(new WorldStateFramePoses(simulation.State, NoPlanetPlacement.Instance));
+        _parentsFirst = new LifecycleOrder(this, childrenFirst: false);
+        _childrenFirst = new LifecycleOrder(this, childrenFirst: true);
         _simulation.Applied += OnApplied;
     }
 
@@ -269,11 +295,22 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
     private void UpdateLifecycle()
     {
         Grow(ref _subjects, _entityCount);
+        _subjectCount = _entityCount;
         for (var i = 0; i < _entityCount; i++)
         {
             ref readonly var entity = ref _entities[i];
             ToRegion(entity.Frame.Frame, entity.State.Position, out var region, out var position);
-            _subjects[i] = new InterestSubject(entity.Id, region, position, entity.BoundsRadius, _viewRange);
+            _subjects[i] = new InterestSubject(entity.Id, region, position, entity.BoundsRadius, _ranges.For(region, IsShip(in entity)));
+        }
+
+        // Passengers have no range of their own (K5-26 decision 2): an entity whose frame chain passes through a ship takes the
+        // subject of that ship, so it enters and leaves together with it. Ship subjects never change in this pass.
+        for (var i = 0; i < _entityCount; i++)
+        {
+            if (_entities[i].Kind != EntityKind.Construct && TryFindShip(_entities[i].Frame.Frame, out var ship))
+            {
+                _subjects[i] = _subjects[ship] with { Entity = _entities[i].Id };
+            }
         }
 
         var players = _session.PlayersInGame;
@@ -301,6 +338,10 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
             }
 
             _session.Interest.GetChanges(player, _entered, _left);
+
+            // K5-26 decision 3: children leave before their parents and parents enter before their children (by frame depth, then id).
+            _left.Sort(_childrenFirst);
+            _entered.Sort(_parentsFirst);
             for (var j = 0; j < _left.Count; j++)
             {
                 Leave(player, state, _left[j]);
@@ -351,6 +392,56 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         }
     }
 
+    private bool IsShip(in ReplicationEntity entity) =>
+        entity.Kind == EntityKind.Construct
+        && _simulation.State.Constructs.TryGet(entity.Id, out var construct) && construct.Mode == ConstructMode.Ship;
+
+    /// <summary>The nearest ship-mode construct in a frame chain (depth ≤ 8), as an index of this round's entities.</summary>
+    private bool TryFindShip(FrameRef frame, out int index)
+    {
+        for (var depth = 0; depth < 8 && frame.Kind == FrameKind.Construct; depth++)
+        {
+            var id = new EntityId(frame.Id);
+            if (!_simulation.State.Constructs.TryGet(id, out var construct))
+            {
+                break;
+            }
+
+            if (construct.Mode == ConstructMode.Ship)
+            {
+                return _index.TryGetValue(id, out index);
+            }
+
+            frame = construct.Parent;
+        }
+
+        index = -1;
+        return false;
+    }
+
+    /// <summary>Whether the entity (when a construct) and every construct of its frame chain have a complete copy at the recipient.</summary>
+    private bool IsChainLive(PlayerId player, in ReplicationEntity entity)
+    {
+        if (entity.Kind == EntityKind.Construct && !_constructs.IsLive(player, entity.Id))
+        {
+            return false;
+        }
+
+        var frame = entity.Frame.Frame;
+        for (var depth = 0; depth < 8 && frame.Kind == FrameKind.Construct; depth++)
+        {
+            var id = new EntityId(frame.Id);
+            if (!_constructs.IsLive(player, id) || !_simulation.State.Constructs.TryGet(id, out var construct))
+            {
+                return false;
+            }
+
+            frame = construct.Parent;
+        }
+
+        return true;
+    }
+
     private bool IsSnapshotCandidate(in ReplicationEntity entity) =>
         entity.Kind != EntityKind.Construct
         || (_simulation.State.Constructs.TryGet(entity.Id, out var construct) && construct.Mode == ConstructMode.Ship);
@@ -363,12 +454,20 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         }
 
         // The client still holds these entities: withdraw them, or they stay as ghosts (collision, raycast) until the body returns.
+        // Children before their parents (K5-26 decision 3).
+        _withdrawn.Clear();
         foreach (var pair in state.Known)
         {
             if (!state.Removed.Contains(pair.Key))
             {
-                _session.Send(player, new EntityDespawn(pair.Key));
+                _withdrawn.Add(pair.Key);
             }
+        }
+
+        _withdrawn.Sort(_childrenFirst);
+        for (var i = 0; i < _withdrawn.Count; i++)
+        {
+            _session.Send(player, new EntityDespawn(_withdrawn[i]));
         }
 
         state.Known.Clear();
@@ -394,7 +493,7 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
             _session.Send(player, MakeSpawn(in entity));
             state.Known.Add(entity.Id, entity.Kind);
             AddMobile(state, entity.Id);
-            _constructs.Enqueue(player, entity.Id);
+            EnqueueTransfer(player, entity.Id);
             return;
         }
 
@@ -425,8 +524,10 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         _session.Send(player, new EntityDespawn(id));
     }
 
+    // K5-26 decision 7: a player's kind data is its seat, so an observer entering range after the boarding knows it.
     private static EntitySpawn MakeSpawn(in ReplicationEntity entity) =>
-        new(entity.Id, entity.Kind, 0, entity.Owner, entity.Frame, entity.State with { FrameIndex = 0, Fields = (EntityStateFields)15 }, []);
+        new(entity.Id, entity.Kind, 0, entity.Owner, entity.Frame, entity.State with { FrameIndex = 0, Fields = (EntityStateFields)15 },
+            entity.Kind == EntityKind.Player ? EntitySpawnSeat.Encode(entity.Seat) : []);
 
     private void SendSnapshots(Tick tick)
     {
@@ -441,10 +542,13 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
 
             Grow(ref _visible, state.Mobile.Count);
             var count = 0;
+            var gated = _receivesConstructs(player);
             for (var j = 0; j < state.Mobile.Count; j++)
             {
                 // Constructs are known like players, but only ship-mode ones move outside the journal and go into snapshots (K5-20).
-                if (_index.TryGetValue(state.Mobile[j], out var index) && IsSnapshotCandidate(in _entities[index]))
+                // K5-26 decision 4: an entity goes into snapshots only once every construct of its chain is live at the recipient.
+                if (_index.TryGetValue(state.Mobile[j], out var index) && IsSnapshotCandidate(in _entities[index])
+                    && (!gated || IsChainLive(player, in _entities[index])))
                 {
                     _visible[count++] = _entities[index];
                 }
@@ -503,7 +607,7 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         if (kind == EntityKind.Construct)
         {
             // A request for a transfer in progress means the client gave up on it (stall): restart with a new part 0.
-            _constructs.Enqueue(player, entity);
+            EnqueueTransfer(player, entity);
         }
         else if (_index.TryGetValue(entity, out var index))
         {
@@ -569,7 +673,7 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         if (kind == EntityKind.Construct && !_constructs.IsLive(player, op.Entity))
         {
             // No complete copy yet (a transfer in progress): the transfer restarts with the new header.
-            _constructs.Enqueue(player, op.Entity);
+            EnqueueTransfer(player, op.Entity);
         }
         else
         {
@@ -608,8 +712,53 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         }
         else
         {
-            _constructs.Enqueue(player, change.Construct);
+            EnqueueTransfer(player, change.Construct);
         }
+    }
+
+    /// <summary>
+    /// Enqueues a complete state with its K5-26 priority: the ship the recipient's body is in, other ships by distance in the region
+    /// (from this round's subjects), static constructs last.
+    /// </summary>
+    private void EnqueueTransfer(PlayerId player, EntityId construct)
+    {
+        if (!_simulation.State.Constructs.TryGet(construct, out var value) || value.Mode != ConstructMode.Ship)
+        {
+            _constructs.Enqueue(player, construct, ConstructTransferPriority.Static, 0f);
+            return;
+        }
+
+        var distance = float.PositiveInfinity;
+        var priority = ConstructTransferPriority.Ship;
+        if (TryFindOwnIndex(player, out var own))
+        {
+            if (TryFindShip(_entities[own].Frame.Frame, out var ship) && _entities[ship].Id == construct)
+            {
+                priority = ConstructTransferPriority.Own;
+            }
+            else if (_index.TryGetValue(construct, out var index) && own < _subjectCount && index < _subjectCount
+                && _subjects[own].Region == _subjects[index].Region)
+            {
+                distance = Vector3.Distance(_subjects[own].Position, _subjects[index].Position);
+            }
+        }
+
+        _constructs.Enqueue(player, construct, priority, distance);
+    }
+
+    private bool TryFindOwnIndex(PlayerId player, out int index)
+    {
+        for (var i = 0; i < _entityCount; i++)
+        {
+            if (_entities[i].Kind == EntityKind.Player && _entities[i].Owner == player)
+            {
+                index = i;
+                return true;
+            }
+        }
+
+        index = -1;
+        return false;
     }
 
     private sealed class NoPlanetPlacement : IPlanetPlacement
@@ -620,6 +769,45 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
         {
             pose = PoseD.Identity;
             return false;
+        }
+    }
+
+    /// <summary>Depth of an entity's frame chain in this round: 0 in a planet or system frame, one more per construct frame.</summary>
+    private int FrameDepth(EntityId id)
+    {
+        if (!_index.TryGetValue(id, out var index))
+        {
+            return 0;
+        }
+
+        var frame = _entities[index].Frame.Frame;
+        var depth = 0;
+        while (depth < 8 && frame.Kind == FrameKind.Construct)
+        {
+            depth++;
+            if (!_simulation.State.Constructs.TryGet(new EntityId(frame.Id), out var construct))
+            {
+                break;
+            }
+
+            frame = construct.Parent;
+        }
+
+        return depth;
+    }
+
+    /// <summary>Orders lifecycle changes by frame depth (parents first, or children first), then by id; allocation-free.</summary>
+    private sealed class LifecycleOrder(EntityReplication owner, bool childrenFirst) : IComparer<EntityId>
+    {
+        public int Compare(EntityId x, EntityId y)
+        {
+            var byDepth = owner.FrameDepth(x).CompareTo(owner.FrameDepth(y));
+            if (byDepth != 0)
+            {
+                return childrenFirst ? -byDepth : byDepth;
+            }
+
+            return x.Value.CompareTo(y.Value);
         }
     }
 

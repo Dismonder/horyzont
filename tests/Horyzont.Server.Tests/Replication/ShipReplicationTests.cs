@@ -76,6 +76,10 @@ public sealed class ShipReplicationTests
         var rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 2);
         await using var rig = await ReplicationRig.StartAsync();
         var shipFrame = FrameRef.Of(rig.AddShip(origin, rotation));
+
+        // K5-26 decision 2: entities in a ship-mode construct take the ship's subject; the region position of an entity of its own
+        // is what a static construct frame keeps (the mode switch keeps the turned pose).
+        rig.SetMode(new EntityId(shipFrame.Id), ConstructMode.Static);
         Vector3 Local(Vector3 planet) => Vector3.Transform(planet - origin, Quaternion.Conjugate(rotation));
 
         var alice = await rig.JoinAsync("alice", 1, new Vector3(1000f, 4010f, 0f));
