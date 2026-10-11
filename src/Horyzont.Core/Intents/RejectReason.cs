@@ -70,4 +70,13 @@ public enum RejectReason : byte
 
     /// <summary>The server is in safe mode (a write error or an unreplayable journal tail) and changes nothing; K2-10.</summary>
     ServerReadOnly = 21,
+
+    /// <summary>The construct has no cockpit (or the change would remove the last cockpit of a ship); K5-23.</summary>
+    NoCockpit = 30,
+
+    /// <summary>A block of the construct is embedded in terrain; K5-23.</summary>
+    ShipAnchored = 31,
+
+    /// <summary>The construct has no engine (or the change would remove the last engine of a ship); K5-23.</summary>
+    NoEngine = 37,
 }

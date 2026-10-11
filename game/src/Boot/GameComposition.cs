@@ -207,7 +207,7 @@ public sealed partial class GameComposition
 
         var buildHash = BuildInfo.ComputeBuildHash(GeneratorProfiles.BuildHashComponent);
         var loggers = env.Loggers;
-        var rules = new GameRules();
+        var rules = WithShipRules(new GameRules());
         var movement = ScaledMovement(launch.DevSpeed);
         // Solo and host own the server, so the build decides. A dedicated server follows its --dev flag, and a connecting client must be
         // started with --dev too (ServerHello does not carry the permission); the server has to run with --dev as well.
@@ -302,6 +302,7 @@ public sealed partial class GameComposition
                 LocalClientEndpoint = dedicated ? null : new InMemoryEndpoint("local"),
                 CheckpointInterval = dedicated ? config!.CheckpointInterval : TimeSpan.FromSeconds(60),
                 BlockTypeKeys = catalog.BlockTypeKeys,
+                BlockDefinitions = ShipBlockDefinitions(catalog),
                 MaterialKeys = TerrainMaterials.Keys,
                 RecoverFromCheckpoint = launch.RecoverFromCheckpoint,
                 Rules = rules,
@@ -470,6 +471,7 @@ public sealed partial class GameComposition
         var scene = GD.Load<PackedScene>(ToolsScene) ?? throw new InvalidOperationException($"Scene {ToolsScene} not found.");
         var tools = scene.Instantiate<ToolNode>();
         tools.Initialize(client, server, () => factory.Terrain!.Service, player, rules, env.Loggers);
+        tools.BlockDefinitions = ShipBlockDefinitions(BlockContentLoader.Load());
         if (env.Render)
         {
             tools.AddChild(new TerrainToolPreview(tools));

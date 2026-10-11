@@ -8,6 +8,7 @@ using Horyzont.Core.World;
 using Horyzont.Net.Session;
 using Horyzont.Net.Transport;
 using Horyzont.Persistence.Writing;
+using Horyzont.Server.Ships;
 using Horyzont.Server.UI;
 
 using Microsoft.Extensions.Logging;
@@ -39,6 +40,7 @@ public sealed partial class ServerRuntime
 
     private WorldState? _worldState;
     private ServerSimulation? _simulation;
+    private ShipStatsCache? _shipStats;
     private ServerSession? _session;
     private IServerTerrain? _terrain;
     private PersistenceWriter? _writer;
@@ -112,6 +114,9 @@ public sealed partial class ServerRuntime
     /// <summary>Gets the simulation after <see cref="StartAsync"/>.</summary>
     /// <exception cref="InvalidOperationException">The world was not started.</exception>
     public ServerSimulation Simulation => _simulation ?? throw new InvalidOperationException("The server has not loaded a world.");
+
+    /// <summary>Gets the stats of the constructs in the ship mode (K5-23).</summary>
+    public ShipStatsCache ShipStats => _shipStats ?? throw new InvalidOperationException("The server has not loaded a world.");
 
     /// <summary>Gets the session after <see cref="StartAsync"/>.</summary>
     /// <exception cref="InvalidOperationException">The world was not started.</exception>

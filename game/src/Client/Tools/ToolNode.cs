@@ -2,10 +2,12 @@ using Godot;
 
 using Horyzont.Client;
 using Horyzont.Client.Session;
+using Horyzont.Client.Ships;
 using Horyzont.Client.Tools;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Simulation;
+using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Terrain;
 using Horyzont.Net.Session;
 using Horyzont.Server;
@@ -29,6 +31,8 @@ public sealed partial class ToolNode : Node, IClientSessionListener
     /// <summary>Physics priority: after the client node (0) and the local player (10), so the aim uses the newest pose.</summary>
     public const int PhysicsPriority = 20;
 
+    private const int ShipObserveEveryTicks = 6;
+
     private ClientRuntime? _client;
     private Func<ServerHello, IToolWorldView>? _views;
     private Func<IEditPrediction>? _predictionFactory;
@@ -38,6 +42,7 @@ public sealed partial class ToolNode : Node, IClientSessionListener
     private ILoggerFactory? _loggers;
     private ILogger<ToolNode>? _logger;
     private IToolWorldView? _view;
+    private ShipModeSwitch? _ship;
     private long _tick;
     private int _accepted;
     private int _rejected;
@@ -56,6 +61,21 @@ public sealed partial class ToolNode : Node, IClientSessionListener
 
     /// <summary>Gets the view of the world that the tools aim at; null while there is no controller.</summary>
     public IToolWorldView? World => _view;
+
+    /// <summary>
+    /// Gets or sets the block definitions of the game content (mass and function by key) that the ship mode key and the developer HUD
+    /// read; set before the server hello. Without it every block counts as plain and the key finds no cockpit.
+    /// </summary>
+    public IReadOnlyDictionary<string, BlockTypeDef>? BlockDefinitions { get; set; }
+
+    /// <summary>Gets the ship mode key handler (K5-23); null while there is no controller.</summary>
+    public ShipModeSwitch? Ship => _ship;
+
+    /// <summary>Gets the result of the latest press of the ship mode key.</summary>
+    public ShipModeToggleResult? LastShipToggle { get; private set; }
+
+    /// <summary>Gets the physics tick of the latest press of the ship mode key (the HUD shows its result for a short time).</summary>
+    public long LastShipToggleTick { get; private set; }
 
     /// <summary>Gets the block palette of the server hello; null before it.</summary>
     public BlockPalette? Blocks { get; private set; }
@@ -157,6 +177,9 @@ public sealed partial class ToolNode : Node, IClientSessionListener
         Materials = MaterialPalette.FromHello(hello);
         Controller = new ToolController(
             _rules, _view, new SessionIntentSender(_client!.Session), Pending, Blocks, Materials, _loggers!.CreateLogger<ToolController>());
+        var content = BlockContentTable.Create(hello.BlockTypes, BlockDefinitions ?? new Dictionary<string, BlockTypeDef>());
+        _ship = new ShipModeSwitch(_view, new SessionIntentSender(_client.Session), Pending, content, _rules);
+        LastShipToggle = null;
         _accepted = 0;
         _rejected = 0;
         LastReply = null;
@@ -194,6 +217,7 @@ public sealed partial class ToolNode : Node, IClientSessionListener
         // Revert from the newest: the contract of the prediction, although NoEditPrediction has nothing to undo.
         Pending?.Clear();
         Controller = null;
+        _ship = null;
         Pending = null;
         _view = null;
         _prediction = null;
@@ -219,6 +243,7 @@ public sealed partial class ToolNode : Node, IClientSessionListener
         if (_client!.Session.State != ClientState.InGame || !player.IsActive || player.CameraMode == CameraMode.DevFree)
         {
             controller.Update(frame, default, tick);
+            _ship?.ClearAim();
             return;
         }
 
@@ -226,10 +251,25 @@ public sealed partial class ToolNode : Node, IClientSessionListener
         if (!AimRayBuilder.TryBuild(player.Planet, player.PredictedFeet, player.CameraOrigin, player.CameraDirection, forward, _view!, _rules, out var ray))
         {
             controller.Update(frame, default, tick);
+            _ship?.ClearAim();
             return;
         }
 
         controller.Update(frame, ray, tick);
+        if (_ship is { } ship)
+        {
+            // The raycast for the developer HUD runs at 10 Hz; a press of the key is handled at once.
+            if (frame.ShipModeToggle)
+            {
+                LastShipToggle = ship.Toggle(ray, tick);
+                LastShipToggleTick = tick;
+            }
+
+            if (tick % ShipObserveEveryTicks == 0)
+            {
+                ship.Observe(ray);
+            }
+        }
     }
 
     private sealed class NoToolInput : IToolInputSource
