@@ -408,12 +408,12 @@ public sealed partial class GameUiCoordinator : Node, IGameplayInputGate
     {
         if (composition.ClientNode?.GetNodeOrNull<LocalInputReader>("Input") is { } reader)
         {
-            reader.Gate = this;
+            reader.Gate = composition.ComposeInputGate(this);
         }
 
         if (composition.Tools?.GetNodeOrNull<ToolInputReader>("Input") is { } toolReader)
         {
-            toolReader.Gate = this;
+            toolReader.Gate = composition.ComposeInputGate(this);
         }
 
         _listener = new SessionListener(this);

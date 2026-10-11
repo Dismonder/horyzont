@@ -391,6 +391,7 @@ public sealed partial class GameComposition
         composition.ConfigureReplication();
         composition.ConfigureTerrainReplication();
         composition.ConfigureMotion();
+        composition.ConfigureNavigation();
         composition.ConfigurePlatform();
 
         if (env.Characters && env.Render && launch.ScreenshotPath is { } screenshot && clientNode is not null)
@@ -421,6 +422,7 @@ public sealed partial class GameComposition
     partial void ConfigureReplication();
     partial void ConfigureTerrainReplication();
     partial void ConfigureMotion();
+    partial void ConfigureNavigation();
     partial void ConfigurePlatform();
     static partial void ConfigurePlatform(LaunchOptions launch, GameEnvironment env, ref ICompositionPlatform platform);
 
