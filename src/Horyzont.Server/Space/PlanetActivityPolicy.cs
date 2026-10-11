@@ -105,6 +105,22 @@ public sealed class PlanetActivityPolicy
     }
 
     /// <summary>
+    /// The terrain refused to deactivate a planet this policy listed in <see cref="Deactivate"/> (a replay runs): the planet is active
+    /// again with its demand at <paramref name="tick"/>, so the next deactivation is proposed one linger later. Unknown planets are ignored.
+    /// </summary>
+    /// <param name="planet">The planet.</param>
+    /// <param name="tick">The current tick.</param>
+    public void RefuseDeactivation(PlanetId planet, Tick tick)
+    {
+        var i = IndexOf(planet);
+        if (i >= 0)
+        {
+            _active[i] = true;
+            _lastDemand[i] = Math.Max(_lastDemand[i], tick.Value);
+        }
+    }
+
+    /// <summary>
     /// Evaluates the demand when the interval elapsed (the first call always evaluates). <see cref="Activate"/> and
     /// <see cref="Deactivate"/> are cleared on every call and filled only by an evaluation.
     /// </summary>

@@ -246,7 +246,11 @@ public sealed partial class ServerPlanetTerrains : IServerTickParticipant, IPlan
         var deactivate = Policy.Deactivate;
         for (var i = 0; i < deactivate.Count; i++)
         {
-            Deactivate(deactivate[i]);
+            if (!Deactivate(deactivate[i]))
+            {
+                // Refused (replay, lease or home): the policy keeps the planet active and proposes it again one linger later.
+                Policy.RefuseDeactivation(deactivate[i], tick);
+            }
         }
 
         if (History is { } history && tick.Value % ServerShipViewers.UpdateIntervalTicks == 0)
@@ -333,23 +337,25 @@ public sealed partial class ServerPlanetTerrains : IServerTickParticipant, IPlan
         LogActivated(_logger, planet.Value, ActiveCount);
     }
 
-    private void Deactivate(PlanetId planet)
+    /// <returns>False when refused (the node stays).</returns>
+    private bool Deactivate(PlanetId planet)
     {
         if (!_bodies.TryGetValue(planet.Value, out var body) || body.Node is null)
         {
-            return;
+            return true;
         }
 
         if (_replays > 0 || Policy.LeaseCount(planet) > 0 || planet == _state.HomePlanet)
         {
             LogDeactivationRefused(_logger, planet.Value, _replays > 0, Policy.LeaseCount(planet));
-            return;
+            return false;
         }
 
         ShipViewers.RemovePlanet(planet);
         _service.RemovePlanet(planet);
         body.Node = null;
         LogDeactivated(_logger, planet.Value, ActiveCount);
+        return true;
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Planet {Planet} terrain activated ({Active} active).")]

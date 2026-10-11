@@ -230,6 +230,33 @@ public sealed class PlanetActivityPolicyTests
         Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
     }
 
+    [Fact]
+    public void PlanetActivityPolicy_DeactivationRefused_StaysActiveAndRetriesAfterLinger()
+    {
+        var rig = new FrameRig(TestShips.CreateStarSystemWorld(Seed));
+        var policy = new PlanetActivityPolicy();
+        var moon = Moon(rig);
+        Step(rig, policy, NoShips.Instance);
+        Assert.True(policy.AddLease(rig.State, moon));
+        policy.ReleaseLease(moon, rig.State.CurrentTick);
+
+        // The terrain refuses (a replay runs): the policy must not believe the planet went off.
+        var first = Run(rig, policy, NoShips.Instance, 3700);
+        Assert.Equal([moon], first.Deactivated);
+        Assert.False(policy.IsActive(moon));
+        var refused = new Tick(first.DeactivatedAt);
+        policy.RefuseDeactivation(moon, refused);
+        Assert.True(policy.IsActive(moon));
+
+        // The next proposal comes one linger after the refusal (the replay has ended by then).
+        var second = Run(rig, policy, NoShips.Instance, 3700);
+        Assert.Equal([moon], second.Deactivated);
+        Assert.Empty(second.Activated);
+        Assert.InRange(second.DeactivatedAt - refused.Value, 3600UL, 3600UL + 30UL);
+        Assert.False(policy.IsActive(moon));
+        policy.RefuseDeactivation(new PlanetId(9999), refused);
+    }
+
     private static PlanetId Moon(FrameRig rig) =>
         rig.State.StarSystem is { } system ? system.Bodies[1].Planet : throw new InvalidOperationException("no star system");
 

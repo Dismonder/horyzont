@@ -100,7 +100,7 @@ public class ServerPlanetTerrainsTests
 
     [TestCase(Timeout = 240000)]
     [RequireGodotRuntime]
-    public async Task ServerPlanetTerrains_DeactivationRefusedDuringReplayOrLease()
+    public async Task ServerPlanetTerrains_DeactivationRefusedDuringReplayOrLease_GoesAfterReplayEnds()
     {
         await using var scene = EngineTestScene.Create();
         var rig = Rig.Create(scene);
@@ -118,7 +118,13 @@ public class ServerPlanetTerrainsTests
             {
                 rig.Ticks(4000);
                 AssertThat(planets.IsActive(moon)).IsTrue();
+                AssertThat(planets.Policy.IsActive(moon)).IsTrue();
             }
+
+            // After the replay the refused planet goes one linger after the refusal (the policy did not drift to "inactive").
+            rig.Ticks(4000);
+            AssertThat(planets.IsActive(moon)).IsFalse();
+            AssertThat(planets.Policy.IsActive(moon)).IsFalse();
         }
         finally
         {
