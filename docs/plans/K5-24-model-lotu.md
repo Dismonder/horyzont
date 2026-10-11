@@ -200,7 +200,7 @@ Każdy krok: test czerwony → kod → zielone testy → mały commit (Conventio
 
 **Faza C — HUD i odbiór**
 
-- [ ] 11. `IClientShipStatus` + `UnknownShipStatus`, `FlightHud` (wysokość, prędkość, limit, paliwo, blokada, kierunek do celu, jeśli K5-27 scalony); teksty `ui.csv`. Commity `test:`, `feat:`.
+- [x] 11. `IClientShipStatus` + `UnknownShipStatus`, `FlightHud` (wysokość, prędkość, limit, paliwo, blokada, kierunek do celu, jeśli K5-27 scalony); teksty `ui.csv`. Commity `test:`, `feat:`.
 - [ ] 12. Rebase na `main`; pełne komendy odbioru; `docs/ZASADY.md` pkt 2: „lot, zużycie paliwa i pozy statków poza dziennikiem — wyłącznie `UpdateConstructKinematics`/`UpdateShipState` z `ShipFlightSystem`”, pkt 4: „warunki wstępne `ShipFuelAddOp` nie czytają `ShipState` (poza skrótem)”, pkt 3: wiersz `src/Horyzont.Core/Ships/Flight/` („model lotu wspólny z predykcją pilota; zmiana zachowania → opis w PR i `ProtocolVersion`, bo predykcja klienta i serwer muszą liczyć tak samo”); wiersz K5-24 w sekcji „Pakiety K5” `docs/plans/README.md`; PR z raportem czasów przelotów, odstępstwami i pytaniami. Commit `docs:`.
 
 ## Odbiór
@@ -312,3 +312,9 @@ Kolejność scalania K5: **(K5-23 ↔ K5-20) → K5-21 → {K5-22, K5-24, K5-27}
 - `game/tests/Ships/AutolandEngineTests.cs` (gdUnit4, `[RequireGodotRuntime]`, job `game`): prawdziwy teren planety domowej (`VoxelServerTerrainFactory`, ziarno 21 jak `DescentTests`), widz kolizji statku `ServerShipViewers` z `ShipTerrainQuery`, `PlanetTerrainShipGate` nad gotowością K5-22, `GodotShipCollider`, pół sekundy zawisu bez podwozia, potem brak pilota → autolądowanie; asercje: postój, dryf ≤ 5 m. **Nieuruchomiony lokalnie** (testy silnika tylko w CI); `python tools/engine/build.py smoke` też nie (uruchamia silnik).
 - `Manual_Flight_HomeToMoon_InGame` (procedura do PR): host `--dev`; zbudować statek z 30 bloków (`ShipFixtures.Thirty`: kokpit, 4 silniki, 2 zbiorniki, napęd, podwozie), przełączyć w tryb statku; konsola: `ship <id>` (linia z `fuel=… v=… limit=… parked=… gate=…`), `ship fuel <id> 2000`, `ship pilot <id> planet:<księżyc>`; obserwować wznoszenie, napęd, hamowanie limitem i lądowanie na księżycu (z K5-22 scalonym — teren księżyca z gotowością; bez terenu księżyca statek zawisa na 2 R); `ship <id>` na końcu (`parked=yes`); zrzuty ekranu do PR.
 
+**Krok 11 (2026-10-11).**
+
+- `IClientShipStatus` + `UnknownShipStatus` (Client), `FlightHudValues`/`FlightHudText` (Client, bez alokacji, testy `FlightHudTextTests`), `game/src/Client/Ships/FlightHud.cs` (CanvasLayer dodany w `GameComposition.Frames.cs` tylko przy `_env.Render`). Wysokość z `StarSystemModel` i grafu ram, prędkość z historii ram, limit z `FlightRules`; paliwo, blokada startu i bramka terenu pokazują kreski do K5-26 (`ShipStatus` 31). Kierunek do celu pominięty — K5-27 niescalony.
+- **Odstępstwo:** teksty HUD (`FLIGHT_*`) dopisane do `game/locale/tools.csv` — `ui.csv` nie istnieje, a tylko `tools.*.translation` jest zarejestrowany w `project.godot`.
+- **Odstępstwo (własność K3-14/K5-20):** `LocalPlayer` dostał jedną minimalną metodę `TryGetAttached(out FrameRef, out double serverTick)` (tylko odczyt `_attached`); bez zmiany zachowania.
+- Krok 12 (rebase, PR) oczekuje na scalenie K5-21 i K5-22.

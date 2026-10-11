@@ -44,3 +44,13 @@ SHIP_THRUST,Thrust,Ciąg
 SHIP_ENGINES,Engines,Silniki
 SHIP_SEATS,Seats,Fotele
 SHIP_NOT_COCKPIT,Aim at the cockpit,Wskaż kokpit
+FLIGHT_ALTITUDE,Altitude,Wysokość
+FLIGHT_SPEED,Speed,Prędkość
+FLIGHT_LIMIT,Limit,Limit
+FLIGHT_FUEL,Fuel,Paliwo
+FLIGHT_FUEL_LOW,LOW FUEL,MAŁO PALIWA
+FLIGHT_FUEL_RESERVE,FUEL RESERVE,REZERWA PALIWA
+FLIGHT_BLOCKED_RESERVE,Launch blocked: fuel reserve,Start zablokowany: rezerwa paliwa
+FLIGHT_BLOCKED_PERSON,Launch blocked: person in hull,Start zablokowany: osoba w kadłubie
+FLIGHT_TERRAIN_UNAVAILABLE,Terrain unavailable,Teren niedostępny
+FLIGHT_TERRAIN_HOLD,Holding above terrain,Zawis nad terenem
