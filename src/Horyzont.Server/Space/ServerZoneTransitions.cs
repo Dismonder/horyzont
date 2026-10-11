@@ -50,6 +50,9 @@ public sealed class ServerZoneTransitions : IServerTickParticipant
     /// <summary>Gets the number of refused reparents (retried next tick).</summary>
     public int Refused { get; private set; }
 
+    /// <summary>Gets the number of ships with a remembered failure log tick (tests: ids of removed ships are dropped).</summary>
+    internal int TrackedFailures => _lastFailureLog.Count;
+
     /// <inheritdoc />
     public void OnTick(ServerRuntime runtime)
     {
@@ -83,6 +86,7 @@ public sealed class ServerZoneTransitions : IServerTickParticipant
             }
         }
 
+        ForgetRemovedShips();
         var systemFrame = FrameRef.Of(system.System);
         for (var i = 0; i < _ships.Count; i++)
         {
@@ -94,6 +98,23 @@ public sealed class ServerZoneTransitions : IServerTickParticipant
             if (TryTarget(ship, systemFrame, transitions.Graph, _model, out var target))
             {
                 Reparent(transitions, ship.Id, target, state.CurrentTick.Value);
+            }
+        }
+    }
+
+    // A ship deleted (or switched to static) after a refused reparent leaves no entry behind; removal while enumerating is allowed.
+    private void ForgetRemovedShips()
+    {
+        if (_lastFailureLog.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var id in _lastFailureLog.Keys)
+        {
+            if (!_ships.Contains(id))
+            {
+                _lastFailureLog.Remove(id);
             }
         }
     }

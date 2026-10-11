@@ -5,10 +5,13 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Space;
 using Horyzont.Core.World.Constructs;
+using Horyzont.Server.Frames;
 using Horyzont.Server.Space;
 using Horyzont.Server.Tests.Frames;
+using Horyzont.Server.Tests.Support;
 using Horyzont.Testing.Ships;
 
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Horyzont.Server.Tests.Space;
@@ -164,6 +167,47 @@ public sealed class ZoneTransitionsTests
         Assert.Empty(Reparents(rig));
     }
 
+    [Fact]
+    public void ZoneTransitions_RefusedReparent_RetriesEveryTickAndLogsOncePerInterval()
+    {
+        var moon = Moon();
+        var rig = Rig(new TestShip(_ship, FrameRef.Of(moon.Planet), ToFloat(Outward * (3.3 * moon.RadiusMeters)), Quaternion.Identity));
+        using var logs = new RecordingLoggerFactory();
+        var blind = BlindTransitions(rig);
+        var zones = new ServerZoneTransitions(() => blind, rig.Sim.Rules.TickRate, logs.CreateLogger<ServerZoneTransitions>());
+        var interval = rig.Sim.Rules.TickRate * ServerZoneTransitions.FailureLogIntervalSeconds;
+
+        Step(rig, zones, interval);
+
+        Assert.Equal(interval, zones.Refused);
+        Assert.Equal(0, zones.Reparented);
+        Assert.Empty(Reparents(rig));
+        Assert.Single(Refusals(logs));
+        Assert.Equal(FrameRef.Of(moon.Planet), Construct(rig).Parent);
+
+        Step(rig, zones);
+
+        Assert.Equal(interval + 1, zones.Refused);
+        Assert.Equal(2, Refusals(logs).Count);
+    }
+
+    [Fact]
+    public void ZoneTransitions_ShipRemovedAfterRefusal_ForgetsItsFailureLog()
+    {
+        var moon = Moon();
+        var rig = Rig(new TestShip(_ship, FrameRef.Of(moon.Planet), ToFloat(Outward * (3.3 * moon.RadiusMeters)), Quaternion.Identity, Size: 1));
+        var blind = BlindTransitions(rig);
+        var zones = new ServerZoneTransitions(() => blind, rig.Sim.Rules.TickRate, NullLogger<ServerZoneTransitions>.Instance);
+        Step(rig, zones);
+        Assert.Equal(1, zones.TrackedFailures);
+
+        rig.Sim.ApplyServerOperation(new BlockClearOp(_ship, new CellPos(0, 0, 0)));
+        Assert.False(rig.State.Constructs.TryGet(_ship, out _));
+        Step(rig, zones);
+
+        Assert.Equal(0, zones.TrackedFailures);
+    }
+
     private static Vector3D Outward => Vector3D.Normalize(new Vector3D(1, 2, 3));
 
     private static BodyInfo Home() => Model().GetBody(0);
@@ -180,6 +224,16 @@ public sealed class ZoneTransitionsTests
 
     private static ServerZoneTransitions Zones(FrameRig rig) =>
         new(() => rig.Transitions, rig.Sim.Rules.TickRate, NullLogger<ServerZoneTransitions>.Instance);
+
+    /// <summary>Transitions over a graph that knows only the home planet: reparents out of any other body fail (pose unavailable).</summary>
+    private static FrameTransitions BlindTransitions(FrameRig rig)
+    {
+        var graph = new FrameGraph(new WorldStateFramePoses(rig.State, new HomeOnlyPlacement(Home().Planet)));
+        return new FrameTransitions(rig.Sim, new ServerFrameHistory(rig.State, graph));
+    }
+
+    private static List<RecordingLoggerFactory.LogEntry> Refusals(RecordingLoggerFactory logs) =>
+        logs.Entries.Where(e => e.Event.Id == 8402).ToList();
 
     private static Construct Construct(FrameRig rig) =>
         rig.State.Constructs.TryGet(_ship, out var construct) ? construct : throw new InvalidOperationException();
