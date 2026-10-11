@@ -11,4 +11,10 @@ public interface IReplicationSendBudget
     /// <param name="bytes">Actual encoded bytes.</param>
     /// <returns>Whether the transfer may proceed.</returns>
     bool TryConsume(PlayerId player, ReplicationTraffic traffic, int bytes);
+
+    /// <summary>Drops the per-player state of a player who left; the default keeps no state.</summary>
+    /// <param name="player">Player that left.</param>
+    void Forget(PlayerId player)
+    {
+    }
 }

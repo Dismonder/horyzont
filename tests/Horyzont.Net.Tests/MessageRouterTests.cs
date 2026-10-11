@@ -12,11 +12,28 @@ public sealed class MessageRouterTests
         for (var value = 0; value <= 255; value++)
         {
             var known = MessageRouter.TryGetType([(byte)value], out var type);
-            Assert.Equal(value is >= 1 and <= 20 or 22 or 23, known);
+            Assert.Equal(value is >= 1 and <= 25, known);
             if (known)
             {
                 Assert.Equal((MessageType)value, type);
             }
         }
+    }
+
+    [Fact]
+    public void ResyncRequest_OnlyClientInGame_IsAllowed()
+    {
+        foreach (var state in Enum.GetValues<PeerState>())
+        {
+            Assert.Equal(state == PeerState.InGame, MessageRouter.IsAllowedFromClient(state, MessageType.ResyncRequest));
+        }
+
+        foreach (var state in Enum.GetValues<ClientState>())
+        {
+            Assert.False(MessageRouter.IsAllowedFromServer(state, MessageType.ResyncRequest));
+        }
+
+        Assert.True(MessageRouter.IsGameMessageFromClient(MessageType.ResyncRequest));
+        Assert.False(MessageRouter.IsGameMessageFromServer(MessageType.ResyncRequest));
     }
 }

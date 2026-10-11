@@ -2,6 +2,7 @@ using System.Globalization;
 
 using Godot;
 
+using Horyzont.Client.Platform;
 using Horyzont.Client.Replication;
 using Horyzont.Client.Session;
 using Horyzont.Core;
@@ -48,6 +49,9 @@ public sealed partial class GameComposition
     /// <summary>How long the quit coordinator waits for the final cleanup (the client transport) before it quits anyway.</summary>
     private static readonly TimeSpan _releaseTimeout = TimeSpan.FromSeconds(5);
 
+    private readonly ICompositionPlatform _platform;
+    private readonly PlatformSession _platformSession;
+    private readonly int _serverCapacity;
     private readonly LaunchOptions _launch;
     private readonly GameEnvironment _env;
     private readonly ILogger<GameComposition> _logger;
@@ -73,8 +77,12 @@ public sealed partial class GameComposition
         LaunchOptions launch, GameEnvironment env, Node root, ITransport? serverTransport, ITransport? clientTransport, ServerRuntime? server,
         ClientRuntime? client, ServerNode? serverNode, ClientNode? clientNode, VoxelServerTerrainFactory? terrainFactory, OwnTerrainProvider? ownTerrain,
         string? savesDir, ServerConfig? config, LocalProfile? profile, Guid worldId, bool worldIdFromConfig, ServerCharactersBinder? characters,
-        LocalPlayer? localPlayer, ClientDayNight? dayNight, HostConstructs? constructs, ToolNode? tools)
+        LocalPlayer? localPlayer, ClientDayNight? dayNight, HostConstructs? constructs, ToolNode? tools,
+        ICompositionPlatform platform, int serverCapacity)
     {
+        _platform = platform;
+        _platformSession = new PlatformSession(platform);
+        _serverCapacity = serverCapacity;
         Constructs = constructs;
         Tools = tools;
         _characters = characters;
@@ -173,6 +181,10 @@ public sealed partial class GameComposition
             throw new ArgumentException("--dev-tools-demo works only in a development build (debug build of the game).");
         }
 
+        var platform = env.CompositionPlatform;
+        ConfigurePlatform(launch, env, ref platform);
+        ArgumentNullException.ThrowIfNull(platform);
+
         var scene = GD.Load<PackedScene>(RootScene) ?? throw new InvalidOperationException($"Scene {RootScene} not found.");
         var root = scene.Instantiate<Node>();
         var serverNode = root.GetNode<ServerNode>("Server");
@@ -216,6 +228,7 @@ public sealed partial class GameComposition
         string? savesDir = null;
         var worldId = Guid.Empty;
         var fromConfig = false;
+        var serverCapacity = 0;
 
         if (hasServer)
         {
@@ -242,6 +255,7 @@ public sealed partial class GameComposition
             factory = new VoxelServerTerrainFactory(terrainParent, options, env.Time, loggers);
 
             var listen = new List<TransportEndpoint>();
+            var transports = new List<ITransport>();
             InMemoryNetwork? network = null;
             ITransport udp;
             switch (launch.Mode)
@@ -251,24 +265,27 @@ public sealed partial class GameComposition
                     network = new InMemoryNetwork(env.Time, env.LocalLink);
                     var local = network.CreateTransport("server", TransportOptions.Default);
                     listen.Add(new InMemoryEndpoint("server"));
+                    transports.Add(local);
                     if (launch.Mode == ProcessMode.Host)
                     {
                         udp = new UdpTransport(TransportOptions.Default, loggers.CreateLogger<UdpTransport>(), env.Time);
                         listen.Add(new UdpEndpoint(launch.BindAddress, launch.Port));
-                        serverTransport = new CompositeTransport([local, udp]);
-                    }
-                    else
-                    {
-                        serverTransport = local;
+                        transports.Add(udp);
                     }
 
                     clientTransport = network.CreateTransport("local", TransportOptions.Default);
                     break;
                 default:
                     listen.Add(config!.ToListenEndpoint());
-                    serverTransport = new UdpTransport(TransportOptions.Default, loggers.CreateLogger<UdpTransport>(), env.Time);
+                    transports.Add(new UdpTransport(TransportOptions.Default, loggers.CreateLogger<UdpTransport>(), env.Time));
                     break;
             }
+
+            if (launch.Mode == ProcessMode.Host)
+            {
+                platform.ConfigureServerTransports(transports, listen);
+            }
+            serverTransport = new ReleaseTrackedTransport(transports.Count == 1 ? transports[0] : new CompositeTransport(transports));
 
             var catalog = BlockContentLoader.Load();
             var runtimeOptions = new ServerRuntimeOptions
@@ -290,6 +307,7 @@ public sealed partial class GameComposition
                 Rules = rules,
                 NewPlayerSpawn = env.Characters ? SpawnLocator.ForNewPlayer : null,
             };
+            serverCapacity = runtimeOptions.ServerOptions.MaxPlayers;
             var seed = launch.GalaxySeed;
             server = new ServerRuntime(
                 launch.Mode, runtimeOptions, serverTransport, factory, () => NewWorld(worldId, seed, catalog.BlockTypeKeys), env.Time, loggers);
@@ -320,10 +338,12 @@ public sealed partial class GameComposition
             var isHostLocal = hasServer;
             if (!isHostLocal)
             {
-                clientTransport = new UdpTransport(TransportOptions.Default, loggers.CreateLogger<UdpTransport>(), env.Time);
+                clientTransport = platform.CreateClientTransport(
+                    () => new UdpTransport(TransportOptions.Default, loggers.CreateLogger<UdpTransport>(), env.Time));
             }
 
-            client = new ClientRuntime(clientTransport!, new ClientOptions { BuildHash = buildHash }, isHostLocal, env.Time, loggers);
+            clientTransport = new ReleaseTrackedTransport(clientTransport!);
+            client = new ClientRuntime(clientTransport, new ClientOptions { BuildHash = buildHash }, isHostLocal, env.Time, loggers);
             clientNode!.Initialize(client, loggers.CreateLogger<ClientNode>());
             if (env.Characters)
             {
@@ -347,7 +367,7 @@ public sealed partial class GameComposition
 
         var composition = new GameComposition(
             launch, env, root, serverTransport, clientTransport, server, client, serverNode, clientNode, factory, own, savesDir, config, profile,
-            worldId, fromConfig, characters, localPlayer, dayNight, constructs, tools)
+            worldId, fromConfig, characters, localPlayer, dayNight, constructs, tools, platform, serverCapacity)
         {
             Movement = movement,
         };
@@ -378,7 +398,7 @@ public sealed partial class GameComposition
         {
             var quit = new QuitCoordinator { Name = "Quit" };
             quit.Initialize(
-                composition.RequestShutdown, () => composition.IsFinished, () => composition.ExitCode, composition.ReleaseStep, env.RegisterSignals,
+                composition.RequestShutdown, () => composition.IsFinished, () => composition.ExitCode, composition.ProcessCleanupStep, env.RegisterSignals,
                 loggers.CreateLogger<QuitCoordinator>(), env.Time, _releaseTimeout);
             root.AddChild(quit);
             composition.Quit = quit;
@@ -391,6 +411,7 @@ public sealed partial class GameComposition
     partial void ConfigureTerrainReplication();
     partial void ConfigureMotion();
     partial void ConfigurePlatform();
+    static partial void ConfigurePlatform(LaunchOptions launch, GameEnvironment env, ref ICompositionPlatform platform);
 
     /// <summary>Walking and sprinting speed scaled by <c>--dev-speed</c> (the accelerations scale with it so the character reaches the speed as fast as before).</summary>
     private static MovementRules ScaledMovement(float factor)
@@ -534,7 +555,7 @@ public sealed partial class GameComposition
                 ConnectLocalClient();
             }
         }
-        else
+        else if (!_platform.TryConnectClient(Client))
         {
             Client.Connect(new UdpEndpoint(_launch.ConnectHost!, _launch.ConnectPort), _profile!.Identity, _profile.DisplayName, _launch.Password);
         }
@@ -561,6 +582,7 @@ public sealed partial class GameComposition
     /// <summary>Starts the canonical shutdown: the server's, or the disconnect of a remote client. A second call is ignored by the server.</summary>
     public void RequestShutdown()
     {
+        _platformSession.OnShutdownRequested();
         if (Server is not null)
         {
             Server.RequestShutdown();
@@ -578,7 +600,11 @@ public sealed partial class GameComposition
     /// (it gets <c>HostLeft</c> through the in-memory transport while the server drains) and its transport is disposed, here on the
     /// calling thread. Idempotent; the quit coordinator uses <see cref="ReleaseStep"/> instead.
     /// </summary>
-    public void Release() => BeginRelease(inline: true);
+    public void Release()
+    {
+        BeginRelease(inline: true);
+        NotifyTransportsReleased();
+    }
 
     /// <summary>
     /// The same cleanup as <see cref="Release"/> for the quit coordinator: the transport of the client is disposed on a worker thread
@@ -590,7 +616,13 @@ public sealed partial class GameComposition
         BeginRelease(inline: false);
         if (_transportDispose is not { IsCompleted: true } done)
         {
-            return _transportDispose is null;
+            if (_transportDispose is null)
+            {
+                NotifyTransportsReleased();
+                return true;
+            }
+
+            return false;
         }
 
         if (done.IsFaulted && !_transportDisposeLogged)
@@ -599,7 +631,20 @@ public sealed partial class GameComposition
             _logger.LogTransportDisposeFailed(done.Exception!.GetBaseException());
         }
 
+        NotifyTransportsReleased();
         return true;
+    }
+
+    private bool ProcessCleanupStep() =>
+        ReleaseStep() && (_env.ProcessCleanup is null || _platformSession.TryProcessCleanup(_env.ProcessCleanup));
+
+    private void NotifyTransportsReleased()
+    {
+        if ((_serverTransport is null || _serverTransport is ReleaseTrackedTransport { IsReleased: true })
+            && (_clientTransport is null || _clientTransport is ReleaseTrackedTransport { IsReleased: true }))
+        {
+            _platformSession.OnTransportsReleased();
+        }
     }
 
     private void BeginRelease(bool inline)
@@ -610,6 +655,7 @@ public sealed partial class GameComposition
         }
 
         _released = true;
+        _platformSession.OnShutdownRequested();
         if (Client is not null)
         {
             Client.Session.Disconnect();
@@ -673,6 +719,10 @@ public sealed partial class GameComposition
                 _serverRan = true;
                 Constructs?.Attach(Server!);
                 RememberLastWorld();
+                if (Mode == ProcessMode.Host)
+                {
+                    _platformSession.OnWorldStarted(Server.State.Id, _serverCapacity, _launch.Password.Length != 0);
+                }
                 _env.Print($"SERVER READY world={world} state hash={StateHasher.Hash(Server.State).ToString("X16", CultureInfo.InvariantCulture)}");
                 return null;
             case WorldStartResult.StartedReadOnly readOnly:

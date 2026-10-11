@@ -18,13 +18,15 @@ public partial class Boot : Node
 
     private const string Usage =
         "Horyzont modes (after --; without a mode the menu opens): --solo [--world <id>] [--dev-speed <1-64>] [--screenshot <png> [--screenshot-after <s>]] | --host [--world <id>] [--port 27015] [--bind <ipv4>] [--password <text>] | --connect <host:port> [--password <text>] [--dev]"
+        + " | +connect_lobby <id> [--password <text>] (Steam) | --host/--connect [--steam] [--steam-app-id <id>] [--lobby-visibility private|friends|public]"
         + " | --server --config <server.json> [--data-dir <dir>] [--restore-latest-backup] [--dev] | --write-default-config <path>";
 
     private ILoggerFactory? _loggers;
 
     public override void _Ready()
     {
-        var args = OS.GetCmdlineUserArgs();
+        // Steam starts the game with "+connect_lobby <id>" outside the user arguments; only that pair is taken over.
+        var args = LaunchOptions.WithConnectLobby(OS.GetCmdlineArgs(), OS.GetCmdlineUserArgs());
         if (DevModes.TryRun(this, args))
         {
             return;
@@ -143,6 +145,23 @@ public partial class Boot : Node
             RegisterSignals = true,
         };
 
+        if (launch.EnableSteam)
+        {
+            var steam = GameComposition.CreatePlatformServices(env, launch.SteamAppId);
+            if (launch.ConnectLobbyId is not null && !steam.Available)
+            {
+                GD.PrintErr("STEAM UNAVAILABLE: +connect_lobby needs a running Steam client.");
+                steam.TryShutdown();
+                GetTree().Quit(ExitFaulted);
+                return;
+            }
+
+            var lifetime = new SteamLifetime { Name = "SteamLifetime" };
+            lifetime.Initialize(steam);
+            AddChild(lifetime);
+            env = env with { Platform = steam, ProcessCleanup = steam.TryShutdown };
+        }
+
         GameComposition composition;
         try
         {
@@ -151,6 +170,7 @@ public partial class Boot : Node
         catch (ArgumentException ex)
         {
             GD.PrintErr($"ARGUMENT ERROR: {ex.Message}");
+            env.Platform?.TryShutdown();
             GetTree().Quit(DevModes.ExitBadArguments);
             return;
         }
@@ -160,6 +180,8 @@ public partial class Boot : Node
         {
             if (await composition.StartAsync(CancellationToken.None) is { } exit)
             {
+                // StartAsync released the transports of a world that did not start, so the lobby is left and the SDK may stop.
+                env.Platform?.TryShutdown();
                 GetTree().Quit(exit);
             }
         }
@@ -169,6 +191,9 @@ public partial class Boot : Node
         {
             GD.PrintErr($"START FAILED: {ex}");
             composition.Release();
+
+            // Release disposed the transports and left the lobby (it throws otherwise, and the SDK then stays up).
+            env.Platform?.TryShutdown();
             GetTree().Quit(ExitFaulted);
         }
     }

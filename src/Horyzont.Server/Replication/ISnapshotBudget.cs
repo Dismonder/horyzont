@@ -15,4 +15,10 @@ public interface ISnapshotBudget
     /// <param name="player">Recipient.</param>
     /// <param name="encodedBytes">Actual encoded bytes.</param>
     void Debit(PlayerId player, int encodedBytes);
+
+    /// <summary>Drops the per-player state of a player who left; the default keeps no state.</summary>
+    /// <param name="player">Player that left.</param>
+    void Forget(PlayerId player)
+    {
+    }
 }

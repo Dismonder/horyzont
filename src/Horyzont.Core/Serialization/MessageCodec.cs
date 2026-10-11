@@ -52,7 +52,7 @@ public static class MessageCodec
         }
 
         byte typeByte = frame[0];
-        if ((typeByte < 1 || typeByte > 20) && typeByte is not (22 or 23))
+        if (!Enum.IsDefined((MessageType)typeByte))
         {
             throw new ProtocolViolationException($"Unknown message type {typeByte}.");
         }
@@ -154,6 +154,37 @@ public static class MessageCodec
 
             case ClientReady:
                 // empty payload
+                break;
+
+            case TerrainSync sync:
+                ValidateTerrainSync(sync);
+                w.WriteVarUInt(sync.TransferId);
+                w.WriteByte(sync.Purpose);
+                w.WriteVarUInt(sync.Planet.Value);
+                w.WriteVarUInt(sync.BarrierOpId.Value);
+                w.WriteVarUInt(sync.PageIndex);
+                w.WriteBool(sync.IsLastPage);
+                w.WriteVarUInt((ulong)sync.Entries.Count);
+                for (var i = 0; i < sync.Entries.Count; i++)
+                {
+                    var entry = sync.Entries[i];
+                    WriteTerrainBlockKey(w, entry.Key);
+                    w.WriteVarUInt(entry.Version);
+                    w.WriteUInt64(entry.Hash);
+                }
+                break;
+
+            case TerrainView view:
+                if (!ValidTerrainView(view))
+                {
+                    throw new ArgumentException("Invalid terrain viewers.", nameof(message));
+                }
+                w.WriteVarUInt(view.Planet.Value);
+                w.WriteVarUInt(view.ViewSeq);
+                w.WriteVector3(view.VisualPosition);
+                w.WriteSingle(view.VisualDistance);
+                w.WriteVector3(view.CollisionPosition);
+                w.WriteSingle(view.CollisionDistance);
                 break;
 
             case TerrainCacheReport tcr:
@@ -355,6 +386,15 @@ public static class MessageCodec
 
                 break;
 
+            case ResyncRequest request:
+                if (request.Entity.IsNone)
+                {
+                    throw new ArgumentException("Resync entity must be nonzero.", nameof(message));
+                }
+
+                w.WriteVarUInt(request.Entity.Value);
+                break;
+
             case SnapshotAck sa:
                 w.WriteVarUInt(sa.SnapshotId);
                 break;
@@ -494,6 +534,44 @@ public static class MessageCodec
 
             case MessageType.ClientReady:
                 return new ClientReady();
+
+            case MessageType.TerrainSync:
+                uint transferId = r.ReadVarUInt32();
+                byte purpose = r.ReadByte();
+                var planet = new PlanetId(r.ReadVarUInt());
+                var barrier = new OpId(r.ReadVarUInt());
+                ushort page = r.ReadVarUInt16();
+                bool last = r.ReadBool();
+                int count = r.ReadCount(ProtocolConstants.MaxTerrainSyncEntries);
+                if (!ValidTerrainSyncHeader(transferId, purpose, planet, barrier, last, count))
+                {
+                    throw new ProtocolViolationException("Invalid terrain manifest header.");
+                }
+                // Each entry needs at least planet, lod, xyz, version and an eight-byte hash.
+                if (count > r.Remaining / 14)
+                {
+                    throw new ProtocolViolationException("Truncated terrain manifest entries.");
+                }
+                var entries = new TerrainSyncEntry[count];
+                for (var i = 0; i < count; i++)
+                {
+                    var key = ReadTerrainBlockKey(ref r);
+                    if (key.Planet != planet || key.Lod != 0 || (i > 0 && entries[i - 1].Key >= key))
+                    {
+                        throw new ProtocolViolationException("Terrain manifest keys must be sorted distinct LOD zero keys of its planet.");
+                    }
+                    entries[i] = new TerrainSyncEntry(key, r.ReadVarUInt32(), r.ReadUInt64());
+                }
+                return new TerrainSync(transferId, purpose, planet, barrier, page, last, entries);
+
+            case MessageType.TerrainView:
+                var terrainView = new TerrainView(new PlanetId(r.ReadVarUInt()), r.ReadVarUInt32(),
+                    r.ReadVector3(), r.ReadSingle(), r.ReadVector3(), r.ReadSingle());
+                if (!ValidTerrainView(terrainView))
+                {
+                    throw new ProtocolViolationException("Invalid terrain viewers.");
+                }
+                return terrainView;
 
             case MessageType.TerrainCacheReport:
                 var tcrPlanet = new PlanetId(r.ReadVarUInt());
@@ -692,6 +770,15 @@ public static class MessageCodec
 
                 return new Snapshot(snapId, sTick, baseline, lastInput, frames, entities);
 
+            case MessageType.ResyncRequest:
+                var requested = new EntityId(r.ReadVarUInt());
+                if (requested.IsNone)
+                {
+                    throw new ProtocolViolationException("Resync entity must be nonzero.");
+                }
+
+                return new ResyncRequest(requested);
+
             case MessageType.SnapshotAck:
                 uint saSnapId = r.ReadVarUInt32();
                 return new SnapshotAck(saSnapId);
@@ -841,6 +928,32 @@ public static class MessageCodec
 
         return new EntityState(entity, fields, frameIndex, parentSeq, position, rotation, velocity, motionFlags);
     }
+
+    private static bool ValidTerrainSyncHeader(uint transfer, byte purpose, PlanetId planet, OpId barrier, bool last, int count) =>
+        transfer != 0 && purpose <= 2 && planet.Value != 0 && (purpose == 2 ? barrier.Value != 0 : barrier.Value == 0)
+        && count <= ProtocolConstants.MaxTerrainSyncEntries && (!last || count == 0);
+
+    private static void ValidateTerrainSync(TerrainSync sync)
+    {
+        if (!ValidTerrainSyncHeader(sync.TransferId, sync.Purpose, sync.Planet, sync.BarrierOpId, sync.IsLastPage, sync.Entries.Count))
+        {
+            throw new ArgumentException("Invalid terrain manifest header.", nameof(sync));
+        }
+        for (var i = 0; i < sync.Entries.Count; i++)
+        {
+            var key = sync.Entries[i].Key;
+            if (key.Planet != sync.Planet || key.Lod != 0 || (i > 0 && sync.Entries[i - 1].Key >= key))
+            {
+                throw new ArgumentException("Terrain manifest keys must be sorted distinct LOD zero keys of its planet.", nameof(sync));
+            }
+        }
+    }
+
+    private static bool ValidTerrainView(TerrainView view) => view.Planet.Value != 0 && view.ViewSeq != 0
+        && float.IsFinite(view.VisualPosition.X) && float.IsFinite(view.VisualPosition.Y) && float.IsFinite(view.VisualPosition.Z)
+        && float.IsFinite(view.CollisionPosition.X) && float.IsFinite(view.CollisionPosition.Y) && float.IsFinite(view.CollisionPosition.Z)
+        && float.IsFinite(view.VisualDistance) && view.VisualDistance is >= 0 and <= 16384
+        && float.IsFinite(view.CollisionDistance) && view.CollisionDistance is >= 0 and <= 16384;
 
     private static void WriteTerrainBlockKey(ByteWriter w, TerrainBlockKey key)
     {

@@ -31,6 +31,12 @@ internal sealed class RigClient : IClientGameHooks
 
     public List<Message> Messages { get; } = [];
 
+    /// <summary>Every game message the client received, in arrival order.</summary>
+    public List<Message> Received { get; } = [];
+
+    /// <summary>Called for every game message before it is recorded; a replication test plugs its client mirrors in here.</summary>
+    public Action<Message>? Observer { get; set; }
+
     public List<DisconnectCode> Disconnections { get; } = [];
 
     public List<HandshakeRejectCode> Rejections { get; } = [];
@@ -43,6 +49,8 @@ internal sealed class RigClient : IClientGameHooks
 
     public void OnMessage(Message message)
     {
+        Received.Add(message);
+        Observer?.Invoke(message);
         if (message is IntentReply reply)
         {
             Replies.Add(reply);

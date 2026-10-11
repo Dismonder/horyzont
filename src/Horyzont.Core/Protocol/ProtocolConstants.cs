@@ -6,6 +6,9 @@ public static class ProtocolConstants
     /// <summary>Protocol version; bumped by every change of a message format. 2: RejectReason.ServerReadOnly (K2-10). 3: InputButtons.DevFly and the 0x3F button mask (K2-11). 6: ServerStatus/JoinUnavailable (K3-18); final value recomputed at merge (D4).</summary>
     public const ushort ProtocolVersion = 6;
 
+    /// <summary>Maximum entries per terrain manifest page (K3-16).</summary>
+    public const int MaxTerrainSyncEntries = 1024;
+
     /// <summary>Bits of <see cref="Messages.InputButtons"/> that a valid input may set.</summary>
     public const int InputButtonsMask = 0x3F;
 

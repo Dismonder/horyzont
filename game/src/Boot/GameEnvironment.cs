@@ -1,5 +1,7 @@
 using Godot;
 
+using Horyzont.Client.Platform;
+using Horyzont.Client.Steam;
 using Horyzont.Net.Transport.InMemory;
 
 using Microsoft.Extensions.Logging;
@@ -9,6 +11,15 @@ namespace Horyzont.Game.Boot;
 /// <summary>What <see cref="GameComposition"/> needs from the process around it; tests replace the parts that touch the machine.</summary>
 public sealed record GameEnvironment
 {
+    /// <summary>Gets neutral session platform seams; K3-17 selects its implementation in ConfigurePlatform.</summary>
+    public ICompositionPlatform CompositionPlatform { get; init; } = NoCompositionPlatform.Instance;
+
+    /// <summary>Gets the process-wide Steam services (K3-17, X8); null when the process does not use Steam.</summary>
+    public SteamPlatformServices? Platform { get; init; }
+
+    /// <summary>Gets process cleanup run by the quit coordinator only after successful session transport release.</summary>
+    public Func<bool>? ProcessCleanup { get; init; }
+
     /// <summary>Gets the clock of the server, the sessions and the deadlines.</summary>
     public required TimeProvider Time { get; init; }
 
