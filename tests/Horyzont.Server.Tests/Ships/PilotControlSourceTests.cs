@@ -1,4 +1,6 @@
 using Horyzont.Core.Ids;
+using Horyzont.Core.Ships;
+using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Ships.Flight;
 using Horyzont.Core.World.Ships;
 
@@ -9,6 +11,18 @@ public sealed class PilotControlSourceTests
 {
     private static ShipControl C(int seq, ShipButtons buttons = ShipButtons.Assist | ShipButtons.LandingGear) =>
         new((sbyte)(seq % 120), 0, 0, 0, 0, 0, buttons);
+
+    private static ShipInput[] Batch(uint newest)
+    {
+        var inputs = new ShipInput[4];
+        for (var i = 0; i < 4; i++)
+        {
+            var seq = newest - 3 + (uint)i;
+            inputs[i] = new ShipInput(seq, C((int)seq));
+        }
+
+        return inputs;
+    }
 
     private static (SeatRig Rig, PlayerId Pilot) Piloted()
     {
@@ -141,17 +155,63 @@ public sealed class PilotControlSourceTests
         Assert.Equal(1, rig.Pilot.Stats.Reanchors);
         Assert.InRange(tick, 4UL, 8UL);
 
-        // Behind: the client falls back below the consumed slots; its inputs arrive late.
-        rig.Pilot.TryGetLastProcessedSeq(FlightRig.Ship, out _, out var processed);
-        var back = processed - 10;
+        // Behind: the client stalls for ten ticks and resumes where it stopped; its new inputs arrive late. The slots are
+        // re-anchored behind the consumed ones and the pilot keeps the controls every tick (no autoland tick).
+        for (var i = 0; i < 10; i++)
+        {
+            Take(rig, tick++);
+        }
+
         for (var i = 0; i < 8; i++)
         {
-            rig.Inputs.Add(pilot, back, C((int)back));
-            back++;
-            rig.Pilot.TryGetControl(FlightRig.Ship, new Tick(tick++), out _);
+            rig.Inputs.AddBatch(pilot, seq - 3, Batch(seq)); // each batch repeats the three earlier inputs
+            seq++;
+            Take(rig, tick++);
         }
 
         Assert.Equal(2, rig.Pilot.Stats.Reanchors);
+        Assert.Equal(C((int)seq - SeatRules.Default.InputDelayTicks), Take(rig, tick));
+    }
+
+    [Fact]
+    public void PilotControlSource_JitterSpike_RealBuffer_NeverLosesControl()
+    {
+        var (rig, pilot) = Piloted();
+        var held = new List<(uint First, ShipInput[] Inputs)>();
+        var batch = 0;
+        for (uint t = 1; t <= 200; t++)
+        {
+            // The client sends one batch of four inputs per tick: the new one and three earlier ones (redundancy).
+            var first = t > 3 ? t - 3 : 1u;
+            var inputs = new ShipInput[t - first + 1];
+            for (var i = 0; i < inputs.Length; i++)
+            {
+                inputs[i] = new ShipInput(first + (uint)i, C((int)(first + (uint)i)));
+            }
+
+            held.Add((first, inputs));
+            if (t < 100 || t >= 105)
+            {
+                // A five-tick jitter spike: batches 100..104 arrive together with batch 105.
+                foreach (var (f, b) in held)
+                {
+                    rig.Inputs.AddBatch(pilot, f, b);
+                }
+
+                held.Clear();
+            }
+
+            Assert.True(rig.Pilot.TryGetControl(FlightRig.Ship, new Tick(t), out var control), $"tick {t}: autoland instead of the pilot");
+            if (t > 120)
+            {
+                // Long after the spike every slot is the pilot's own input again, not a substitute.
+                Assert.True(rig.Pilot.TryGetLastProcessedSeq(FlightRig.Ship, out _, out var slot));
+                Assert.Equal(C((int)slot), control);
+                batch++;
+            }
+        }
+
+        Assert.Equal(80, batch);
     }
 
     [Fact]

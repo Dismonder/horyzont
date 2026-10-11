@@ -18,5 +18,8 @@ public sealed class SessionShipInputs(ServerSession session) : IShipInputSource
     public int ShipInputLateCount(PlayerId player) => session.ShipInputLateCount(player);
 
     /// <inheritdoc />
+    public void RewindShipInputs(PlayerId player, uint slot) => session.RewindShipInputs(player, slot);
+
+    /// <inheritdoc />
     public void ClearShipInputs(PlayerId player) => session.ClearShipInputs(player);
 }

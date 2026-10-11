@@ -14,6 +14,8 @@ internal class SequencedInputBuffer<TInput>
     private int _count;
     private bool _hasTaken;
     private uint _lastTaken;
+    private bool _hasReceived;
+    private uint _newestReceived;
 
     public SequencedInputBuffer(int capacity)
     {
@@ -25,7 +27,10 @@ internal class SequencedInputBuffer<TInput>
     /// <summary>Gets the number of buffered inputs.</summary>
     public int Count => _count;
 
-    /// <summary>Gets the number of inputs refused because their slot was already taken (late arrivals).</summary>
+    /// <summary>
+    /// Gets the number of new inputs (numbered above every input received before) refused because their slot was already taken:
+    /// late arrivals of a client behind the server. Repeated copies of earlier inputs (batch redundancy) are not counted.
+    /// </summary>
     public int LateCount { get; private set; }
 
     /// <summary>Adds consecutive inputs numbered from <paramref name="firstSeq"/>.</summary>
@@ -102,12 +107,46 @@ internal class SequencedInputBuffer<TInput>
         return _count > 0;
     }
 
+    /// <summary>The newest number received since the last clear, buffered or refused as late (K5-25 R1 re-anchoring).</summary>
+    /// <param name="seq">The number.</param>
+    /// <returns>False when nothing was received.</returns>
+    public bool TryPeekNewestReceived(out uint seq)
+    {
+        seq = _newestReceived;
+        return _hasReceived;
+    }
+
+    /// <summary>
+    /// Takes back the slots from <paramref name="slot"/> on (K5-25 R1 re-anchoring behind the consumed slots): inputs numbered from
+    /// <paramref name="slot"/> are accepted again. Buffered inputs are kept.
+    /// </summary>
+    /// <param name="slot">The first slot to accept again.</param>
+    public void Rewind(uint slot)
+    {
+        if (!_hasTaken || slot > _lastTaken)
+        {
+            return;
+        }
+
+        if (slot == 0)
+        {
+            _hasTaken = false;
+            _lastTaken = 0;
+        }
+        else
+        {
+            _lastTaken = slot - 1;
+        }
+    }
+
     /// <summary>Forgets every input and the last taken number (a new sequence may start anywhere).</summary>
     public void Clear()
     {
         _count = 0;
         _hasTaken = false;
         _lastTaken = 0;
+        _hasReceived = false;
+        _newestReceived = 0;
         LateCount = 0;
     }
 
@@ -125,9 +164,20 @@ internal class SequencedInputBuffer<TInput>
 
     private void Insert(uint seq, TInput input)
     {
+        var isNew = !_hasReceived || seq > _newestReceived;
+        if (isNew)
+        {
+            _hasReceived = true;
+            _newestReceived = seq;
+        }
+
         if (_hasTaken && seq <= _lastTaken)
         {
-            LateCount++;
+            if (isNew)
+            {
+                LateCount++;
+            }
+
             return;
         }
 

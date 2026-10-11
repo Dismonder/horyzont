@@ -6,6 +6,7 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Horyzont.Net.Tests" />
+    <InternalsVisibleTo Include="Horyzont.Server.Tests" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Horyzont.Core/Horyzont.Core.csproj" />

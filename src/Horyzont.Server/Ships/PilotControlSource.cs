@@ -100,9 +100,10 @@ public sealed class PilotControlSource : IShipControlSource
             return false;
         }
 
-        if (CheckDrift(ship, slots, tick.Value) && !Anchor(slots))
+        if (CheckDrift(ship, slots, tick.Value))
         {
-            return false;
+            // Drift is only seen with inputs received, so the re-anchoring finds a number; should it not, the old slots go on.
+            _ = Anchor(slots);
         }
 
         if (_inputs.TryTakeShipInput(slots.Player, slots.NextSeq, out var input))
@@ -149,12 +150,12 @@ public sealed class PilotControlSource : IShipControlSource
     {
         if (!_inputs.TryPeekNewestShipSeq(slots.Player, out var newest))
         {
-            slots.Anchored = false;
             return false;
         }
 
         var delay = (uint)Math.Max(0, _rules.InputDelayTicks);
         slots.NextSeq = newest > delay ? newest - delay : 1;
+        _inputs.RewindShipInputs(slots.Player, slots.NextSeq); // behind: slots from NextSeq on may be consumed already
         slots.Anchored = true;
         slots.MissingRun = 0;
         slots.AheadRun = 0;
@@ -162,7 +163,10 @@ public sealed class PilotControlSource : IShipControlSource
         return true;
     }
 
-    /// <summary>True when the client clock drifted: the slots must be re-anchored (the buffer is cleared when the client is behind).</summary>
+    /// <summary>
+    /// True when the client clock drifted: the slots must be re-anchored. Behind (new inputs arrive for consumed slots) the buffer
+    /// is rewound by the re-anchoring, not cleared, so the newest number is known and the pilot keeps the controls (R1).
+    /// </summary>
     private bool CheckDrift(EntityId ship, Slots slots, ulong tick)
     {
         var hasNewest = _inputs.TryPeekNewestShipSeq(slots.Player, out var newest);
@@ -173,11 +177,6 @@ public sealed class PilotControlSource : IShipControlSource
         if (slots.AheadRun < AheadTicks && !behind)
         {
             return false;
-        }
-
-        if (behind && late > 0)
-        {
-            _inputs.ClearShipInputs(slots.Player);
         }
 
         Stats.Reanchors++;

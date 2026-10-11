@@ -40,15 +40,55 @@ public sealed class SequencedInputBufferTests
         Assert.True(buffer.TryPeekNewest(out var newest));
         Assert.Equal(6u, newest);
 
-        // Slot 5 is consumed: its late arrival is refused and counted.
+        // Slot 5 is consumed: its late arrival is refused; it is not counted, a number below the newest received is reordering.
         buffer.Add(5, [Input(5)]);
-        Assert.Equal(1, buffer.LateCount);
+        Assert.Equal(0, buffer.LateCount);
         Assert.Equal(1, buffer.Count);
+
+        // A new number for a consumed slot (a client behind) is refused and counted.
+        Assert.True(buffer.TryTakeSlot(9, out _) is false);
+        buffer.Add(7, [Input(7)]);
+        Assert.Equal(1, buffer.LateCount);
+        Assert.Equal(0, buffer.Count);
 
         buffer.Clear();
         buffer.Add(1, [Input(1)]);
         Assert.True(buffer.TryTakeSlot(1, out _));
         Assert.Equal(0, buffer.LateCount);
+    }
+
+    [Fact]
+    public void SequencedInputBuffer_RepeatedCopies_NotLate()
+    {
+        var buffer = new SequencedInputBuffer<ShipInput>(16);
+        for (uint newest = 4; newest <= 10; newest++)
+        {
+            buffer.Add(newest - 3, [Input(newest - 3), Input(newest - 2), Input(newest - 1), Input(newest)]);
+            Assert.True(buffer.TryTakeSlot(newest, out _));
+        }
+
+        // Every batch repeated three consumed slots: redundancy, not a client behind.
+        Assert.Equal(0, buffer.LateCount);
+        Assert.True(buffer.TryPeekNewestReceived(out var received));
+        Assert.Equal(10u, received);
+        Assert.False(buffer.TryPeekNewest(out _));
+    }
+
+    [Fact]
+    public void SequencedInputBuffer_Rewind_AcceptsConsumedSlotsAgain()
+    {
+        var buffer = new SequencedInputBuffer<ShipInput>(16);
+        buffer.Add(1, [Input(1), Input(2)]);
+        buffer.Add(9, [Input(9)]);
+        Assert.True(buffer.TryTakeSlot(6, out _) is false);
+
+        buffer.Rewind(4);
+        buffer.Add(3, [Input(3), Input(4), Input(5)]);
+
+        Assert.Equal(0, buffer.LateCount); // 3 is still taken (refused); 4 and 5 are accepted again
+        Assert.True(buffer.TryTakeSlot(4, out var four));
+        Assert.Equal(4u, four.ClientTick);
+        Assert.Equal(2, buffer.Count);
     }
 
     [Fact]

@@ -13,16 +13,21 @@ public interface IShipInputSource
     /// <returns>True when the input of the slot was buffered.</returns>
     bool TryTakeShipInput(PlayerId player, uint slot, out ShipInput input);
 
-    /// <summary>The newest buffered input number.</summary>
+    /// <summary>The newest input number received since the last clear, buffered or refused as late.</summary>
     /// <param name="player">The player.</param>
     /// <param name="seq">The number.</param>
     /// <returns>False when nothing is buffered.</returns>
     bool TryPeekNewestShipSeq(PlayerId player, out uint seq);
 
-    /// <summary>Inputs refused because their slot was already consumed, since the last clear.</summary>
+    /// <summary>New inputs refused because their slot was already consumed (not repeated copies), since the last clear.</summary>
     /// <param name="player">The player.</param>
     /// <returns>The count.</returns>
     int ShipInputLateCount(PlayerId player);
+
+    /// <summary>Accepts inputs numbered from <paramref name="slot"/> again; buffered inputs are kept (re-anchoring behind, R1).</summary>
+    /// <param name="player">The player.</param>
+    /// <param name="slot">The first slot to accept again.</param>
+    void RewindShipInputs(PlayerId player, uint slot);
 
     /// <summary>Forgets the buffered inputs and the consumed slot.</summary>
     /// <param name="player">The player.</param>

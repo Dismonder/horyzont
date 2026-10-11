@@ -258,7 +258,7 @@ public sealed class ServerSession
         return false;
     }
 
-    /// <summary>The newest buffered pilot input number of an InGame player (anchoring of the slots, K5-25 R1).</summary>
+    /// <summary>The newest pilot input number an InGame player sent since the last clear, buffered or late (anchoring, K5-25 R1).</summary>
     /// <param name="player">The player.</param>
     /// <param name="seq">The number.</param>
     /// <returns>False when nothing is buffered.</returns>
@@ -266,11 +266,22 @@ public sealed class ServerSession
     {
         if (TryGetShipInputs(player, out var inputs))
         {
-            return inputs.TryPeekNewest(out seq);
+            return inputs.TryPeekNewestReceived(out seq);
         }
 
         seq = 0;
         return false;
+    }
+
+    /// <summary>Accepts pilot inputs numbered from <paramref name="slot"/> again (re-anchoring behind the consumed slots, K5-25 R1).</summary>
+    /// <param name="player">The player.</param>
+    /// <param name="slot">The first slot to accept again.</param>
+    public void RewindShipInputs(PlayerId player, uint slot)
+    {
+        if (TryGetShipInputs(player, out var inputs))
+        {
+            inputs.Rewind(slot);
+        }
     }
 
     /// <summary>Pilot inputs of a player refused because their slot was already consumed (a client behind the server, K5-25 R1).</summary>
