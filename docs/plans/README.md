@@ -197,7 +197,7 @@ Kolejność K3: planowana K3-15 → 4, K3-16 → 5, K3-14 bez zmiany, K3-17 bez 
 
 ## Pakiety K5
 
-Źródło reguł: [przegląd K5](K5-przeglad.md) (Opus 5.5, 2026-10-10; blokery B1–B5 wprowadzone do planów, B6 = ta sekcja). Plany K5-25 i K5-28 napisane 2026-10-10 według reguł Y1–Y15 i listy „Pokrycie K5-25 i K5-28” z przeglądu; czekają na przegląd Opus (fala 3a).
+Źródło reguł: [przegląd K5](K5-przeglad.md) (Opus 5.5, 2026-10-10; blokery B1–B5 wprowadzone do planów, B6 = ta sekcja). Plany K5-25 i K5-28 napisane 2026-10-10 według reguł Y1–Y15 i listy „Pokrycie K5-25 i K5-28” z przeglądu; przegląd Opus 2026-10-11 (fala 3a): oba **APPROVE WITH CHANGES**, poprawki w sekcjach „Przegląd Opus 2026-10-11” planów (K5-25 R1–R14: sloty wejść pilota, `HorizontalSpeedCap` w `ShipCorrection` 34 — 73 B, kolejność guardu startu, szybowanie przez `CharacterFrames`; K5-28 S1–S9: zależność od K4-19 i K5-24 T1).
 
 | Pakiet | Plan | Prowadzi | Przegląd | Zależy od (start) | Warunek scalenia |
 | --- | --- | --- | --- | --- | --- |
@@ -206,10 +206,10 @@ Kolejność K3: planowana K3-15 → 4, K3-16 → 5, K3-14 bez zmiany, K3-17 bez 
 | K5-22 | [Wiele terenów](K5-22-wiele-terenow.md) | Opus 5.5 | GPT-6.1 Sol | K5-21; kroki 5–6 K3-16, krok 10 K4-19 | K5-21 scalony; kontrakt Y11 zatwierdzony |
 | K5-23 | [Bloki statku](K5-23-bloki-statku.md) | Sonnet 5.5 | Opus 5.5 (kontrakty Core) | `main` | brak krawędzi |
 | K5-24 | [Model lotu](K5-24-model-lotu.md) | Sonnet 5.5 | Opus 5.5 (kontrakty Core) | K5-21, K5-23 | oba scalone; kontrakt Y11 zatwierdzony |
-| K5-25 | [Fotele i sterowanie](K5-25-fotele-i-sterowanie.md) | GPT-6.1 Sol | Opus 5.5 | K5-24 | plan przejrzany przez Opus przed scaleniem K5-24 |
+| K5-25 | [Fotele i sterowanie](K5-25-fotele-i-sterowanie.md) | GPT-6.1 Sol | Opus 5.5 | K5-24 | plan przejrzany (Opus 2026-10-11, R1–R14 w planie); K5-24 scalony |
 | K5-26 | [Replikacja statków](K5-26-replikacja-statkow.md) | Opus 5.5 | GPT-6.1 Sol; Core — Opus | K5-24 | K5-24 scalony |
 | K5-27 | [Mapa i nawigacja](K5-27-mapa-i-nawigacja.md) | Gemini 3.8 Flash | Sonnet 5.5; Core — Opus | K5-21; krok 12 K3-18 | K5-21 scalony |
-| K5-28 | [Testy Kosmosu](K5-28-testy-kosmosu.md) | Sonnet 5.5 | Opus 5.5 | K5-22, K5-25, K5-26, K5-27 | wszystkie scalone |
+| K5-28 | [Testy Kosmosu](K5-28-testy-kosmosu.md) | Sonnet 5.5 | Opus 5.5 | K5-22, K5-25, K5-26, K5-27 (kroki 0–2 i faza C); **K4-19** (kroki 3–6, 9); domknięte kroki 9–10 K5-22 (krok 9) | wszystkie scalone; okna przelotów po decyzji K5-24 T1 (do tego czasu K1 = `PENDING`) |
 
 ### Kolejność startu K5
 
@@ -222,7 +222,7 @@ Kolejność K3: planowana K3-15 → 4, K3-16 → 5, K3-14 bez zmiany, K3-17 bez 
 | 3 | K5-22 (Opus), K5-24 (Sonnet; także K5-23), K5-27 (Gemini Flash) | K5-21 scalony |
 | 3a | plany K5-25 (Sol) i K5-28 (Sonnet) z przeglądem Opus | przed scaleniem K5-24 |
 | 4 | K5-26 (Opus), K5-25 (Sol) | K5-24 scalony |
-| 5 | K5-28 (Sonnet) | K5-22, K5-25, K5-26, K5-27 scalone |
+| 5 | K5-28 (Sonnet) | K5-22, K5-25, K5-26, K5-27 scalone; K4-19 (PR #29) scalony dla botów, `CoopRig` i nocy (przegląd K5-28 S1) |
 
 Rekomendowana kolejność scalania: **K5-23 → K5-20 → K5-21 → K5-22 → K5-24 → K5-27 → K5-26 → K5-25 → K5-28**. Kolejność scalania nie warunkuje startu; integruje pakiet scalany później (X10).
 
@@ -265,7 +265,7 @@ Typy 30, 31, 34 dopisać do listy zawodnych w `MessageChannels` i w `MessageChan
 | Ruch | Mechanizm | Wartość |
 | --- | --- | --- |
 | Migawki (statki i pasażerowie jako zwykłe byty) | `ISnapshotBudget` | 20 480 B/s bez zmian |
-| `ShipCorrection` (K5-25, przy migawce pilota) | wliczona do `ISnapshotBudget` tej samej rundy | ≤ ~64 B × 20 Hz |
+| `ShipCorrection` (K5-25, przy migawce pilota) | wliczona do `ISnapshotBudget` tej samej rundy | ~73 B (≤ 81 B; przegląd K5-25 R2/R12) × 20 Hz |
 | `ConstructState` statków (priorytety K5-26), `OperationApplied` (op 20, 22, 23, przepięcia na żywo — Y8), `MarkersState` (`Bulk`, jednorazowo ≤ ~37 KB) | wspólny `IReplicationSendBudget` | 27 000 B/s bez zmian |
 | `StarSystemState` (jednorazowo ≤ ~560 B), `ShipStatus` (2 Hz, ~45 B), `IntentReply`, `EntitySpawn/Despawn` | poza budżetem (sterowanie) | razem w zapasie ~2,5 KB/s |
 
