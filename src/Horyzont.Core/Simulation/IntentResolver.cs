@@ -18,6 +18,13 @@ internal static class IntentResolver
             state.EntityIds.PeekNext(), FrameRef.Of(facts.Planet), facts.Point, facts.Rotation, new CellPos(0, 0, 0),
             BlockState.Create(place.BlockTypeId, place.Orientation)),
         RemoveBlockIntent remove => new BlockClearOp(remove.Construct, remove.Cell),
+        ShipModeIntent ship => ResolveShipMode(state, ship),
         _ => throw new InvalidOperationException($"Intent {intent.GetType().Name} passed validation but has no resolution."),
     };
+
+    private static ShipModeSetOp ResolveShipMode(WorldState state, ShipModeIntent intent)
+    {
+        state.Constructs.TryGet(intent.Construct, out var construct);
+        return new ShipModeSetOp(intent.Construct, intent.TargetMode, construct!.Parent, construct.ParentSeq, construct.Origin, construct.Rotation);
+    }
 }

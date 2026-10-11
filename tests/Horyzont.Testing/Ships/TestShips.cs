@@ -1,8 +1,8 @@
 using System.Numerics;
-using System.Reflection;
 
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
+using Horyzont.Core.Operations;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -11,7 +11,7 @@ namespace Horyzont.Testing.Ships;
 
 /// <summary>
 /// Worlds with ship-mode constructs for frame tests (K5-20). The construct header is loaded with <see cref="ConstructMode.Ship"/>
-/// through <see cref="WorldStateBuilder"/>, the way a checkpoint loads it, so no ship-mode operation (K5-23) is needed.
+/// through <see cref="WorldStateBuilder"/>, the way a checkpoint loads it; live constructs switch with <see cref="ModeOp"/>.
 /// </summary>
 public static class TestShips
 {
@@ -75,16 +75,15 @@ public static class TestShips
     }
 
     /// <summary>
-    /// Switches the mode of a live construct in place, the effect K5-23's <c>ShipModeSetOp</c> will have. Until that operation exists
-    /// only tests do this, through the backing field of the read-only <see cref="Construct.Mode"/>.
+    /// The <see cref="ShipModeSetOp"/> that switches a live construct to <paramref name="mode"/> in place, keeping its parent frame
+    /// and pose (K5-23; replaces the reflection helper of K5-20 deviation 3).
     /// </summary>
     /// <param name="construct">The construct.</param>
-    /// <param name="mode">The new mode.</param>
-    public static void ForceMode(Construct construct, ConstructMode mode)
+    /// <param name="mode">The new mode; differs from the current one.</param>
+    /// <returns>The operation, to apply through <c>ServerSimulation.ApplyServerOperation</c>.</returns>
+    public static ShipModeSetOp ModeOp(Construct construct, ConstructMode mode)
     {
         ArgumentNullException.ThrowIfNull(construct);
-        var field = typeof(Construct).GetField("<Mode>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Construct.Mode has no auto-property backing field any more.");
-        field.SetValue(construct, mode);
+        return new ShipModeSetOp(construct.Id, mode, construct.Parent, construct.ParentSeq, construct.Origin, construct.Rotation);
     }
 }

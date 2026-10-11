@@ -227,7 +227,8 @@ public sealed class IntentValidationTests
         foreach (var reason in Enum.GetValues<RejectReason>())
         {
             // ServerReadOnly is answered by the server hooks in safe mode (K2-10), never by the simulation.
-            if (reason is not (RejectReason.None or RejectReason.ServerReadOnly))
+            // The Space reasons (30-39) are reached by the ship scenarios of ShipModeTests (K5-23).
+            if (reason is not (RejectReason.None or RejectReason.ServerReadOnly) && (byte)reason < 30)
             {
                 data.Add(reason);
             }

@@ -1,6 +1,7 @@
 using Godot;
 
 using Horyzont.Client.Tools;
+using Horyzont.Client.UI;
 
 namespace Horyzont.Game.Client.Tools;
 
@@ -20,6 +21,7 @@ public sealed partial class ToolInputReader : Node, IToolInputSource
     private static readonly StringName _materialNext = new("tool_material_next");
     private static readonly StringName _rotateYaw = new("tool_rotate_yaw");
     private static readonly StringName _rotateUp = new("tool_rotate_up");
+    private static readonly StringName _shipMode = new("ship_mode_toggle");
 
     private bool _primaryPressed;
     private bool _secondaryPressed;
@@ -28,14 +30,20 @@ public sealed partial class ToolInputReader : Node, IToolInputSource
     private int _material;
     private int _yaw;
     private int _up;
+    private bool _shipModeToggle;
+
+    /// <summary>Gets or sets the gate that blocks tool input while a menu or modal has focus (K3-18); null for none.</summary>
+    public IGameplayInputGate? Gate { get; set; }
 
     /// <summary>Gets a value indicating whether tool input is read now: the mouse is captured or the window is headless.</summary>
     public static bool Active => Input.MouseMode == Input.MouseModeEnum.Captured || DisplayServer.GetName() == "headless";
 
+    private bool IsReading => Active && Gate?.IsBlocked != true;
+
     /// <inheritdoc />
     public override void _Input(InputEvent @event)
     {
-        if (!Active)
+        if (!IsReading)
         {
             return;
         }
@@ -76,15 +84,31 @@ public sealed partial class ToolInputReader : Node, IToolInputSource
         {
             _up++;
         }
+        else if (@event.IsActionPressed(_shipMode))
+        {
+            _shipModeToggle = true;
+        }
     }
 
     /// <inheritdoc />
     public ToolInputFrame Take()
     {
-        var active = Active;
+        var active = IsReading;
+        if (Gate?.IsBlocked == true)
+        {
+            // A menu has focus: whatever was pressed before it opened is not a tool action.
+            _primaryPressed = false;
+            _secondaryPressed = false;
+            _select = null;
+            _wheel = 0;
+            _material = 0;
+            _yaw = 0;
+            _up = 0;
+        }
+
         var frame = new ToolInputFrame(
             _primaryPressed, active && Input.IsActionPressed(_primary), _secondaryPressed, active && Input.IsActionPressed(_secondary),
-            _select, _wheel, 0, _material, _yaw, _up);
+            _select, _wheel, 0, _material, _yaw, _up, _shipModeToggle);
         _primaryPressed = false;
         _secondaryPressed = false;
         _select = null;
@@ -92,6 +116,7 @@ public sealed partial class ToolInputReader : Node, IToolInputSource
         _material = 0;
         _yaw = 0;
         _up = 0;
+        _shipModeToggle = false;
         return frame;
     }
 }

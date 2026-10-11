@@ -31,3 +31,15 @@ REJECT_INTERSECTS_PLAYER,A player is in the way,Gracz w przejściu
 REJECT_NO_LINE_OF_SIGHT,Something is in the way,Coś zasłania
 REJECT_WRONG_PLANET,Wrong planet,Zła planeta
 REJECT_SERVER_READ_ONLY,Server is read only,Serwer tylko do odczytu
+REJECT_NO_COCKPIT,No cockpit,Brak kokpitu
+REJECT_SHIP_ANCHORED,A block is stuck in the ground,Blok tkwi w ziemi
+REJECT_NO_ENGINE,No engine,Brak silnika
+SHIP_TOGGLE,Ship mode,Tryb statku
+SHIP_MODE,Mode,Tryb
+SHIP_MODE_SHIP,Ship,Statek
+SHIP_MODE_STATIC,Parked structure,Budowla
+SHIP_MASS,Mass,Masa
+SHIP_THRUST,Thrust,Ciąg
+SHIP_ENGINES,Engines,Silniki
+SHIP_SEATS,Seats,Fotele
+SHIP_NOT_COCKPIT,Aim at the cockpit,Wskaż kokpit

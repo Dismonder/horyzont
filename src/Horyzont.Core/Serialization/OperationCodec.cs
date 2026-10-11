@@ -1,6 +1,7 @@
 using Horyzont.Core.Ids;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
+using Horyzont.Core.World.Constructs;
 
 namespace Horyzont.Core.Serialization;
 
@@ -102,6 +103,22 @@ public static class OperationCodec
                 CoreCodecPrimitives.WriteOptionalCellPos(w, er.SeatCell);
                 break;
 
+            case ShipModeSetOp sm:
+                if (sm.Mode < ConstructMode.Static || sm.Mode > ConstructMode.Ship)
+                {
+                    throw new ArgumentException($"Invalid ConstructMode {(byte)sm.Mode}.", nameof(op));
+                }
+
+                w.WriteByte((byte)OperationKind.ShipModeSet);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(sm.Construct.Value);
+                w.WriteByte((byte)sm.Mode);
+                CoreCodecPrimitives.WriteFrameRef(w, sm.Parent);
+                w.WriteVarUInt(sm.ParentSeq);
+                w.WriteVector3(sm.Origin);
+                w.WriteQuaternion(sm.Rotation);
+                break;
+
             default:
                 throw new ArgumentException($"Unknown operation type {op.GetType().Name}.", nameof(op));
         }
@@ -113,7 +130,7 @@ public static class OperationCodec
     public static Operation Read(ref ByteReader r)
     {
         byte kindByte = r.ReadByte();
-        if (kindByte < (byte)OperationKind.TerrainEdit || kindByte > (byte)OperationKind.EntityReparent)
+        if (kindByte is < (byte)OperationKind.TerrainEdit or > (byte)OperationKind.EntityReparent and not (byte)OperationKind.ShipModeSet)
         {
             throw new ProtocolViolationException($"Unknown operation kind {kindByte}.");
         }
@@ -195,6 +212,20 @@ public static class OperationCodec
                 var erVelocity = r.ReadVector3();
                 var erSeat = CoreCodecPrimitives.ReadOptionalCellPos(ref r);
                 return new EntityReparentOp(erEntity, erParent, erParentSeq, erPosition, erRotation, erVelocity, erSeat);
+
+            case OperationKind.ShipModeSet:
+                var smConstruct = new EntityId(r.ReadVarUInt());
+                byte smModeByte = r.ReadByte();
+                if (smModeByte > (byte)ConstructMode.Ship)
+                {
+                    throw new ProtocolViolationException($"Unknown construct mode {smModeByte}.");
+                }
+
+                var smParent = CoreCodecPrimitives.ReadFrameRef(ref r);
+                uint smParentSeq = r.ReadVarUInt32();
+                var smOrigin = r.ReadVector3();
+                var smRotation = r.ReadQuaternion();
+                return new ShipModeSetOp(smConstruct, (ConstructMode)smModeByte, smParent, smParentSeq, smOrigin, smRotation);
 
             default:
                 throw new ProtocolViolationException($"Unhandled operation kind {kind}.");

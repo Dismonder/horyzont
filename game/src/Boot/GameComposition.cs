@@ -163,6 +163,9 @@ public sealed partial class GameComposition
     /// <summary>Gets a value indicating whether the process may exit: the server (or the remote client) completed its shutdown.</summary>
     public bool IsFinished => Server is not null ? Server.IsStopped : _clientEnded && (_clientTransport?.IsDrained ?? true);
 
+    /// <summary>Gets the result of the latest world start of the server; null in client mode and before the start has completed.</summary>
+    public WorldStartResult? LastWorldStartResult { get; private set; }
+
     /// <summary>Gets the exit code of the process; valid once <see cref="IsFinished"/>.</summary>
     public int ExitCode => Server is null ? _clientExitCode : Server.ExitCode != 0 ? Server.ExitCode : _failureExitCode;
 
@@ -206,7 +209,7 @@ public sealed partial class GameComposition
 
         var buildHash = BuildInfo.ComputeBuildHash(GeneratorProfiles.BuildHashComponent);
         var loggers = env.Loggers;
-        var rules = new GameRules();
+        var rules = WithShipRules(new GameRules());
         var movement = ScaledMovement(launch.DevSpeed);
         // Solo and host own the server, so the build decides. A dedicated server follows its --dev flag, and a connecting client must be
         // started with --dev too (ServerHello does not carry the permission); the server has to run with --dev as well.
@@ -303,6 +306,7 @@ public sealed partial class GameComposition
                 LocalClientEndpoint = dedicated ? null : new InMemoryEndpoint("local"),
                 CheckpointInterval = dedicated ? config!.CheckpointInterval : TimeSpan.FromSeconds(60),
                 BlockTypeKeys = catalog.BlockTypeKeys,
+                BlockDefinitions = ShipBlockDefinitions(catalog),
                 MaterialKeys = TerrainMaterials.Keys,
                 RecoverFromCheckpoint = launch.RecoverFromCheckpoint,
                 Rules = rules,
@@ -332,7 +336,7 @@ public sealed partial class GameComposition
                     env.Print);
             }
 
-            serverNode.Initialize(server, console);
+            serverNode.Initialize(server, console, env.Time);
         }
 
         if (hasClient)
@@ -475,6 +479,7 @@ public sealed partial class GameComposition
         var scene = GD.Load<PackedScene>(ToolsScene) ?? throw new InvalidOperationException($"Scene {ToolsScene} not found.");
         var tools = scene.Instantiate<ToolNode>();
         tools.Initialize(client, server, () => factory.Terrain!.Service, player, rules, env.Loggers);
+        tools.BlockDefinitions = ShipBlockDefinitions(BlockContentLoader.Load());
         if (env.Render)
         {
             tools.AddChild(new TerrainToolPreview(tools));
@@ -530,6 +535,21 @@ public sealed partial class GameComposition
         return null;
     }
 
+    /// <summary>
+    /// Connects the local client of a solo or host process to the server that already runs. <c>StartAsync(ct, connectClient: false)</c>
+    /// leaves this to the caller, which first looks at <see cref="LastWorldStartResult"/> (the menu does not join a read-only world).
+    /// </summary>
+    /// <exception cref="InvalidOperationException">This is not a solo or host process, or its server does not run.</exception>
+    public void ConnectLocalClient()
+    {
+        if (Server is null || Client is null || ClientNode?.TerrainProvider is null)
+        {
+            throw new InvalidOperationException("ConnectLocalClient needs a started solo or host composition.");
+        }
+
+        Client.Connect(new InMemoryEndpoint("server"), _profile!.Identity, _profile.DisplayName, _launch.Password);
+    }
+
     private void ConnectClient(bool connectClient)
     {
         if (Client is null)
@@ -542,7 +562,7 @@ public sealed partial class GameComposition
             ClientNode!.TerrainProvider = new SharedTerrainProvider(TerrainFactory!.Terrain!.Voxel);
             if (connectClient)
             {
-                Client.Connect(new InMemoryEndpoint("server"), _profile!.Identity, _profile.DisplayName, _launch.Password);
+                ConnectLocalClient();
             }
         }
         else if (!_platform.TryConnectClient(Client))
@@ -701,6 +721,7 @@ public sealed partial class GameComposition
         }
 
         var result = await Server!.StartAsync(ct).ConfigureAwait(true);
+        LastWorldStartResult = result;
         var world = _worldId.ToString("D");
         switch (result)
         {

@@ -39,7 +39,7 @@ public sealed class Construct
     public uint ParentSeq { get; private set; }
 
     /// <summary>Construct mode; <see cref="ConstructMode.Static"/> at creation.</summary>
-    public ConstructMode Mode { get; }
+    public ConstructMode Mode { get; private set; }
 
     /// <summary>Corner of cell (0,0,0) in the parent frame.</summary>
     public Vector3 Origin { get; private set; }
@@ -175,6 +175,19 @@ public sealed class Construct
     {
         Origin = origin;
         Rotation = rotation;
+        _tracker.MarkConstruct(Id);
+    }
+
+    /// <summary>
+    /// Switches the construct mode and sets the pose in the same parent frame. Bumps <see cref="Version"/> by one, like a block
+    /// operation, so observers with a live link receive the operation instead of a retransfer.
+    /// </summary>
+    internal void SetMode(ConstructMode mode, Vector3 origin, Quaternion rotation)
+    {
+        Mode = mode;
+        Origin = origin;
+        Rotation = rotation;
+        Version++;
         _tracker.MarkConstruct(Id);
     }
 

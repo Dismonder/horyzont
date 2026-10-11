@@ -31,6 +31,7 @@ Każda sesja pracy zaczyna się od przeczytania tego pliku i planu pakietu. Niej
 - Fazy ticka serwera: `Frames` → `Characters` → `Compose` (`ServerTickPhase`; w obrębie fazy kolejność rejestracji). Ruch budowli tylko przez `ServerSimulation.UpdateConstructKinematics` i tylko w trybie `Ship`.
 - Promień intencji narzędzi zawsze zaczyna się w oku liczonym wzorem serwera ze stóp (`AimRayBuilder.EyeFromFeet`), także w widoku z trzeciej osoby; wektory z Godota normalizuje się dopiero po konwersji do `float` (długość poza 1 ± 0,01 albo wartość nieskończona oznacza „nie wysyłaj”). Klient nie stosuje lokalnie edycji terenu, który dzieli z serwerem (solo i host): predykcja tylko przez `IEditPrediction` na osobnej kopii terenu zdalnego klienta (K3-16).
 - Gracz w dzienniku, zapisie i sieci to wewnętrzny `PlayerId`. Tożsamość platformy (`PlatformIdentity`, np. SteamID) służy tylko do łączenia z kontem, banów i administratorów.
+- Tożsamość Steam jest wiarygodna tylko przez endpoint Steam P2P: `HandshakeValidator` odrzuca (`IdentityMismatch`) zarówno SteamID różny od endpointu, jak i tożsamość Steam zgłoszoną przez UDP albo inny endpoint. Lokalny klient hosta i połączenia UDP używają tożsamości Dev. Metadane lobby Steam są informacyjne i nigdy nie zastępują handshake; endpoint P2P pochodzi z właściciela lobby, nie z identyfikatora lobby.
 
 ## 3. Kontrakty chronione
 
@@ -40,6 +41,7 @@ Każda zmiana w `src/Horyzont.Core/` wymaga przeglądu Opus 5.5, bo cały Core d
 | --- | --- |
 | `src/Horyzont.Core/Operations/`, `src/Horyzont.Core/Intents/`, `src/Horyzont.Core/Simulation/OperationApplier.cs`, `src/Horyzont.Core/Simulation/TerrainRules.cs` (stałe semantyki operacji: margines, limity) | wersję formatu operacji albo intencji w kodeku (K1-04); stare dzienniki muszą odtwarzać się identycznie, więc zmiana semantyki stosowania też jest zmianą formatu |
 | `src/Horyzont.Core/Ids/` (w tym `FrameRef`, `PlatformIdentity`), `src/Horyzont.Core/World/` (typy zapisywane: `BlockState`, `BlockOrientation` (tabela 24 orientacji jest formatem `BlockState`), `CellPos`, `ChunkPos`, `Face`, `BlockShape`, `ConstructMode`, `TerrainBlockKey`, `TerrainBlockVersion`, `PlanetParams`, `RegistryEntry`), `src/Horyzont.Core/Checkpoints/` | wersję formatu każdej ramki, która zawiera zmieniony typ (operacje, intencje, komunikaty, bloby), i odczyt starej wersji w Persistence |
+| `src/Horyzont.Core/World/Blocks/BlockTypeDef.cs` (masa i funkcje bloku, K5-23; wyjątek od wiersza `World/` powyżej) | nic do podbicia: treść, nie format; plik treści `blocks.json` ma własną wersję formatu (`BlockTypeCatalog`), a nie trafia do dziennika ani checkpointu |
 | `src/Horyzont.Core/Hashing/` | opis w PR: skróty zapisane w testach i raportach przestają się zgadzać |
 | `src/Horyzont.Core/Protocol/`, `src/Horyzont.Core/Serialization/` | `ProtocolConstants.ProtocolVersion` albo wersję formatu komunikatu |
 | `src/Horyzont.Core/Motion/SurfaceFrame.cs` (konwencja kąta `PlayerInput.Yaw`: rama odniesienia „północy”, zwrot obrotu, przełączenie przy biegunach) | `ProtocolConstants.ProtocolVersion`: `SurfaceFrame` definiuje znaczenie pola `Yaw`, więc klient i serwer o różnych konwencjach rozjeżdżają się bez błędu kodeka |
@@ -67,6 +69,7 @@ Kod stosujący operacje (`OperationApplier`, `ServerSimulation`, wszystko, co li
 - bez równoległości w stosowaniu operacji;
 - bez czytania treści gry (przedmioty, receptury, pojemności, generatory) w warunkach wstępnych appliera: operacja niesie każdą wartość z treści, od której zależy jej stosowanie (np. limit stosu, pojemność zbiornika), więc ogon dziennika odtwarza się tak samo po aktualizacji treści;
 - bez pytania terenu ani generatora przy stosowaniu: istnienie obiektów generatora i trafienia w teren sprawdza walidator, a wynik trafia do operacji;
+- walidator intencji może czytać treść (`BlockContentTable`) i teren (`ITerrainService.TrySampleSolid`); applier `ShipModeSetOp` nigdy: warunki wstępne appliera to tylko stan świata, a wszystko z treści albo terenu trafia do operacji lub zostaje w walidatorze (K5-23);
 - stan zmienia się tylko operacjami: także zdarzenia czasowe (odrastanie, rozliczenie stacji, znikanie przedmiotów) są operacjami serwera, a checkpoint zapisuje wyłącznie ich skutki;
 - wartości zmiennoprzecinkowe w skrótach i formatach zapisywane bitowo; NaN i nieskończoności odrzucane na granicy (walidacja, deserializacja).
 

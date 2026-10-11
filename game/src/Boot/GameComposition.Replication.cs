@@ -130,6 +130,7 @@ public sealed partial class GameComposition
             hello => new RemoteToolWorldView(hello, RemoteTerrain, mirror, replication.Entities),
             () => new CompositeEditPrediction(prediction, TerrainPrediction),
             LocalPlayer!, new GameRules(), _env.Loggers);
+        tools.BlockDefinitions = ShipBlockDefinitions(BlockContentLoader.Load());
         if (_env.Render)
         {
             tools.AddChild(new TerrainToolPreview(tools));

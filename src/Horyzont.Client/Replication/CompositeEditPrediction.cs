@@ -27,7 +27,12 @@ public sealed class CompositeEditPrediction : IEditPrediction, IIntentReplyObser
     /// <inheritdoc />
     public void Begin(uint clientSeq, Intent intent, in ToolPreview preview)
     {
-        var owner = intent is PlaceBlockIntent or RemoveBlockIntent ? _blocks : _terrain;
+        var owner = intent switch
+        {
+            PlaceBlockIntent or RemoveBlockIntent => _blocks,
+            ShipModeIntent => NoEditPrediction.Instance,
+            _ => _terrain,
+        };
         _routes.Add((clientSeq, owner));
         owner.Begin(clientSeq, intent, in preview);
     }

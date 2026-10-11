@@ -1,0 +1,57 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/UI/PauseMenu.cs" id="1_script"]
+
+[node name="PauseMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_script")
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="Center"]
+layout_mode = 2
+
+[node name="Box" type="VBoxContainer" parent="Center/Panel"]
+custom_minimum_size = Vector2(320, 0)
+layout_mode = 2
+
+[node name="Title" type="Label" parent="Center/Panel/Box"]
+layout_mode = 2
+text = "ui.paused"
+horizontal_alignment = 1
+
+[node name="ResumeButton" type="Button" parent="Center/Panel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "ui.resume"
+
+[node name="SaveButton" type="Button" parent="Center/Panel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "ui.save"
+
+[node name="InviteButton" type="Button" parent="Center/Panel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "ui.invite"
+
+[node name="ReturnButton" type="Button" parent="Center/Panel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "ui.return_menu"
+
+[node name="QuitButton" type="Button" parent="Center/Panel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "ui.quit"

@@ -123,7 +123,7 @@ public sealed class EntityReplicationLifecycleTests
         simulation.ApplyServerOperation(new ConstructCreateOp(
             ship, FrameRef.Of(WorldFactory.HomePlanet), new Vector3(0, 4010, 0), Quaternion.Identity, new CellPos(0, 0, 0), BlockState.Create(1, 0)));
         Assert.True(simulation.State.Constructs.TryGet(ship, out var shipConstruct));
-        TestShips.ForceMode(shipConstruct!, ConstructMode.Ship);
+        simulation.ApplyServerOperation(TestShips.ModeOp(shipConstruct!, ConstructMode.Ship));
         var acks = new SnapshotAck[players.Count][];
         for (var i = 0; i < acks.Length; i++)
         {

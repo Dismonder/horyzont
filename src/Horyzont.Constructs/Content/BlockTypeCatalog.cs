@@ -13,7 +13,7 @@ namespace Horyzont.Constructs.Content;
 public sealed partial class BlockTypeCatalog
 {
     /// <summary>Version of the <c>blocks.json</c> format.</summary>
-    public const int FormatVersion = 1;
+    public const int FormatVersion = 2;
 
     /// <summary>Id of the built-in material of <c>core:missing</c> (layer 0 of the block textures).</summary>
     public const byte MissingMaterialId = 1;
@@ -102,7 +102,8 @@ public sealed partial class BlockTypeCatalog
             }
 
             var missing = new BlockTypeContent(
-                new BlockTypeDef(BlockTypeRegistry.MissingKey, BlockShape.Cube, MissingMaterialId, true), "BLOCK_MISSING", null);
+                new BlockTypeDef(BlockTypeRegistry.MissingKey, BlockShape.Cube, MissingMaterialId, true, BlockContentTable.MissingMassKg, BlockFunction.None),
+                "BLOCK_MISSING", null);
             byKey.Add(missing.Def.Key, missing);
             blocks.Add(missing);
             return new BlockTypeCatalog([.. keys], [.. blocks], [.. materials], missing, byKey);
@@ -171,9 +172,14 @@ public sealed partial class BlockTypeCatalog
             Require(!hasMesh, $"{path}.mesh", "is only allowed for shape 'mesh'");
         }
 
+        var mass = ReadPositiveFloat(element, path, "mass");
+        var function = element.TryGetProperty("function", out var functionElement)
+            ? ParseFunction(functionElement, $"{path}.function")
+            : BlockFunction.None;
+
         var local = key[(key.IndexOf(':', StringComparison.Ordinal) + 1)..];
         var nameKey = "BLOCK_" + local.Replace('/', '_').ToUpperInvariant();
-        return new BlockTypeContent(new BlockTypeDef(key, shape, materialId, collision), nameKey, mesh);
+        return new BlockTypeContent(new BlockTypeDef(key, shape, materialId, collision, mass, function), nameKey, mesh);
     }
 
     private static uint ParseColor(string text, string path)
@@ -181,6 +187,82 @@ public sealed partial class BlockTypeCatalog
         Require(ColorRegex().IsMatch(text), path, "must be #RRGGBB or #RRGGBBAA");
         var value = uint.Parse(text.AsSpan(1), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture);
         return text.Length == 7 ? (value << 8) | 0xFFu : value;
+    }
+
+    private static BlockFunction ParseFunction(JsonElement element, string path)
+    {
+        Require(element.ValueKind == JsonValueKind.Object, path, "must be an object");
+        var kind = ReadString(element, path, "kind");
+        BlockFunction function;
+        string[] allowed;
+        switch (kind)
+        {
+            case "cockpit":
+                function = BlockFunction.Cockpit;
+                allowed = [];
+                break;
+            case "seat":
+                var role = ReadString(element, path, "role");
+                function = BlockFunction.CreateSeat(role switch
+                {
+                    "passenger" => SeatRole.Passenger,
+                    "navigator" => SeatRole.Navigator,
+                    _ => throw Invalid($"{path}.role", "must be 'passenger' or 'navigator'"),
+                });
+                allowed = ["role"];
+                break;
+            case "engine":
+                function = BlockFunction.CreateEngine(ReadPositiveFloat(element, path, "thrust"), ReadTier(element, path));
+                allowed = ["thrust", "tier"];
+                break;
+            case "stabilizer":
+                function = BlockFunction.CreateStabilizer(ReadPositiveFloat(element, path, "torque"));
+                allowed = ["torque"];
+                break;
+            case "fuel_tank":
+                function = BlockFunction.CreateFuelTank(ReadPositiveFloat(element, path, "capacity"));
+                allowed = ["capacity"];
+                break;
+            case "cargo":
+                function = BlockFunction.CreateCargo(ReadTier(element, path));
+                allowed = ["tier"];
+                break;
+            case "landing_gear":
+                function = BlockFunction.LandingGear;
+                allowed = [];
+                break;
+            case "pulse_drive":
+                function = BlockFunction.CreatePulseDrive(ReadPositiveFloat(element, path, "speedCap"));
+                allowed = ["speedCap"];
+                break;
+            case "door":
+                function = BlockFunction.Door;
+                allowed = [];
+                break;
+            default:
+                throw Invalid($"{path}.kind", $"unknown function kind '{kind}'");
+        }
+
+        foreach (var property in element.EnumerateObject())
+        {
+            Require(property.Name == "kind" || Array.IndexOf(allowed, property.Name) >= 0, $"{path}.{property.Name}", $"is not a parameter of '{kind}'");
+        }
+
+        return function;
+    }
+
+    private static byte ReadTier(JsonElement parent, string path)
+    {
+        Require(parent.TryGetProperty("tier", out var value), $"{path}.tier", "is required");
+        Require(value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var tier) && tier is >= 1 and <= 255, $"{path}.tier", "must be an integer 1..255");
+        return (byte)value.GetInt32();
+    }
+
+    private static float ReadPositiveFloat(JsonElement parent, string path, string name)
+    {
+        Require(parent.TryGetProperty(name, out var value), $"{path}.{name}", "is required");
+        Require(value.ValueKind == JsonValueKind.Number && value.TryGetSingle(out var number) && float.IsFinite(number) && number > 0f, $"{path}.{name}", "must be a positive finite number");
+        return value.GetSingle();
     }
 
     private static JsonElement RequireArray(JsonElement parent, string path, string name)
