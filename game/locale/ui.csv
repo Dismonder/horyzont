@@ -89,3 +89,37 @@ ui.hud_bandwidth,"Net out/in","Sieć wy/we"
 ui.hud_tools,"Tools: pending {0}, refused {1}","Narzędzia: oczekujące {0}, odrzucone {1}"
 ui.hud_read_only,"read only","tylko do odczytu"
 ui.hud_limits_note,"The server applies its own limits; the preview is approximate.","Serwer stosuje własne limity; podgląd jest orientacyjny."
+MAP_YOU,You,Ty
+MAP_SYSTEM,System map,Mapa układu
+MAP_SAMPLING,Reading the planet...,Odczyt planety...
+MAP_FAILED,The planet map is unavailable,Mapa planety jest niedostępna
+BODY_HOME,Home,Planeta domowa
+BODY_MOON,Moon,Księżyc
+BODY_B,Planet B,Planeta B
+BODY_C,Planet C,Planeta C
+MARKER_NEW,New marker,Nowy znacznik
+MARKER_EDIT,Marker,Znacznik
+MARKER_NAME,Name,Nazwa
+MARKER_SHARED,Shared with everyone,Wspólny dla wszystkich
+MARKER_SAVE,Save,Zapisz
+MARKER_DELETE,Delete,Usuń
+MARKER_NAVIGATE,Navigate,Prowadź
+MARKER_CANCEL,Cancel,Anuluj
+MARKER_ICON_0,Pin,Pinezka
+MARKER_ICON_1,Base,Baza
+MARKER_ICON_2,Outpost,Placówka
+MARKER_ICON_3,Resource,Surowiec
+MARKER_ICON_4,Danger,Zagrożenie
+MARKER_ICON_5,Ship,Statek
+MARKER_ICON_6,Landing,Lądowisko
+MARKER_ICON_7,Point of interest,Ciekawe miejsce
+MARKER_COLOR_0,White,Biały
+MARKER_COLOR_1,Red,Czerwony
+MARKER_COLOR_2,Green,Zielony
+MARKER_COLOR_3,Blue,Niebieski
+MARKER_COLOR_4,Yellow,Żółty
+MARKER_COLOR_5,Cyan,Cyjan
+MARKER_COLOR_6,Magenta,Magenta
+MARKER_COLOR_7,Orange,Pomarańczowy
+NAV_CLEAR,Clear target,Wyczyść cel
+REJECT_MARKER_LIMIT,Marker limit reached (256),Osiągnięto limit znaczników (256)

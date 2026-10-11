@@ -3,8 +3,11 @@ namespace Horyzont.Core.Protocol;
 /// <summary>Limits of the network protocol and of the persisted formats.</summary>
 public static class ProtocolConstants
 {
-    /// <summary>Protocol version; bumped by every change of a message format. 2: RejectReason.ServerReadOnly (K2-10). 3: InputButtons.DevFly and the 0x3F button mask (K2-11). 4: K3-15 replication messages. 5: K3-16 terrain manifest sync. 6: ServerStatus/JoinUnavailable (K3-18). 7: ShipModeSetOp, ShipModeIntent and reject reasons 30, 31, 37 (K5-23). 8: ship-mode constructs in snapshots (K5-20; main 7 after K5-23 + 1 per D4). 9: StarSystemState message 32 and checkpoint blob 10 (K5-21; main 8 after K5-20 + 1 per D4). 10: TerrainView of a planet other than the region of the player accepted up to 4.4 R (K5-22; main 9 after K5-21 + 1 per D4). 11: ShipFuelAddOp operation 21, RefuelIntent intent 13, reject reason 39 (ShipNotParked) and checkpoint blob 12 (ship state) (K5-24; main 10 after K5-22 + 1 per D4). 13: ShipStatus message 31 and the seat in a player's EntitySpawn.KindData (K5-26; K5-27 = 12 before it in the merge queue, recomputed at merge per D4).</summary>
+    /// <summary>Protocol version; bumped by every change of a message format. 2: RejectReason.ServerReadOnly (K2-10). 3: InputButtons.DevFly and the 0x3F button mask (K2-11). 4: K3-15 replication messages. 5: K3-16 terrain manifest sync. 6: ServerStatus/JoinUnavailable (K3-18). 7: ShipModeSetOp, ShipModeIntent and reject reasons 30, 31, 37 (K5-23). 8: ship-mode constructs in snapshots (K5-20; main 7 after K5-23 + 1 per D4). 9: StarSystemState message 32 and checkpoint blob 10 (K5-21; main 8 after K5-20 + 1 per D4). 10: TerrainView of a planet other than the region of the player accepted up to 4.4 R (K5-22; main 9 after K5-21 + 1 per D4). 11: ShipFuelAddOp operation 21, RefuelIntent intent 13, reject reason 39 (ShipNotParked) and checkpoint blob 12 (ship state) (K5-24; main 10 after K5-22 + 1 per D4). 12: MarkersState message 33, operations 22/23, intents 14/15, reject reason 36 and blob 11 (K5-27; main 11 after K5-24 + 1 per D4). 13: ShipStatus message 31 and the seat in a player's EntitySpawn.KindData (K5-26; main 12 after K5-27 + 1 per D4).</summary>
     public const ushort ProtocolVersion = 13;
+
+    /// <summary>Most records in a <see cref="Messages.MarkersState"/>: 256 shared and 256 own private markers (K5-27).</summary>
+    public const int MaxMarkersInState = 512;
 
     /// <summary>Maximum entries per terrain manifest page (K3-16).</summary>
     public const int MaxTerrainSyncEntries = 1024;

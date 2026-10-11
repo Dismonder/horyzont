@@ -9,4 +9,7 @@ internal sealed class PlayerBuckets(GameRules rules)
     internal SlidingWindowLimiter TerrainWindow { get; } = new(Math.Max(1, rules.TerrainEditsPerSecond), rules.TickRate);
 
     internal TokenBucket Blocks { get; } = new(rules.BlockEditsPerSecond, rules.BlockEditBurst, rules.TickRate);
+
+    /// <summary>Marker intents (K5-27).</summary>
+    internal TokenBucket Markers { get; } = new(rules.MarkerIntentsPerSecond, rules.MarkerIntentBurst, rules.TickRate);
 }

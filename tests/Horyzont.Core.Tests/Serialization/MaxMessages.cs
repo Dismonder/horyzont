@@ -11,6 +11,7 @@ using Horyzont.Core.Space;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
+using Horyzont.Core.World.Markers;
 using Horyzont.Core.World.Terrain;
 
 namespace Horyzont.Core.Tests.Serialization;
@@ -166,8 +167,23 @@ public static class MaxMessages
             new StarSystemState(MaxStarSystem()),
             new ShipStatus(new EntityId(ulong.MaxValue), new Tick(ulong.MaxValue), float.MaxValue, float.MaxValue, float.MaxValue,
                 (Horyzont.Core.Ships.Flight.ShipFlightFlags)0xFF, Horyzont.Core.Ships.ShipLaunchBlock.FuelReserve),
+            new MarkersState(MaxMarkers()),
         ];
     }
+    /// <summary>512 markers with the largest ids, owners and 32-byte names (about 37 KB, K5-27 decision 6).</summary>
+    public static IReadOnlyList<MarkerRecord> MaxMarkers()
+    {
+        var markers = new List<MarkerRecord>();
+        for (var i = 0; i < ProtocolConstants.MaxMarkersInState; i++)
+        {
+            markers.Add(new MarkerRecord(
+                new MarkerId(MarkerIdAllocator.MaxValue - (ulong)i), i % 2 == 0 ? null : new PlayerId(ulong.MaxValue), new PlanetId(ulong.MaxValue),
+                new Vector3(float.MaxValue, float.MinValue, float.MaxValue), Text(MarkerRules.MaxNameBytes), MarkerIcon.Poi, MarkerColor.Orange));
+        }
+
+        return markers;
+    }
+
     /// <summary>The largest star system: eight bodies with the largest ids and coordinates (about 560 B, README Y5).</summary>
     public static StarSystemParams MaxStarSystem()
     {

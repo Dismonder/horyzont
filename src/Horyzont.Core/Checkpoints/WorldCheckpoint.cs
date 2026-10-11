@@ -1,4 +1,5 @@
 using Horyzont.Core.Ids;
+using Horyzont.Core.World.Markers;
 using Horyzont.Core.World.Ships;
 using Horyzont.Core.World.Terrain;
 
@@ -15,6 +16,9 @@ namespace Horyzont.Core.Checkpoints;
 /// <param name="RemovedChunks">Chunks removed, by key.</param>
 /// <param name="UpsertedPlayers">Changed players and every online player, by id.</param>
 /// <param name="TerrainVersions">Changed terrain block versions (voxel data is added by the terrain adapter, package 9).</param>
+/// <param name="UpsertedMarkers">Markers that exist and changed, by id (K5-27).</param>
+/// <param name="RemovedMarkers">Markers removed, by id (K5-27).</param>
+/// <param name="NextMarkerId">Next marker id (K5-27); 1 when no marker was ever created.</param>
 /// <param name="UpsertedShipStates">Changed flight states of existing ships, by construct id (K5-24); null = none.</param>
 /// <param name="RemovedShipStates">Flight states of constructs that no longer exist, by id (K5-24); null = none.</param>
 public sealed record WorldCheckpoint(
@@ -28,9 +32,30 @@ public sealed record WorldCheckpoint(
     IReadOnlyList<ConstructChunkKey> RemovedChunks,
     IReadOnlyList<PlayerRecord> UpsertedPlayers,
     IReadOnlyList<TerrainBlockVersion> TerrainVersions,
+    IReadOnlyList<MarkerRecord> UpsertedMarkers,
+    IReadOnlyList<MarkerId> RemovedMarkers,
+    ulong NextMarkerId,
     IReadOnlyList<ShipStateRecord>? UpsertedShipStates = null,
     IReadOnlyList<EntityId>? RemovedShipStates = null)
 {
+    /// <summary>Creates a checkpoint without marker changes (worlds and tests that predate K5-27).</summary>
+    public WorldCheckpoint(
+        OpId barrierOpId,
+        Tick tick,
+        ulong nextEntityId,
+        ulong nextPlayerId,
+        IReadOnlyList<ConstructHeaderRecord> upsertedConstructs,
+        IReadOnlyList<EntityId> removedConstructs,
+        IReadOnlyList<ConstructChunkRecord> upsertedChunks,
+        IReadOnlyList<ConstructChunkKey> removedChunks,
+        IReadOnlyList<PlayerRecord> upsertedPlayers,
+        IReadOnlyList<TerrainBlockVersion> terrainVersions)
+        : this(
+            barrierOpId, tick, nextEntityId, nextPlayerId, upsertedConstructs, removedConstructs, upsertedChunks, removedChunks,
+            upsertedPlayers, terrainVersions, [], [], 1)
+    {
+    }
+
     /// <summary>Gets the upserted ship states, never null.</summary>
     public IReadOnlyList<ShipStateRecord> ShipStatesToWrite => UpsertedShipStates ?? [];
 

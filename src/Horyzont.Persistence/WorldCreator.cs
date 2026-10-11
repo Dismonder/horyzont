@@ -55,6 +55,7 @@ public static class WorldCreator
         Sql.SetMeta(connection, transaction, Sql.MetaGalaxySeed, Sql.ToDb(world.GalaxySeed));
         Sql.SetMeta(connection, transaction, Sql.MetaNextEntityId, Sql.ToDb(world.EntityIds.NextValue));
         Sql.SetMeta(connection, transaction, Sql.MetaNextPlayerId, Sql.ToDb(world.PlayerIds.NextValue));
+        Sql.SetMeta(connection, transaction, Sql.MetaNextMarkerId, Sql.ToDb(world.MarkerIds.NextValue));
         Sql.SetMeta(connection, transaction, Sql.MetaLastCheckpointOpId, 0L);
         Sql.SetMeta(connection, transaction, Sql.MetaLastCheckpointTick, 0L);
         Sql.SetMeta(connection, transaction, Sql.MetaGameVersion, gameVersion);

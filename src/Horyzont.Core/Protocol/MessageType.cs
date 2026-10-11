@@ -85,4 +85,7 @@ public enum MessageType : byte
 
     /// <summary>S→C: the star system of the world, once after the hello (K5-21).</summary>
     StarSystemState = 32,
+
+    /// <summary>S→C: shared and own private map markers, once after the star system (K5-27).</summary>
+    MarkersState = 33,
 }

@@ -2,12 +2,14 @@ using System.Numerics;
 using System.Text;
 
 using Horyzont.Core.Ids;
+using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.Space;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
+using Horyzont.Core.World.Markers;
 using Horyzont.Core.World.Ships;
 using Horyzont.Core.World.Terrain;
 
@@ -26,12 +28,14 @@ public sealed class WorldStateBuilder
     private readonly List<ConstructChunkRecord> _chunks = [];
     private readonly List<PlayerRecord> _players = [];
     private readonly List<TerrainBlockVersion> _terrain = [];
+    private readonly List<MarkerRecord> _markers = [];
     private readonly List<ShipStateRecord> _shipStates = [];
     private StarSystemParams? _starSystem;
     private OpId _lastOpId;
     private Tick _tick;
     private ulong _nextEntityId = 1;
     private ulong _nextPlayerId = 1;
+    private ulong _nextMarkerId = 1;
     private bool _built;
 
     /// <summary>Starts a world.</summary>
@@ -119,6 +123,18 @@ public sealed class WorldStateBuilder
         _players.Add(player);
     }
 
+    /// <summary>Adds a map marker (K5-27).</summary>
+    /// <param name="marker">The marker.</param>
+    public void AddMarker(MarkerRecord marker)
+    {
+        ArgumentNullException.ThrowIfNull(marker);
+        _markers.Add(marker);
+    }
+
+    /// <summary>Sets the next marker id (K5-27); worlds without the value keep 1.</summary>
+    /// <param name="nextMarkerId">Next marker id.</param>
+    public void SetNextMarkerId(ulong nextMarkerId) => _nextMarkerId = nextMarkerId;
+
     /// <summary>Adds a terrain block version.</summary>
     /// <param name="version">The version.</param>
     public void AddTerrainVersion(TerrainBlockVersion version) => _terrain.Add(version);
@@ -141,7 +157,7 @@ public sealed class WorldStateBuilder
         WorldState state;
         try
         {
-            state = new WorldState(_id, _galaxySeed, _lastOpId, _tick, _nextEntityId, _nextPlayerId);
+            state = new WorldState(_id, _galaxySeed, _lastOpId, _tick, _nextEntityId, _nextPlayerId, _nextMarkerId);
         }
         catch (ArgumentOutOfRangeException e)
         {
@@ -227,6 +243,11 @@ public sealed class WorldStateBuilder
             state.TerrainVersions.Load(version);
         }
 
+        foreach (var marker in _markers)
+        {
+            LoadMarker(state, marker);
+        }
+
         foreach (var ship in _shipStates)
         {
             if (!ship.IsValid || !state.Constructs.TryGet(ship.Construct, out _) || state.ShipStates.TryGet(ship.Construct, out _))
@@ -245,6 +266,34 @@ public sealed class WorldStateBuilder
     {
         const int Limit = CellPos.Limit / ConstructChunk.Size;
         return chunk.X >= -Limit && chunk.X < Limit && chunk.Y >= -Limit && chunk.Y < Limit && chunk.Z >= -Limit && chunk.Z < Limit;
+    }
+
+    private static void LoadMarker(WorldState state, MarkerRecord marker)
+    {
+        if (marker.Id.IsNone || marker.Id.Value >= state.MarkerIds.NextValue || state.Markers.TryGet(marker.Id, out _))
+        {
+            throw new InvalidDataException($"Marker {marker.Id.Value} is duplicated or not below NextMarkerId.");
+        }
+
+        if (!state.Planets.TryGet(marker.Planet, out _) || !MarkerRules.IsValidName(marker.Name) || !MarkerRules.IsValidPosition(marker.Position)
+            || !MarkerRules.IsValidStyle(marker.Icon, marker.Color))
+        {
+            throw new InvalidDataException($"Marker {marker.Id.Value} has invalid values.");
+        }
+
+        if (marker.Owner is { } owner)
+        {
+            if (!state.Players.TryGet(owner, out _) || state.Markers.CountPrivate(owner) >= MarkerRules.MaxPrivatePerPlayer)
+            {
+                throw new InvalidDataException($"Marker {marker.Id.Value} has an unknown owner or the owner is over the limit.");
+            }
+        }
+        else if (state.Markers.CountShared >= MarkerRules.MaxShared)
+        {
+            throw new InvalidDataException($"Marker {marker.Id.Value} exceeds the shared marker limit.");
+        }
+
+        state.Markers.Load(marker);
     }
 
     private static void LoadPlayer(WorldState state, PlayerRecord record)

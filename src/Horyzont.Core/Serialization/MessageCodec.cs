@@ -11,6 +11,7 @@ using Horyzont.Core.Ships;
 using Horyzont.Core.Ships.Flight;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
+using Horyzont.Core.World.Markers;
 using Horyzont.Core.World.Terrain;
 
 namespace Horyzont.Core.Serialization;
@@ -394,6 +395,20 @@ public static class MessageCodec
 
             case ShipStatus shipStatus:
                 WriteShipStatus(w, shipStatus);
+                break;
+
+            case MarkersState markers:
+                if (markers.Markers.Count > ProtocolConstants.MaxMarkersInState)
+                {
+                    throw new ArgumentException("Too many markers.", nameof(message));
+                }
+
+                w.WriteVarUInt((ulong)markers.Markers.Count);
+                for (int i = 0; i < markers.Markers.Count; i++)
+                {
+                    StateCodec.WriteMarker(w, markers.Markers[i]);
+                }
+
                 break;
 
             case ResyncRequest request:
@@ -785,6 +800,16 @@ public static class MessageCodec
 
             case MessageType.ShipStatus:
                 return ReadShipStatus(ref r);
+
+            case MessageType.MarkersState:
+                int markerCount = r.ReadCount(ProtocolConstants.MaxMarkersInState);
+                var markerList = new MarkerRecord[markerCount];
+                for (int i = 0; i < markerCount; i++)
+                {
+                    markerList[i] = StateCodec.ReadMarker(ref r);
+                }
+
+                return new MarkersState(markerList);
 
             case MessageType.ResyncRequest:
                 var requested = new EntityId(r.ReadVarUInt());
