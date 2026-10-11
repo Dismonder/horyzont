@@ -27,6 +27,12 @@ public sealed record MovementRules
     /// <summary>Largest downward speed in m/s.</summary>
     public float MaxFallSpeed { get; init; } = 60f;
 
+    /// <summary>Largest fall speed of the suit glide after an ejection, m/s (K5-25 decision 19).</summary>
+    public float SuitGlideFallSpeed { get; init; } = 6f;
+
+    /// <summary>Decay rate of the horizontal velocity in the suit glide, 1/s (K5-25 decision 19).</summary>
+    public float GlideHorizontalDamping { get; init; } = 0.5f;
+
     /// <summary>Steepest slope that counts as floor, in degrees (used by the engine body).</summary>
     public float FloorMaxAngleDegrees { get; init; } = 46f;
 
