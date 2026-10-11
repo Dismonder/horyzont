@@ -21,6 +21,7 @@ Każda sesja pracy zaczyna się od przeczytania tego pliku i planu pakietu. Niej
 - Serwer jest autorytatywny. Klient wysyła wyłącznie intencje i wejście; jedyne lokalne zmiany po stronie klienta to przewidywany ruch własnej postaci i podgląd własnych edycji, które serwer potwierdza albo nadpisuje.
 - `ITerrainService` woła się wyłącznie na wątku głównym Godota (`VoxelTerrainService` rzuca `InvalidOperationException` na innym wątku), więc `ServerSimulation` działa na wątku głównym. Strumień Voxel Tools (wątki robocze) czyta tylko `ITerrainBlockSource` i nie dotyka `WorldState`, `ServerSimulation` ani drzewa sceny (K2-09).
 - Symulacja serwera, sesje i `ITerrainService` działają wyłącznie na wątku głównym Godota; inne wątki (writer, Voxel Tools, konsola, sygnały) komunikują się z nim tylko kolejkami albo flagami.
+- Boty idą ścieżką gracza (K4-19): `Horyzont.Bots` i tryb `--bot` gry (tylko z `--dev` i `--connect`) wysyłają wyłącznie to, co wysłałby człowiek: wejście i intencje przez `InputSequencer` i `ToolController`, z promieniem z oka serwera. Nie ma tylnego wejścia do serwera ani do stanu świata; rola `Abuser` to jedyny wyjątek i jej intencje mają kończyć się odmową.
 - Zero mutowalnego stanu statycznego. Zależności składa jedno miejsce startowe (composition root) w `game/src/Boot/`.
 - Jedynym composition root jest `GameComposition` (`game/src/Boot/`); węzły `/Root/Server` i `/Root/Client` dostają zależności metodą `Initialize` przed wejściem do drzewa. Węzeł serwera tyka z priorytetem fizyki -100, klienta 0, więc w hoście tick serwera poprzedza `Poll` klienta lokalnego; host ma jedną instancję terenu (`SharedTerrainProvider`).
 - Każda zmiana świata to operacja z `Horyzont.Core.Operations`, stosowana przez `ServerSimulation` i zapisywana w dzienniku. Nie ma innej drogi zmiany stanu świata.
@@ -123,6 +124,13 @@ dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"
 dotnet format Horyzont.sln --verify-no-changes
 python tools/engine/build.py all        # pełne budowanie silnika (K1-01)
 python tools/engine/build.py smoke      # sam test dymny silnika
+python -I tools/coop/coop_soak.py --self-test      # orkiestrator botów (K4-19)
+python -I tools/coop/compare_dumps.py --self-test  # porównanie zrzutów stanu
+python -I tools/bench/check_budgets.py --self-test # budżety benchmarków
+python tools/modes_smoke.py --godot <edytor>       # solo, host + klient, serwer + klient
+python tools/coop/coop_soak.py --godot <edytor> --minutes 3 --bots 8 --engine-bots 1 --out coop-smoke
+dotnet run -c Release --project tests/Horyzont.Benchmarks -- --filter * --exporters json markdown
+# konsola serwera (--dev): `stats` (tick, okno od poprzedniego wywołania), `digest` (skróty stanu do porównań)
 ```
 
 ## 11. Definicja ukończenia pakietu

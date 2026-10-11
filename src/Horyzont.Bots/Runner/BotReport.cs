@@ -81,6 +81,16 @@ public static class BotReport
         json.WriteNumber("refused_locally", stats.RefusedLocally);
         json.WriteNumber("unknown_replies", stats.UnknownReplies);
         json.WriteNumber("replica_digest", bot.Replica.Digest);
+
+        // The transport counters of the session (K3-18): the bandwidth per client of X3 is reported from them (P10, not gated).
+        var transport = bot.Runtime.Session.GetTransportStats();
+        json.WriteStartObject("transport");
+        json.WriteNumber("bytes_sent", transport.BytesSent);
+        json.WriteNumber("bytes_received", transport.BytesReceived);
+        json.WriteNumber("rtt_ms", Math.Round(transport.RttMs, 2));
+        json.WriteNumber("packet_loss", Math.Round(transport.PacketLoss, 4));
+        json.WriteNumber("in_game_seconds", Math.Round(bot.InGameSeconds, 1));
+        json.WriteEndObject();
         if (bot.Replica is Replicas.BotReplicaSet set)
         {
             json.WriteStartObject("terrain");

@@ -20,6 +20,34 @@ Stan: szkielet (faza A, krok 0). Status wiersza: `PENDING`, `PASS` (z dowodem), 
 
 (uzupełniane w fazie E)
 
+## Procedury Manual
+
+Wynik każdej procedury (data, maszyna, wynik, zrzut ekranu albo log) wpisać w „Dowody”. Kategoria testu `Manual`, czyli nie uruchamia się w CI.
+
+### Manual_Steam_EightPlayers (kryterium 4, P3)
+
+1. Host: gra z `--dev` w trybie host przez Steam; znajomy dołącza zaproszeniem z nakładki.
+2. Reszta do 8: `dotnet run --project tests/Horyzont.BotRunner -- --connect host:port --bots N` albo `coop_soak.py` z botami UDP wskazującymi UDP hosta (jeśli host słucha jednocześnie Steam i UDP).
+3. Po 10 min: `digest` na hoście i u klienta, skróty zgodne; brak odmów poza rolą Abuser.
+4. Bez drugiego konta: zaproszenie na 2 kontach + 8 po IP, EXCEPTION do K9-58/K9-65.
+
+### Manual_Fps1080p_EightPlayers (kryterium 8, P2)
+
+1. Serwer dedykowany z maską 6 rdzeni, `coop_soak.py --bots 8 --engine-bots 0 --profile tick`.
+2. Klient gry 1080p z HUD deweloperskim (FPS, tick, pasmo) dołączony do tego serwera, 5 min ruchu i budowania.
+3. Wpisać: średnie i minimalne FPS, średni tick z `stats` (cel <= 8 ms), specyfikację maszyny.
+
+### Manual_OrbitToSurface_1080p (kryterium 3, P2)
+
+1. `--dev`, kamera deweloperska, lot z 2R do 5 m w 60 s w 1080p.
+2. Wpisać maks. czas klatki (cel <= 50 ms) i potwierdzić wzrokowo brak dziur w terenie; porównać z `--benchmark-report` (`OrbitToSurface`).
+
+### Manual_ModesSmoke_Linux (kryterium 2, P1)
+
+1. WSL2: zbudować szablon Linux `build.py`, wyeksportować `server-linux`.
+2. `server_smoke.py --export` oraz `coop_soak.py` z botami Windows po UDP do serwera w WSL.
+3. Bez WSL2: EXCEPTION z przeniesieniem do K9-65 (decyzja właściciela z datą).
+
 ## Wyjątki i odstępstwa (do decyzji właściciela przy odbiorze)
 
 | Wyjątek | Opis | Stan |

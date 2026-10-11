@@ -91,6 +91,12 @@ K2-08A to osobny mały PR z celem `editor-linux` w `engine/engine.json`; bez nie
 | K3-17 | [Steam lobby](K3-17-steam-lobby.md) | Gemini 3.8 Flash (High) | Sonnet 5.5 | Sonnet 5.5 + Opus 5.5 (tożsamość) | K1-06, K2-10; szwy K3-00 |
 | K3-18 | [Interfejs](K3-18-interfejs.md) | Gemini 3.8 Flash (High) | Sonnet 5.5 | Sonnet 5.5 + Opus 5.5 (Core/sesje) | K2-10; szwy K3-00 |
 
+## Pakiety K4
+
+| Pakiet | Plan | Prowadzi | Testy akceptacyjne pisze | Przegląd | Zależy od |
+| --- | --- | --- | --- | --- | --- |
+| K4-19 | [Boty, testy integracyjne i wytrzymałościowe, benchmarki (odbiór Planety)](K4-19-odbior.md) | Sonnet 5.5 | Sonnet 5.5 (trwałość i pomiar 200 ms przegląda Opus 5.5) | Opus 5.5 na bramce K4 | faza A: `main`; B: K3-15, K3-16; C: K3-14; D: K3-17, K3-18; odbiór: trzy zielone noce |
+
 ### Kolejność startu K3
 
 | Fala | Pakiety (mogą iść równolegle) | Warunek startu |

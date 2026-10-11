@@ -235,21 +235,21 @@ Każdy krok: test czerwony → kod → zielone testy → mały commit (Conventio
 
 **Faza B — po scaleniu K3-15 i K3-16**
 
-- [ ] 9. **[K3-15, K3-16]** Rebase; mapowanie nazw (`ConstructMirror`, `EntityMirror`, `ClientTerrainCache`, komunikaty 21/24/25, budżety X3). `ConstructDigest`, `TerrainVersionDigest`, `DigestDump` (testy kolejności i zgodności najpierw); `IStateDigestSource` + komenda `digest`; `ServerStateDigestSource` w grze (woksele przez `TerrainDigest`, główny wątek).
-- [ ] 10. **[K3-15, K3-16]** `ConstructReplica`, `TerrainReplica`, budowanie na ścianach i usuwanie z lustra; testy `CoopReplicationTests` (`Slow`, `Soak`, kontrakt protokołu terenu).
-- [ ] 11. **[K3-15, K3-16]** Orkiestrator: przerwy kontrolne ze zrzutami i `compare_dumps.py` (`--self-test`), pomiar opóźnienia edycji w biegaczu (RTT 100 ms przez `LatencyTransport`), benchmarki `TerrainSendQueueBench`/`SnapshotPriorityBench`; co-op smoke w CI porównuje zrzuty.
+- [x] 9. **[K3-15, K3-16]** Rebase; mapowanie nazw (`ConstructMirror`, `EntityMirror`, `ClientTerrainCache`, komunikaty 21/24/25, budżety X3). `ConstructDigest`, `TerrainVersionDigest`, `DigestDump` (testy kolejności i zgodności najpierw); `IStateDigestSource` + komenda `digest`; `ServerStateDigestSource` w grze (woksele przez `TerrainDigest`, główny wątek).
+- [x] 10. **[K3-15, K3-16]** `ConstructReplica`, `TerrainReplica`, budowanie na ścianach i usuwanie z lustra; testy `CoopReplicationTests` (`Slow`, `Soak`, kontrakt protokołu terenu).
+- [x] 11. **[K3-15, K3-16]** Orkiestrator: przerwy kontrolne ze zrzutami i `compare_dumps.py` (`--self-test`), pomiar opóźnienia edycji w biegaczu (RTT 100 ms przez `LatencyTransport`), benchmarki `TerrainSendQueueBench`/`SnapshotPriorityBench`; co-op smoke w CI porównuje zrzuty.
 
 **Faza C — po scaleniu K3-14 (oraz 15, 16)**
 
-- [ ] 12. **[K3-14]** Tryb `--bot` w grze: szew wejścia (jeśli K3-14/K3-18 nie zostawiły interfejsu źródła wejścia, dodać `IPlayerInputSource` z `LocalInputReader` jako domyślną implementacją, w pliku nowym, bez edycji `LocalPlayer.cs` poza wstrzyknięciem — właściciel `LocalPlayer.cs` to K3-14, X10), `BotDriver`, `EngineBotReport` (woksele, lustro, odbiór→mesh, `MotionStatistics`); scenariusze w silniku (1 min `--slow`, 10 min `--soak` — flaga `--soak` w runnerze silnika z K2-12); co-op smoke `--engine-bots 1`, `coop-soak` `--engine-bots 2`.
+- [ ] 12. (kod i testy .NET gotowe; scenariusze silnika 1 min `--slow` i 10 min `--soak` oraz co-op smoke `--engine-bots 1` czekają na CI/noc) **[K3-14]** Tryb `--bot` w grze: szew wejścia (jeśli K3-14/K3-18 nie zostawiły interfejsu źródła wejścia, dodać `IPlayerInputSource` z `LocalInputReader` jako domyślną implementacją, w pliku nowym, bez edycji `LocalPlayer.cs` poza wstrzyknięciem — właściciel `LocalPlayer.cs` to K3-14, X10), `BotDriver`, `EngineBotReport` (woksele, lustro, odbiór→mesh, `MotionStatistics`); scenariusze w silniku (1 min `--slow`, 10 min `--soak` — flaga `--soak` w runnerze silnika z K2-12); co-op smoke `--engine-bots 1`, `coop-soak` `--engine-bots 2`.
 
 **Faza D — po scaleniu K3-17 i K3-18**
 
-- [ ] 13. **[K3-17, K3-18]** Podpięcie `ServerNode.LastTickMilliseconds` do recordera (decyzja 3), pasmo botów z `GetTransportStats` (raport X3); procedury i przebiegi Manual: `Manual_Steam_EightPlayers` (P3), `Manual_Fps1080p_EightPlayers` i `Manual_OrbitToSurface_1080p` (P2), `Manual_ModesSmoke_Linux` (P1). Wyniki i zrzuty do raportu.
+- [ ] 13. (część kodowa i procedury gotowe: recorder, pasmo, `LookDelta`, sekcja „Procedury Manual” w raporcie; przebiegi Manual i ich wyniki czekają na właściciela) **[K3-17, K3-18]** Podpięcie `ServerNode.LastTickMilliseconds` do recordera (decyzja 3), pasmo botów z `GetTransportStats` (raport X3); procedury i przebiegi Manual: `Manual_Steam_EightPlayers` (P3), `Manual_Fps1080p_EightPlayers` i `Manual_OrbitToSurface_1080p` (P2), `Manual_ModesSmoke_Linux` (P1). Wyniki i zrzuty do raportu.
 
 **Faza E — odbiór**
 
-- [ ] 14. Trzy kolejne zielone noce (`soak`, `coop-soak`, `bench`) na `main` z całym K3 + gałęzią pakietu; przebieg BenchmarkDotNet `--job default` i migawka `bench-<sha>.md`; uzupełnić raport (każdy wiersz mapy: PASS/FAIL/EXCEPTION z numerem runu albo ścieżką artefaktu); dopisać do `docs/ZASADY.md` regułę „boty idą ścieżką gracza” i nowe komendy z punktu 10; wiersz K4 w `docs/plans/README.md`; pełne komendy akceptacyjne; PR z opisem odstępstw i pytań.
+- [ ] 14. (gotowe: reguła w ZASADY, komendy punktu 10, wiersz K4 w README, szkic PR poniżej; otwarte: trzy noce, `--job default`, `bench-<sha>.md`, statusy mapy, PR) Trzy kolejne zielone noce (`soak`, `coop-soak`, `bench`) na `main` z całym K3 + gałęzią pakietu; przebieg BenchmarkDotNet `--job default` i migawka `bench-<sha>.md`; uzupełnić raport (każdy wiersz mapy: PASS/FAIL/EXCEPTION z numerem runu albo ścieżką artefaktu); dopisać do `docs/ZASADY.md` regułę „boty idą ścieżką gracza” i nowe komendy z punktu 10; wiersz K4 w `docs/plans/README.md`; pełne komendy akceptacyjne; PR z opisem odstępstw i pytań.
 
 ## Odbiór
 
@@ -346,3 +346,23 @@ Pakiet jest odebrany, gdy:
 
 - Pętla biegacza jest w bibliotece (`BotCrowd.Pump`, `RunnerOptions`, `BotReport` w `src/Horyzont.Bots/Runner/`); `tests/Horyzont.BotRunner` to tylko linia poleceń, UDP i zegar systemowy. Test dymny pętli: `Crowd_PumpedOnVirtualTime_*` (czas wirtualny, ten sam `Pump`). Hash budowy: `BuildInfo.ComputeBuildHash(--profiles)` (domyślnie `core:planet/1`); commit budowy biegacza musi być commitem serwera.
 - `bots.json`: liczniki i tablica odpowiedzianych intencji `[client_seq, kind, sent_at, replied_at, reason, applied_op_id]` z surowymi znacznikami zegara (`frequency` w ticks/s).
+
+### Fazy B–D (2026-10-11)
+
+- Fazy B–D są na gałęzi pakietu (775d3b2, cfaf6dc, f47b0be, c0155df, krok 13). Nazwy API z mapowania: `ConstructMirror`/`EntityMirror`/`ClientTerrainCache` używane przez `BotReplicaSet`; `IStateDigestSource` + `ServerStateDigestSource` w grze.
+- Decyzja 3: `ServerNode.LastTickMilliseconds` to teraz ostatnia próbka `TickTimeRecorder` (`LastMilliseconds`), więc HUD i komenda `stats` mierzą to samo; węzeł nie mierzy już własnym zegarem.
+- Pasmo (X3, P10): raport biegacza ma sekcję `transport` (bajty, RTT, strata, sekundy w grze) z `ServerSession.GetTransportStats`; `coop_soak.py` liczy z niej bajty/s na bota i podaje w `summary.json` (`bandwidth`), bez bramki.
+- `BotControls.LookDelta` jest sprawdzony testem względem `OrientationTracker` (`BotClientTests`).
+- `compare_dumps` jest importowany przez `sys.path.insert` w `coop_soak.py`; przy `python -I` działa, a analizator typów dostaje jawne wyłączenie.
+- Nie uruchomiono lokalnie gdUnit, silnika, soaków ani benchmarków (zasada współdzielonego runnera); ich wyniki wpisać z numerami runów CI.
+
+## Szkic opisu PR
+
+Tytuł: `feat: K4-19 bots, integration and soak tests, benchmarks (Planet acceptance)`
+
+- Boty .NET (`Horyzont.Bots`, `BotRunner`) i tryb `--bot` w grze idą ścieżką gracza; replika konstrukcji i terenu, skróty stanu, komenda `digest`.
+- `coop_soak.py`: przerwy kontrolne ze zrzutami, restart w 40. i zabicie w 80. min, opóźnienie edycji (RTT 100 ms), pasmo, tick (`--profile tick`).
+- Benchmarki (BenchmarkDotNet w `Directory.Packages.props` - kontrakt chroniony, opis i `build.py smoke`), `check_budgets.py`.
+- Odstępstwa: E1 (AV przy zamknięciu silnika), E2 (alokacja ticku w `Horyzont.Net`, EXCEPTION). Pytania P1-P3 z wariantami domyślnymi.
+- Otwarte przed scaleniem: trzy kolejne zielone noce, procedury Manual, statusy mapy kryteriów.
+

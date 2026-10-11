@@ -54,6 +54,7 @@ public sealed class BotClient : IClientSessionListener, IFullSnapshotSink
     private bool _started;
     private bool _everDisconnected;
     private long _reconnectAt;
+    private long _inGameSince;
 
     /// <summary>Initializes a new instance of the <see cref="BotClient"/> class.</summary>
     /// <param name="options">Settings.</param>
@@ -91,6 +92,9 @@ public sealed class BotClient : IClientSessionListener, IFullSnapshotSink
 
     /// <summary>Gets a value indicating whether the bot is in the game and has an own state from the server.</summary>
     public bool IsInGame => Runtime.Session.State == ClientState.InGame && _hasOwn;
+
+    /// <summary>Gets the seconds of the current connection spent in game (the bandwidth of X3 is bytes over this time).</summary>
+    public double InGameSeconds => _inGameSince == 0 || !IsInGame ? 0 : (_time.GetTimestamp() - _inGameSince) / (double)_time.TimestampFrequency;
 
     /// <summary>Gets the latest accepted own state of the server; default before the first.</summary>
     public OwnState Own => _own;
@@ -232,6 +236,11 @@ public sealed class BotClient : IClientSessionListener, IFullSnapshotSink
             {
                 _home = own.Feet;
                 _hasHome = true;
+            }
+
+            if (!_hasOwn)
+            {
+                _inGameSince = _time.GetTimestamp();
             }
 
             _hasOwn = true;

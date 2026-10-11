@@ -22,8 +22,12 @@ public sealed partial class ServerNode : Node
     /// <summary>Gets the server runtime.</summary>
     public ServerRuntime Runtime => _runtime ?? throw new InvalidOperationException("ServerNode.Initialize was not called.");
 
-    /// <summary>Gets the wall time of the latest <c>Runtime.Tick()</c> in milliseconds; <see cref="double.NaN"/> before the first tick. Measured outside the simulation, for the developer HUD.</summary>
-    public double LastTickMilliseconds { get; private set; } = double.NaN;
+    /// <summary>
+    /// Gets the wall time of the latest running <c>Runtime.Tick()</c> in milliseconds; <see cref="double.NaN"/> before the first tick.
+    /// It is the last sample of <see cref="ServerRuntime.TickTimes"/> (K4-19 decision 3), the recorder behind the <c>stats</c> command,
+    /// so the developer HUD and the soak measure one thing.
+    /// </summary>
+    public double LastTickMilliseconds => _runtime?.TickTimes.LastMilliseconds ?? double.NaN;
 
     /// <summary>Gives the node its dependencies.</summary>
     /// <param name="runtime">The server runtime (not started yet; ticks before the start do nothing).</param>
@@ -53,13 +57,11 @@ public sealed partial class ServerNode : Node
     public override void _PhysicsProcess(double delta)
     {
         _console?.Pump();
-        var started = _time.GetTimestamp();
         _runtime!.Tick();
         if (_runtime.IsStopped && !_consoleStopped)
         {
             _consoleStopped = true;
             _console?.Stop();
         }
-        LastTickMilliseconds = _time.GetElapsedTime(started).TotalMilliseconds;
     }
 }

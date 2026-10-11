@@ -30,6 +30,12 @@ public sealed class TickTimeRecorder
     /// <returns>The timestamp to give to <see cref="End"/>.</returns>
     public long Begin() => _time.GetTimestamp();
 
+    /// <summary>
+    /// Gets the duration of the latest recorded tick in milliseconds; <see cref="double.NaN"/> before the first. The developer HUD of
+    /// K3-18 reads it through <c>ServerNode.LastTickMilliseconds</c>, so the HUD and the <c>stats</c> command measure the same thing.
+    /// </summary>
+    public double LastMilliseconds { get; private set; } = double.NaN;
+
     /// <summary>Records the tick that started at <paramref name="start"/> and ends now.</summary>
     /// <param name="start">The value returned by <see cref="Begin"/>.</param>
     public void End(long start)
@@ -40,6 +46,7 @@ public sealed class TickTimeRecorder
             elapsed = 0;
         }
 
+        LastMilliseconds = elapsed * 1000.0 / _time.TimestampFrequency;
         var micros = (long)(elapsed * 1_000_000.0 / _time.TimestampFrequency);
         var bucket = Math.Min(micros / BucketMicroseconds, BucketCount - 1);
         _buckets[bucket]++;

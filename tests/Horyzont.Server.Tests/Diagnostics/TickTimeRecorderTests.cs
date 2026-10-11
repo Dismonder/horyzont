@@ -7,6 +7,20 @@ namespace Horyzont.Server.Tests.Diagnostics;
 public sealed class TickTimeRecorderTests
 {
     [Fact]
+    public void LastMilliseconds_IsTheLatestTick_AndSurvivesTheWindow()
+    {
+        var time = new FakeTimeProvider();
+        var recorder = new TickTimeRecorder(time);
+        Assert.True(double.IsNaN(recorder.LastMilliseconds));
+
+        Measure(recorder, time, 3.0);
+        Measure(recorder, time, 5.5);
+        _ = recorder.TakeWindow();
+
+        Assert.Equal(5.5, recorder.LastMilliseconds, 3);
+    }
+
+    [Fact]
     public void Record_Window_ReportsMeanP95P99Max()
     {
         var time = new FakeTimeProvider();

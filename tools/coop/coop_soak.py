@@ -45,7 +45,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import compare_dumps  # a sibling script; -I keeps the script directory off sys.path
+import compare_dumps  # type: ignore[import-not-found]  # pyright: ignore[reportMissingImports] - a sibling script; -I keeps the script directory off sys.path, hence the insert above
 
 READY = re.compile(r"SERVER READY world=(\S+) state hash=([0-9A-F]{16})(?: last op=(\d+))?")
 STOPPED = re.compile(r"Stopped; state hash=([0-9A-F]{16})(?: last op=(\d+))?")
@@ -304,6 +304,7 @@ def render_markdown(summary: dict) -> str:
         f"- tick mean {ticks.get('mean', 0):.3f} ms, worst p99 {ticks.get('p99_worst', 0):.3f} ms, max {ticks.get('max', 0):.3f} ms over {ticks.get('ticks', 0)} ticks\n"
         f"- rejections: {summary.get('rejections', {})}\n"
         f"- edit latency at other bots (ms): {summary.get('edit_latency_ms')}\n"
+        f"- bandwidth received per bot: {summary.get('bandwidth')}\n"
         f"- check breaks: {[(b['minute'], b['passed']) for b in summary.get('breaks', [])]}\n\n"
         f"| check | result | detail |\n| --- | --- | --- |\n{rows}\n"
     )
@@ -325,6 +326,19 @@ def break_times(epoch_s: float, control_s: float, until_s: float) -> list[tuple[
         times.append((index, epoch_s + index * control_s - DUMP_LEAD_SECONDS))
         index += 1
     return times
+
+
+def bandwidth_summary(report: dict) -> dict:
+    """Bytes per second each bot received while in game (X3: 50 000 B/s per client, P10: reported, not gated)."""
+    rates = []
+    for bot in report.get("bots", []):
+        transport = bot.get("transport") or {}
+        seconds = float(transport.get("in_game_seconds", 0))
+        if seconds > 0:
+            rates.append(float(transport.get("bytes_received", 0)) / seconds)
+    if not rates:
+        return {"clients": 0}
+    return {"clients": len(rates), "mean_Bps": round(sum(rates) / len(rates), 1), "max_Bps": round(max(rates), 1), "target_Bps": 50_000}
 
 
 def latency_summary(report: dict) -> dict | None:
@@ -412,6 +426,8 @@ def self_test() -> int:
     assert digest is not None and digest.group(3) == "-" and digest.group(4) == "C:/x y/server.jsonl"
     assert latency_summary({"edit_latency_ms": {"p99": 140.0}}) == {"p99": 140.0} and latency_summary({}) is None
     assert compare_dumps.self_test() == 0
+    rates = bandwidth_summary({"bots": [{"transport": {"bytes_received": 1000, "in_game_seconds": 10}}, {"transport": {}}]})
+    assert rates == {"clients": 1, "mean_Bps": 100.0, "max_Bps": 100.0, "target_Bps": 50_000}, rates
     print("coop_soak self-test OK")
     return 0
 
@@ -883,7 +899,7 @@ class Run:
             "engine_exit_av": self.engine_exit_av,
             "verdict": "PASS" if passed else "FAIL", "minutes": args.minutes, "bots": args.bots, "profile": args.profile,
             "port": self.port, "tick": ticks, "rejections": rejection_totals(report), "checks": [c.__dict__ for c in self.checks],
-            "breaks": self.breaks, "edit_latency_ms": latency, "control_seconds": self.control_s, "engine_bots": engines,
+            "breaks": self.breaks, "edit_latency_ms": latency, "bandwidth": bandwidth_summary(report), "control_seconds": self.control_s, "engine_bots": engines,
         }
         (self.out / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
         (self.out / "summary.md").write_text(render_markdown(summary), encoding="utf-8")
