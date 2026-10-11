@@ -134,6 +134,32 @@ public sealed class ShipPredictionTests
     }
 
     [Fact]
+    public void ShipPrediction_ReorderedOlderCorrection_Dropped()
+    {
+        var prediction = Create(FlightFixtures.Thirty());
+        var twin = Create(FlightFixtures.Thirty());
+        var states = new ShipMotion[21];
+        for (uint seq = 1; seq <= 20; seq++)
+        {
+            prediction.Step(seq, _hover);
+            twin.Step(seq, _hover);
+            states[seq] = twin.Motion;
+        }
+
+        Assert.False(prediction.Apply(From(14, states[14])));
+
+        // Slot 12 arrives after slot 14: far off (it would snap) and with a closed gate; it must change nothing.
+        Assert.False(prediction.Apply(From(12, states[12], new Vector3(8f, 0f, 0f)) with { Gate = ShipTerrainGate.NotLoaded }));
+        Assert.False(prediction.Apply(From(14, states[14])));
+
+        Assert.Equal(0, prediction.Snaps);
+        Assert.Equal(2, prediction.Dropped);
+        prediction.Step(21, _hover);
+        twin.Step(21, _hover);
+        Assert.Equal(twin.Motion.Pose, prediction.Motion.Pose); // the gate stayed Ready
+    }
+
+    [Fact]
     public void ShipPrediction_OlderParentSeq_Dropped()
     {
         var prediction = Create(FlightFixtures.Thirty());

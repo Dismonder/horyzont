@@ -39,6 +39,8 @@ public sealed class ShipPrediction
     private ShipMotion _motion;
     private bool _hasState;
     private uint _newest;
+    private bool _hasApplied;
+    private uint _lastApplied;
     private ShipTerrainGate _gate;
     private ShipLaunchBlock _launchBlock;
     private double _horizontalCap = double.PositiveInfinity;
@@ -79,6 +81,7 @@ public sealed class ShipPrediction
     public void Clear()
     {
         _hasState = false;
+        _hasApplied = false;
         Stats = null;
         _held = null;
         _heldTicks = 0;
@@ -122,6 +125,7 @@ public sealed class ShipPrediction
         ParentSeq = parentSeq;
         Stats = stats;
         _hasState = true;
+        _hasApplied = false;
         Array.Clear(_ring);
         _offset = default;
         _offsetLeft = 0f;
@@ -249,6 +253,15 @@ public sealed class ShipPrediction
             return false;
         }
 
+        if (_hasApplied && correction.LastProcessedSeq <= _lastApplied)
+        {
+            // Reordered: a newer correction already set the gate, the launch block and the cap (and reconciled).
+            Dropped++;
+            return false;
+        }
+
+        _hasApplied = true;
+        _lastApplied = correction.LastProcessedSeq;
         _gate = correction.Gate;
         _launchBlock = correction.LaunchBlock;
         _horizontalCap = float.IsPositiveInfinity(correction.HorizontalSpeedCap) ? double.PositiveInfinity : correction.HorizontalSpeedCap;
