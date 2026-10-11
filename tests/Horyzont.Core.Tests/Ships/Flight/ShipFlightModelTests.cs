@@ -134,7 +134,10 @@ public sealed class ShipFlightModelTests
         var stats = FlightFixtures.Cube();
         var motion = new ShipMotion
         {
-            Pose = PoseD.Identity, LinearVelocity = new Vector3(10, 0, 5), AngularVelocity = new Vector3(0, 1, 0.5f), Fuel = 2000,
+            Pose = PoseD.Identity,
+            LinearVelocity = new Vector3(10, 0, 5),
+            AngularVelocity = new Vector3(0, 1, 0.5f),
+            Fuel = 2000,
         };
 
         Run(ref motion, Control(buttons: ShipButtons.Assist), stats, _ => FlightFixtures.Void(), 300);

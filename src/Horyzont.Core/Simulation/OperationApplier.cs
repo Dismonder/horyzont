@@ -4,9 +4,9 @@ using System.Text;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
-using Horyzont.Core.World.Ships;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Constructs;
+using Horyzont.Core.World.Ships;
 using Horyzont.Core.World.Terrain;
 
 namespace Horyzont.Core.Simulation;

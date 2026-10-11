@@ -56,7 +56,10 @@ public sealed class AutolandTests
         var stats = FlightFixtures.Thirty();
         var motion = new ShipMotion
         {
-            Pose = PoseD.Identity, LinearVelocity = new Vector3(5, -3, 2), AngularVelocity = new Vector3(0.2f, 0, -0.1f), Fuel = 2000,
+            Pose = PoseD.Identity,
+            LinearVelocity = new Vector3(5, -3, 2),
+            AngularVelocity = new Vector3(0.2f, 0, -0.1f),
+            Fuel = 2000,
         };
 
         for (var i = 0; i < 60 * 30; i++)

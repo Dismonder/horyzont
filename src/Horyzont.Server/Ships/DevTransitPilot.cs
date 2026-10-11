@@ -80,61 +80,61 @@ public sealed class DevTransitPilot(bool usePulse = true)
                 return new ShipControl(0, 0, 0, 0, 0, 0, ShipButtons.Assist | ShipButtons.LandingGear);
 
             case DevTransitPhase.Departure:
-            {
-                ShipManeuver.TurnToward(motion, stats, rules, top, environment.Up, out var pitch, out _, out var roll);
-                ShipManeuver.ThrustFor(motion, stats, environment, environment.Up * ClimbSpeed, out var x, out var y, out var z);
-                if (groundDistance > LiftOffMeters)
                 {
-                    Phase = usePulse ? DevTransitPhase.Turn : DevTransitPhase.Cruise;
-                }
+                    ShipManeuver.TurnToward(motion, stats, rules, top, environment.Up, out var pitch, out _, out var roll);
+                    ShipManeuver.ThrustFor(motion, stats, environment, environment.Up * ClimbSpeed, out var x, out var y, out var z);
+                    if (groundDistance > LiftOffMeters)
+                    {
+                        Phase = usePulse ? DevTransitPhase.Turn : DevTransitPhase.Cruise;
+                    }
 
-                return new ShipControl(x, y, z, pitch, 0, roll, ShipButtons.Assist);
-            }
+                    return new ShipControl(x, y, z, pitch, 0, roll, ShipButtons.Assist);
+                }
 
             case DevTransitPhase.Turn:
-            {
-                var cosine = ShipManeuver.TurnToward(motion, stats, rules, nose, direction, out var pitch, out var yaw, out _);
-                ShipManeuver.ThrustFor(motion, stats, environment, environment.Up * ClimbSpeed, out var x, out var y, out var z);
-                if (cosine > AlignedCosine)
                 {
-                    Phase = DevTransitPhase.Cruise;
-                }
+                    var cosine = ShipManeuver.TurnToward(motion, stats, rules, nose, direction, out var pitch, out var yaw, out _);
+                    ShipManeuver.ThrustFor(motion, stats, environment, environment.Up * ClimbSpeed, out var x, out var y, out var z);
+                    if (cosine > AlignedCosine)
+                    {
+                        Phase = DevTransitPhase.Cruise;
+                    }
 
-                return new ShipControl(x, y, z, pitch, yaw, 0, ShipButtons.Assist);
-            }
+                    return new ShipControl(x, y, z, pitch, yaw, 0, ShipButtons.Assist);
+                }
 
             case DevTransitPhase.Cruise:
-            {
-                var speed = Math.Sqrt(motion.LinearVelocity.LengthSquared());
-                var atFloor = environment.Altitude / rules.TauSeconds <= rules.MinSpeedLimit;
-                if (nearTarget && atFloor && groundDistance < BrakingDistance(speed, stats, environment) + (speed * TurnMarginSeconds))
                 {
-                    Phase = DevTransitPhase.Landing;
-                    goto case DevTransitPhase.Landing;
-                }
+                    var speed = Math.Sqrt(motion.LinearVelocity.LengthSquared());
+                    var atFloor = environment.Altitude / rules.TauSeconds <= rules.MinSpeedLimit;
+                    if (nearTarget && atFloor && groundDistance < BrakingDistance(speed, stats, environment) + (speed * TurnMarginSeconds))
+                    {
+                        Phase = DevTransitPhase.Landing;
+                        goto case DevTransitPhase.Landing;
+                    }
 
-                if (usePulse)
-                {
-                    ShipManeuver.TurnToward(motion, stats, rules, nose, direction, out var pitch, out var yaw, out _);
-                    return new ShipControl(0, 0, 0, pitch, yaw, 0, ShipButtons.Assist | ShipButtons.PulseDrive);
-                }
+                    if (usePulse)
+                    {
+                        ShipManeuver.TurnToward(motion, stats, rules, nose, direction, out var pitch, out var yaw, out _);
+                        return new ShipControl(0, 0, 0, pitch, yaw, 0, ShipButtons.Assist | ShipButtons.PulseDrive);
+                    }
 
-                // Without the pulse drive the main engines push: fly upright toward the aim at the speed cap.
-                ShipManeuver.TurnToward(motion, stats, rules, top, direction, out var tPitch, out _, out var tRoll);
-                ShipManeuver.ThrustFor(motion, stats, environment, direction * rules.SpeedCap, out var x, out var y, out var z);
-                return new ShipControl(x, y, z, tPitch, 0, tRoll, ShipButtons.Assist);
-            }
+                    // Without the pulse drive the main engines push: fly upright toward the aim at the speed cap.
+                    ShipManeuver.TurnToward(motion, stats, rules, top, direction, out var tPitch, out _, out var tRoll);
+                    ShipManeuver.ThrustFor(motion, stats, environment, direction * rules.SpeedCap, out var x, out var y, out var z);
+                    return new ShipControl(x, y, z, tPitch, 0, tRoll, ShipButtons.Assist);
+                }
 
             case DevTransitPhase.Landing:
             default:
-            {
-                ShipManeuver.TurnToward(motion, stats, rules, top, environment.Up, out var pitch, out _, out var roll);
-                var limit = rules.SpeedLimit(environment.Altitude, false);
-                var brake = Math.Sqrt(2 * NetBrake(stats, environment) * Math.Max(0, groundDistance - 3));
-                var descent = Math.Max(AutolandController.MinDescentSpeed, Math.Min(limit, brake));
-                ShipManeuver.ThrustFor(motion, stats, environment, environment.Up * -descent, out var x, out var y, out var z);
-                return new ShipControl(x, y, z, pitch, 0, roll, ShipButtons.Assist | ShipButtons.LandingGear);
-            }
+                {
+                    ShipManeuver.TurnToward(motion, stats, rules, top, environment.Up, out var pitch, out _, out var roll);
+                    var limit = rules.SpeedLimit(environment.Altitude, false);
+                    var brake = Math.Sqrt(2 * NetBrake(stats, environment) * Math.Max(0, groundDistance - 3));
+                    var descent = Math.Max(AutolandController.MinDescentSpeed, Math.Min(limit, brake));
+                    ShipManeuver.ThrustFor(motion, stats, environment, environment.Up * -descent, out var x, out var y, out var z);
+                    return new ShipControl(x, y, z, pitch, 0, roll, ShipButtons.Assist | ShipButtons.LandingGear);
+                }
         }
     }
 
