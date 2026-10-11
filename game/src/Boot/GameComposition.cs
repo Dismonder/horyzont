@@ -21,6 +21,7 @@ using Horyzont.Game.Planet.Generators;
 using Horyzont.Game.Planet.Rendering;
 using Horyzont.Game.Server;
 using Horyzont.Game.Server.Characters;
+using Horyzont.Game.Server.Diagnostics;
 using Horyzont.Net.Session;
 using Horyzont.Net.Transport;
 using Horyzont.Net.Transport.InMemory;
@@ -325,7 +326,8 @@ public sealed partial class GameComposition
             {
                 console = new DedicatedConsole(
                     new ConsoleInputPump(env.ConsoleInput, loggers.CreateLogger<ConsoleInputPump>()),
-                    new ConsoleCommandProcessor(server, loggers.CreateLogger<ConsoleCommandProcessor>(), launch.Dev),
+                    new ConsoleCommandProcessor(
+                        server, loggers.CreateLogger<ConsoleCommandProcessor>(), launch.Dev, new ServerStateDigestSource(server, factory)),
                     env.Print);
             }
 

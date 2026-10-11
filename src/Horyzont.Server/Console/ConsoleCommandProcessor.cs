@@ -4,6 +4,7 @@ using System.Text;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
+using Horyzont.Server.Diagnostics;
 
 using Microsoft.Extensions.Logging;
 
@@ -19,23 +20,27 @@ public sealed class ConsoleCommandProcessor
     public const int MaxLineLength = 256;
 
     private const string Help =
-        "commands:\n  save            write a checkpoint now (also leaves safe mode after a write error)\n  stop            save and shut the server down\n  players         list the players in game\n  kick <id>       disconnect a player by player id\n  help            this list";
+        "commands:\n  save            write a checkpoint now (also leaves safe mode after a write error)\n  stop            save and shut the server down\n  players         list the players in game\n  stats           tick time window, players, last operation, checkpoint\n  digest [--dump <file>]  digests of the state (and a dump of its entries)\n  kick <id>       disconnect a player by player id\n  help            this list";
 
     private readonly ServerRuntime _runtime;
     private readonly ILogger<ConsoleCommandProcessor> _logger;
     private readonly bool _devCommands;
+    private readonly IStateDigestSource? _digests;
 
     /// <summary>Initializes a new instance of the <see cref="ConsoleCommandProcessor"/> class.</summary>
     /// <param name="runtime">The server the commands act on.</param>
     /// <param name="logger">Logger.</param>
     /// <param name="devCommands">Whether the development command <c>dev-op</c> is available.</param>
-    public ConsoleCommandProcessor(ServerRuntime runtime, ILogger<ConsoleCommandProcessor> logger, bool devCommands = false)
+    /// <param name="digests">Source of the <c>digest</c> command; null where the process cannot compute it.</param>
+    public ConsoleCommandProcessor(
+        ServerRuntime runtime, ILogger<ConsoleCommandProcessor> logger, bool devCommands = false, IStateDigestSource? digests = null)
     {
         ArgumentNullException.ThrowIfNull(runtime);
         ArgumentNullException.ThrowIfNull(logger);
         _runtime = runtime;
         _logger = logger;
         _devCommands = devCommands;
+        _digests = digests;
     }
 
     /// <summary>Executes one input line; never throws for bad input.</summary>
@@ -67,6 +72,7 @@ public sealed class ConsoleCommandProcessor
             "stop" => Stop(),
             "players" => Players(),
             "stats" => Stats(),
+            "digest" => Digest(line),
             "kick" => Kick(parts),
             "dev-op" when _devCommands => DevOp(),
             _ => Help,
@@ -148,6 +154,50 @@ public sealed class ConsoleCommandProcessor
         return string.Create(
             CultureInfo.InvariantCulture,
             $"STATS tick_ms mean={window.MeanMs:0.000} p95={window.P95Ms:0.000} p99={window.P99Ms:0.000} max={window.MaxMs:0.000} n={window.Count} players={_runtime.Session.PlayersInGame.Count} last_op={_runtime.State.LastOpId.Value} checkpoint={checkpoint}");
+    }
+
+    private string Digest(string line)
+    {
+        if (_digests is null)
+        {
+            return "digest is not available in this process";
+        }
+
+        // One stable line: tools/coop/coop_soak.py parses it. The dump path is the rest of the line after --dump (it may hold spaces).
+        var digest = _digests.Compute();
+        var voxels = digest.TerrainVoxels is { } value ? value.ToString("x16", CultureInfo.InvariantCulture) : "-";
+        var reply = string.Create(
+            CultureInfo.InvariantCulture,
+            $"DIGEST constructs={digest.Constructs:x16} terrain_versions={digest.TerrainVersions:x16} terrain_voxels={voxels}");
+        var at = line.IndexOf("--dump", StringComparison.Ordinal);
+        if (at < 0)
+        {
+            return reply;
+        }
+
+        var path = line[(at + "--dump".Length)..].Trim();
+        if (path.Length == 0)
+        {
+            return "usage: digest [--dump <file>]";
+        }
+
+        try
+        {
+            var directory = Path.GetDirectoryName(Path.GetFullPath(path));
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            using var writer = new StreamWriter(path, append: false, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            _digests.WriteDump(writer);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return reply + " dump failed: " + exception.Message;
+        }
+
+        return reply + " dump=" + path;
     }
 
     private string Kick(string[] parts)

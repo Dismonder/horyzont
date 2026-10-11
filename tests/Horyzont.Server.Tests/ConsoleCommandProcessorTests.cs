@@ -52,6 +52,37 @@ public sealed class ConsoleCommandProcessorTests
     }
 
     [Fact]
+    public async Task Digest_WithSource_PrintsDigestLineAndWritesTheDump()
+    {
+        await using var rig = await StartedAsync();
+        var source = new FakeDigestSource();
+        var processor = new ConsoleCommandProcessor(rig.Runtime, NullLogger<ConsoleCommandProcessor>.Instance, digests: source);
+        var dump = Path.Combine(Path.GetTempPath(), "horyzont-tests", Guid.NewGuid().ToString("N"), "server dump.jsonl");
+
+        var plain = processor.Execute("digest");
+        var dumped = processor.Execute("digest --dump " + dump);
+
+        Assert.Equal("DIGEST constructs=00000000000000ab terrain_versions=00000000000000cd terrain_voxels=-", plain);
+        Assert.Equal(plain + " dump=" + dump, dumped);
+        Assert.Equal("line\n", File.ReadAllText(dump));
+        source.Voxels = 0xEF;
+        Assert.EndsWith(" terrain_voxels=00000000000000ef", processor.Execute("digest"), StringComparison.Ordinal);
+        Directory.Delete(Path.GetDirectoryName(dump)!, recursive: true);
+        await rig.StopAsync();
+    }
+
+    [Fact]
+    public async Task Digest_WithoutSource_SaysUnavailable()
+    {
+        await using var rig = await StartedAsync();
+
+        var reply = Processor(rig).Execute("digest");
+
+        Assert.Equal("digest is not available in this process", reply);
+        await rig.StopAsync();
+    }
+
+    [Fact]
     public async Task Stop_BeginsTheShutdown()
     {
         await using var rig = await StartedAsync();
@@ -184,4 +215,13 @@ public sealed class ConsoleCommandProcessorTests
     }
 
     private static ConsoleCommandProcessor Processor(ServerRig rig) => new(rig.Runtime, NullLogger<ConsoleCommandProcessor>.Instance);
+
+    private sealed class FakeDigestSource : Horyzont.Server.Diagnostics.IStateDigestSource
+    {
+        public ulong? Voxels { get; set; }
+
+        public Horyzont.Server.Diagnostics.StateDigest Compute() => new(0xAB, 0xCD, Voxels);
+
+        public void WriteDump(TextWriter writer) => writer.Write("line\n");
+    }
 }

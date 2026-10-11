@@ -34,6 +34,7 @@
     <ProjectReference Include="../src/Horyzont.Server/Horyzont.Server.csproj" />
     <ProjectReference Include="../src/Horyzont.Client/Horyzont.Client.csproj" />
     <ProjectReference Include="../src/Horyzont.Constructs/Horyzont.Constructs.csproj" />
+    <ProjectReference Include="../src/Horyzont.Bots/Horyzont.Bots.csproj" />
   </ItemGroup>
   <!-- Engine tests (game/tests) and their fixtures exist only in Debug; the export configurations ship neither. -->
   <ItemGroup Condition="'$(Configuration)' == 'Debug'">
