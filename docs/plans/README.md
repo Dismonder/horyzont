@@ -193,7 +193,7 @@ S10 usuwa blokadę K3-17: K3-00 posiada punkty w GameComposition.cs i neutralne 
 
 Testy `Replicate_*Within200ms*` (K3-15, K3-16) mieszają czas sieci (wirtualny) i czas meshingu/kolizji Voxel Tools (rzeczywisty, wątki robocze). Reguła: czas = opóźnienie dostarczenia z `LinkConditions` (deterministyczne, `FakeTimeProvider`: 50 ms w jedną stronę + jitter) + zmierzony rzeczywisty czas od odbioru komunikatu do `ChunkMeshApplied`/podmiany kolizji (`Time.GetTicksUsec` silnika), suma ≤ 200 ms; raport obu składników osobno. Test `Slow`, termin 60 s, opisany wyjątek od ZASADY pkt 8 (czas silnika). `LinkConditions.LossRate` dotyczy **wyłącznie** kanału zawodnego (`LinkConditions.cs:6`, `InMemoryTransport.cs:361`); kanał niezawodny w testach nie ma retransmisji.
 
-Kolejność K3: planowana K3-15 → 4, K3-16 → 5, K3-14 bez zmiany, K3-17 bez zmiany, K3-18 → 6; wykonawca po każdym scaleniu dopisuje rzeczywisty wiersz wersji (D4). K3-00 pozostawia 3.
+Kolejność K3: planowana K3-15 → 4, K3-16 → 5, K3-14 bez zmiany, K3-17 bez zmiany, K3-18 → 6; wykonawca po każdym scaleniu dopisuje rzeczywisty wiersz wersji (D4). K3-00 pozostawia 3. Stan faktyczny: main po K3-17 ma 5 (K3-16), K3-18 podbija do 6 (typy 22 `ServerStatus`, 23 `JoinUnavailable`).
 
 ## Pakiety K5
 

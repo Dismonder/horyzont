@@ -159,6 +159,8 @@ public static class MaxMessages
                 Enumerable.Range(0, 1024).Select(i => new TerrainSyncEntry(
                     new TerrainBlockKey(new PlanetId(ulong.MaxValue), 0, int.MinValue + i, int.MinValue, int.MinValue), uint.MaxValue, ulong.MaxValue)).ToArray()),
             new TerrainView(new PlanetId(ulong.MaxValue), uint.MaxValue, new Vector3(float.MaxValue), 16384, new Vector3(float.MinValue), 16384),
+            new ServerStatus(true, 2, Text(ProtocolConstants.MaxRejectDetailBytes)),
+            new JoinUnavailable(1, Text(ProtocolConstants.MaxRejectDetailBytes)),
         ];
     }
 }

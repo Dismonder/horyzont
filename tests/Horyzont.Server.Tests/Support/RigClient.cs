@@ -29,6 +29,8 @@ internal sealed class RigClient : IClientGameHooks
 
     public List<IntentReply> Replies { get; } = [];
 
+    public List<Message> Messages { get; } = [];
+
     /// <summary>Every game message the client received, in arrival order.</summary>
     public List<Message> Received { get; } = [];
 
@@ -52,7 +54,10 @@ internal sealed class RigClient : IClientGameHooks
         if (message is IntentReply reply)
         {
             Replies.Add(reply);
+            return;
         }
+
+        Messages.Add(message);
     }
 
     public void OnDisconnected(DisconnectCode code) => Disconnections.Add(code);

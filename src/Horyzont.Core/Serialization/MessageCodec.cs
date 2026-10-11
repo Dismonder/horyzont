@@ -444,6 +444,17 @@ public static class MessageCodec
                 w.WriteVarUInt(pong.ServerTick.Value);
                 break;
 
+            case ServerStatus status:
+                w.WriteBool(status.ReadOnly);
+                w.WriteByte(status.Reason);
+                w.WriteString(status.Detail, ProtocolConstants.MaxRejectDetailBytes);
+                break;
+
+            case JoinUnavailable unavailable:
+                w.WriteByte(unavailable.Reason);
+                w.WriteString(unavailable.Detail, ProtocolConstants.MaxRejectDetailBytes);
+                break;
+
             case Disconnect dc:
                 if (dc.Code < DisconnectCode.Normal || dc.Code > DisconnectCode.HandshakeTimeout)
                 {
@@ -810,6 +821,12 @@ public static class MessageCodec
                 ulong pongMicros = r.ReadUInt64();
                 var pongTick = new Tick(r.ReadVarUInt());
                 return new Pong(pongMicros, pongTick);
+
+            case MessageType.ServerStatus:
+                return new ServerStatus(r.ReadBool(), r.ReadByte(), r.ReadString(ProtocolConstants.MaxRejectDetailBytes));
+
+            case MessageType.JoinUnavailable:
+                return new JoinUnavailable(r.ReadByte(), r.ReadString(ProtocolConstants.MaxRejectDetailBytes));
 
             case MessageType.Disconnect:
                 byte dcByte = r.ReadByte();

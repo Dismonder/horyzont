@@ -248,7 +248,7 @@ public sealed partial class ServerRuntime
     {
         var hooks = new GameServerHooks(
             _simulation!, () => RuntimeState == ServerRuntimeState.Running, _loggers.CreateLogger<GameServerHooks>(), [.. _playerObservers],
-            _options.NewPlayerSpawn, [.. _clientMessageHandlers]);
+            _options.NewPlayerSpawn, [.. _clientMessageHandlers], () => CurrentStatus);
         _session = new ServerSession(_transport, _options.ServerOptions, hooks, _time, _loggers.CreateLogger<ServerSession>());
         foreach (var endpoint in _options.Listen)
         {

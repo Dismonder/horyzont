@@ -137,6 +137,24 @@ public sealed class GoldenBytesTests
     public void HandshakeReject_DecodesHandComputedBytes() =>
         DeepAssert.Equal(new HandshakeReject(HandshakeRejectCode.WrongBuild, "old"), MessageCodec.Read(Kit.Hex(HandshakeRejectHex)));
 
+    // ServerStatus = 22 (0x16), version 1, ReadOnly true = 01, Reason 2, Detail "x": length 1, 78.
+    private const string ServerStatusHex = "16 01  01  02  01 78";
+
+    // JoinUnavailable = 23 (0x17), version 1, Reason 3, Detail "é" (UTF-8 C3 A9): length 2.
+    private const string JoinUnavailableHex = "17 01  03  02 C3 A9";
+
+    [Fact]
+    public void ServerStatus_EncodesToHandComputedBytes() => Assert.Equal(Kit.Hex(ServerStatusHex), Kit.Encode(new ServerStatus(true, 2, "x")));
+
+    [Fact]
+    public void ServerStatus_DecodesHandComputedBytes() => DeepAssert.Equal(new ServerStatus(true, 2, "x"), MessageCodec.Read(Kit.Hex(ServerStatusHex)));
+
+    [Fact]
+    public void JoinUnavailable_EncodesToHandComputedBytes() => Assert.Equal(Kit.Hex(JoinUnavailableHex), Kit.Encode(new JoinUnavailable(3, "é")));
+
+    [Fact]
+    public void JoinUnavailable_DecodesHandComputedBytes() => DeepAssert.Equal(new JoinUnavailable(3, "é"), MessageCodec.Read(Kit.Hex(JoinUnavailableHex)));
+
     public static Snapshot GoldenSnapshot() =>
         new(
             300,
