@@ -292,8 +292,8 @@ git diff <commit startu A>..HEAD -- tests/Horyzont.Core.Tests/Golden/TerrainJour
 - [ ] Wszystkie testy akceptacyjne zielone w CI; korpus złoty i `DeterminismTests` bez zmian w plikach.
 - [ ] Nowy gracz w grze solo ma manipulator i narzędzie budowy na pasku; kopanie kamienia, ziemi, piasku i rudy daje urobek zgodny z `yields.json`; zasypywanie zużywa surowiec i odmawia bez niego.
 - [ ] Plecak 40 i pasek 10 obsługiwane myszą i klawiaturą; restart serwera zachowuje każdy przedmiot, a skrót po powtórce równa się skrótowi przed.
-- [ ] Odstępstwa D11, D13, D15 i numer migracji D1 opisane w PR; pytania do właściciela w PR.
-- [ ] ZASADY: dopisane reguły z Pułapek oznaczonych „do ZASAD”.
+- [x] Odstępstwa D11, D13, D15 i numer migracji D1 opisane w PR (po scaleniu z linią K5: `M0003_Survival`, `ProtocolVersion` 14); pytania do właściciela w PR 45 (D11, H-2).
+- [x] ZASADY: dopisane reguły z Pułapek oznaczonych „do ZASAD” (§2: edycja terenu w złożonej przez `OperationTerrain.TryGetTerrainEdit`; §4: przykład limitów stosu niesionych przez operacje).
 
 ## Pułapki
 
