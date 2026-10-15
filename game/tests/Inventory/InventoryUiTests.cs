@@ -82,6 +82,26 @@ public class InventoryUiTests
 
     [TestCase(Timeout = 60000)]
     [RequireGodotRuntime]
+    public async Task Take_ClickLatchedBeforeTheInventoryOpened_IsNotAToolAction()
+    {
+        await using var scene = EngineTestScene.Create();
+        var rig = InventoryRig.Create(scene);
+        var reader = new ToolInputReader { Blocked = () => rig.Node.IsOpen };
+        scene.Add(reader);
+        await scene.WaitFrames(2);
+
+        reader._Input(new InputEventAction { Action = "tool_primary", Pressed = true });
+        rig.Node.Open();
+        await scene.WaitFrames(2);
+        AssertThat(rig.Node.IsOpen).IsTrue();
+
+        var frame = reader.Take();
+        AssertThat(frame.PrimaryPressed).IsFalse();
+        AssertThat(frame.PrimaryHeld).IsFalse();
+    }
+
+    [TestCase(Timeout = 60000)]
+    [RequireGodotRuntime]
     public async Task Tooltip_ShowsTheNameFromTheCsv_AndClicksSendMoveIntents()
     {
         TranslationServer.SetLocale("en");

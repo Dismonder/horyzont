@@ -94,15 +94,16 @@ public sealed partial class ToolInputReader : Node, IToolInputSource
     public ToolInputFrame Take()
     {
         var active = IsReading;
-        if (Gate?.IsBlocked == true)
+        if (!active)
         {
-            // A menu has focus: whatever was pressed before it opened is not a tool action.
+            // A menu or the inventory screen has focus (or the mouse is released): whatever was pressed before is not a tool action.
             _primaryPressed = false;
             _secondaryPressed = false;
             _wheel = 0;
             _material = 0;
             _yaw = 0;
             _up = 0;
+            _shipModeToggle = false;
         }
 
         var frame = new ToolInputFrame(
