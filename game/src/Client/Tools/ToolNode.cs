@@ -11,8 +11,8 @@ using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Terrain;
-using Horyzont.Game.Frames;
 using Horyzont.Game.Client.Inventory;
+using Horyzont.Game.Frames;
 using Horyzont.Net.Session;
 using Horyzont.Server;
 
