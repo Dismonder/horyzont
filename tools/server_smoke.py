@@ -166,6 +166,11 @@ def main() -> int:
         first = start("write-config", "--write-default-config", str(config))
         if first.wait_exit(60) != 0 or not config.is_file():
             raise SmokeFailure("--write-default-config did not write the file")
+
+        # An unwritable target (its parent is a file) must end the process with an error code, not hang on a faulted start task.
+        unwritable = start("write-config-unwritable", "--write-default-config", str(config / "server.json"))
+        if unwritable.wait_exit(60) == 0:
+            raise SmokeFailure("--write-default-config to an unwritable path exited with 0")
         settings = json.loads(config.read_text(encoding="utf-8"))
         settings["bindAddress"] = "127.0.0.1"
         settings["port"] = free_udp_port()

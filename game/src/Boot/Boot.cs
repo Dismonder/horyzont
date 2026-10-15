@@ -48,7 +48,7 @@ public partial class Boot : Node
 
         if (LaunchOptions.IsModeRequested(args))
         {
-            _ = RunGameAsync(args);
+            _ = RunGameGuardedAsync(args);
             return;
         }
 
@@ -124,6 +124,22 @@ public partial class Boot : Node
         AddChild(ui);
     }
 
+    /// <summary>Nothing awaits the start task: a fault it does not handle itself ends the process instead of leaving it running without a game.</summary>
+    private async Task RunGameGuardedAsync(string[] args)
+    {
+        try
+        {
+            await RunGameAsync(args);
+        }
+#pragma warning disable CA1031 // The entry point: an unobserved fault would leave a headless process hanging with no exit code.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            GD.PrintErr($"START FAILED: {ex}");
+            GetTree().Quit(ExitFaulted);
+        }
+    }
+
     private async Task RunGameAsync(string[] args)
     {
         LaunchOptions launch;
@@ -189,6 +205,15 @@ public partial class Boot : Node
             GD.PrintErr($"ARGUMENT ERROR: {ex.Message}");
             env.Platform?.TryShutdown();
             GetTree().Quit(DevModes.ExitBadArguments);
+            return;
+        }
+#pragma warning disable CA1031 // The entry point: the SDK must stop even when the composition fails (unwritable profile, missing scene).
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            GD.PrintErr($"START FAILED: {ex}");
+            env.Platform?.TryShutdown();
+            GetTree().Quit(ExitFaulted);
             return;
         }
 
