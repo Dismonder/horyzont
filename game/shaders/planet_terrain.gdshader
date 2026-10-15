@@ -12,6 +12,8 @@ uniform float u_blend = 0.0;
 
 // Planet frame: the terrain node sits at the planet centre (PlanetLook holds the heights, relative to the nominal radius).
 uniform vec3 u_planet_center = vec3(0.0);
+// Provided by Voxel Tools per mesh block: the block relative to the terrain node (the planet frame), an exact multiple of 16 m.
+uniform mat4 u_block_local_transform;
 uniform float u_planet_radius = 4000.0;
 uniform float u_sea_level = -42.0;
 uniform float u_beach_height = 3.5;
@@ -32,6 +34,7 @@ varying vec4 v_indices;
 varying vec4 v_weights;
 varying vec3 v_normal;
 varying vec3 v_pos;
+varying vec3 v_terrain;
 
 float get_transvoxel_secondary_factor(int idata) {
 	int transition_mask = u_transition_mask & 0xff;
@@ -131,6 +134,9 @@ void vertex() {
 	// differs from the planet-frame one by a multiple of 16 m = 4 texture periods at u_texture_scale 0.25: seamless, exact far from
 	// the world origin (no float jitter about 110 km away).
 	v_pos = VERTEX;
+	// The planet-frame position (radius at most a few km, so exact in float) drives everything that is not a texture lookup:
+	// height above the sea, the up direction and the large-scale noise stay continuous across blocks.
+	v_terrain = (u_block_local_transform * vec4(VERTEX, 1.0)).xyz;
 	v_normal = normalize(NORMAL);
 }
 
@@ -149,18 +155,18 @@ void fragment() {
 		+ sample_layer(p, blend, v_indices.z) * weights.z
 		+ sample_layer(p, blend, v_indices.w) * weights.w;
 
-	vec3 rel = v_pos - u_planet_center;
+	vec3 rel = v_terrain - u_planet_center;
 	float radius = length(rel);
 	vec3 up = rel / max(radius, 1.0);
 	float height = radius - u_planet_radius;
 	float flatness = dot(normal, up);
 
 	// Large-scale variation: biomes of meadow and lush grass, uneven snow and beach borders.
-	float macro = fbm(v_pos * 0.0035);
-	float detail = value_noise(v_pos * 0.35);
+	float macro = fbm(v_terrain * 0.0035);
+	float detail = value_noise(v_terrain * 0.35);
 	// Coarse LOD meshes average the thin dirt layer into the stone below, so far away stone counts as natural surface too;
 	// near the camera stone stays stone (dug pits, caves).
-	float far = smoothstep(250.0, 600.0, length(v_pos - CAMERA_POSITION_WORLD));
+	float far = smoothstep(250.0, 600.0, length(VERTEX));
 	float dirt = clamp(layer_weight(v_indices, weights, LAYER_DIRT) + layer_weight(v_indices, weights, LAYER_STONE) * far, 0.0, 1.0);
 	float sand = layer_weight(v_indices, weights, LAYER_SAND);
 	float natural = clamp(dirt + sand, 0.0, 1.0);
