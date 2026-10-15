@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Godot packages come from the local engine feed (nuget.config) and are built by engine.yml, so Dependabot skips them.
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "Godot*"
+      - dependency-name: "GodotSharp*"
+    groups:
+      test-tooling:
+        patterns: ["xunit*", "Microsoft.NET.Test.Sdk", "FsCheck*", "gdUnit4*"]

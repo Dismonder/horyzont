@@ -120,6 +120,7 @@ jobs:
           name: release-reports-windows
           path: reports/*.json
           if-no-files-found: error
+          retention-days: 14
 
       # Linux CI off (owner decision 2026-10-09): no Linux release build to hand to release-linux.
       # - uses: actions/upload-artifact@v4
@@ -194,6 +195,7 @@ jobs:
           name: release-reports-linux
           path: reports/*.json
           if-no-files-found: error
+          retention-days: 14
 
   release-compare:
     # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).

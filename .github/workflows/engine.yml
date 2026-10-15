@@ -50,6 +50,8 @@ jobs:
           #   runner: ubuntu-24.04
           # - target: template-linux-release
           #   runner: ubuntu-24.04
+    # Public repo: never run fork pull requests on the self-hosted runner (it is the owner's PC).
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 300
     steps:
