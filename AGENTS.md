@@ -2,6 +2,10 @@
 
 Najpierw przeczytaj `docs/ZASADY.md` i plan pakietu z `docs/plans/`, nad którym pracujesz. Te pliki są nadrzędne wobec twoich domyślnych nawyków.
 
+## Platforma
+
+Gra działa wyłącznie na Windows. Nie dodawaj kodu, presetów, workflowów ani jobów CI dla Linuksa (decyzja właściciela 2026-10-15).
+
 ## Sposób pracy
 
 1. Ustal pakiet i jego plan. Pracuj tylko w jego zakresie i na gałęzi podanej w nagłówku planu.

@@ -29,7 +29,7 @@ concurrency:
 env:
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
-  # Five targets share the 10 GB GitHub cache with the engine output caches: 1.5 GiB of SCons cache each.
+  # Three targets share the 10 GB GitHub cache with the engine output caches: 1.5 GiB of SCons cache each.
   HORYZONT_SCONS_CACHE_LIMIT: "1.5"
 
 jobs:
@@ -45,11 +45,6 @@ jobs:
             runner: windows-2022
           - target: template-windows-release
             runner: windows-2022
-          # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
-          # - target: editor-linux
-          #   runner: ubuntu-24.04
-          # - target: template-linux-release
-          #   runner: ubuntu-24.04
     # Public repo: never run fork pull requests on the self-hosted runner (it is the owner's PC).
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Windows, X64]
@@ -71,14 +66,6 @@ jobs:
 
       - name: Install SCons
         run: python -m pip install scons
-
-      - name: Install Linux build dependencies
-        if: runner.os == 'Linux'
-        run: >-
-          sudo apt-get update &&
-          sudo apt-get install -y build-essential pkg-config libx11-dev libxcursor-dev libxinerama-dev
-          libgl1-mesa-dev libglu1-mesa-dev libasound2-dev libpulse-dev libudev-dev libxi-dev libxrandr-dev
-          libwayland-dev
 
       - name: Compute engine key
         id: key
@@ -134,23 +121,4 @@ jobs:
         with:
           name: engine-windows-template-release
           path: engine/out/${{ steps.key.outputs.key }}/godot.windows.template_release.double.x86_64.mono*.exe
-          if-no-files-found: error
-
-      - name: Upload Linux template
-        if: matrix.target == 'template-linux-release'
-        uses: actions/upload-artifact@v4
-        with:
-          name: engine-linux-template
-          path: engine/out/${{ steps.key.outputs.key }}/godot.linuxbsd.template_release.double.x86_64.mono
-          if-no-files-found: error
-
-      - name: Upload Linux editor
-        if: matrix.target == 'editor-linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: engine-linux-editor
-          path: |
-            engine/out/${{ steps.key.outputs.key }}/godot.linuxbsd.editor.double.x86_64.mono
-            engine/out/${{ steps.key.outputs.key }}/GodotSharp/
-            engine/out/${{ steps.key.outputs.key }}/manifest.json
           if-no-files-found: error
