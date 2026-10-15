@@ -3,6 +3,7 @@ using Godot;
 using Horyzont.Client.Inventory;
 using Horyzont.Client.Session;
 using Horyzont.Client.Tools;
+using Horyzont.Client.UI;
 using Horyzont.Core.Content;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
@@ -34,6 +35,12 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
 
     /// <summary>Gets or sets where the keys and the wheel come from; the reader child by default, a script in tests.</summary>
     public IInventoryInputSource InputSource { get; set; } = new NoInventoryInput();
+
+    /// <summary>
+    /// Gets or sets the gate of the other modal screens (the menu and the map): while it blocks input the inventory does not open, and
+    /// closing it does not take the mouse back from them. Null for none.
+    /// </summary>
+    public IGameplayInputGate? ModalGate { get; set; }
 
     /// <summary>Gets the containers of the player.</summary>
     public ClientInventory Inventory { get; private set; } = null!;
@@ -215,7 +222,7 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
     /// <summary>Opens the inventory screen and releases the mouse.</summary>
     public void Open()
     {
-        if (IsOpen || Inventory.Bag is null)
+        if (IsOpen || Inventory.Bag is null || ModalGate?.IsBlocked == true)
         {
             return;
         }
@@ -240,7 +247,11 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
 
         Interaction.Cancel();
         IsOpen = false;
-        _recaptureMouse?.Invoke();
+        if (ModalGate?.IsBlocked != true)
+        {
+            _recaptureMouse?.Invoke();
+        }
+
         Refresh();
         OpenChanged?.Invoke();
     }

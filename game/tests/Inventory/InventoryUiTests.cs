@@ -102,6 +102,54 @@ public class InventoryUiTests
 
     [TestCase(Timeout = 60000)]
     [RequireGodotRuntime]
+    public async Task Open_WhileTheMapOrMenuBlocksInput_StaysClosed_AndOpensOnceTheyClose()
+    {
+        await using var scene = EngineTestScene.Create();
+        var rig = InventoryRig.Create(scene);
+        var modal = new SwitchGate { IsBlocked = true };
+        rig.Node.ModalGate = modal;
+        await scene.WaitFrames(2);
+
+        rig.Input.Next = new InventoryInputFrame(-1, 0, true, false);
+        await scene.WaitFrames(2);
+        AssertThat(rig.Node.IsOpen).IsFalse();
+
+        modal.IsBlocked = false;
+        rig.Input.Next = new InventoryInputFrame(-1, 0, true, false);
+        await scene.WaitFrames(2);
+        AssertThat(rig.Node.IsOpen).IsTrue();
+    }
+
+    [TestCase(Timeout = 60000)]
+    [RequireGodotRuntime]
+    public async Task Close_WhileAnotherScreenBlocksInput_DoesNotTakeTheMouseBack()
+    {
+        await using var scene = EngineTestScene.Create();
+        var recaptures = 0;
+        var rig = InventoryRig.Create(scene, () => recaptures++);
+        var modal = new SwitchGate();
+        rig.Node.ModalGate = modal;
+        rig.Node.Open();
+        AssertThat(rig.Node.IsOpen).IsTrue();
+
+        modal.IsBlocked = true; // the menu opened over the inventory
+        rig.Node.Close();
+        AssertThat(rig.Node.IsOpen).IsFalse();
+        AssertThat(recaptures).IsEqual(0);
+
+        modal.IsBlocked = false;
+        rig.Node.Open();
+        rig.Node.Close();
+        AssertThat(recaptures).IsEqual(1);
+    }
+
+    private sealed class SwitchGate : Horyzont.Client.UI.IGameplayInputGate
+    {
+        public bool IsBlocked { get; set; }
+    }
+
+    [TestCase(Timeout = 60000)]
+    [RequireGodotRuntime]
     public async Task Tooltip_ShowsTheNameFromTheCsv_AndClicksSendMoveIntents()
     {
         TranslationServer.SetLocale("en");

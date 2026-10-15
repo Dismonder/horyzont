@@ -35,12 +35,12 @@ internal sealed class InventoryRig
     public long Now { get; set; }
 
     /// <summary>Creates the node with the UI under the scene, feeds the registry and the containers of a new player.</summary>
-    public static InventoryRig Create(EngineTestScene scene)
+    public static InventoryRig Create(EngineTestScene scene, Action? recaptureMouse = null)
     {
         var content = SurvivalContentLoader.Load();
         var node = new InventoryNode { Name = "Inventory" };
         var rig = new InventoryRig(node, content);
-        node.Initialize(content, ItemVisuals.Load(), rig.Sender, _ => { }, NullLoggerFactory.Instance, render: true, recaptureMouse: null);
+        node.Initialize(content, ItemVisuals.Load(), rig.Sender, _ => { }, NullLoggerFactory.Instance, render: true, recaptureMouse);
         node.InputSource = rig.Input;
         node.Clock = () => rig.Now;
         scene.Add(node);
