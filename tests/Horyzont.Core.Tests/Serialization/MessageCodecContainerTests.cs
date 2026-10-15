@@ -113,6 +113,6 @@ public sealed class MessageCodecContainerTests
 
         Kit.AssertMessageViolation("0C 01 03 16 00");
         Kit.AssertMessageViolation("0C 01 03 2C 00");
-        Kit.AssertMessageViolation("0C 01 03 27 00");
+        Kit.AssertMessageViolation("0C 01 03 26 00");
     }
 }

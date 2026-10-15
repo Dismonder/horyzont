@@ -108,6 +108,7 @@ public sealed class ProtocolContractTests
     [InlineData(RejectReason.ShipAnchored, 31)]
     [InlineData(RejectReason.NoEngine, 37)]
     [InlineData(RejectReason.ShipNotParked, 39)]
+    [InlineData(RejectReason.MarkerLimit, 36)]
     public void RejectReason_KosmosValues_Golden(RejectReason reason, byte value)
     {
         var reply = new IntentReply(7, reason, OpId.None);
@@ -118,7 +119,7 @@ public sealed class ProtocolContractTests
 
         Assert.Equal(new byte[] { 12, 1, 7, value, 0 }, bytes);
         Assert.Equal(reply, MessageCodec.Read(bytes));
-        foreach (byte undefined in new byte[] { 22, 29, 32, 33, 34, 35, 38, 40, 255 })
+        foreach (byte undefined in new byte[] { 22, 29, 32, 33, 34, 35, 38, 44, 255 })
         {
             var copy = (byte[])bytes.Clone();
             copy[3] = undefined;

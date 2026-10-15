@@ -41,7 +41,7 @@ public sealed class MessageRouterTests
     [InlineData(43, true)]
     [InlineData(49, true)]
     [InlineData(20, true)]
-    [InlineData(21, false)]
+    [InlineData(21, true)]
     [InlineData(39, false)]
     [InlineData(44, false)]
     [InlineData(48, false)]
