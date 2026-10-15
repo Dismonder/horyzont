@@ -40,20 +40,20 @@ jobs:
       matrix:
         include:
           - target: editor-windows
-            runner: windows-2022
+            runs-on: '["self-hosted", "Windows", "X64"]'
           - target: template-windows-debug
-            runner: windows-2022
+            runs-on: '["self-hosted", "Windows", "X64"]'
           - target: template-windows-release
-            runner: windows-2022
-          # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
-          # - target: editor-linux
-          #   runner: ubuntu-24.04
-          # - target: template-linux-release
-          #   runner: ubuntu-24.04
+            runs-on: '["self-hosted", "Windows", "X64"]'
+          # Linux builds run on free GitHub-hosted runners (public repo, owner decision 2026-10-15 revisits 2026-10-09).
+          - target: editor-linux
+            runs-on: '"ubuntu-24.04"'
+          - target: template-linux-release
+            runs-on: '"ubuntu-24.04"'
     # Public repo: never run fork pull requests on the self-hosted runner (it is the owner's PC).
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 300
+    runs-on: ${{ fromJSON(matrix.runs-on) }}
+    timeout-minutes: 345
     steps:
       - uses: actions/checkout@v4
 
