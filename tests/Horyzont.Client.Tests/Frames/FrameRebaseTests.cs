@@ -151,13 +151,20 @@ public sealed class FrameRebaseTests
         Assert.False(FrameRebase.TryRebase(new MovingShip(from: 200), _home, _ship, 100, 1.0 / 60, sample.Position, sample.Rotation,
             sample.Velocity, out _, out _, out _));
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 1000; i++)
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
         {
-            FrameRebase.TryRebase(view, _home, _ship, 100 + (i % 10), 1.0 / 60, sample.Position, sample.Rotation, sample.Velocity,
-                out _, out _, out _);
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 1000; i++)
+            {
+                FrameRebase.TryRebase(view, _home, _ship, 100 + (i % 10), 1.0 / 60, sample.Position, sample.Rotation, sample.Velocity,
+                    out _, out _, out _);
+            }
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, smallest);
     }
 }

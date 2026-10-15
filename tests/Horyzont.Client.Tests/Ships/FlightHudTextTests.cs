@@ -55,13 +55,20 @@ public sealed class FlightHudTextTests
         var buffer = new char[512];
         FlightHudText.Format(buffer, values, _labels);
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 100; i++)
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
         {
-            FlightHudText.Format(buffer, values, _labels);
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 100; i++)
+            {
+                FlightHudText.Format(buffer, values, _labels);
+            }
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, smallest);
         Assert.Equal(5, FlightHudText.Format(new char[5], values, _labels));
     }
 }
