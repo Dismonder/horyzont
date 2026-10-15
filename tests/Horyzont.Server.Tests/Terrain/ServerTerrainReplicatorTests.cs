@@ -143,6 +143,24 @@ public sealed class ServerTerrainReplicatorTests
     }
 
     [Fact]
+    public void Live_EditWrappedInACompoundWithItems_ReachesTheViewerAndTheAuthorBarrier()
+    {
+        Ready(_alice, _spot);
+        Ready(_bob, _spot);
+        _host.Clear();
+
+        // Digging with a yield is applied as a compound whose last component is the terrain edit (K6-29W D4).
+        var edit = new TerrainEditOp(_planet, TerrainShape.Sphere, _spot, 1f, TerrainEditMode.Remove, 0);
+        var applied = _sim.ApplyServerOperation(new CompoundOp(new Operation[] { edit }));
+        _replicator.OnOperationApplied(applied with { Actor = _alice });
+        Pump();
+
+        Assert.NotEmpty(_host.Messages<TerrainBlockData>(_bob));
+        Assert.NotEmpty(_host.Messages<TerrainBlockData>(_alice));
+        Assert.NotEmpty(_host.Messages<TerrainSync>(_alice));
+    }
+
+    [Fact]
     public void Live_LocalPlayerOfAHost_GetsNothingAndStoresNothing()
     {
         Assert.True(_replicator.Handle(_hostPlayer, new TerrainCacheReport(_planet, [])));
