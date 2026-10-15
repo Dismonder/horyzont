@@ -20,7 +20,7 @@ public static class TerrainReplay
         var planets = new SortedSet<ulong>();
         foreach (var entry in tail)
         {
-            if (entry.Operation is TerrainEditOp edit)
+            if (OperationTerrain.TryGetTerrainEdit(entry.Operation, out var edit))
             {
                 planets.Add(edit.Planet.Value);
             }
