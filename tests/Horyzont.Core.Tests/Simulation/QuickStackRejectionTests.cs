@@ -1,4 +1,6 @@
 using Horyzont.Core.Intents;
+using Horyzont.Core.Items;
+using Horyzont.Core.Operations;
 using Horyzont.Core.Tests.BlockEntities;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Testing;
@@ -41,6 +43,29 @@ public sealed class QuickStackRejectionTests
         var allocated = Measure(() => f.Submit(intent).Reason == RejectReason.NotEnoughItems);
 
         Assert.Equal(0, allocated);
+    }
+
+    [Fact]
+    public void QuickStack_RepeatedRefusalsAfterCopyingNearbyChests_RunIntoTheItemIntentLimit()
+    {
+        var f = ForIntents();
+        var chest = f.SetUpChestAt(FunctionalBlocks.ChestCell, Player1);
+        f.Apply(new ItemCreateOp(new SlotRef(chest, 0), WorldFactory.Item(SurvivalContentFactory.GemKey), 1, 5, ItemSource.Admin));
+        f.Give(Bag, 0, 10);
+        var burst = f.Sim.Sim.Rules.ItemIntentBurst;
+
+        // A chest in reach that holds no matching type: the refusal comes after the slots of the chest were copied, so it costs a token.
+        var refused = 0;
+        var limited = false;
+        for (var i = 0; i < burst + 10 && !limited; i++)
+        {
+            var reason = f.Submit(new QuickStackIntent()).Reason;
+            limited = reason == RejectReason.RateLimited;
+            refused += reason == RejectReason.NotEnoughItems ? 1 : 0;
+        }
+
+        Assert.True(limited, "the refusals never ran into the limit");
+        Assert.Equal(burst, refused);
     }
 
     [Fact]

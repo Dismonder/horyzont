@@ -24,8 +24,15 @@ public static class ContainerReach
     public static bool TryDistanceFromEye(WorldState state, GameRules rules, PlayerId player, EntityId construct, CellPos cell, out float meters)
     {
         meters = 0f;
-        if (!state.Players.TryGet(player, out var playerState) || !TryGetEye(state, rules, playerState, out var playerPlanet, out var eye)
-            || !state.Constructs.TryGet(construct, out _))
+        return state.Players.TryGet(player, out var playerState) && TryGetEye(state, rules, playerState, out var playerPlanet, out var eye)
+            && TryDistanceFrom(state, playerPlanet, eye, construct, cell, out meters);
+    }
+
+    /// <summary>Distance from an eye already measured in the frame of <paramref name="playerPlanet"/> to the centre of <paramref name="cell"/>.</summary>
+    internal static bool TryDistanceFrom(WorldState state, PlanetId playerPlanet, Vector3 eye, EntityId construct, CellPos cell, out float meters)
+    {
+        meters = 0f;
+        if (!state.Constructs.TryGet(construct, out _))
         {
             return false;
         }
