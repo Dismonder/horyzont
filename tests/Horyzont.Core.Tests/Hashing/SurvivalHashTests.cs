@@ -15,8 +15,15 @@ public sealed class SurvivalHashTests
     /// <summary>Hash of <see cref="WorldFactory.CreateDefault"/> recorded at commit eee8f17 (before stage A of K6-29W).</summary>
     private const ulong DefaultWorldHashBeforeItems = 17523897430694564880UL;
 
+    /// <summary>Hash of <see cref="WorldWithItems"/> recorded at commit b5e427e (start of K6-30, before the block entities and the respawn points).</summary>
+    private const ulong WorldWithItemsHashBeforeBlockEntities = 15528921043589756334UL;
+
     [Fact]
     public void WorldWithoutItems_HashUnchanged() => Assert.Equal(DefaultWorldHashBeforeItems, StateHasher.Hash(WorldFactory.CreateDefault()));
+
+    [Fact]
+    public void WorldWithItemsWithoutBlockEntities_HashUnchanged() =>
+        Assert.Equal(WorldWithItemsHashBeforeBlockEntities, StateHasher.Hash(WorldWithItems()));
 
     [Fact]
     public void ItemTypesOnly_ChangeHash()
@@ -76,6 +83,27 @@ public sealed class SurvivalHashTests
         var hashes = variants.Select(v => StateHasher.Hash(v())).ToList();
 
         Assert.Equal(variants.Length, hashes.Distinct().Count());
+    }
+
+    /// <summary>
+    /// The K6-29W world of the survival tests: two players with their containers, the start kit of <see cref="SurvivalContentFactory"/>, stone and soil
+    /// moved around the bags and a shared chest container hosted by a player. No block with state, no respawn point.
+    /// </summary>
+    private static WorldState WorldWithItems()
+    {
+        var f = new ItemFixture(players: 2);
+        f.Apply(ItemFixture.Create(ItemFixture.HotbarSlot(0), ItemFixture.Tool, 1, limit: 1, source: ItemSource.Starter));
+        f.Apply(ItemFixture.Create(ItemFixture.HotbarSlot(1), ItemFixture.Gem, 3, limit: 5, source: ItemSource.Starter));
+        f.Apply(ItemFixture.Create(ItemFixture.BagSlot(0), ItemFixture.Stone, 40, source: ItemSource.Harvest));
+        f.Apply(ItemFixture.Create(ItemFixture.BagSlot(1), ItemFixture.Soil, 12, source: ItemSource.Harvest));
+        f.Apply(ItemFixture.Transfer(ItemFixture.BagSlot(0), ItemFixture.BagSlot(4), ItemFixture.Stone, 15));
+        var chest = f.State.ContainerIds.PeekNext();
+        f.Apply(new CompoundOp(
+        [
+            new ContainerCreateOp(chest, ContainerKind.Chest, ContainerHost.Player(ItemFixture.Player1), ItemFixture.Player1, ContainerAccess.Shared, 8),
+            ItemFixture.Transfer(ItemFixture.BagSlot(4), new SlotRef(chest, 2), ItemFixture.Stone, 10),
+        ]));
+        return f.State;
     }
 
     private static WorldState Chest(
