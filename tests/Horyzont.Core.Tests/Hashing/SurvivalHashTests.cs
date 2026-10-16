@@ -20,12 +20,19 @@ public sealed class SurvivalHashTests
     /// <summary>Hash of <see cref="WorldWithItems"/> recorded at commit b5e427e (start of K6-30, before the block entities and the respawn points).</summary>
     private const ulong WorldWithItemsHashBeforeBlockEntities = 15528921043589756334UL;
 
+    /// <summary>Hash of <see cref="WorldWithBlockEntities"/> recorded at commit 06814a8 (start of K6-32, before discoveries, progress keys and stations).</summary>
+    private const ulong WorldWithBlockEntitiesHashBeforeCrafting = 256735958396369194UL;
+
     [Fact]
     public void WorldWithoutItems_HashUnchanged() => Assert.Equal(DefaultWorldHashBeforeItems, StateHasher.Hash(WorldFactory.CreateDefault()));
 
     [Fact]
     public void WorldWithItemsWithoutBlockEntities_HashUnchanged() =>
         Assert.Equal(WorldWithItemsHashBeforeBlockEntities, StateHasher.Hash(WorldWithItems()));
+
+    [Fact]
+    public void WorldWithBlockEntitiesWithoutCrafting_HashUnchanged() =>
+        Assert.Equal(WorldWithBlockEntitiesHashBeforeCrafting, StateHasher.Hash(WorldWithBlockEntities()));
 
     [Fact]
     public void BlockEntityChange_ChangesHash()
@@ -169,6 +176,19 @@ public sealed class SurvivalHashTests
             new ContainerCreateOp(chest, ContainerKind.Chest, ContainerHost.Player(ItemFixture.Player1), ItemFixture.Player1, ContainerAccess.Shared, 8),
             ItemFixture.Transfer(ItemFixture.BagSlot(4), new SlotRef(chest, 2), ItemFixture.Stone, 10),
         ]));
+        return f.State;
+    }
+
+    /// <summary>
+    /// The K6-30 world of the functional block tests: a chest block with a container holding stone and a bed block with the respawn point of
+    /// player 1. No discoveries, no progress keys, no station.
+    /// </summary>
+    private static WorldState WorldWithBlockEntities()
+    {
+        var f = new FunctionalBlockFixture(players: 2);
+        var chest = f.SetUpChest(FunctionalBlocks.ChestCell);
+        f.Give(chest, 1, 7);
+        f.SetUpBed(FunctionalBlocks.BedCell, FunctionalBlockFixture.Player1);
         return f.State;
     }
 
