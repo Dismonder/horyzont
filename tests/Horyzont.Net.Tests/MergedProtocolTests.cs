@@ -22,12 +22,12 @@ namespace Horyzont.Net.Tests;
 public sealed class MergedProtocolTests
 {
     [Theory]
-    [InlineData(17)]
     [InlineData(18)]
     [InlineData(19)]
-    public void Handshake_MergedProtocolVersion_AcceptsOnlyEighteen(int version)
+    [InlineData(20)]
+    public void Handshake_MergedProtocolVersion_AcceptsOnlyNineteen(int version)
     {
-        Assert.Equal(18, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(19, ProtocolConstants.ProtocolVersion);
         using var h = new SessionHarness();
         var raw = h.AddRaw();
         Assert.True(h.RunUntil(() => raw.IsConnected, TimeSpan.FromSeconds(1)));
@@ -36,7 +36,7 @@ public sealed class MergedProtocolTests
 
         Assert.True(h.RunUntil(() => raw.Messages().Any(), TimeSpan.FromSeconds(2)));
         var response = Assert.Single(raw.Messages());
-        if (version == 18)
+        if (version == 19)
         {
             Assert.IsType<ServerHello>(response);
             Assert.Single(h.ServerHooks.Joined);

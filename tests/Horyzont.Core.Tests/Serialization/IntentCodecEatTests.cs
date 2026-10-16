@@ -73,9 +73,9 @@ public sealed class IntentCodecEatTests
     [Fact]
     public void Eat_NeighbouringCodes_StayUnassigned()
     {
-        // 25 is the only new code (the spec keeps 26 for the suit refill of K6-34): the valid twin decodes, the neighbour is refused as unknown.
+        // 25 is the eat intent and 26 the suit refill of K6-34; 27 is the prop hit of K6-31, so the first neighbour that is still unknown is 30 (1E): the valid twin decodes, 1E is refused as unknown.
         Assert.Equal(new EatIntent(new ContainerId(2), 3), Kit.DecodeIntent(Kit.Hex("19 01 02 03")));
 
-        Kit.AssertIntentViolation("1A 01 02 03");
+        Kit.AssertIntentViolation("1E 01 02 03");
     }
 }
