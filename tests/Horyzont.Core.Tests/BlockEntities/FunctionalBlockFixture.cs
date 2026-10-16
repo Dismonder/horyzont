@@ -24,12 +24,12 @@ internal sealed class FunctionalBlockFixture
         Sim = new SimFixture(state: WorldFactory.CreateWithFunctionalBlocks(players, withConstruct));
     }
 
-    private FunctionalBlockFixture(int players, bool withSurvival, ushort chestSlots, bool intents)
+    private FunctionalBlockFixture(int players, bool withSurvival, ushort chestSlots, bool intents, GameRules? rules)
     {
         Assert.True(intents);
         var state = WorldFactory.CreateWithFunctionalBlocks(players);
         Sim = new SimFixture(
-            state: state, content: FunctionalBlocks.ContentFor(state, chestSlots),
+            rules, state: state, content: FunctionalBlocks.ContentFor(state, chestSlots),
             survival: withSurvival ? SurvivalContentFactory.CreateTest() : null);
         for (var n = 1; n <= players; n++)
         {
@@ -45,8 +45,9 @@ internal sealed class FunctionalBlockFixture
     /// <param name="players">Number of players.</param>
     /// <param name="withSurvival">Whether the simulation has survival content.</param>
     /// <param name="chestSlots">Slots of the container of a chest block.</param>
-    public static FunctionalBlockFixture ForIntents(int players = 1, bool withSurvival = true, ushort chestSlots = 4) =>
-        new(players, withSurvival, chestSlots, intents: true);
+    /// <param name="rules">Rules of the simulation (default rules when null).</param>
+    public static FunctionalBlockFixture ForIntents(int players = 1, bool withSurvival = true, ushort chestSlots = 4, GameRules? rules = null) =>
+        new(players, withSurvival, chestSlots, intents: true, rules);
 
     /// <summary>Feet of player <paramref name="n"/> (1-based): 3 m in front of the row of blocks, 1 m above the floor; 0.5 m apart.</summary>
     public static Vector3 StandFor(int n) => new(2f + (0.5f * (n - 1)), 4001f, 3f);

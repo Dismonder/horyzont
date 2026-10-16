@@ -143,7 +143,7 @@ public sealed class ServerSimulation
             {
                 if (_functional.RefusalCostsToken)
                 {
-                    // A refusal that copied the slots of chests counts against the rate limit of its class, like an accepted intent.
+                    // A refusal that scanned the chests of the world counts against the rate limit of its class, like an accepted intent.
                     IntentValidator.BucketFor(intent, buckets!)!.Consume();
                 }
 

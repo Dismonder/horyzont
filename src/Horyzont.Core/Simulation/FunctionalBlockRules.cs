@@ -27,7 +27,7 @@ internal sealed class FunctionalBlockRules(WorldState state, GameRules rules, Bl
     private readonly List<Operation> _components = [];
 
     /// <summary>
-    /// True when the last <see cref="TryResolve"/> refused only after it copied the slots of chests (the costly part of a quick stack): the
+    /// True when the last <see cref="TryResolve"/> refused only after it began to scan the chest index of the world (the costly part of a quick stack): the
     /// caller then charges the rate limit of item intents for the refusal, so a client cannot repeat it faster than accepted intents.
     /// </summary>
     internal bool RefusalCostsToken { get; private set; }
@@ -372,6 +372,8 @@ internal sealed class FunctionalBlockRules(WorldState state, GameRules rules, Bl
             return RejectReason.NotEnoughItems;
         }
 
+        // From here on the chest index of the world is scanned (linear in the chests of the world): whatever is refused has cost something.
+        RefusalCostsToken = true;
         var chestIndex = state.Containers.OfKind(ContainerKind.Chest);
         List<ChestCopy>? chests = null;
         for (var i = 0; i < chestIndex.Count; i++)
@@ -393,8 +395,6 @@ internal sealed class FunctionalBlockRules(WorldState state, GameRules rules, Bl
             return RejectReason.NotEnoughItems;
         }
 
-        // The slots of chests were copied: whatever is refused from here on has cost something.
-        RefusalCostsToken = true;
         chests.Sort(static (a, b) =>
         {
             var byDistance = a.Meters.CompareTo(b.Meters);
