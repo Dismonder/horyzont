@@ -135,6 +135,74 @@ public sealed class BlockTypeCatalogTests
     [InlineData("{ \"kind\": \"pulse_drive\", \"speedCap\": \"fast\" }", "$.blocks[0].function.speedCap")]
     public void BlockCatalog_InvalidFunction_ThrowsWithJsonPath(string function, string path) => AssertInvalid(FunctionBlock(function), path);
 
+    [Fact]
+    public void Parse_RepoContent_HasChestBedLampDoor()
+    {
+        var catalog = BlockTypeCatalog.Parse(File.ReadAllBytes(Path.Combine(RepoRoot(), "game", "content", "blocks", "blocks.json")), new FakeResolver());
+
+        Assert.Equal(new BlockTypeDef("core:chest_wood", BlockShape.Cube, MaterialId(catalog, "wood"), true, 80f, BlockFunction.CreateChest(20)), Shipped(catalog, "core:chest_wood").Def);
+        Assert.Equal(new BlockTypeDef("core:chest_metal", BlockShape.Cube, MaterialId(catalog, "metal"), true, 200f, BlockFunction.CreateChest(40)), Shipped(catalog, "core:chest_metal").Def);
+        Assert.Equal(new BlockTypeDef("core:bed", BlockShape.Mesh, MaterialId(catalog, "ship_fabric"), true, 120f, BlockFunction.Bed), Shipped(catalog, "core:bed").Def);
+        Assert.Equal(new BlockTypeDef("core:lamp", BlockShape.Cube, MaterialId(catalog, "lamp"), true, 20f, BlockFunction.Light), Shipped(catalog, "core:lamp").Def);
+        Assert.Equal(new BlockLightDef(8f, 0xFFD9A0FFu, 1.5f), Shipped(catalog, "core:lamp").Light);
+        Assert.Equal(new BlockTypeDef("core:wood_door", BlockShape.Cube, MaterialId(catalog, "wood"), true, 100f, BlockFunction.Door), Shipped(catalog, "core:wood_door").Def);
+        Assert.Equal(0xF2E3B3FFu, catalog.Materials.Single(m => m.Key == "lamp").ColorRgba8);
+        Assert.All(["core:chest_wood", "core:chest_metal", "core:bed", "core:wood_door"], key => Assert.Null(Shipped(catalog, key).Light));
+
+        // Every new type has a translation row.
+        var csv = File.ReadAllLines(Path.Combine(RepoRoot(), "game", "locale", "blocks.csv"));
+        var names = csv.Skip(1).Select(line => line.Split(',')[0]).ToHashSet();
+        Assert.All(["core:chest_wood", "core:chest_metal", "core:bed", "core:lamp", "core:wood_door"], key => Assert.Contains(Shipped(catalog, key).NameKey, names));
+    }
+
+    private static BlockTypeContent Shipped(BlockTypeCatalog catalog, string key) =>
+        catalog.TryGet(key, out var block) ? block : throw new InvalidOperationException($"{key} is not in blocks.json");
+
+    private static byte MaterialId(BlockTypeCatalog catalog, string key) => catalog.Materials.Single(m => m.Key == key).Id;
+
+    [Fact]
+    public void Parse_ChestBedAndLightFunctions_AreRead()
+    {
+        static BlockTypeContent Content(string function) => Parse(FunctionBlock(function)).TryGet("a:b", out var b) ? b : throw new InvalidOperationException();
+
+        Assert.Equal(BlockFunction.CreateChest(20), Content("{ \"kind\": \"chest\", \"slots\": 20 }").Def.Function);
+        Assert.Equal(BlockFunction.CreateChest(256), Content("{ \"kind\": \"chest\", \"slots\": 256 }").Def.Function);
+        Assert.Equal(BlockFunction.Bed, Content("{ \"kind\": \"bed\" }").Def.Function);
+        var lamp = Content("{ \"kind\": \"light\", \"range\": 8, \"color\": \"#FFD9A0\", \"energy\": 1.5 }");
+        Assert.Equal(BlockFunction.Light, lamp.Def.Function);
+        Assert.Equal(new BlockLightDef(8f, 0xFFD9A0FFu, 1.5f), lamp.Light);
+        Assert.Null(Content("{ \"kind\": \"bed\" }").Light);
+    }
+
+    [Fact]
+    public void Parse_ChestWithoutSlots_Throws()
+    {
+        Parse(FunctionBlock("{ \"kind\": \"chest\", \"slots\": 4 }"));
+
+        AssertInvalid(FunctionBlock("{ \"kind\": \"chest\" }"), "$.blocks[0].function.slots");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"chest\", \"slots\": 0 }"), "$.blocks[0].function.slots");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"chest\", \"slots\": 2.5 }"), "$.blocks[0].function.slots");
+    }
+
+    [Fact]
+    public void Parse_ChestSlotsOver256_Throws()
+    {
+        Parse(FunctionBlock("{ \"kind\": \"chest\", \"slots\": 256 }"));
+
+        AssertInvalid(FunctionBlock("{ \"kind\": \"chest\", \"slots\": 257 }"), "$.blocks[0].function.slots");
+    }
+
+    [Fact]
+    public void Parse_LightWithInvalidColor_Throws()
+    {
+        Parse(FunctionBlock("{ \"kind\": \"light\", \"range\": 8, \"color\": \"#FFD9A0\", \"energy\": 1.5 }"));
+
+        AssertInvalid(FunctionBlock("{ \"kind\": \"light\", \"range\": 8, \"color\": \"nope\", \"energy\": 1.5 }"), "$.blocks[0].function.color");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"light\", \"range\": 8, \"energy\": 1.5 }"), "$.blocks[0].function.color");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"light\", \"range\": 0, \"color\": \"#FFD9A0\", \"energy\": 1.5 }"), "$.blocks[0].function.range");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"light\", \"range\": 8, \"color\": \"#FFD9A0\", \"energy\": -1 }"), "$.blocks[0].function.energy");
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("\"mass\": 0, ")]

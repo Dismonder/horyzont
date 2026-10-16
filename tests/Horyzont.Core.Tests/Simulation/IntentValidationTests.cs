@@ -4,6 +4,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Tests.BlockEntities;
 using Horyzont.Core.Tests.Items;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Testing;
@@ -277,6 +278,39 @@ public sealed class IntentValidationTests
         Assert.True(_scenarios.ContainsKey(reason), $"No scenario reaches {reason}.");
 
         Assert.Equal(reason, _scenarios[reason]());
+    }
+
+    /// <summary>
+    /// The reasons of K6-30 (54, 57): <see cref="AllReasons"/> stops below 30, so each new code gets its scenario here. The member names of the
+    /// enum arrive with the protocol (step B2).
+    /// </summary>
+    [Theory]
+    [InlineData((byte)54)]
+    [InlineData((byte)57)]
+    public void Submit_FunctionalBlockScenario_ReturnsNewReason(byte number)
+    {
+        var f = FunctionalBlockFixture.ForIntents(2);
+        var actual = number switch
+        {
+            54 => NotOwnerScenario(f),
+            57 => ContainerNotEmptyScenario(f),
+            _ => throw new ArgumentOutOfRangeException(nameof(number)),
+        };
+
+        Assert.Equal((RejectReason)number, actual);
+    }
+
+    private static RejectReason NotOwnerScenario(FunctionalBlockFixture f)
+    {
+        f.SetUpBed(FunctionalBlocks.BedCell, FunctionalBlockFixture.Player2);
+        return f.SubmitAs(FunctionalBlockFixture.Player1, new BlockInteractIntent(FunctionalBlockFixture.ConstructId, FunctionalBlocks.BedCell, BlockInteractAction.Sleep)).Reason;
+    }
+
+    private static RejectReason ContainerNotEmptyScenario(FunctionalBlockFixture f)
+    {
+        var chest = f.SetUpChestAt(FunctionalBlocks.ChestCell, FunctionalBlockFixture.Player1);
+        f.Give(chest, 0, 1);
+        return f.SubmitAs(FunctionalBlockFixture.Player1, new RemoveBlockIntent(FunctionalBlockFixture.ConstructId, FunctionalBlocks.ChestCell)).Reason;
     }
 
     [Fact]

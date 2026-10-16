@@ -18,7 +18,8 @@ namespace Horyzont.Core.Tests.BlockEntities;
 
 /// <summary>
 /// K6-30: chests do not break the conservation of items. Random sequences of placing and removing chests, moving items to and from them and
-/// compounds that fail at a random position; after every operation the sum of every item type equals created minus destroyed, no container
+/// compounds that fail at a random position, and the removal of a chest state alone, which leaves its container hosted by a block that
+/// has no state (so the "hosted container" half of the BlockClearOp rule, D13, is tested apart from the "has a state" half); after every operation the sum of every item type equals created minus destroyed, no container
 /// hosted by a block outlives the block, no block state outlives the block, and a refused operation leaves the hash unchanged.
 /// </summary>
 public sealed class FunctionalBlockConservationProperties
@@ -41,6 +42,7 @@ public sealed class FunctionalBlockConservationProperties
         ChestToBag,
         DestroyInChest,
         ClearBlock,
+        DropChestState,
     }
 
     private static Gen<Step> StepGen { get; } =
@@ -53,7 +55,8 @@ public sealed class FunctionalBlockConservationProperties
             (4, Gen.Constant(Action.BagToChest)),
             (3, Gen.Constant(Action.ChestToBag)),
             (1, Gen.Constant(Action.DestroyInChest)),
-            (1, Gen.Constant(Action.ClearBlock)))
+            (1, Gen.Constant(Action.ClearBlock)),
+            (2, Gen.Constant(Action.DropChestState)))
         from cell in Gen.Choose(0, _cells.Length - 1)
         from slot in Gen.Choose(0, 3)
         from count in Gen.Choose(1, 6)
@@ -78,6 +81,7 @@ public sealed class FunctionalBlockConservationProperties
     {
         var placed = 0;
         var removed = 0;
+        var stateDropped = 0;
         var refused = 0;
         foreach (var sequence in Sequence.Sample(400, 20))
         {
@@ -98,11 +102,16 @@ public sealed class FunctionalBlockConservationProperties
                 {
                     removed++;
                 }
+                else if (op is BlockEntitySetOp { State: null })
+                {
+                    stateDropped++;
+                }
             }
         }
 
         Assert.True(placed >= 10, $"placed {placed} times");
         Assert.True(removed >= 10, $"removed {removed} times");
+        Assert.True(stateDropped >= 10, $"dropped a chest state alone {stateDropped} times");
         Assert.True(refused >= 10, $"refused {refused} times");
     }
 
@@ -170,6 +179,9 @@ public sealed class FunctionalBlockConservationProperties
                 return new ItemTransferOp(chestSlot, bagSlot, _stone, (ushort)step.Count, 500);
             case Action.DestroyInChest:
                 return new ItemDestroyOp(chestSlot, _stone, (ushort)step.Count, ItemSink.Craft);
+            case Action.DropChestState:
+                // The state goes first and the container stays: a later BlockClearOp is then refused only by the "hosted container" half of D13.
+                return ClearState(cell, FunctionalBlocks.ChestType);
             default:
                 return new BlockClearOp(ConstructId, cell);
         }

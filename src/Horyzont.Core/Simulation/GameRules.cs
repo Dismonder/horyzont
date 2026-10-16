@@ -62,4 +62,16 @@ public sealed record GameRules
 
     /// <summary>Largest distance from the centre of a refuel station cell to the bounding sphere of the ship, metres (K5-24 P3).</summary>
     public float RefuelRangeMeters { get; init; } = 15f;
+
+    /// <summary>Most cells a door switch toggles together along the Y axis of a construct (K6-30 D6).</summary>
+    public int MaxDoorColumnCells { get; init; } = 3;
+
+    /// <summary>Largest eye distance to a chest for opening it (subscribing), metres (K6-30 D9).</summary>
+    public float ContainerOpenRangeMeters { get; init; } = 6f;
+
+    /// <summary>Largest eye distance at which an open chest stays open and takes item intents, metres (K6-30 D9).</summary>
+    public float ContainerKeepRangeMeters { get; init; } = 8f;
+
+    /// <summary>Largest eye distance to a chest that takes part in a quick stack, metres (K6-30 D9).</summary>
+    public float QuickStackRangeMeters { get; init; } = 10f;
 }

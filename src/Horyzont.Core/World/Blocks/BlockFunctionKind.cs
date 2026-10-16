@@ -35,4 +35,13 @@ public enum BlockFunctionKind : byte
 
     /// <summary>A refuel station: refuels a parked ship nearby for free until subproject 3 (K5-24).</summary>
     RefuelStation = 10,
+
+    /// <summary>A chest with a container hosted by the block (K6-30).</summary>
+    Chest = 11,
+
+    /// <summary>A bed that sets the respawn point (K6-30).</summary>
+    Bed = 12,
+
+    /// <summary>A lamp; <c>FunctionState</c> 1 is on (K6-30).</summary>
+    Light = 13,
 }

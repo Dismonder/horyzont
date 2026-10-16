@@ -1,4 +1,6 @@
 using Horyzont.Core.Ids;
+using Horyzont.Core.World;
+using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
 
 namespace Horyzont.Testing;
@@ -51,4 +53,43 @@ public static class FunctionalBlocks
 
     /// <summary>A second empty cell.</summary>
     public static readonly CellPos FreeCell2 = new(6, 1, 0);
+
+    /// <summary>Key of the chest block type.</summary>
+    public const string ChestKey = "core:chest_wood";
+
+    /// <summary>Key of the bed block type.</summary>
+    public const string BedKey = "core:bed";
+
+    /// <summary>Key of the lamp block type.</summary>
+    public const string LampKey = "core:lamp";
+
+    /// <summary>Key of the door block type.</summary>
+    public const string DoorKey = "core:wood_door";
+
+    /// <summary>
+    /// The content table of a world created by <see cref="WorldFactory.CreateWithFunctionalBlocks"/>: a stone block, a chest with
+    /// <paramref name="chestSlots"/> slots, a bed, a lamp and a door (K6-30 D5).
+    /// </summary>
+    /// <param name="state">The world.</param>
+    /// <param name="chestSlots">Slots of the container of a chest.</param>
+    /// <returns>The table.</returns>
+    public static BlockContentTable ContentFor(WorldState state, ushort chestSlots = 4)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        (string Key, float Mass, BlockFunction Function)[] all =
+        [
+            (WorldFactory.StoneBlockKey, 2400f, BlockFunction.None),
+            (ChestKey, 80f, BlockFunction.CreateChest(chestSlots)),
+            (BedKey, 120f, BlockFunction.Bed),
+            (LampKey, 20f, BlockFunction.Light),
+            (DoorKey, 100f, BlockFunction.Door),
+        ];
+        var definitions = new Dictionary<string, BlockTypeDef>(StringComparer.Ordinal);
+        foreach (var (key, mass, function) in all)
+        {
+            definitions.Add(key, new BlockTypeDef(key, BlockShape.Cube, 1, true, mass, function));
+        }
+
+        return BlockContentTable.Create(state.BlockTypes, definitions);
+    }
 }
