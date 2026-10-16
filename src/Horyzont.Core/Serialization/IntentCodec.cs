@@ -1,6 +1,8 @@
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
+using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Protocol;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Markers;
 
@@ -22,6 +24,10 @@ public static class IntentCodec
         Refuel = 13,
         ItemMove = 20,
         ItemDrop = 21,
+        QuickStack = 22,
+        TakeAll = 23,
+        BlockInteract = 28,
+        BlockConfig = 29,
     }
 
     private enum ItemMoveTargetCode : byte
@@ -180,6 +186,38 @@ public static class IntentCodec
                 w.WriteVarUInt(drop.ExpectedCount);
                 break;
 
+            case QuickStackIntent:
+                w.WriteByte((byte)IntentCode.QuickStack);
+                w.WriteByte(CurrentFormatVersion);
+                break;
+
+            case TakeAllIntent takeAll:
+                w.WriteByte((byte)IntentCode.TakeAll);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(takeAll.Container.Value);
+                break;
+
+            case BlockInteractIntent interact:
+                if (interact.Action < BlockInteractAction.Toggle || interact.Action > BlockInteractAction.SetRespawn)
+                {
+                    throw new ArgumentException($"Invalid BlockInteractAction {(byte)interact.Action}.", nameof(intent));
+                }
+
+                w.WriteByte((byte)IntentCode.BlockInteract);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(interact.Construct.Value);
+                CoreCodecPrimitives.WriteCellPos(w, interact.Cell);
+                w.WriteByte((byte)interact.Action);
+                break;
+
+            case BlockConfigIntent config:
+                w.WriteByte((byte)IntentCode.BlockConfig);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(config.Construct.Value);
+                CoreCodecPrimitives.WriteCellPos(w, config.Cell);
+                WriteBlockConfig(w, config.Config);
+                break;
+
             default:
                 throw new ArgumentException($"Unknown intent type {intent.GetType().Name}.", nameof(intent));
         }
@@ -191,7 +229,7 @@ public static class IntentCodec
     public static Intent Read(ref ByteReader r)
     {
         byte codeByte = r.ReadByte();
-        if (codeByte is < (byte)IntentCode.TerrainTool or > (byte)IntentCode.RemoveBlock and not ((byte)IntentCode.ShipMode or (byte)IntentCode.MarkerSet or (byte)IntentCode.MarkerRemove or (byte)IntentCode.Refuel or (byte)IntentCode.ItemMove or (byte)IntentCode.ItemDrop))
+        if (!Enum.IsDefined((IntentCode)codeByte))
         {
             throw new ProtocolViolationException($"Unknown intent code {codeByte}.");
         }
@@ -320,8 +358,74 @@ public static class IntentCodec
                 ushort dropExpected = r.ReadVarUInt16();
                 return new ItemDropIntent(slot, dropCount, dropType, dropExpected);
 
+            case IntentCode.QuickStack:
+                return new QuickStackIntent();
+
+            case IntentCode.TakeAll:
+                return new TakeAllIntent(new ContainerId(r.ReadVarUInt()));
+
+            case IntentCode.BlockInteract:
+                var biConstruct = new EntityId(r.ReadVarUInt());
+                var biCell = CoreCodecPrimitives.ReadCellPos(ref r);
+                var biAction = (BlockInteractAction)CoreCodecPrimitives.ReadEnumByte(
+                    ref r, (byte)BlockInteractAction.Toggle, (byte)BlockInteractAction.SetRespawn, "block interact action");
+                return new BlockInteractIntent(biConstruct, biCell, biAction);
+
+            case IntentCode.BlockConfig:
+                var bcConstruct = new EntityId(r.ReadVarUInt());
+                var bcCell = CoreCodecPrimitives.ReadCellPos(ref r);
+                return new BlockConfigIntent(bcConstruct, bcCell, ReadBlockConfig(ref r));
+
             default:
                 throw new ProtocolViolationException($"Unhandled intent code {code}.");
         }
+    }
+
+    private static void WriteBlockConfig(ByteWriter w, BlockConfig config)
+    {
+        switch (config)
+        {
+            case TeleportNameConfig teleport:
+                if (teleport.Name.Length == 0)
+                {
+                    throw new ArgumentException("A teleport name is not empty.", nameof(config));
+                }
+
+                w.WriteByte((byte)BlockConfigKind.TeleportName);
+                w.WriteString(teleport.Name, ProtocolConstants.MaxTeleportNameBytes);
+                break;
+
+            case ContainerAccessConfig access:
+                if (access.Access < ContainerAccess.Shared || access.Access > ContainerAccess.Private)
+                {
+                    throw new ArgumentException($"Invalid ContainerAccess {(byte)access.Access}.", nameof(config));
+                }
+
+                w.WriteByte((byte)BlockConfigKind.ContainerAccess);
+                w.WriteByte((byte)access.Access);
+                break;
+
+            default:
+                throw new ArgumentException($"Unknown BlockConfig type {config?.GetType().Name}.", nameof(config));
+        }
+    }
+
+    private static BlockConfig ReadBlockConfig(ref ByteReader r)
+    {
+        var kind = (BlockConfigKind)CoreCodecPrimitives.ReadEnumByte(
+            ref r, (byte)BlockConfigKind.TeleportName, (byte)BlockConfigKind.ContainerAccess, "block config");
+        if (kind == BlockConfigKind.TeleportName)
+        {
+            string name = r.ReadString(ProtocolConstants.MaxTeleportNameBytes);
+            if (name.Length == 0)
+            {
+                throw new ProtocolViolationException("A teleport name is not empty.");
+            }
+
+            return new TeleportNameConfig(name);
+        }
+
+        return new ContainerAccessConfig((ContainerAccess)CoreCodecPrimitives.ReadEnumByte(
+            ref r, (byte)ContainerAccess.Shared, (byte)ContainerAccess.Private, "container access"));
     }
 }

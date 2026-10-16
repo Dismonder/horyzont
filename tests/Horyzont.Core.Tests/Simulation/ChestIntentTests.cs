@@ -154,7 +154,7 @@ public sealed class ChestIntentTests
         var container = f.SetUpChestAt(FunctionalBlocks.ChestCell, Player1);
         f.Give(container, 0, 3);
 
-        f.AssertRejected(Player1, Remove(FunctionalBlocks.ChestCell), FunctionalReasons.ContainerNotEmpty);
+        f.AssertRejected(Player1, Remove(FunctionalBlocks.ChestCell), RejectReason.ContainerNotEmpty);
         Assert.False(f.BlockAt(FunctionalBlocks.ChestCell).IsEmpty);
     }
 
@@ -164,7 +164,7 @@ public sealed class ChestIntentTests
         var f = Fixture(players: 2);
         f.SetUpChestAt(FunctionalBlocks.ChestCell, Player1, ContainerAccess.Private);
 
-        f.AssertRejected(Player2, Remove(FunctionalBlocks.ChestCell), FunctionalReasons.NotOwner);
+        f.AssertRejected(Player2, Remove(FunctionalBlocks.ChestCell), RejectReason.NotOwner);
         Assert.False(f.BlockAt(FunctionalBlocks.ChestCell).IsEmpty);
     }
 
@@ -264,7 +264,7 @@ public sealed class ChestIntentTests
         var f = Fixture(players: 2);
         var chest = f.SetUpChestAt(FunctionalBlocks.ChestCell, Player1);
 
-        f.AssertRejected(Player2, Access(FunctionalBlocks.ChestCell, ContainerAccess.Private), FunctionalReasons.NotOwner);
+        f.AssertRejected(Player2, Access(FunctionalBlocks.ChestCell, ContainerAccess.Private), RejectReason.NotOwner);
         Assert.Equal(ContainerAccess.Shared, f.Container(chest).Access);
     }
 

@@ -101,7 +101,7 @@ public sealed class BedOwnershipProperties
             else
             {
                 Assert.Equal(hash, StateHasher.Hash(f.State));
-                if (result.Reason == FunctionalReasons.NotOwner)
+                if (result.Reason == RejectReason.NotOwner)
                 {
                     stats.NotOwner++;
                 }

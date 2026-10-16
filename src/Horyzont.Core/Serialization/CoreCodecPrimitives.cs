@@ -11,7 +11,7 @@ namespace Horyzont.Core.Serialization;
 /// <summary>Internal shared primitive encoders and decoders for Core types.</summary>
 internal static class CoreCodecPrimitives
 {
-    /// <summary>True for every defined <see cref="RejectReason"/>: the Planet reasons 0-21, the Space reasons 30-39 and the survival reasons 40-43.</summary>
+    /// <summary>True for every defined <see cref="RejectReason"/>: the Planet reasons 0-21, the Space reasons 30-39 and the survival reasons 40-43 and 54, 57.</summary>
     public static bool IsKnownRejectReason(byte value) => Enum.IsDefined((RejectReason)value);
 
     public static void WriteFrameRef(ByteWriter w, FrameRef f)

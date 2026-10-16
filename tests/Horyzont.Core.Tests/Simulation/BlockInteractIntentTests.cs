@@ -204,8 +204,8 @@ public sealed class BlockInteractIntentTests
         var f = Fixture(players: 2);
         f.SetUpBed(FunctionalBlocks.BedCell, Player2);
 
-        f.AssertRejected(Player1, SetRespawn(FunctionalBlocks.BedCell), FunctionalReasons.NotOwner);
-        f.AssertRejected(Player1, Sleep(FunctionalBlocks.BedCell), FunctionalReasons.NotOwner);
+        f.AssertRejected(Player1, SetRespawn(FunctionalBlocks.BedCell), RejectReason.NotOwner);
+        f.AssertRejected(Player1, Sleep(FunctionalBlocks.BedCell), RejectReason.NotOwner);
         Assert.False(f.State.Progress.TryGet(Player1, out _));
     }
 

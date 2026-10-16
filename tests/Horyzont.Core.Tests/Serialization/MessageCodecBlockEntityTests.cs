@@ -4,18 +4,16 @@ using Horyzont.Core.Intents;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Serialization;
-using Horyzont.Core.Tests.BlockEntities;
 using Horyzont.Core.World.Constructs;
 
 namespace Horyzont.Core.Tests.Serialization;
 
 /// <summary>
-/// Message 46 (<see cref="BlockEntityStates"/>) and the new reject reasons in <see cref="IntentReply"/> (K6-30 D15), format 1. The
-/// message type has no enum member yet (step B2), so the tests name it by number.
+/// Message 46 (<see cref="BlockEntityStates"/>) and the new reject reasons in <see cref="IntentReply"/> (K6-30 D15), format 1.
 /// </summary>
 public sealed class MessageCodecBlockEntityTests
 {
-    private const MessageType BlockEntityStatesType = (MessageType)46;
+    private const MessageType BlockEntityStatesType = MessageType.BlockEntityStates;
 
     private static readonly CellPos _cell = new(1, -1, 0);
 
@@ -143,7 +141,7 @@ public sealed class MessageCodecBlockEntityTests
     [Fact]
     public void IntentReply_FunctionalBlockReasons_RoundTrip()
     {
-        foreach (var reason in new[] { FunctionalReasons.NotOwner, FunctionalReasons.ContainerNotEmpty })
+        foreach (var reason in new[] { RejectReason.NotOwner, RejectReason.ContainerNotEmpty })
         {
             var reply = new IntentReply(3, reason, OpId.None);
 

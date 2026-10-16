@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
+using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
@@ -11,6 +12,7 @@ using Horyzont.Core.Ships;
 using Horyzont.Core.Ships.Flight;
 using Horyzont.Core.Space;
 using Horyzont.Core.World.Blocks;
+using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Markers;
 using Horyzont.Net.Tests.Session;
 using Horyzont.Net.Transport;
@@ -20,12 +22,12 @@ namespace Horyzont.Net.Tests;
 public sealed class MergedProtocolTests
 {
     [Theory]
-    [InlineData(13)]
     [InlineData(14)]
     [InlineData(15)]
-    public void Handshake_MergedProtocolVersion_AcceptsOnlyFourteen(int version)
+    [InlineData(16)]
+    public void Handshake_MergedProtocolVersion_AcceptsOnlyFifteen(int version)
     {
-        Assert.Equal(14, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(15, ProtocolConstants.ProtocolVersion);
         using var h = new SessionHarness();
         var raw = h.AddRaw();
         Assert.True(h.RunUntil(() => raw.IsConnected, TimeSpan.FromSeconds(1)));
@@ -34,7 +36,7 @@ public sealed class MergedProtocolTests
 
         Assert.True(h.RunUntil(() => raw.Messages().Any(), TimeSpan.FromSeconds(2)));
         var response = Assert.Single(raw.Messages());
-        if (version == 14)
+        if (version == 15)
         {
             Assert.IsType<ServerHello>(response);
             Assert.Single(h.ServerHooks.Joined);
@@ -52,8 +54,8 @@ public sealed class MergedProtocolTests
         var enumIds = Enum.GetValues<MessageType>().Select(value => (int)value).ToArray();
         Assert.Equal(enumIds.Length, enumIds.Distinct().Count());
         // MessageType ranges: 26..29 remain in K2-K4; Space 30 and 34..39 are unimplemented
-        // (spec 02 reserves 30/34 for seats). Survival 44..48 belong to later packages (spec 03).
-        int[] reserved = [26, 27, 28, 29, 30, 34, 35, 36, 37, 38, 39, 44, 45, 46, 47, 48];
+        // (spec 02 reserves 30/34 for seats). Survival 44, 45, 47, 48 belong to later packages (spec 03).
+        int[] reserved = [26, 27, 28, 29, 30, 34, 35, 36, 37, 38, 39, 44, 45, 47, 48];
         Assert.Equal(Enumerable.Range(1, 49).Except(reserved), enumIds);
         var messages = typeof(Message).Assembly.GetTypes()
             .Where(type => !type.IsAbstract && typeof(Message).IsAssignableFrom(type))
@@ -68,6 +70,7 @@ public sealed class MergedProtocolTests
         Assert.Equal(32, (int)MessageType.StarSystemState);
         Assert.Equal(33, (int)MessageType.MarkersState);
         Assert.Equal(40, (int)MessageType.ContainerState);
+        Assert.Equal(46, (int)MessageType.BlockEntityStates);
         Assert.Equal(49, (int)MessageType.ItemRegistry);
     }
 
@@ -82,6 +85,7 @@ public sealed class MergedProtocolTests
     [InlineData(7)]
     [InlineData(8)]
     [InlineData(9)]
+    [InlineData(10)]
     public void MessageCodec_MergedMessages_RestoresEveryField(int scenario)
     {
         Message original = scenario switch
@@ -103,6 +107,8 @@ public sealed class MergedProtocolTests
             7 => new MarkersState([]),
             8 => new ContainerSubscribe(new ContainerId(17)),
             9 => new ContainerUnsubscribe(new ContainerId(17)),
+            10 => new BlockEntityStates(new EntityId(12), [new BlockEntityEntry(new CellPos(-3, 0, 5), new ChestBlockState(new ContainerId(17))),
+                new BlockEntityEntry(new CellPos(2, 1, 0), new BedBlockState(new PlayerId(4)))]),
             _ => throw new ArgumentOutOfRangeException(nameof(scenario)),
         };
         var bytes = SessionHarness.Encode(original);
@@ -125,6 +131,11 @@ public sealed class MergedProtocolTests
                 break;
             case MarkersState expected:
                 Assert.Equal(expected.Markers, Assert.IsType<MarkersState>(decoded).Markers);
+                break;
+            case BlockEntityStates expected:
+                var states = Assert.IsType<BlockEntityStates>(decoded);
+                Assert.Equal(expected.Construct, states.Construct);
+                Assert.Equal(expected.Entries, states.Entries);
                 break;
             case ContainerDelta expected:
                 var delta = Assert.IsType<ContainerDelta>(decoded);

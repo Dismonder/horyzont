@@ -11,5 +11,5 @@ namespace Horyzont.Core.Protocol.Messages;
 public sealed record BlockEntityStates(EntityId Construct, IReadOnlyList<BlockEntityEntry> Entries) : Message
 {
     /// <inheritdoc />
-    public override MessageType Type => (MessageType)46; // K6-30 B2: MessageType.BlockEntityStates.
+    public override MessageType Type => MessageType.BlockEntityStates;
 }

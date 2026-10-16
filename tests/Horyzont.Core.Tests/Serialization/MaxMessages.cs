@@ -1,5 +1,6 @@
 using System.Numerics;
 
+using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
@@ -182,11 +183,28 @@ public static class MaxMessages
                 new ContainerId(ulong.MaxValue), uint.MaxValue, Enumerable.Range(0, ProtocolConstants.MaxContainerSlots).Select(MaxSlot).ToArray()),
             new ContainerSubscribe(new ContainerId(ulong.MaxValue)),
             new ContainerUnsubscribe(new ContainerId(ulong.MaxValue)),
+            MaxBlockEntityStates(),
             // 4096 entries of 64-byte keys would need 268 KiB; the registry fits the reliable channel with keys of up to 60 bytes
             // (K6-29W stage B deviation), and the writer refuses a larger frame.
             new ItemRegistry(Enumerable.Range(1, ProtocolConstants.MaxItemTypes).Select(i => new RegistryEntry((ushort)i, Text(60))).ToArray()),
         ];
     }
+    /// <summary>
+    /// 4096 beds (K6-30): two-byte coordinates (the 16 x 16 x 16 cells of one chunk away from the origin, ascending), a maximal owner
+    /// id of ten bytes; 17 bytes an entry, about 68 KiB of the 256 KiB channel.
+    /// </summary>
+    public static BlockEntityStates MaxBlockEntityStates()
+    {
+        var construct = new EntityId(ulong.MaxValue);
+        var entries = new List<BlockEntityEntry>(ProtocolConstants.MaxBlockEntitiesPerConstruct);
+        for (var i = 0; i < ProtocolConstants.MaxBlockEntitiesPerConstruct; i++)
+        {
+            entries.Add(new BlockEntityEntry(new CellPos(64 + (i >> 8), 64 + ((i >> 4) & 15), 64 + (i & 15)), new BedBlockState(new PlayerId(ulong.MaxValue))));
+        }
+
+        return new BlockEntityStates(construct, entries.OrderBy(e => new BlockRef(construct, e.Cell)).ToArray());
+    }
+
     /// <summary>512 markers with the largest ids, owners and 32-byte names (about 37 KB, K5-27 decision 6).</summary>
     public static IReadOnlyList<MarkerRecord> MaxMarkers()
     {

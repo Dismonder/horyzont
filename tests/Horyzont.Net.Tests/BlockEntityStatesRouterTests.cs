@@ -5,12 +5,11 @@ namespace Horyzont.Net.Tests;
 
 /// <summary>
 /// Routing of <c>BlockEntityStates</c> (message 46, K6-30 D15): the server sends it in the states in which it sends
-/// <see cref="MessageType.ConstructState"/>; a client never sends it. The enum member arrives with the protocol (step B2), so the test
-/// names the type by number.
+/// <see cref="MessageType.ConstructState"/>; a client never sends it.
 /// </summary>
 public sealed class BlockEntityStatesRouterTests
 {
-    private const MessageType BlockEntityStatesType = (MessageType)46;
+    private const MessageType BlockEntityStatesType = MessageType.BlockEntityStates;
 
     [Fact]
     public void MessageRouter_BlockEntityStates_AllowedFromServerLikeConstructState()
