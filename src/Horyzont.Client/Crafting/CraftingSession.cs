@@ -2,6 +2,7 @@ using Horyzont.Client.Session;
 using Horyzont.Client.Tools;
 using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Content;
+using Horyzont.Core.Crafting;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
@@ -21,15 +22,20 @@ public sealed class CraftingSession : IClientSessionListener
     /// <summary>The number of craft intents that may wait for the server.</summary>
     public const int MaxPending = 4;
 
+    private readonly IIntentSender _sender;
+    private readonly GameRules _rules;
+    private readonly ILogger<CraftingSession> _logger;
+    private readonly HashSet<uint> _pending = [];
+
     /// <summary>Initializes a new instance of the <see cref="CraftingSession"/> class.</summary>
     /// <param name="sender">Where intents go.</param>
     /// <param name="rules">Game rules (the largest count).</param>
     /// <param name="logger">Logger.</param>
     public CraftingSession(IIntentSender sender, GameRules rules, ILogger<CraftingSession> logger)
     {
-        ArgumentNullException.ThrowIfNull(sender);
-        ArgumentNullException.ThrowIfNull(rules);
-        ArgumentNullException.ThrowIfNull(logger);
+        _sender = sender ?? throw new ArgumentNullException(nameof(sender));
+        _rules = rules ?? throw new ArgumentNullException(nameof(rules));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <summary>Raised when a station was opened.</summary>
@@ -42,19 +48,19 @@ public sealed class CraftingSession : IClientSessionListener
     public event Action? Changed;
 
     /// <summary>Gets the station kind whose recipes are on offer, <see cref="StationKind.Hands"/> without a station.</summary>
-    public StationKind Kind => throw new NotImplementedException("K6-32 D2");
+    public StationKind Kind { get; private set; }
 
     /// <summary>Gets the open station block, null for the hands.</summary>
-    public BlockRef? Station => throw new NotImplementedException("K6-32 D2");
+    public BlockRef? Station { get; private set; }
 
     /// <summary>Gets a value indicating whether a station is open.</summary>
-    public bool IsStationOpen => throw new NotImplementedException("K6-32 D2");
+    public bool IsStationOpen => Station is not null;
 
     /// <summary>Gets the number of craft intents that wait for the server.</summary>
-    public int PendingCount => throw new NotImplementedException("K6-32 D2");
+    public int PendingCount => _pending.Count;
 
     /// <summary>Gets the reason of the latest refusal, <see cref="RejectReason.None"/> after a success.</summary>
-    public RejectReason LastRefusal => throw new NotImplementedException("K6-32 D2");
+    public RejectReason LastRefusal { get; private set; }
 
     /// <summary>Gets a value indicating whether the server refused the latest craft as an unknown recipe.</summary>
     public bool ShowsLocked => LastRefusal == RejectReason.RecipeLocked;
@@ -64,24 +70,101 @@ public sealed class CraftingSession : IClientSessionListener
     /// <param name="station">The station block.</param>
     public void OpenStation(StationKind kind, BlockRef station)
     {
+        if (kind == StationKind.Hands || StationKinds.IsTimed(kind))
+        {
+            throw new ArgumentException("Only a station with no time is a crafting station.", nameof(kind));
+        }
+
+        Kind = kind;
+        Station = station;
+        LastRefusal = RejectReason.None;
         Opened?.Invoke();
-        Closed?.Invoke();
         Changed?.Invoke();
-        throw new NotImplementedException("K6-32 D2");
     }
 
     /// <summary>Closes the station; the recipes of the hands are on offer again.</summary>
-    public void Close() => throw new NotImplementedException("K6-32 D2");
+    public void Close()
+    {
+        if (!IsStationOpen)
+        {
+            return;
+        }
+
+        Reset();
+        Closed?.Invoke();
+        Changed?.Invoke();
+    }
 
     /// <summary>Asks the server to craft a recipe.</summary>
     /// <param name="recipe">The recipe; its station kind must be the open one.</param>
     /// <param name="count">Pieces, 1 to <see cref="GameRules.MaxCraftCount"/>.</param>
     /// <returns>What happened.</returns>
-    public CraftOutcome Craft(RecipeDef recipe, ushort count) => throw new NotImplementedException("K6-32 D2");
+    public CraftOutcome Craft(RecipeDef recipe, ushort count)
+    {
+        ArgumentNullException.ThrowIfNull(recipe);
+        if (recipe.Station != Kind)
+        {
+            return CraftOutcome.WrongStation;
+        }
+
+        if (count < 1 || count > _rules.MaxCraftCount)
+        {
+            return CraftOutcome.InvalidCount;
+        }
+
+        if (!_sender.CanSend)
+        {
+            return CraftOutcome.CannotSend;
+        }
+
+        if (_pending.Count >= MaxPending)
+        {
+            return CraftOutcome.Waiting;
+        }
+
+        var seq = _sender.Submit(new CraftIntent(recipe.Key, count, Station));
+        _pending.Add(seq);
+        _logger.CraftSent(seq, recipe.Key, count);
+        Changed?.Invoke();
+        return CraftOutcome.Sent;
+    }
 
     /// <inheritdoc />
-    public void OnIntentReply(IntentReply reply) => throw new NotImplementedException("K6-32 D2");
+    public void OnIntentReply(IntentReply reply)
+    {
+        ArgumentNullException.ThrowIfNull(reply);
+        if (!_pending.Remove(reply.ClientSeq))
+        {
+            return;
+        }
+
+        LastRefusal = reply.Reason;
+        if (reply.Reason != RejectReason.None)
+        {
+            _logger.CraftRefused(reply.ClientSeq, reply.Reason);
+        }
+
+        Changed?.Invoke();
+    }
 
     /// <inheritdoc />
-    public void OnDisconnected(DisconnectCode code) => throw new NotImplementedException("K6-32 D2");
+    public void OnDisconnected(DisconnectCode code)
+    {
+        var wasOpen = IsStationOpen;
+        _pending.Clear();
+        Reset();
+        if (wasOpen)
+        {
+            Closed?.Invoke();
+        }
+
+        Changed?.Invoke();
+    }
+
+    private void Reset()
+    {
+        Kind = StationKind.Hands;
+        Station = null;
+        LastRefusal = RejectReason.None;
+    }
 }

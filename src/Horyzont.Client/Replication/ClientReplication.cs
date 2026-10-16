@@ -86,6 +86,9 @@ public sealed class ClientReplication : IClientSessionListener
             case BlockEntityStates states:
                 BlockEntities?.Apply(states);
                 break;
+            case PlayerProgressState progress:
+                Progress?.Apply(progress);
+                break;
             case OperationApplied operation:
                 Entities.Apply(operation);
                 Constructs?.Apply(operation);
@@ -100,6 +103,7 @@ public sealed class ClientReplication : IClientSessionListener
         Entities.Clear();
         Constructs?.Clear();
         BlockEntities?.Clear();
+        Progress?.Clear();
     }
 
     private void Request(Core.Ids.EntityId entity) => _send(new ResyncRequest(entity));

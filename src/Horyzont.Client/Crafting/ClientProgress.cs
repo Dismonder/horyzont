@@ -9,24 +9,32 @@ namespace Horyzont.Client.Crafting;
 /// </summary>
 public sealed class ClientProgress
 {
+    private HashSet<string> _keys = new(StringComparer.Ordinal);
+
     /// <summary>Raised after a message replaced the state or a disconnect cleared it.</summary>
     public event Action? Changed;
 
     /// <summary>Gets the item types the player discovered.</summary>
-    public ItemTypeBitSet Discovered => throw new NotImplementedException("K6-32 D2");
+    public ItemTypeBitSet Discovered { get; private set; } = ItemTypeBitSet.Empty;
 
     /// <summary>Gets the progress keys of the world.</summary>
-    public IReadOnlySet<string> WorldKeys => throw new NotImplementedException("K6-32 D2");
+    public IReadOnlySet<string> WorldKeys => _keys;
 
     /// <summary>Replaces the state with a message.</summary>
     /// <param name="message">Message 48.</param>
     public void Apply(PlayerProgressState message)
     {
+        ArgumentNullException.ThrowIfNull(message);
+        Discovered = message.Discovered;
+        _keys = new HashSet<string>(message.WorldProgressKeys, StringComparer.Ordinal);
         Changed?.Invoke();
-        throw new NotImplementedException("K6-32 D2");
     }
 
     /// <summary>Forgets everything (disconnect).</summary>
-    public void Clear() => throw new NotImplementedException("K6-32 D2");
-
+    public void Clear()
+    {
+        Discovered = ItemTypeBitSet.Empty;
+        _keys = new HashSet<string>(StringComparer.Ordinal);
+        Changed?.Invoke();
+    }
 }
