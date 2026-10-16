@@ -91,4 +91,18 @@ public sealed class PropIdTests
         Assert.True(max.Value < 1UL << 61);
         Assert.Equal((5, PropId.MaxCellsPerFace - 1, PropId.MaxCellsPerFace - 1, 3), (max.Face, max.CellU, max.CellV, max.Slot));
     }
+
+    [Fact]
+    public void Create_OutOfRange_Throws()
+    {
+        Assert.Equal(0UL, PropId.Create(0, 0, 0, 0).Value);
+        Assert.Throws<ArgumentOutOfRangeException>(() => PropId.Create(-1, 0, 0, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => PropId.Create(6, 0, 0, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => PropId.Create(0, -1, 0, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => PropId.Create(0, PropId.MaxCellsPerFace, 0, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => PropId.Create(0, 0, -1, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => PropId.Create(0, 0, PropId.MaxCellsPerFace, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => PropId.Create(0, 0, 0, -1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => PropId.Create(0, 0, 0, 4));
+    }
 }

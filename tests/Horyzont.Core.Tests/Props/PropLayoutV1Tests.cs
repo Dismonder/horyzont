@@ -146,8 +146,8 @@ public sealed class PropLayoutV1Tests
     [Fact]
     public void Density_WithinTolerancePerKind()
     {
-        // 317 x 317 = 100489 cells of one face. All kinds of a slot share one roll, so a kind holds at most its density; rocks have no patch
-        // noise and hit the density within 3 sigma, the others are cut by their noise but appear.
+        // 317 x 317 = 100489 cells of one face. All kinds of a slot share one roll on fixed cumulative intervals, so a kind holds at most its
+        // density; rocks have no patch noise and hit the density within 3 sigma, the others are cut by their noise but keep 5 % at least.
         const int edge = 317;
         var counts = new Dictionary<PropKindV1, int>();
         for (var u = 0; u < edge; u++)
@@ -175,9 +175,51 @@ public sealed class PropLayoutV1Tests
             }
             else
             {
-                Assert.InRange(count, 1, (cells * density) + (3 * sigma));
+                // Patch noise cuts the density but never removes a kind: between 5 % of the full count and the full density plus 3 sigma.
+                Assert.InRange(count, 0.05 * cells * density, (cells * density) + (3 * sigma));
             }
         }
+    }
+
+    [Fact]
+    public void Trees_ClusterInPatches()
+    {
+        // 40 x 40 regions of 8 x 8 cells. Patch noise makes whole regions rich or empty in pines (variance well above the mean); rocks have no
+        // patches and scatter like a binomial draw (variance below the mean).
+        const int regionsPerEdge = 40;
+        var pines = new List<double>();
+        var rocks = new List<double>();
+        for (var regionU = 0; regionU < regionsPerEdge; regionU++)
+        {
+            for (var regionV = 0; regionV < regionsPerEdge; regionV++)
+            {
+                var pine = 0;
+                var rock = 0;
+                for (var u = 0; u < 8; u++)
+                {
+                    for (var v = 0; v < 8; v++)
+                    {
+                        var cellU = 100 + (regionU * 8) + u;
+                        var cellV = 200 + (regionV * 8) + v;
+                        pine += _layout.TryGetCandidate(42, PropId.Create(2, cellU, cellV, 0), out var tree) && tree.Kind == PropKindV1.Pine ? 1 : 0;
+                        rock += _layout.TryGetCandidate(42, PropId.Create(2, cellU, cellV, 1), out var stone) && stone.Kind == PropKindV1.Rock ? 1 : 0;
+                    }
+                }
+
+                pines.Add(pine);
+                rocks.Add(rock);
+            }
+        }
+
+        Assert.True(Dispersion(pines) >= 1.5, $"pine variance/mean {Dispersion(pines)}");
+        Assert.True(Dispersion(rocks) < 1.3, $"rock variance/mean {Dispersion(rocks)}");
+    }
+
+    private static double Dispersion(List<double> counts)
+    {
+        var mean = counts.Average();
+        var variance = counts.Sum(c => (c - mean) * (c - mean)) / counts.Count;
+        return variance / mean;
     }
 
     [Fact]
@@ -222,18 +264,19 @@ public sealed class PropLayoutV1Tests
     [Fact]
     public void PropLayoutV1_GoldenDigest()
     {
-        // Seeds 42 and 1234, two regions on each face (region 0,0 and region 3,5), all slots of the 8 x 8 cells.
+        // Seeds 0, 42, 1234 and ulong.MaxValue (overflow of the seed and of the noise lattice), four regions on each face (0,0), (3,5), (97,97)
+        // at the far corner of a 784-cell face and (50,12), all slots of the 8 x 8 cells.
         Assert.Equal(LayoutV1Digest, Digest());
     }
 
     private static ulong Digest()
     {
         var hash = new XxHash64();
-        foreach (var seed in new ulong[] { 42, 1234 })
+        foreach (var seed in new ulong[] { 0, 42, 1234, ulong.MaxValue })
         {
             for (var face = 0; face < 6; face++)
             {
-                foreach (var (regionU, regionV) in new[] { (0, 0), (3, 5) })
+                foreach (var (regionU, regionV) in new[] { (0, 0), (3, 5), (97, 97), (50, 12) })
                 {
                     for (var u = 0; u < 8; u++)
                     {

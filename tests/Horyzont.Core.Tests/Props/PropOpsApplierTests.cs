@@ -60,6 +60,23 @@ public sealed class PropOpsApplierTests
     }
 
     [Fact]
+    public void PropHarvest_InvalidOrOutsideGridId_Fails()
+    {
+        // The home planet has radius 4000 m, so 784 cells per face edge. The last cell is valid; ids the builder would refuse are refused here too,
+        // otherwise a journaled operation would stop the world from loading (A1 review).
+        var f = new PropFixture();
+        f.Apply(Harvest(Raw(2, 783, 783, 0)));
+        Assert.True(f.IsHarvested(Raw(2, 783, 783, 0)));
+
+        f.AssertFails(Harvest(Raw(2, 784, 0, 0)));
+        f.AssertFails(Harvest(Raw(2, 0, 800, 1)));
+        f.AssertFails(Harvest(new PropId(Raw(0, 16, 16, 0).Value | 1UL)));
+        f.AssertFails(Harvest(new PropId(Raw(0, 16, 16, 0).Value | (6UL << 58))));
+        f.AssertFails(Harvest(new PropId(Raw(0, 16, 16, 0).Value | (1UL << 63))));
+        Assert.Equal(1, f.State.HarvestedProps.Count);
+    }
+
+    [Fact]
     public void PropRegrow_Harvested_Removes()
     {
         var f = new PropFixture();

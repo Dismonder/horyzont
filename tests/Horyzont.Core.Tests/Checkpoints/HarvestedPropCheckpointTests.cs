@@ -52,6 +52,37 @@ public sealed class HarvestedPropCheckpointTests
     }
 
     [Fact]
+    public void Capture_HarvestThenRegrowInOneWindow_NotUpserted()
+    {
+        var f = new PropFixture();
+        Complete(f);
+        f.Apply(Harvest(Tree(0), 120));
+        f.Apply(Harvest(Tree(1), 121));
+        f.Apply(Regrow(Tree(0)));
+
+        var checkpoint = f.State.CaptureCheckpoint();
+
+        // The whole prop never reached a checkpoint; deleting a row that does not exist is harmless, so it may appear among the removed.
+        Assert.Equal([new HarvestedPropRecord(Planet, Tree(1), new Tick(121))], checkpoint.UpsertedHarvestedProps);
+        Assert.All(checkpoint.RemovedHarvestedProps, key => Assert.Equal(new HarvestedPropKey(Planet, Tree(0)), key));
+    }
+
+    [Fact]
+    public void Capture_RegrowThenHarvestInOneWindow_UpsertedWithNewTick()
+    {
+        var f = new PropFixture();
+        f.Apply(Harvest(Tree(0), 120));
+        Complete(f);
+        f.Apply(Regrow(Tree(0)));
+        f.Apply(Harvest(Tree(0), 400));
+
+        var checkpoint = f.State.CaptureCheckpoint();
+
+        Assert.Equal([new HarvestedPropRecord(Planet, Tree(0), new Tick(400))], checkpoint.UpsertedHarvestedProps);
+        Assert.Empty(checkpoint.RemovedHarvestedProps);
+    }
+
+    [Fact]
     public void Requeue_MarksAgain()
     {
         var f = new PropFixture();

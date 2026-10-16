@@ -56,6 +56,54 @@ public sealed class CubeSphereGridTests
     }
 
     [Fact]
+    public void DirectionOfCell_GoldenValues()
+    {
+        // Frozen by the A1 review: tangent axes cycle without mirroring (X -> U = Y, V = Z; Y -> U = Z, V = X; Z -> U = X, V = Y), equal-angle map
+        // alpha = ((c + 0.5) / N - 0.5) * pi / 2, direction = normalize(sign * axis + tan(alpha_u) * U + tan(alpha_v) * V). Values computed in double.
+        var golden = new (int Face, int U, int V, int Cells, float X, float Y, float Z)[]
+        {
+            (0, 0, 0, 8, 0.652741f, -0.535691f, -0.535691f),
+            (1, 3, 5, 8, -0.952718f, -0.093835f, 0.289004f),
+            (2, 7, 2, 8, -0.228298f, 0.752596f, 0.617640f),
+            (3, 7, 0, 8, -0.535691f, -0.652741f, 0.535691f),
+            (4, 1, 6, 8, -0.426396f, 0.426396f, 0.797730f),
+            (5, 4, 4, 8, 0.097550f, 0.097550f, -0.990438f),
+            (0, 100, 683, 784, 0.730544f, -0.482859f, 0.482859f),
+            (5, 783, 5, 784, 0.580774f, -0.569253f, -0.581939f),
+            (2, 392, 17, 784, -0.681884f, 0.731460f, 0.000733f),
+        };
+
+        foreach (var (face, u, v, cells, x, y, z) in golden)
+        {
+            var direction = CubeSphereGrid.DirectionOfCell(face, u, v, cells);
+
+            Assert.True(MathF.Abs(direction.X - x) < 1e-5f && MathF.Abs(direction.Y - y) < 1e-5f && MathF.Abs(direction.Z - z) < 1e-5f, $"face {face} cell {u},{v} of {cells}: {direction}");
+        }
+    }
+
+    [Fact]
+    public void CellOfDirection_Ties_LowerAxisWins()
+    {
+        CubeSphereGrid.CellOfDirection(new Vector3(1f, 1f, 0f), 8, out var face, out _, out _);
+        Assert.Equal(0, face);
+        CubeSphereGrid.CellOfDirection(new Vector3(0f, 1f, 1f), 8, out face, out _, out _);
+        Assert.Equal(2, face);
+        CubeSphereGrid.CellOfDirection(new Vector3(1f, 0f, 1f), 8, out face, out _, out _);
+        Assert.Equal(0, face);
+        CubeSphereGrid.CellOfDirection(new Vector3(-1f, -1f, -1f), 8, out face, out _, out _);
+        Assert.Equal(1, face);
+    }
+
+    [Fact]
+    public void CellsPerFace_HugeRadius_Throws()
+    {
+        // 2^20 cells per face edge is the most a PropId holds; one more rounded step of 8 cells is refused.
+        Assert.Throws<ArgumentOutOfRangeException>(() => CubeSphereGrid.CellsPerFace(6_000_000f));
+        Assert.Throws<ArgumentOutOfRangeException>(() => CubeSphereGrid.CellsPerFace(float.MaxValue));
+        Assert.InRange(CubeSphereGrid.CellsPerFace(5_340_000f), 1_000_000, 1 << 20);
+    }
+
+    [Fact]
     public void CellOfDirection_InverseOfDirectionOfCell()
     {
         var random = new Random(31);
