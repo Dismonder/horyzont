@@ -640,3 +640,8 @@ Odstępstwa od spec 03 (do opisu PR):
 - **Klient:** `ClientReplication(send, constructs, time, blockEntities, propStates, progress)`; `GameComposition.Replication` przekazuje oba.
 
 - **Drugie scalenie (2026-10-16):** `origin/pakiet/k6-31-zbieranie` o poprawki po Codexie (183161f `TooFar` → `OutOfReach`, 83f98d9 budżet prób, 65d975f testy `EstimateLookup` i `PropHeightLimitsV1`, 0292af8 notatka planu K6-31) scalono bez konfliktów; piny skrótów bez zmian.
+
+## Poprawki po przeglądzie Codex
+
+- **(3) Koszt wyniku bieżącego resolvera.** Potwierdzono przenoszenie flagi z QuickStack gracza A na odmowę craftingu gracza B. Oba resolvery zwracają koszt przez parametr `out`, bez współdzielonego pola. Test `Craft_CheapRefusalAfterOtherPlayersQuickStack_StaysFree` najpierw czerwony (`RateLimited` zamiast `InvalidParameters`); zachowanie K6-30 sprawdzają istniejące `QuickStackRejectionTests`.
+- **Weryfikacja (3):** build 0 ostrzeżeń, „Liczba błędów: 0”; format czysty (po normalizacji LF). Pełny zestaw: 4027 zaliczonych, 1 niezaliczony (`PropReplicatorTests.Idle_DoesNotAllocate`), 1 pominięty; powtórka tego testu osobno 1/1. Core 2277/2277, w tym regresja i QuickStackRejectionTests. Dodatkowy omyłkowo równoległy przebieg przerwano z powodu blokad DLL; wyniki powyżej pochodzą z kompletnego przebiegu. Diff chronionych ścieżek względem 1026730 pusty.

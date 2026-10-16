@@ -33,11 +33,13 @@ internal sealed class CraftingRules(WorldState state, GameRules rules, BlockCont
     /// <param name="facts">Facts of the validator.</param>
     /// <param name="operation">The operation when <paramref name="reason"/> is <see cref="RejectReason.None"/>.</param>
     /// <param name="reason">The refusal, or none.</param>
+    /// <param name="refusalCostsToken">Whether this resolution performed costly work and its refusal costs a token.</param>
     /// <returns>False when the intent is not a crafting intent (the caller resolves it otherwise).</returns>
-    internal bool TryResolve(PlayerId player, Intent intent, IntentFacts facts, out Operation operation, out RejectReason reason)
+    internal bool TryResolve(PlayerId player, Intent intent, IntentFacts facts, out Operation operation, out RejectReason reason, out bool refusalCostsToken)
     {
         operation = null!;
         reason = RejectReason.None;
+        refusalCostsToken = false;
         switch (intent)
         {
             case CraftIntent craft:
