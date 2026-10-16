@@ -35,6 +35,26 @@ public sealed class ClientProgressTests
     }
 
     [Fact]
+    public void ProgressState_FoodApplied()
+    {
+        var progress = new ClientProgress();
+        Assert.True(progress.Food.IsEmpty);
+        var food = FoodSlots.Empty.With(0, new FoodSlot(new ItemTypeId(5), new Tick(100))).With(2, new FoodSlot(new ItemTypeId(7), new Tick(250)));
+
+        progress.Apply(new PlayerProgressState(Bits(3), ["a"], food));
+
+        Assert.Equal(food, progress.Food);
+        Assert.Equal(new ItemTypeId(7), progress.Food[2].Type);
+
+        progress.Apply(new PlayerProgressState(Bits(3), ["a"], FoodSlots.Empty));
+        Assert.True(progress.Food.IsEmpty);
+
+        progress.Apply(new PlayerProgressState(Bits(3), ["a"], food));
+        progress.Clear();
+        Assert.True(progress.Food.IsEmpty);
+    }
+
+    [Fact]
     public void Disconnect_Clears()
     {
         var progress = new ClientProgress();

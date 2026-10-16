@@ -46,6 +46,10 @@ public sealed class PendingIntentTracker
     /// <summary>Gets the client sequence number of the latest finished intent.</summary>
     public uint LastOutcomeSeq { get; private set; }
 
+    /// <summary>Shows a refusal that the client itself made without sending anything (the HUD reads it like a refusal of the server).</summary>
+    /// <param name="reason">The reason.</param>
+    public void NoteLocalRefusal(RejectReason reason) => LastRejection = reason;
+
     /// <summary>Starts waiting for the reply of an intent that was just sent.</summary>
     /// <param name="clientSeq">Client sequence number, higher than all waiting ones.</param>
     /// <param name="intent">The intent.</param>

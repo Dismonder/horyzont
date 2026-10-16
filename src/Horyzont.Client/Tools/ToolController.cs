@@ -59,6 +59,9 @@ public sealed class ToolController
     /// <summary>Gets or sets the hitting of props with the hand and the multitool (K6-31); null leaves the press to the terrain tool.</summary>
     public Props.PropInteraction? Props { get; set; }
 
+    /// <summary>Gets or sets the eating of the food in the selected hotbar slot (K6-33); null leaves the press of a slot without a tool unused.</summary>
+    public Horyzont.Client.Survival.FoodUse? Food { get; set; }
+
     /// <summary>Gets the current tool and its parameters.</summary>
     public ToolSettings Settings { get; private set; }
 
@@ -109,6 +112,23 @@ public sealed class ToolController
         if (Settings.Tool == ToolKind.None)
         {
             Preview = default;
+
+            // K6-33 D21: a fresh press with food in the selected slot eats it, unless a prop is under the crosshair (it was handled above).
+            if (Food is { } food)
+            {
+                if (food.TryBuild(input.PrimaryPressed, Props?.HasTarget ?? false, out var eat, out var refusal))
+                {
+                    if (Begin(PaceClass.Item, false, clientTick))
+                    {
+                        Send(eat!, clientTick);
+                    }
+                }
+                else if (refusal != RejectReason.None)
+                {
+                    _pending.NoteLocalRefusal(refusal);
+                }
+            }
+
             return;
         }
 

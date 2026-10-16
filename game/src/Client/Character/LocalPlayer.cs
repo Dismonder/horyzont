@@ -91,6 +91,12 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
     private CameraMode _cameraMode = CameraMode.ThirdPerson;
     private MovementMode _serverMode = MovementMode.Frozen;
 
+    /// <summary>
+    /// Gets or sets whether the local player is exhausted (K6-33 D20); an exhausted player has the sprint and the jump removed from the input before it is recorded for the
+    /// replay, predicted and sent, the same filter the server applies. Null means never exhausted (a world without survival content).
+    /// </summary>
+    public Func<bool>? ExhaustedCheck { get; set; }
+
     /// <summary>Gets or sets where the input of each tick comes from (the keyboard and mouse reader; tests script it).</summary>
     public ILocalInputSource InputSource { get; set; } = new NoInput();
 
@@ -437,6 +443,10 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         var buttons = sample.Buttons | (_devFlyOn && _devAllowed ? InputButtons.DevFly : InputButtons.None);
         var wire = new PlayerInput(_clientTick, sample.MoveX, sample.MoveY, orientation.YawFor(up), orientation.Pitch, buttons);
         var motor = ValidMotor(wire, _movement, ref _lastYaw, ref _lastPitch);
+        if (ExhaustedCheck is { } exhausted)
+        {
+            motor = Horyzont.Core.Survival.StaminaGate.Filter(motor, exhausted());
+        }
 
         var seq = _sequencer.Record(_clientTick, motor);
         _validator!.NoteSent(seq);
