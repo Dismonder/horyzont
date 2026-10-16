@@ -152,4 +152,73 @@ public sealed class MessageCodecBlockEntityTests
         Kit.AssertMessageViolation("0C 01 03 38 00");
         Kit.AssertMessageViolation("0C 01 03 3A 00");
     }
+
+    private static BlockEntityStates One(OxygenGeneratorBlockState state) => new(new EntityId(5), [new BlockEntityEntry(_cell, state)]);
+
+    public static TheoryData<Message> GeneratorMessages() =>
+    [
+        One(new OxygenGeneratorBlockState(new ContainerId(7), null)),
+        One(new OxygenGeneratorBlockState(new ContainerId(7), new Tick(100))),
+        One(new OxygenGeneratorBlockState(new ContainerId(ulong.MaxValue), new Tick(0))),
+        One(new OxygenGeneratorBlockState(new ContainerId(1), new Tick(ulong.MaxValue))),
+        new BlockEntityStates(
+            new EntityId(9),
+            [
+                new BlockEntityEntry(new CellPos(-2, 0, 0), new ChestBlockState(new ContainerId(3))),
+                new BlockEntityEntry(new CellPos(0, 0, 0), new OxygenGeneratorBlockState(new ContainerId(4), new Tick(60))),
+                new BlockEntityEntry(new CellPos(1, 0, 0), new StationBlockState(new ContainerId(5), new ContainerId(6), "t:a", null)),
+                new BlockEntityEntry(new CellPos(2, 0, 0), new OxygenGeneratorBlockState(new ContainerId(8), null)),
+            ]),
+    ];
+
+    [Theory]
+    [MemberData(nameof(GeneratorMessages))]
+    public void BlockEntityStates_WithGenerator_RoundTrip(Message message)
+    {
+        var frame = Kit.Encode(message);
+
+        DeepAssert.Equal(message, MessageCodec.Read(frame));
+        Assert.Equal((byte)MessageType.BlockEntityStates, frame[0]);
+    }
+
+    [Fact]
+    public void BlockEntityStates_Generator_GoldenBytes()
+    {
+        // Kind 5, the input as a varuint, a flag byte (0 idle, 1 running) and the start tick as a varuint when running (D12, D19); the version of message 46 stays 1.
+        Assert.Equal("2E 01 05 01 02 01 00 05 07 00", Kit.ToHex(Kit.Encode(One(new OxygenGeneratorBlockState(new ContainerId(7), null)))));
+        Assert.Equal("2E 01 05 01 02 01 00 05 07 01 64", Kit.ToHex(Kit.Encode(One(new OxygenGeneratorBlockState(new ContainerId(7), new Tick(100))))));
+    }
+
+    [Fact]
+    public void BlockEntityStates_GeneratorMalformed_Throws()
+    {
+        // Controls: the idle and the running forms are accepted.
+        DeepAssert.Equal(One(new OxygenGeneratorBlockState(new ContainerId(7), null)), MessageCodec.Read(Kit.Hex("2E 01 05 01 02 01 00 05 07 00")));
+        DeepAssert.Equal(One(new OxygenGeneratorBlockState(new ContainerId(7), new Tick(100))), MessageCodec.Read(Kit.Hex("2E 01 05 01 02 01 00 05 07 01 64")));
+
+        // A flag other than 0 and 1, a running generator without its tick, an idle one with a tick, the flag missing, and the input missing.
+        Kit.AssertMessageViolation("2E 01 05 01 02 01 00 05 07 02");
+        Kit.AssertMessageViolation("2E 01 05 01 02 01 00 05 07 01");
+        Kit.AssertMessageViolation("2E 01 05 01 02 01 00 05 07 00 64");
+        Kit.AssertMessageViolation("2E 01 05 01 02 01 00 05 07");
+        Kit.AssertMessageViolation("2E 01 05 01 02 01 00 05");
+    }
+
+    [Fact]
+    public void MaxSize_StillWithinLimit()
+    {
+        // The real worst case with the generator (review B1 of K6-34, P2 20; a measurement, not an estimate): the construct id ulong.MaxValue (10 bytes), 6-byte cells,
+        // 512 stations with time (103 bytes each) and 3584 running generators with the largest ids and ticks (6 + kind 1 + input 10 + flag 1 + tick 10 = 28 bytes each):
+        // 2 + 10 + 2 + 512 x 103 + 3584 x 28 = 153 102 bytes of the 262 144. B2 writes the measured number into the comment of MaxTimedStationsPerConstruct.
+        var message = MaxMessages.BlockEntityStatesOf(ProtocolConstants.MaxTimedStationsPerConstruct, 0, ProtocolConstants.MaxBlockEntitiesPerConstruct - ProtocolConstants.MaxTimedStationsPerConstruct);
+        var frame = Kit.Encode(message);
+
+        Assert.Equal(ProtocolConstants.MaxBlockEntitiesPerConstruct, message.Entries.Count);
+        Assert.Equal(153_102, frame.Length);
+        Assert.True(frame.Length < ProtocolConstants.MaxReliableMessageBytes, $"{frame.Length} bytes");
+        DeepAssert.Equal(message, MessageCodec.Read(frame));
+
+        // The all-generator construct is the shorter of the two extremes; all-stations is the one the station limit exists for.
+        Assert.True(Kit.Encode(MaxMessages.BlockEntityStatesOf(0, 0, ProtocolConstants.MaxBlockEntitiesPerConstruct)).Length < frame.Length);
+    }
 }

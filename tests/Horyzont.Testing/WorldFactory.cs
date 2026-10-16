@@ -162,11 +162,12 @@ public static class WorldFactory
 
     /// <summary>
     /// <see cref="CreateWithFood"/> with the item types of <see cref="SurvivalContentFactory.HazardItemKeys"/> (K6-34): the types of the food world and the suit refills, modules and
-    /// generator fuel as ids 9..13. A star system and a second body come with step B1.
+    /// generator fuel as ids 9..13, and the block types of <see cref="HazardBlocks"/> (the oxygen generator is id 7). The star system of the hazard profiles is
+    /// <see cref="CreateWithStarSystem"/>; the worlds of the shelter tests are made by their own tests.
     /// </summary>
     public static WorldState CreateWithHazards(int players = 1, bool secondPlanet = false) =>
         CreateBlockWorld(
-            players, true, FoodBlocks.BlockKeys, SurvivalContentFactory.HazardItemKeys,
+            players, true, HazardBlocks.BlockKeys, SurvivalContentFactory.HazardItemKeys,
             secondPlanet ? [HomePlanetParams, SecondPlanetParams] : [HomePlanetParams]);
 
     private static WorldState WithPlayers(WorldState state, int players)

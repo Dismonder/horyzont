@@ -37,11 +37,12 @@ internal sealed class FunctionalBlockFixture
     /// <param name="survival">Survival content, null for none.</param>
     /// <param name="content">Block content, null for none.</param>
     /// <param name="vitals">The vitals rules of the world, null for the defaults.</param>
+    /// <param name="hazards">The hazard rules of the world, null for the defaults (K6-34).</param>
     public FunctionalBlockFixture(
         Horyzont.Core.World.WorldState state, SurvivalContent? survival, Horyzont.Core.World.Blocks.BlockContentTable? content,
-        Horyzont.Core.Survival.VitalsRules? vitals = null)
+        Horyzont.Core.Survival.VitalsRules? vitals = null, Horyzont.Core.Survival.HazardRules? hazards = null)
     {
-        Sim = new SimFixture(state: state, content: content, survival: survival, vitals: vitals);
+        Sim = new SimFixture(state: state, content: content, survival: survival, vitals: vitals, hazards: hazards);
     }
 
     private FunctionalBlockFixture(int players, bool withSurvival, ushort chestSlots, bool intents, GameRules? rules)

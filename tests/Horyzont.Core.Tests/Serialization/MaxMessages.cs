@@ -196,21 +196,23 @@ public static class MaxMessages
         ];
     }
     /// <summary>
-    /// The worst case of message 46 (K6-30, K6-32 review B1, 4 and 6): the construct id <c>ulong.MaxValue</c>, 512 stations with time (the most the
-    /// protocol allows) with the longest recipe key and the largest ids and ticks, and 3584 chests with the largest ids; 6-byte cells (2-byte
-    /// coordinates). 113 678 bytes of the 256 KiB channel.
+    /// The worst case of message 46 (K6-30, K6-32 review B1, 4 and 6; K6-34 B1 review P2 20): the construct id <c>ulong.MaxValue</c>, 512 stations with time (the most the
+    /// protocol allows) with the longest recipe key and the largest ids and ticks, and 3584 running oxygen generators with the largest ids and ticks (28 bytes each, more than
+    /// the 17 of a chest); 6-byte cells (2-byte coordinates). 2 + 10 + 2 + 512 x 103 + 3584 x 28 = 153 102 bytes of the 256 KiB channel.
     /// </summary>
     public static BlockEntityStates MaxBlockEntityStates() =>
-        BlockEntityStatesOf(ProtocolConstants.MaxTimedStationsPerConstruct, ProtocolConstants.MaxBlockEntitiesPerConstruct - ProtocolConstants.MaxTimedStationsPerConstruct);
+        BlockEntityStatesOf(
+            ProtocolConstants.MaxTimedStationsPerConstruct, 0, ProtocolConstants.MaxBlockEntitiesPerConstruct - ProtocolConstants.MaxTimedStationsPerConstruct);
 
-    /// <summary>A state list of one construct with the largest values: the stations first (in cell order of the whole list), then the chests.</summary>
+    /// <summary>A state list of one construct with the largest values: the stations first (in cell order of the whole list), then the chests, then the generators.</summary>
     /// <param name="stations">Number of stations with time.</param>
     /// <param name="chests">Number of chests.</param>
+    /// <param name="generators">Number of running oxygen generators.</param>
     /// <returns>The message.</returns>
-    public static BlockEntityStates BlockEntityStatesOf(int stations, int chests)
+    public static BlockEntityStates BlockEntityStatesOf(int stations, int chests, int generators = 0)
     {
         var construct = new EntityId(ulong.MaxValue);
-        var cells = Enumerable.Range(0, stations + chests)
+        var cells = Enumerable.Range(0, stations + chests + generators)
             .Select(i => new CellPos(-2048 + (i % 64), -2048 + ((i / 64) % 64), -2048 + (i / 4096)))
             .OrderBy(cell => new BlockRef(construct, cell))
             .ToArray();
@@ -220,7 +222,9 @@ public static class MaxMessages
         {
             BlockEntityState state = i < stations
                 ? new StationBlockState(new ContainerId(ulong.MaxValue - 1), new ContainerId(ulong.MaxValue), recipe, new Tick(ulong.MaxValue))
-                : new ChestBlockState(new ContainerId(ulong.MaxValue));
+                : i < stations + chests
+                    ? new ChestBlockState(new ContainerId(ulong.MaxValue))
+                    : new OxygenGeneratorBlockState(new ContainerId(ulong.MaxValue), new Tick(ulong.MaxValue));
             entries.Add(new BlockEntityEntry(cells[i], state));
         }
 

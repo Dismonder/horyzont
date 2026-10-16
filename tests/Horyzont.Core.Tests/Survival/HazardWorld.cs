@@ -1,5 +1,7 @@
 using Horyzont.Core.BlockEntities;
+using Horyzont.Core.Content;
 using Horyzont.Core.Ids;
+using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Simulation;
@@ -23,13 +25,51 @@ internal sealed class HazardWorld
     public const ushort GeneratorBlockType = FunctionalBlocks.StoneType;
 
     /// <param name="players">Number of players.</param>
-    /// <param name="survival">Whether the simulation has the survival content of <see cref="HazardTestContent"/> (intents are resolved).</param>
-    public HazardWorld(int players = 1, bool survival = false)
+    /// <param name="survival">Whether the simulation has the survival content of <see cref="HazardTestContent"/> (intents are resolved); then player n stands in front of the blocks like in <see cref="FunctionalBlockFixture.ForIntents"/>.</param>
+    /// <param name="hazards">The hazard rules of the simulation, null for the defaults.</param>
+    /// <param name="map">Replaces an item definition of the content (for tests with their own stack limits); null keeps them all.</param>
+    /// <param name="secondPlanet">Whether the world has a second planet.</param>
+    /// <param name="hazardContent">Whether the survival content has the hazards and the generator (false is the content of K6-33).</param>
+    public HazardWorld(
+        int players = 1, bool survival = false, HazardRules? hazards = null, Func<ItemDef, ItemDef>? map = null, bool secondPlanet = false, bool hazardContent = true)
     {
-        var state = WorldFactory.CreateWithHazards(players);
+        var state = WorldFactory.CreateWithHazards(players, secondPlanet);
         Blocks = survival
-            ? new FunctionalBlockFixture(state, HazardTestContent.Create(), FoodBlocks.ContentFor(state), null)
+            ? new FunctionalBlockFixture(state, HazardTestContent.Create(map, hazardContent), HazardBlocks.ContentFor(state), null, hazards)
             : new FunctionalBlockFixture(state);
+        if (survival)
+        {
+            for (var n = 1; n <= players; n++)
+            {
+                Blocks.Move(new PlayerId((ulong)n), FunctionalBlockFixture.StandFor(n));
+            }
+        }
+    }
+
+    /// <summary>The cell the first generator placed by an intent gets: on the top face of the last floor cell.</summary>
+    public static CellPos PlacedCell => new(4, 1, 0);
+
+    /// <summary>The cell the second generator placed by an intent gets: on the +X face of <see cref="PlacedCell"/>.</summary>
+    public static CellPos PlacedCell2 => new(5, 1, 0);
+
+    /// <summary>The intent that puts a generator on the top face of the last floor cell (<see cref="PlacedCell"/>).</summary>
+    public static PlaceBlockIntent PlaceGeneratorIntent() =>
+        new(new ConstructFaceTarget(FunctionalBlockFixture.ConstructId, FunctionalBlocks.FloorCells[4], Face.PosY), HazardBlocks.GeneratorType, 0);
+
+    /// <summary>The intent that puts a generator on the +X face of <see cref="PlacedCell"/> (<see cref="PlacedCell2"/>).</summary>
+    public static PlaceBlockIntent PlaceSecondGeneratorIntent() =>
+        new(new ConstructFaceTarget(FunctionalBlockFixture.ConstructId, PlacedCell, Face.PosX), HazardBlocks.GeneratorType, 0);
+
+    /// <summary>The intent that takes down the generator in a cell.</summary>
+    public static RemoveBlockIntent RemoveGeneratorIntent(CellPos cell) => new(FunctionalBlockFixture.ConstructId, cell);
+
+    /// <summary>Places a generator by intent as player 1 and returns its input container.</summary>
+    public ContainerId PlaceByIntent(CellPos cell)
+    {
+        Blocks.Accept(Player1, cell == PlacedCell ? PlaceGeneratorIntent() : PlaceSecondGeneratorIntent());
+        var state = GeneratorAt(cell);
+        Assert.True(state is not null, "Placing the generator by an intent left no generator state in the cell (K6-34 B4: GeneratorRules).");
+        return state.Input;
     }
 
     public static PlayerId Player1 => FunctionalBlockFixture.Player1;

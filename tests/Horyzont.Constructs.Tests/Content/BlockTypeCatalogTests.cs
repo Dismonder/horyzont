@@ -334,6 +334,58 @@ public sealed class BlockTypeCatalogTests
     }
 
     [Fact]
+    public void OxygenGenerator_Parsed()
+    {
+        static BlockTypeContent Content(string function) => Parse(FunctionBlock(function)).TryGet("a:b", out var b) ? b : throw new InvalidOperationException();
+
+        // K6-34 D12: the kind "oxygen_generator" with the slots of its input; the format version of the catalog stays 2.
+        Assert.Equal(BlockFunction.CreateOxygenGenerator(2), Content("{ \"kind\": \"oxygen_generator\", \"inputSlots\": 2 }").Def.Function);
+        Assert.Equal(BlockFunction.CreateOxygenGenerator(1), Content("{ \"kind\": \"oxygen_generator\", \"inputSlots\": 1 }").Def.Function);
+        Assert.Equal(BlockFunction.CreateOxygenGenerator(256), Content("{ \"kind\": \"oxygen_generator\", \"inputSlots\": 256 }").Def.Function);
+        Assert.Equal(BlockFunctionKind.OxygenGenerator, Content("{ \"kind\": \"oxygen_generator\", \"inputSlots\": 2 }").Def.Function.Kind);
+    }
+
+    [Theory]
+    [InlineData("{ \"kind\": \"oxygen_generator\" }")]
+    [InlineData("{ \"kind\": \"oxygen_generator\", \"inputSlots\": 0 }")]
+    [InlineData("{ \"kind\": \"oxygen_generator\", \"inputSlots\": 257 }")]
+    [InlineData("{ \"kind\": \"oxygen_generator\", \"inputSlots\": -1 }")]
+    [InlineData("{ \"kind\": \"oxygen_generator\", \"inputSlots\": 1.5 }")]
+    [InlineData("{ \"kind\": \"oxygen_generator\", \"inputSlots\": \"two\" }")]
+    public void OxygenGenerator_InputSlotsOutOfRange_Throws(string function)
+    {
+        // The accepted counterpart first: the same function with a valid number of slots parses.
+        Assert.NotNull(Parse(FunctionBlock("{ \"kind\": \"oxygen_generator\", \"inputSlots\": 2 }")));
+
+        AssertInvalid(FunctionBlock(function), "$.blocks[0].function.inputSlots");
+    }
+
+    [Fact]
+    public void OxygenGenerator_ForeignKeys_Throw()
+    {
+        Assert.NotNull(Parse(FunctionBlock("{ \"kind\": \"oxygen_generator\", \"inputSlots\": 2 }")));
+
+        // The generator has no output and no station kind: fields of other functions are refused with the path of the field.
+        AssertInvalid(FunctionBlock("{ \"kind\": \"oxygen_generator\", \"inputSlots\": 2, \"outputSlots\": 1 }"), "$.blocks[0].function.outputSlots");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"oxygen_generator\", \"inputSlots\": 2, \"station\": \"furnace\" }"), "$.blocks[0].function.station");
+    }
+
+    [Fact]
+    public void RepoContent_OxygenGeneratorBlock()
+    {
+        var catalog = BlockTypeCatalog.Parse(File.ReadAllBytes(Path.Combine(RepoRoot(), "game", "content", "blocks", "blocks.json")), new FakeResolver());
+
+        // The tuning numbers (mass, slots) are data; the test pins the shape of the content (K6-34 D12): the type exists, is a generator with a real input and a mass, and has a translation row.
+        var generator = Shipped(catalog, "core:oxygen_generator");
+        Assert.Equal(BlockFunctionKind.OxygenGenerator, generator.Def.Function.Kind);
+        Assert.InRange(generator.Def.Function.ContainerSlots, 1, 256);
+        Assert.True(generator.Def.MassKg > 0f && float.IsFinite(generator.Def.MassKg));
+
+        var csv = File.ReadAllLines(Path.Combine(RepoRoot(), "game", "locale", "blocks.csv"));
+        Assert.Contains(generator.NameKey, csv.Skip(1).Select(line => line.Split(',')[0]).ToHashSet());
+    }
+
+    [Fact]
     public void Parse_StationFunctions_AreRead()
     {
         static BlockTypeContent Content(string function) => Parse(FunctionBlock(function)).TryGet("a:b", out var b) ? b : throw new InvalidOperationException();
