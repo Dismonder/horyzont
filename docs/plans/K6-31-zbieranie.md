@@ -378,7 +378,7 @@ Każdy krok kończy się zielonym budowaniem i testami; commity w formacie Conve
 - [x] D4 (patrz „Etap D, krok D4" niżej; **wygląd nieoceniony**). **Najpierw wygląd statyczny:** `PropRenderer` (bez interakcji), zmiana `PlanetFlora` (D20); gdUnit `PropRendererTests` (struktura, liczby instancji). **Wygląd do oceny przez Dismonda** — zrzuty lasu, skał i horyzontu robi właściciel (wykonawca nie uruchamia gry z oknem); interakcja (D5) czeka na akceptację wyglądu albo idzie dalej z adnotacją „wygląd nieoceniony” w PR, jeśli właściciel tak zdecyduje. Commit `feat(game): render generator props from layout v1`.
 - [x] D5 (patrz „Etap D, krok D5" niżej). Wejście: LPM ręką i manipulatorem na obiekcie (`ToolNode`, `ToolInputReader` bez nowej akcji), `PropPromptHud`, lokalny postęp; gdUnit `PropsSoloTests`. Commit `feat(game): hit props with the hand and the multitool`.
 - [x] D6 (patrz „Etap D, krok D6" niżej). Teksty PL/EN (`items.csv`, `tools.csv`), import tłumaczeń bez okna (`tools/ci/godot_import.sh`). Commit `feat(game): translate harvesting texts`.
-- [ ] D7. Sprawdzenie, opis PR z odstępstwami i DO USTALENIA; lista „do oceny przez właściciela” (zrzuty i test ręczny 2 klientów).
+- [x] D7 (patrz „Etap D, krok D7" niżej). Sprawdzenie, opis PR z odstępstwami i DO USTALENIA; lista „do oceny przez właściciela” (zrzuty i test ręczny 2 klientów).
 
 ### Sprawdzenie na końcu każdego etapu
 
@@ -840,3 +840,8 @@ Wynik w stanie po C5 (commit `85a0b84`): `dotnet build Horyzont.sln` 0 błędów
 
 **Test.** `game/tests/Props/PropTextsTests.Texts_ExistInBothLanguages` (gdUnit4): każdy klucz podpowiedzi, odmowy 53 i urobku tłumaczy się w obu językach na coś innego niż klucz, tekst poziomu ma `{0}`, a trzy teksty sprawdzone dosłownie. Mutacja: zmieniona nazwa klucza w CSV → test czerwony.
 
+### Etap D, krok D7 (sprawdzenie końcowe)
+
+Wynik w stanie po D6 (commit `0836a58`): `dotnet build Horyzont.sln` i `game/Horyzont.Game.sln` 0 błędów, 0 ostrzeżeń; `dotnet format` obu rozwiązań czysto; `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"`: Architecture 12, Client 669, Net 170, Persistence 219, Constructs 131, Integration 50, Core 1982 (w pełnym przebiegu raz padł znany niestabilny `AllocationTests.SubmitPlaceOnFaceOverlappingOtherConstruct_Rejected_DoesNotAllocate`, osobno zielony), Server 405 (+1 pominięty z założenia). gdUnit4 (`dotnet test game/Horyzont.Game.csproj --settings game/.runsettings`, `--headless`, bez okna; przed przebiegiem brak procesów Godota i potoku gdUnit): 285/285 zielone w 12 min 31 s (filtr `Category!=Manual` nie wyłącza testów gdUnit4, więc w liczbie jest spike D3). `python tools/engine/build.py smoke`: `SMOKE OK`. Różnice `646f130..HEAD` na korpusie złotym, `TerrainJournalGoldenCorpusTests`, `DeterminismTests`, `Migrations` i `Generators` puste.
+
+**Do oceny przez właściciela (nie zrobione, wymaga okna gry):** zrzuty i test ręczny z listy w tabeli etapu D (las blisko i z daleka, skały, kryształy, przed i po zebraniu, podpowiedź i postęp, odrośnięcie przy krótkim czasie, dwóch klientów). Wygląd rysowania (D4) i podpowiedzi (D5) jest **nieoceniony**. Szkic opisu PR: poza repozytorium, w katalogu roboczym sesji (nie dodawany do commitów).
