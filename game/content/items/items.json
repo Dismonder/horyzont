@@ -15,6 +15,9 @@
     { "key": "core:iron_ingot", "category": "component", "visual": { "glyph": "In", "color": "#B7BDC4" } },
     { "key": "core:glass", "category": "component", "visual": { "glyph": "Gl", "color": "#9FD8E6" } },
     { "key": "core:fuel_cell", "category": "component", "visual": { "glyph": "Fc", "color": "#E8B63A" } },
-    { "key": "core:multitool_t2", "category": "tool", "flags": ["tool"], "toolTier": 2, "visual": { "glyph": "M2", "color": "#4FD1C5", "clientTool": "terrain" } }
+    { "key": "core:multitool_t2", "category": "tool", "flags": ["tool"], "toolTier": 2, "visual": { "glyph": "M2", "color": "#4FD1C5", "clientTool": "terrain" } },
+    { "key": "core:berries", "category": "food", "flags": ["food"], "food": { "health": 10, "stamina": 20, "regen": 0.5, "durationSeconds": 600 }, "visual": { "glyph": "Be", "color": "#B03A5B" } },
+    { "key": "core:berry_jam", "category": "food", "flags": ["food"], "food": { "health": 25, "stamina": 35, "regen": 1.0, "durationSeconds": 1200 }, "visual": { "glyph": "Ja", "color": "#8E2A4A" } },
+    { "key": "core:herbal_broth", "category": "food", "flags": ["food"], "food": { "health": 15, "stamina": 45, "regen": 1.5, "durationSeconds": 900 }, "visual": { "glyph": "Hb", "color": "#6FAE5B" } }
   ]
 }

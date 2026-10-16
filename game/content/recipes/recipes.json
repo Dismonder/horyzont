@@ -21,6 +21,12 @@
       "result": { "item": "core:fuel_cell", "count": 1 } },
     { "key": "core:multitool_t2", "station": "workbench", "level": 2,
       "ingredients": [ { "item": "core:iron_ingot", "count": 4 }, { "item": "core:glass", "count": 2 }, { "item": "core:stone_brick", "count": 4 } ],
-      "result": { "item": "core:multitool_t2", "count": 1 } }
+      "result": { "item": "core:multitool_t2", "count": 1 } },
+    { "key": "core:berry_jam", "station": "kitchen", "level": 1,
+      "ingredients": [ { "item": "core:berries", "count": 4 } ],
+      "result": { "item": "core:berry_jam", "count": 1 } },
+    { "key": "core:herbal_broth", "station": "kitchen", "level": 1,
+      "ingredients": [ { "item": "core:berries", "count": 1 }, { "item": "core:fiber", "count": 2 } ],
+      "result": { "item": "core:herbal_broth", "count": 1 } }
   ]
 }
