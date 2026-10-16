@@ -23,6 +23,9 @@ public sealed class BlockEntityStore
     /// <summary>All states sorted by construct, then by cell.</summary>
     public IReadOnlyDictionary<BlockRef, BlockEntityState> All => _states;
 
+    /// <summary>The sorted states for the state hash: the concrete type gives a struct enumerator (no allocation).</summary>
+    internal SortedDictionary<BlockRef, BlockEntityState> Sorted => _states;
+
     /// <summary>Number of states of one construct.</summary>
     /// <param name="construct">The construct.</param>
     /// <returns>The count.</returns>

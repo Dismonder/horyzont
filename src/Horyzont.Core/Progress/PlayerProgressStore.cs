@@ -24,6 +24,9 @@ public sealed class PlayerProgressStore
     /// <summary>All records sorted by player id.</summary>
     public IReadOnlyDictionary<PlayerId, PlayerProgress> All => _byPlayer;
 
+    /// <summary>The sorted records for the state hash: the concrete type gives a struct enumerator (no allocation).</summary>
+    internal SortedDictionary<PlayerId, PlayerProgress> Sorted => _byPlayer;
+
     /// <summary>Looks up the record of a player.</summary>
     /// <param name="player">The player.</param>
     /// <param name="progress">The record when found.</param>

@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
 
+using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Space;
 using Horyzont.Core.World;
@@ -17,11 +18,14 @@ namespace Horyzont.Core.Hashing;
 /// Excludes CurrentTick, the kinematics of online players (the pose of offline players is hashed) and the pose of <see cref="ConstructMode.Ship"/> constructs (they change
 /// outside the journal) and terrain voxels (outside Core; only block versions are hashed). Floats are hashed bitwise.
 /// The survival section (item types, next container id, containers) is appended only when the world has item types or containers or a
-/// container counter other than 1, so the hash of a world without items is the same as before K6-29 (D7 of K6-29W).
+/// container counter other than 1, so the hash of a world without items is the same as before K6-29 (D7 of K6-29W). K6-30 (D22) appends
+/// block states (0x42) and respawn points (0x50) to that section, each only when it has entries, and also makes them a reason for the section.
 /// </summary>
 public static class StateHasher
 {
     private const byte SurvivalSectionTag = 0x53;
+    private const byte BlockEntitiesTag = 0x42;
+    private const byte ProgressTag = 0x50;
 
     /// <summary>Hashes a state.</summary>
     /// <param name="state">The state.</param>
@@ -156,7 +160,8 @@ public static class StateHasher
             }
         }
 
-        if (state.ItemTypes.Entries.Count > 0 || state.Containers.Count > 0 || state.ContainerIds.NextValue != 1)
+        if (state.ItemTypes.Entries.Count > 0 || state.Containers.Count > 0 || state.ContainerIds.NextValue != 1
+            || state.BlockEntities.Count > 0 || state.Progress.Count > 0)
         {
             Survival(hash, state);
         }
@@ -199,6 +204,58 @@ public static class StateHasher
 
             U32(hash, uint.MaxValue);
         }
+
+        // K6-30 (D22): block states and respawn points, each subsection only when it has entries, so older worlds hash as before.
+        if (state.BlockEntities.Count > 0)
+        {
+            Span<byte> entitiesTag = [BlockEntitiesTag];
+            hash.Append(entitiesTag);
+            U32(hash, (uint)state.BlockEntities.Count);
+            foreach (var (key, entity) in state.BlockEntities.Sorted)
+            {
+                U64(hash, key.Construct.Value);
+                Cell(hash, key.Cell);
+                U32(hash, (uint)entity.Kind);
+                switch (entity)
+                {
+                    case ChestBlockState chest:
+                        U64(hash, chest.Container.Value);
+                        break;
+                    case BedBlockState bed:
+                        U64(hash, bed.Owner.Value);
+                        break;
+                }
+            }
+        }
+
+        if (state.Progress.Count > 0)
+        {
+            Span<byte> progressTag = [ProgressTag];
+            hash.Append(progressTag);
+            U32(hash, (uint)state.Progress.Count);
+            foreach (var (player, progress) in state.Progress.Sorted)
+            {
+                U64(hash, player.Value);
+                if (progress.RespawnBed is { } bed)
+                {
+                    U32(hash, 1);
+                    U64(hash, bed.Construct.Value);
+                    Cell(hash, bed.Cell);
+                    U32(hash, bed.ExpectedType);
+                }
+                else
+                {
+                    U32(hash, 0);
+                }
+            }
+        }
+    }
+
+    private static void Cell(XxHash64 hash, CellPos cell)
+    {
+        U32(hash, (uint)cell.X);
+        U32(hash, (uint)cell.Y);
+        U32(hash, (uint)cell.Z);
     }
 
     private static void Registry(XxHash64 hash, IReadOnlyList<RegistryEntry> entries)
