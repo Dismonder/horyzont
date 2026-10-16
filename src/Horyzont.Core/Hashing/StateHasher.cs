@@ -20,12 +20,14 @@ namespace Horyzont.Core.Hashing;
 /// The survival section (item types, next container id, containers) is appended only when the world has item types or containers or a
 /// container counter other than 1, so the hash of a world without items is the same as before K6-29 (D7 of K6-29W). K6-30 (D22) appends
 /// block states (0x42) and respawn points (0x50) to that section, each only when it has entries, and also makes them a reason for the section.
+/// K6-31 (D15) appends the harvested props (0x48) after them under the same rule.
 /// </summary>
 public static class StateHasher
 {
     private const byte SurvivalSectionTag = 0x53;
     private const byte BlockEntitiesTag = 0x42;
     private const byte ProgressTag = 0x50;
+    private const byte HarvestedPropsTag = 0x48;
 
     /// <summary>Hashes a state.</summary>
     /// <param name="state">The state.</param>
@@ -161,7 +163,7 @@ public static class StateHasher
         }
 
         if (state.ItemTypes.Entries.Count > 0 || state.Containers.Count > 0 || state.ContainerIds.NextValue != 1
-            || state.BlockEntities.Count > 0 || state.Progress.Count > 0)
+            || state.BlockEntities.Count > 0 || state.Progress.Count > 0 || state.HarvestedProps.Count > 0)
         {
             Survival(hash, state);
         }
@@ -247,6 +249,21 @@ public static class StateHasher
                 {
                     U32(hash, 0);
                 }
+            }
+        }
+
+        // K6-31 (D15): harvested props, sorted by planet and prop; only when there are any, so worlds without them hash as before.
+        if (state.HarvestedProps.Count > 0)
+        {
+            Span<byte> propsTag = [HarvestedPropsTag];
+            hash.Append(propsTag);
+            U32(hash, (uint)state.HarvestedProps.Count);
+            var props = state.HarvestedProps.All;
+            for (var i = 0; i < props.Count; i++)
+            {
+                U64(hash, props[i].Planet.Value);
+                U64(hash, props[i].Prop.Value);
+                U64(hash, props[i].Tick.Value);
             }
         }
     }
