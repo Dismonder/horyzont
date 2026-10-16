@@ -248,6 +248,20 @@ public static class StateHasher
                         }
 
                         break;
+                    case OxygenGeneratorBlockState generator:
+                        // K6-34 (D12): the shape of a station without an output and a recipe; worlds without a generator hash as before.
+                        U64(hash, generator.Input.Value);
+                        if (generator.Started is { } burning)
+                        {
+                            U32(hash, 1);
+                            U64(hash, burning.Value);
+                        }
+                        else
+                        {
+                            U32(hash, 0);
+                        }
+
+                        break;
                 }
             }
         }
