@@ -6,6 +6,7 @@ using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
 using Horyzont.Core.Progress;
+using Horyzont.Core.Props;
 using Horyzont.Core.Space;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -51,6 +52,7 @@ public sealed class WorldState
         Containers = new ContainerStore(_tracker);
         BlockEntities = new BlockEntityStore(_tracker);
         Progress = new PlayerProgressStore(_tracker);
+        HarvestedProps = new HarvestedPropStore();
     }
 
     /// <summary>World id.</summary>
@@ -121,6 +123,9 @@ public sealed class WorldState
 
     /// <summary>Progress of the players (K6-30; only the respawn point).</summary>
     public PlayerProgressStore Progress { get; }
+
+    /// <summary>Harvested props (K6-31).</summary>
+    public HarvestedPropStore HarvestedProps { get; }
 
     /// <summary>True between <see cref="CaptureCheckpoint"/> and its completion or requeue.</summary>
     public bool IsCheckpointInFlight => _inFlight is not null;

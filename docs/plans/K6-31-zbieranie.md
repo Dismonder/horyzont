@@ -343,8 +343,8 @@ Każdy krok kończy się zielonym budowaniem i testami; commity w formacie Conve
 
 ### Etap A — model, operacje, kodeki, skrót, układ (Core)
 
-- [ ] A0. Zapisz `StateHasher.Hash` świata K6-30 ze stanami bloków i przedmiotami (`WorldFactory.CreateWithFunctionalBlocks()` + zestaw startowy) jako stałą testu `WorldWithBlockEntitiesWithoutProps_HashUnchanged`; zanotuj commit startowy etapu (do `git diff` korpusu i migracji).
-- [ ] A1 (testy napisane, czerwone; **czeka na przegląd Opus 5.5 przed A2**). Testy z tabeli etapu A ze szkieletami typów (budowa może nie przechodzić). **Przegląd Opus 5.5 przed kodem:** kontrakty 47, 48, `PropId`/`PropRegionKey` (D4), tabela układu V1 i sposób losowania (D5), D13, D15, D16 oraz rozstrzygnięcie DO USTALENIA-1, 10, 11. Commit `test(core): add harvested prop contract tests`.
+- [x] A0 (commit `646f130`, stała `17678442467951482955UL`). Zapisz `StateHasher.Hash` świata K6-30 ze stanami bloków i przedmiotami (`WorldFactory.CreateWithFunctionalBlocks()` + zestaw startowy) jako stałą testu `WorldWithBlockEntitiesWithoutProps_HashUnchanged`; zanotuj commit startowy etapu (do `git diff` korpusu i migracji).
+- [x] A1 (testy napisane, czerwone: 55 z 57 nowych testów; **czeka na przegląd Opus 5.5 przed A2**). Testy z tabeli etapu A ze szkieletami typów (budowa może nie przechodzić). **Przegląd Opus 5.5 przed kodem:** kontrakty 47, 48, `PropId`/`PropRegionKey` (D4), tabela układu V1 i sposób losowania (D5), D13, D15, D16 oraz rozstrzygnięcie DO USTALENIA-1, 10, 11. Commit `test(core): add harvested prop contract tests`.
 - [ ] A2. `PropId`, `PropRegionKey`, `CubeSphereGrid`, `HarvestedPropStore` (posortowany po planecie i `PropId`, zakres regionu, zbiór zmienionych kluczy) w `WorldState`. Commit `feat(core): add prop ids and the harvested prop store`.
 - [ ] A3. Operacje 47, 48 w applierze jako składowe z `UndoLog`; zbiór składowych złożonej (D13); `OperationProps`. Commit `feat(core): add prop harvest and regrow operations`.
 - [ ] A4. Kodeki 47/48 (`PropId` w `CoreCodecPrimitives`), `HarvestedPropRecord`, `ChangeTracker`, `WorldCheckpoint`, `WorldStateBuilder`, `CaptureCheckpoint`/`Requeue`. Commit `feat(core): encode and checkpoint harvested props`.
@@ -460,3 +460,40 @@ Odstępstwa od spec 03 (do opisu PR):
 ## Odstępstwa i uwagi z realizacji
 
 (Wypełnia wykonawca po każdym etapie: commity, werdykty przeglądów A1/B1/Core A+B, rozstrzygnięcia DO USTALENIA, wyniki sprawdzeń z liczbą testów, czego nie uruchomiono i dlaczego.)
+
+### Etap A, kroki A0 i A1 (do przeglądu Opus 5.5 przed A2)
+
+**Commity.** Kod bazowy etapu: `a1781ee` (tylko dokumentacja ponad K6-30); `646f130` = A0, od niego liczy się `git diff <commit startu A>..HEAD` korpusu złotego, `DeterminismTests`, migracji i generatorów (w A0 i A1 w tych ścieżkach nic się nie zmieniło). A1: `test(core): add harvested prop contract tests`.
+
+**A0.** `WorldWithBlockEntitiesWithoutProps_HashUnchanged` w `SurvivalHashTests`: stała `17678442467951482955UL` = `StateHasher.Hash` świata `WorldWithBlockEntities()` policzona na czystym kodzie `a1781ee` (dwa uruchomienia, ta sama wartość). Świat: `FunctionalBlockFixture(players: 2)` (`WorldFactory.CreateWithFunctionalBlocks`), zestaw startowy (narzędzie 1 szt. i klejnoty 3 szt. w pasku gracza 1, 40 kamienia w plecaku), skrzynia z kontenerem 8 slotów i 10 kamienia (slot 2), łóżko gracza 1 z punktem odrodzenia, otwarte drzwi (stan funkcji 1).
+
+**Sygnatury szkieletów A1 (puste, `// K6-31 A2…A6`, do przeglądu).**
+
+| Typ | Sygnatura / uwaga |
+| --- | --- |
+| `Ids/PropId`, `PropRegionKey` | `readonly record struct PropId(ulong Value)`: `Create(int face, int cellU, int cellV, int slot)` (`cellU`/`cellV` to indeks komórki na ścianie, nie regionu), `Face`, `CellU`, `CellV`, `Slot`, `Region`, `IsValid`, stała `MaxCellsPerFace = 1 << 20`; `PropRegionKey(ulong Value)` z `Face`, `RegionU`, `RegionV`. Układ bitów jak D4; testy pakują wartość ręcznie (`PropFixture.Raw`), więc testy operacji nie zależą od `Create` |
+| `Props/CubeSphereGrid` (statyczna) | `CellsPerFace(float planetRadius)`, `DirectionOfCell(face, u, v, cellsPerFace)` (jednostkowy `Vector3`), `CellOfDirection(Vector3, cellsPerFace, out face, out u, out v)`, `CellsInSphere(Vector3 center, float sphereRadius, float planetRadius, List<PropId> cells)` (dopisuje identyfikatory slotu 0, rosnąco, bez czyszczenia). **Kolejność ścian zamrażana testem: 0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z** (propozycja, do zatwierdzenia razem z D4) |
+| `Props/IPropLayout`, `PropCandidate`, `PropKindV1`, `PropLayoutV1`, `PropLayouts` | `TryGetCandidate(ulong seed, PropId id, out PropCandidate)`, `Accepts(PropKindV1, float heightOverRadiusMeters)`; `PropCandidate(Kind, ushort OffsetU, ushort OffsetV, ushort Rotation, ushort Scale)`; `PropKindV1` `None = 0`, `Pine = 1` … `Crystals = 8`; `PropLayouts.TryGet(string profile, out IPropLayout?)`. Układ nie dostaje kierunku (tylko ziarno i `PropId`), wysokość wchodzi dopiero w `Accepts` |
+| `Props/HarvestedPropStore`, `WorldState.HarvestedProps` | `Count`, `All` (posortowane po planecie i `PropId`), `Contains`, `TryGetTick(planet, prop, out Tick)`, `CollectRegion(planet, region, List<HarvestedPropRecord>)`; mutatory `internal` dochodzą w A2 |
+| `Operations/PropRegrowOp`, `PropHarvestOp`, `PropChange`, `OperationProps` | `PropRegrowOp(PlanetId, PropId)`, `PropHarvestOp(PlanetId, PropId, Tick)`, `Kind` to rzutowanie `(OperationKind)47/48` (enum dopisuje A3); `PropChange(PlanetId, PropId, bool Harvested)`; `OperationProps.CollectChanges(Operation, List<PropChange>)` dopisuje zmiany w kolejności składowych |
+| `Checkpoints/` | `HarvestedPropRecord(PlanetId, PropId, Tick)`, **`HarvestedPropKey(PlanetId, PropId)` (nowy typ, nieobecny w planie: klucz listy usuniętych)**, `WorldCheckpoint.UpsertedHarvestedProps` / `RemovedHarvestedProps`, `WorldStateBuilder.AddHarvestedProp(HarvestedPropRecord)` |
+
+**Bajty złote w testach (`OperationCodecPropTests.GoldenBytes_PropOperations`, `ReservedBitsPropId_Read_Throws`).** Rodzaj 48 = `0x30`, 47 = `0x2F`, wersja formatu 1, potem varuint-y (LEB128):
+
+- `PropHarvestOp(1, face 1/u 0/v 0/slot 1, tick 300)` = `30 01 01 80 80 84 80 80 80 80 80 04 AC 02`;
+- `PropHarvestOp(1, face 0/u 9/v 2/slot 0, tick 0)` = `30 01 01 80 80 A0 81 80 40 00`;
+- `PropRegrowOp(1, face 0/u 9/v 2/slot 0)` = `2F 01 01 80 80 A0 81 80 40`; `PropRegrowOp(7, face 1/u 0/v 0/slot 1)` = `2F 01 07 80 80 84 80 80 80 80 80 04`.
+
+Odczyt `PropId` z bitem 61 (ostatnia grupa `24`), bitem 0 (pierwszy bajt `81`) albo ścianą 6 (ostatnia grupa `18`) → `ProtocolViolationException`; zapis takiej wartości → `ArgumentException`.
+
+**Złoty skrót układu V1.** `PropLayoutV1_GoldenDigest` ma na razie stałą `0` (czerwony do A6, zgodnie z krokiem A6): `XxHash64` po kandydatach ziaren 42 i 1234, regiony (0,0) i (3,5) każdej ściany, sloty 0-3, rekord 17 B na slot (id LE, rodzaj, przesunięcia, obrót, skala). Test gęstości: 317 × 317 komórek ściany 0; skały w ± 3σ od 0,384 (brak szumu łat), pozostałe rodzaje najwyżej gęstość + 3σ i co najmniej jedna sztuka (szum łat tnie gęstość, więc dokładnej gęstości nie da się twierdzić bez wartości szumu) — **interpretacja tabeli D5 do zatwierdzenia**. Zakresy skali per rodzaj w `CandidateFields_WithinRanges` to zakresy `PlanetFlora` (Pine 0,7–1,3 … Boulder 0,6–2,2).
+
+**Odstępstwa od tabeli testów.**
+
+- `OperationPropsTests` leży w `tests/Horyzont.Core.Tests/Props/` (przestrzeń `Horyzont.Core.Tests.Props`), nie w `Operations/`: przestrzeń `Horyzont.Core.Tests.Operations` przesłania `Operations.…` w istniejącym `EntityIdAllocatorTests` (nie wolno go zmieniać).
+- `HarvestThenRegrow_HashEqualsBefore` porównuje świat po zebraniu i odroście z innym światem po tej samej liczbie operacji (zebranie i odrost innego obiektu), bo skrót zawiera `LastOpId`; dodatkowo `Count == 0`.
+- Dodane testy poza tabelą (kontrakt): `HarvestedPropsOnly_InWorldWithoutItems_ChangeHash` (D15: sekcja Przetrwania także dla świata tylko z zebranymi), `CellsInSphere_SmallPlanet_MatchesBruteForce`, `CandidateFields_WithinRanges`, `Layouts_CoreProfile_ReturnsV1_UnknownProfileNone`, `HarvestedProps_SortedByPlanetThenProp_RegionRangeIsContiguous`, `Generator_ProducesAcceptedAndRefusedOperationsOfEveryKind`.
+- `PropHarvest_DoesNotCallTerrainOrGenerator` używa istniejących liczników `FakeTerrainService` (`MeasureCalls`, `SolidSamples`, `AppliedEdits`, `BlockingLoads`, `LoadedAreas`); `Raycast` nie ma licznika. Generator wejdzie w etapie B (`TrySampleGeneratedSurface`).
+- Testy odmów zaczynają od poprawnego odpowiednika (zebranie i odrost zwykłe oraz w złożonej), więc nie przechodzą trywialnie na braku operacji.
+
+**Wynik.** `dotnet build Horyzont.sln` 0 błędów / 0 ostrzeżeń; `dotnet format --verify-no-changes` czysto. `dotnet test --filter "Category!=Soak&Category!=Manual"`: wszystkie projekty poza `Horyzont.Core.Tests` zielone; `Horyzont.Core.Tests` 1865 testów, 1809 zielonych, 56 czerwonych = 55 nowych (brak zachowania: operacje 47/48 jako nieznane, szkielety `PropId`, siatki i układu, magazynu, checkpointu) + 1 istniejący `ProtocolContractTests.Operations_EachRecordReturnsItsKind_AndEveryKindHasARecord` (wymaga wartości 47 i 48 w `OperationKind`, dopisanych w A3 — ten sam wzorzec co K6-30). Nowych testów w A1: 57, z czego 55 czerwonych i 2 zielone z założenia (straże regresji, mają pozostać zielone): `Changes_ItemOnly_Empty`, `ConstructPart_PropCompound_False`; test A0 (`WorldWithBlockEntitiesWithoutProps_HashUnchanged`) jest zielony od początku. Znany niestabilny `AllocationTests.SubmitPlaceOnFaceOverlappingOtherConstruct_Rejected_DoesNotAllocate` tym razem zielony. Nie uruchamiano gry ani Godota.

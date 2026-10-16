@@ -44,6 +44,7 @@ public sealed class WorldStateBuilder
     private ulong _nextContainerId = 1;
     private readonly List<BlockEntityRecord> _blockEntities = [];
     private readonly List<PlayerProgressRecord> _progress = [];
+    private readonly List<HarvestedPropRecord> _harvestedProps = [];
     private bool _built;
 
     /// <summary>Starts a world.</summary>
@@ -98,6 +99,14 @@ public sealed class WorldStateBuilder
     {
         ArgumentNullException.ThrowIfNull(record);
         _progress.Add(record);
+    }
+
+    /// <summary>Adds a harvested prop (K6-31); its planet must be added too.</summary>
+    /// <param name="record">The harvested prop.</param>
+    public void AddHarvestedProp(HarvestedPropRecord record)
+    {
+        // K6-31 A4: check against the planets and the grid, and restore in Build.
+        _harvestedProps.Add(record);
     }
 
     /// <summary>Adds a planet.</summary>

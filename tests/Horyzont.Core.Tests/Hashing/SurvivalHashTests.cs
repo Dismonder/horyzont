@@ -6,6 +6,7 @@ using Horyzont.Core.Operations;
 using Horyzont.Core.Progress;
 using Horyzont.Core.Tests.BlockEntities;
 using Horyzont.Core.Tests.Items;
+using Horyzont.Core.Tests.Props;
 using Horyzont.Core.World;
 using Horyzont.Testing;
 
@@ -33,6 +34,66 @@ public sealed class SurvivalHashTests
     [Fact]
     public void WorldWithBlockEntitiesWithoutProps_HashUnchanged() =>
         Assert.Equal(WorldWithBlockEntitiesHashBeforeProps, StateHasher.Hash(WorldWithBlockEntities()));
+
+    [Fact]
+    public void HarvestProp_ChangesHash()
+    {
+        var a = new PropFixture();
+        var b = new PropFixture();
+        var c = new PropFixture();
+        var d = new PropFixture();
+        var e = new PropFixture();
+        Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(b.State));
+
+        a.Apply(PropFixture.Harvest(PropFixture.Tree(0), 100));
+        b.Apply(PropFixture.Harvest(PropFixture.Tree(0), 100));
+        c.Apply(PropFixture.Harvest(PropFixture.Tree(1), 100));
+        d.Apply(PropFixture.Harvest(PropFixture.Tree(0), 101));
+        e.Apply(PropFixture.Harvest(PropFixture.Rock(0), 100));
+
+        // The same prop and tick hash the same; another prop, tick or slot is another world, and so is a world without the harvest.
+        var hash = StateHasher.Hash(a.State);
+        Assert.Equal(hash, StateHasher.Hash(b.State));
+        Assert.NotEqual(hash, StateHasher.Hash(c.State));
+        Assert.NotEqual(hash, StateHasher.Hash(d.State));
+        Assert.NotEqual(hash, StateHasher.Hash(e.State));
+        Assert.NotEqual(hash, StateHasher.Hash(new PropFixture().State));
+        Assert.NotEqual(StateHasher.Hash(c.State), StateHasher.Hash(e.State));
+    }
+
+    [Fact]
+    public void HarvestedPropsOnly_InWorldWithoutItems_ChangeHash()
+    {
+        // The survival section is also a reason of its own for a world with nothing but harvested props (D15).
+        var plain = new PropFixture(state: WorldFactory.CreateDefault());
+        var harvested = new PropFixture(state: WorldFactory.CreateDefault());
+        Assert.Equal(DefaultWorldHashBeforeItems, StateHasher.Hash(plain.State));
+
+        harvested.Apply(PropFixture.Harvest(PropFixture.Tree(0)));
+
+        Assert.NotEqual(StateHasher.Hash(plain.State), StateHasher.Hash(harvested.State));
+    }
+
+    [Fact]
+    public void HarvestThenRegrow_HashEqualsBefore()
+    {
+        // LastOpId is part of the hash, so the worlds that are compared have applied the same number of operations.
+        var regrown = new PropFixture();
+        var other = new PropFixture();
+        var harvested = new PropFixture();
+        var untouched = new PropFixture();
+        regrown.Apply(PropFixture.Harvest(PropFixture.Tree(0), 100));
+        regrown.Apply(PropFixture.Regrow(PropFixture.Tree(0)));
+        other.Apply(PropFixture.Harvest(PropFixture.Rock(3), 5000));
+        other.Apply(PropFixture.Regrow(PropFixture.Rock(3)));
+        harvested.Apply(PropFixture.Harvest(PropFixture.Tree(0), 100));
+        harvested.Apply(PropFixture.Harvest(PropFixture.Tree(1), 100));
+
+        Assert.Equal(0, regrown.State.HarvestedProps.Count);
+        Assert.Equal(StateHasher.Hash(other.State), StateHasher.Hash(regrown.State));
+        Assert.NotEqual(StateHasher.Hash(untouched.State), StateHasher.Hash(harvested.State));
+        Assert.NotEqual(StateHasher.Hash(regrown.State), StateHasher.Hash(harvested.State));
+    }
 
     [Fact]
     public void BlockEntityChange_ChangesHash()

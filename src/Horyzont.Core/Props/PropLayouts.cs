@@ -1,0 +1,19 @@
+using System.Diagnostics.CodeAnalysis;
+
+namespace Horyzont.Core.Props;
+
+/// <summary>Maps a generator profile to its prop layout (K6-31 D5).</summary>
+public static class PropLayouts
+{
+    /// <summary>Looks up the layout of a generator profile.</summary>
+    /// <param name="generatorProfile">Profile key, for example <c>core:planet/1</c>.</param>
+    /// <param name="layout">The layout when the profile has one.</param>
+    /// <returns>True when the profile has a layout; an unknown profile has no props.</returns>
+    public static bool TryGet(string generatorProfile, [NotNullWhen(true)] out IPropLayout? layout)
+    {
+        // K6-31 A6: core:planet/1 -> PropLayoutV1.
+        ArgumentNullException.ThrowIfNull(generatorProfile);
+        layout = null;
+        return false;
+    }
+}
