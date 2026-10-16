@@ -21,6 +21,9 @@ public static class ContentLoader
     /// <summary>Start kit file relative to the content root.</summary>
     public const string StartFile = "start.json";
 
+    /// <summary>Props file relative to the content root (K6-31 D8).</summary>
+    public const string PropsFile = "props/props.json";
+
     private const int MaxStackLimit = 999;
 
     private static readonly JsonDocumentOptions _options = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = false };
@@ -78,6 +81,19 @@ public static class ContentLoader
         }
 
         return new SurvivalContent(catalog, yields, startKit);
+    }
+
+    /// <summary>Parses and validates the content with the harvestable props (K6-31 D8).</summary>
+    /// <param name="itemsJson">Text of <see cref="ItemsFile"/>.</param>
+    /// <param name="yieldsJson">Text of <see cref="YieldsFile"/>.</param>
+    /// <param name="startJson">Text of <see cref="StartFile"/>.</param>
+    /// <param name="propsJson">Text of <see cref="PropsFile"/>.</param>
+    /// <returns>The content.</returns>
+    /// <exception cref="InvalidDataException">The content is invalid.</exception>
+    public static SurvivalContent Parse(string itemsJson, string yieldsJson, string startJson, string propsJson)
+    {
+        ArgumentNullException.ThrowIfNull(propsJson);
+        return Parse(itemsJson, yieldsJson, startJson); // K6-31 B3: props, their validation and HasSource.
     }
 
     private static bool HasSource(string key, TerrainYieldDef[] yields, StartKitDef startKit)

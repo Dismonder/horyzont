@@ -74,4 +74,40 @@ public sealed record GameRules
 
     /// <summary>Largest eye distance to a chest that takes part in a quick stack, metres (K6-30 D9).</summary>
     public float QuickStackRangeMeters { get; init; } = 10f;
+
+    /// <summary>Prop hits refilled per second (K6-31 D22).</summary>
+    public int PropHitsPerSecond { get; init; } = 4;
+
+    /// <summary>Prop hits available at once (K6-31 D22).</summary>
+    public int PropHitBurst { get; init; } = 4;
+
+    /// <summary>Ticks without a hit after which a worn prop has its full hit points again (K6-31 D10).</summary>
+    public int PropDamageResetTicks { get; init; } = 1800;
+
+    /// <summary>Most worn props the server remembers; the oldest is forgotten first (K6-31 D10).</summary>
+    public int MaxDamagedProps { get; init; } = 4096;
+
+    /// <summary>Anchors the prop field keeps in its cache (K6-31 D7).</summary>
+    public int PropAnchorCacheSize { get; init; } = 4096;
+
+    /// <summary>Margin added to the radius of a terrain edit when it removes props whose anchor lies inside, metres (K6-31 D12).</summary>
+    public float PropAnchorMarginMeters { get; init; } = 0.5f;
+
+    /// <summary>Radius around an anchor that must be free of players and constructs before a prop regrows, metres (K6-31 D14).</summary>
+    public float PropRegrowClearanceMeters { get; init; } = 20f;
+
+    /// <summary>Ticks between scans of the harvested props for regrowth (K6-31 D14).</summary>
+    public int PropRegrowScanEveryTicks { get; init; } = 60;
+
+    /// <summary>Harvested props examined per scan (K6-31 D14).</summary>
+    public int PropRegrowScanBatch { get; init; } = 256;
+
+    /// <summary>Most props regrown by one operation (K6-31 D14).</summary>
+    public int MaxRegrowPerOperation { get; init; } = 64;
+
+    /// <summary>Distance from a player at which a prop region starts to be synchronised, metres (K6-31 D17).</summary>
+    public float PropSyncEnterMeters { get; init; } = 512f;
+
+    /// <summary>Distance from a player beyond which a prop region is dropped from synchronisation, metres (K6-31 D17).</summary>
+    public float PropSyncLeaveMeters { get; init; } = 576f;
 }

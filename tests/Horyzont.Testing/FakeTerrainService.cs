@@ -61,6 +61,30 @@ public sealed class FakeTerrainService(float surfaceRadius = 4000f, float voxelS
     /// <summary>Number of <see cref="MeasureSphere"/> calls.</summary>
     public int MeasureCalls { get; private set; }
 
+    /// <summary>
+    /// Radius of the generated surface (a flat sphere around the planet centre) that <see cref="TrySampleGeneratedSurface"/> reports; null
+    /// makes it return false (no surface), so the props of a planet do not exist (K6-31 D6).
+    /// </summary>
+    public float? GeneratedSurfaceRadius { get; set; }
+
+    /// <summary>Number of <see cref="TrySampleGeneratedSurface"/> calls.</summary>
+    public int GeneratedSurfaceCalls { get; private set; }
+
+    /// <summary>
+    /// The generated surface radius in a direction (K6-31 D6). It is not yet a member of <see cref="ITerrainService"/> (step B4 of K6-31),
+    /// so the tests call it through this class.
+    /// </summary>
+    /// <param name="planet">The planet.</param>
+    /// <param name="direction">Unit direction from the planet centre.</param>
+    /// <param name="radius">The radius when the surface is known.</param>
+    /// <returns>True when <see cref="GeneratedSurfaceRadius"/> is set.</returns>
+    public bool TrySampleGeneratedSurface(PlanetId planet, Vector3 direction, out float radius)
+    {
+        GeneratedSurfaceCalls++;
+        radius = GeneratedSurfaceRadius ?? 0f;
+        return GeneratedSurfaceRadius is not null;
+    }
+
     public bool MeasureSphere(PlanetId planet, Vector3 center, float radius, Span<int> solidVoxelsByMaterial, out int airVoxels)
     {
         MeasureCalls++;

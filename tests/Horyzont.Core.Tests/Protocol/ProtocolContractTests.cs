@@ -93,7 +93,7 @@ public sealed class ProtocolContractTests
     }
 
     /// <summary>
-    /// K2-10 adds reject reason 21 (and raised the protocol version from 1 to 2; K2-11 raises it to 3, K6-29W to 14, K6-30 to 15, see <see cref="ProtocolVersion_MatchesDocumentedMergeValue"/>).
+    /// K2-10 adds reject reason 21 (and raised the protocol version from 1 to 2; K2-11 raises it to 3, K6-29W to 14, K6-30 to 15, K6-31 to 16, see <see cref="ProtocolVersion_MatchesDocumentedMergeValue"/>).
     /// </summary>
     [Fact]
     public void RejectReason_ServerReadOnly_RoundTrips()
@@ -152,14 +152,14 @@ public sealed class ProtocolContractTests
     [Fact]
     public void ProtocolVersion_MatchesDocumentedMergeValue()
     {
-        Assert.Equal(15, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(16, ProtocolConstants.ProtocolVersion);
         Assert.Equal(0x3F, ProtocolConstants.InputButtonsMask);
     }
 
     [Fact]
     public void Constants_GoldenValues()
     {
-        Assert.Equal(15, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(16, ProtocolConstants.ProtocolVersion);
         Assert.Equal(262144, ProtocolConstants.MaxReliableMessageBytes);
         Assert.Equal(1150, ProtocolConstants.MaxUnreliableMessageBytes);
         Assert.Equal(32, ProtocolConstants.MaxDisplayNameBytes);
@@ -174,6 +174,8 @@ public sealed class ProtocolContractTests
         Assert.Equal(160 * 1024, ProtocolConstants.MaxCompoundBytes);
         Assert.Equal(4096, ProtocolConstants.MaxBlockEntitiesPerConstruct);
         Assert.Equal(32, ProtocolConstants.MaxTeleportNameBytes);
+        Assert.Equal(64, ProtocolConstants.MaxPropRegionsPerMessage);
+        Assert.Equal(4096, ProtocolConstants.MaxPropEntriesPerMessage);
     }
 
     [Fact]

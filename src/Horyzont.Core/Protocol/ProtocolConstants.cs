@@ -84,6 +84,12 @@ public static class ProtocolConstants
     /// <summary>Most block states (<see cref="BlockEntities.BlockEntityState"/>) in one construct (K6-30).</summary>
     public const int MaxBlockEntitiesPerConstruct = 4096;
 
+    /// <summary>Most regions in one <see cref="Messages.PropStates"/> (K6-31 D22).</summary>
+    public const int MaxPropRegionsPerMessage = 64;
+
+    /// <summary>Most harvested props in one <see cref="Messages.PropStates"/> (K6-31 D22).</summary>
+    public const int MaxPropEntriesPerMessage = 4096;
+
     /// <summary>Largest teleport name in a <see cref="Intents.TeleportNameConfig"/>, UTF-8 bytes (K6-30 D23).</summary>
     public const int MaxTeleportNameBytes = 32;
 
