@@ -5,11 +5,11 @@ namespace Horyzont.Core.Ids;
 public readonly record struct PropRegionKey(ulong Value)
 {
     /// <summary>The face, 0-5.</summary>
-    public int Face => (int)(Value & 0UL); // K6-31 A2
+    public int Face => (int)((Value >> 34) & 7UL);
 
     /// <summary>The region column on the face.</summary>
-    public int RegionU => (int)(Value & 0UL); // K6-31 A2
+    public int RegionU => (int)((Value >> 17) & 0x1FFFFUL);
 
     /// <summary>The region row on the face.</summary>
-    public int RegionV => (int)(Value & 0UL); // K6-31 A2
+    public int RegionV => (int)(Value & 0x1FFFFUL);
 }

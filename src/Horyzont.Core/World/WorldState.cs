@@ -52,7 +52,7 @@ public sealed class WorldState
         Containers = new ContainerStore(_tracker);
         BlockEntities = new BlockEntityStore(_tracker);
         Progress = new PlayerProgressStore(_tracker);
-        HarvestedProps = new HarvestedPropStore();
+        HarvestedProps = new HarvestedPropStore(_tracker);
     }
 
     /// <summary>World id.</summary>
