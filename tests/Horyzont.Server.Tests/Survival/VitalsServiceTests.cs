@@ -115,6 +115,46 @@ public sealed class VitalsServiceTests
     }
 
     [Fact]
+    public void Tick_LandThenHop_FallChargedOnce()
+    {
+        // One landing is charged once: after it the peak of the fall is forgotten, so a later small hop does not bring the old 15 m/s back.
+        Walk(1);
+        _rig.Motion.Set(_rig.Alice, MovementMode.Falling, _fall15);
+        _rig.Tick(1);
+        _rig.Motion.Set(_rig.Alice, MovementMode.Walking);
+        _rig.Tick(1);
+        Assert.Equal(68f, Vitals(_rig.Alice).Health, 0.05f);
+
+        Walk(5);
+        _rig.Motion.Set(_rig.Alice, MovementMode.Jumping, new Vector3(0f, 5f, 0f));
+        _rig.Tick(1);
+        _rig.Motion.Set(_rig.Alice, MovementMode.Falling, new Vector3(0f, -5f, 0f));
+        _rig.Tick(1);
+        _rig.Motion.Set(_rig.Alice, MovementMode.Walking);
+        _rig.Tick(1);
+
+        // Only the regeneration moved the health since the first landing (a stale peak would have cost another 32).
+        Assert.InRange(Vitals(_rig.Alice).Health, 67.9f, 69f);
+    }
+
+    [Fact]
+    public void Tick_FrozenMidFall_PeakRestarts()
+    {
+        // A body that is frozen in the middle of a fall (a rescue, a teleport) starts the peak anew: the 20 m/s before the freeze is not charged at the landing.
+        Walk(1);
+        _rig.Motion.Set(_rig.Alice, MovementMode.Falling, new Vector3(0f, -20f, 0f));
+        _rig.Tick(1);
+        _rig.Motion.Set(_rig.Alice, MovementMode.Frozen);
+        _rig.Tick(1);
+        _rig.Motion.Set(_rig.Alice, MovementMode.Falling, new Vector3(0f, -5f, 0f));
+        _rig.Tick(1);
+        _rig.Motion.Set(_rig.Alice, MovementMode.Walking);
+        _rig.Tick(1);
+
+        Assert.Equal(100f, Vitals(_rig.Alice).Health, 0.05f);
+    }
+
+    [Fact]
     public void Tick_LandingAfterReparent_NoDamage()
     {
         Walk(1);

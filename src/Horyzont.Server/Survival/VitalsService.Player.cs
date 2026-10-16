@@ -23,7 +23,7 @@ public sealed partial class VitalsService
         var damage = data.PendingDamage;
         var up = TerrainMath.UpAt(motion.Feet);
         var wasAirborne = data.PreviousMode is MovementMode.Falling or MovementMode.Jumping;
-        var airborne = steady && motion.Mode is MovementMode.Falling or MovementMode.Jumping;
+        var airborne = steady && motion.Mode is (MovementMode.Falling or MovementMode.Jumping);
         if (airborne)
         {
             // The body is moved by the engine after the mode is decided: in the tick of the contact the mode is still Falling and the vertical velocity is already zero
