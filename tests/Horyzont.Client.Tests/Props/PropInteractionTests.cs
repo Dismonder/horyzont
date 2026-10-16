@@ -140,6 +140,26 @@ public sealed class PropInteractionTests
     }
 
     [Fact]
+    public void AimedProgress_OnlyForThePropUnderTheCrosshair()
+    {
+        var rig = new PropRig();
+        rig.Held.ToolTier = 1;
+        var first = rig.Add(PropKindV1.Pine, 3f);
+        var second = rig.Add(PropKindV1.Pine, 3f, lateral: 6f);
+        rig.Controller.Update(Input(pressed: true), rig.AimAt(first, 1.2f), 0);
+        Assert.Equal(new PropProgress(first.Id, 1, 3), rig.Interaction.AimedProgress);
+
+        // Looking at another tree shows no hits, back at the first shows them again; looking at nothing shows none.
+        rig.Controller.Update(Input(), rig.AimAt(second, 1.2f), 5);
+        Assert.Null(rig.Interaction.AimedProgress);
+        Assert.NotNull(rig.Interaction.Progress);
+        rig.Controller.Update(Input(), rig.AimAt(first, 1.2f), 6);
+        Assert.Equal(new PropProgress(first.Id, 1, 3), rig.Interaction.AimedProgress);
+        rig.Controller.ClearAim(7);
+        Assert.Null(rig.Interaction.AimedProgress);
+    }
+
+    [Fact]
     public void Rejected53_ShowsReason()
     {
         var rig = new PropRig();

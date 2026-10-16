@@ -34,6 +34,7 @@ public sealed partial class GameComposition
         }
 
         ConfigurePropRenderer();
+        ConfigurePropTools();
         if (Server is not { } server || TerrainFactory is not { } factory)
         {
             return;
@@ -66,5 +67,29 @@ public sealed partial class GameComposition
                 ?? new Horyzont.Game.Planet.Surface.PlanetSurfaceSampler(planet, Horyzont.Game.Planet.Generators.GeneratorProfiles.CreateGenerator(planet)));
         clientNode.AddChild(renderer);
         PropRenderer = renderer;
+    }
+
+    /// <summary>
+    /// K6-31 D19: lets the hand and the multitool of the local player hit the props the renderer draws. The tools of a solo or host process and
+    /// those of a remote client get the same parts; the interaction is made at the server hello, when the content and the inventory exist.
+    /// </summary>
+    private void ConfigurePropTools()
+    {
+        if (PropStates is not { } states || PropRenderer is not { } renderer)
+        {
+            return;
+        }
+
+        foreach (var tools in new[] { Tools, RemoteTools })
+        {
+            if (tools is null)
+            {
+                continue;
+            }
+
+            tools.PropStates = states;
+            tools.PropSource = renderer;
+            tools.PropContent = Inventory?.Content;
+        }
     }
 }

@@ -36,6 +36,9 @@ public sealed class PropInteraction(PropPicker picker, IPropStateView states, Su
     /// <summary>Gets the progress of the prop hit last, or null once it was harvested or the wear wore off.</summary>
     public PropProgress? Progress { get; private set; }
 
+    /// <summary>Gets <see cref="Progress"/> when it belongs to the prop aimed at now (the HUD shows hits only for the prop under the crosshair), else null.</summary>
+    public PropProgress? AimedProgress => Progress is { } progress && Prompt is not null && progress.Prop == _pick.Prop.Id ? progress : null;
+
     /// <summary>Gets a value indicating whether a prop is aimed at with a tool that hits props (a press belongs to the prop, not to the terrain).</summary>
     public bool HasTarget => Prompt is not null;
 

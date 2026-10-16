@@ -523,6 +523,7 @@ public sealed partial class GameComposition
             tools.AddChild(new BlockGhostPreview(tools));
             tools.AddChild(new ToolHud(tools));
             tools.AddChild(new BlockPromptHud(tools));
+            tools.AddChild(new Horyzont.Game.Client.Props.PropPromptHud(tools));
         }
 
         if (demo)
