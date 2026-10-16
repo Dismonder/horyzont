@@ -51,6 +51,17 @@ public interface ITerrainService
     bool MeasureSphere(PlanetId planet, Vector3 center, float radius, Span<int> solidVoxelsByMaterial, out int airVoxels);
 
     /// <summary>
+    /// The radius of the surface of the generator in a direction, without the edits of players (K6-31 D6): where the props stand. Called by
+    /// the prop field (validator, resolvers, regrowth) on the main thread only; its result never enters an operation but the anchors derived
+    /// from it decide which props exist for the server, so the client must sample the same way.
+    /// </summary>
+    /// <param name="planet">Planet.</param>
+    /// <param name="direction">Unit direction from the planet centre.</param>
+    /// <param name="radius">Distance of the generated surface from the centre, metres.</param>
+    /// <returns>False for an unknown planet or a planet without a generator; <paramref name="radius"/> is then 0.</returns>
+    bool TrySampleGeneratedSurface(PlanetId planet, Vector3 direction, out float radius);
+
+    /// <summary>
     /// Applies an edit; deterministic for the same inputs. Called after the block versions were bumped, so an implementation
     /// that stores block data can pair every block it changes with its new version.
     /// </summary>

@@ -148,6 +148,12 @@ internal sealed class ConstructTestWorld : IDisposable
             return false;
         }
 
+        public bool TrySampleGeneratedSurface(PlanetId planet, Vector3 direction, out float radius)
+        {
+            radius = 0f;
+            return false;
+        }
+
         public void ApplyEdit(TerrainEditOp edit, IReadOnlyList<TerrainBlockVersion> versions)
         {
         }

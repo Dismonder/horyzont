@@ -144,4 +144,28 @@ public sealed class PropFieldTests
         Assert.Equal(afterFirst, f.Terrain.GeneratedSurfaceCalls);
         Assert.Equal(first, second);
     }
+
+    [Fact]
+    public void AnchorCache_Over4096Props_OldestSamplesAgain()
+    {
+        var f = new PropWorldFixture();
+        var rules = new Horyzont.Core.Simulation.GameRules();
+        Assert.Equal(4096, rules.PropAnchorCacheSize);
+
+        // 4097 different props of a wide sphere, found by another field so that the field under test starts with an empty cache.
+        var ids = Collect(f.Field, Pole, 400f).Select(p => p.Id).Take(rules.PropAnchorCacheSize + 1).ToArray();
+        Assert.Equal(rules.PropAnchorCacheSize + 1, ids.Length);
+        var field = new PropField(f.State, f.Terrain, rules);
+        foreach (var id in ids)
+        {
+            Assert.True(field.TryGetProp(Planet, id, out _));
+        }
+
+        // The newest entry is still cached; the first one was the least recently used and was dropped, so it samples the surface again.
+        var calls = f.Terrain.GeneratedSurfaceCalls;
+        Assert.True(field.TryGetProp(Planet, ids[^1], out _));
+        Assert.Equal(calls, f.Terrain.GeneratedSurfaceCalls);
+        Assert.True(field.TryGetProp(Planet, ids[0], out _));
+        Assert.True(f.Terrain.GeneratedSurfaceCalls > calls, "The oldest of 4097 props must have left the cache of 4096.");
+    }
 }

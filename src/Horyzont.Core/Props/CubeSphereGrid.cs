@@ -60,18 +60,33 @@ public static class CubeSphereGrid
     /// <returns>The direction.</returns>
     public static Vector3 DirectionOfCell(int face, int cellU, int cellV, int cellsPerFace)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(face);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(face, 5);
         ArgumentOutOfRangeException.ThrowIfNegative(cellU);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(cellU, cellsPerFace);
         ArgumentOutOfRangeException.ThrowIfNegative(cellV);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(cellV, cellsPerFace);
+        return DirectionOfPoint(face, (double)cellU + 0.5, (double)cellV + 0.5, cellsPerFace);
+    }
+
+    /// <summary>Unit direction to a point of a face given in cell units from the corner of the face (the centre of cell c is c + 0.5).</summary>
+    /// <param name="face">Face 0-5.</param>
+    /// <param name="u">Column coordinate, 0 to <paramref name="cellsPerFace"/>.</param>
+    /// <param name="v">Row coordinate, 0 to <paramref name="cellsPerFace"/>.</param>
+    /// <param name="cellsPerFace">Cells per face edge.</param>
+    /// <returns>The direction.</returns>
+    public static Vector3 DirectionOfPoint(int face, double u, double v, int cellsPerFace)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(face);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(face, 5);
+        ArgumentOutOfRangeException.ThrowIfLessThan(u, 0.0);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(u, cellsPerFace);
+        ArgumentOutOfRangeException.ThrowIfLessThan(v, 0.0);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(v, cellsPerFace);
 
         var axis = face / 2;
         Span<double> parts = stackalloc double[3];
         parts[axis] = (face & 1) == 0 ? 1.0 : -1.0;
-        parts[(axis + 1) % 3] = Math.Tan(((((double)cellU + 0.5) / cellsPerFace) - 0.5) * (Math.PI / 2));
-        parts[(axis + 2) % 3] = Math.Tan(((((double)cellV + 0.5) / cellsPerFace) - 0.5) * (Math.PI / 2));
+        parts[(axis + 1) % 3] = Math.Tan(((u / cellsPerFace) - 0.5) * (Math.PI / 2));
+        parts[(axis + 2) % 3] = Math.Tan(((v / cellsPerFace) - 0.5) * (Math.PI / 2));
         var length = Math.Sqrt((parts[0] * parts[0]) + (parts[1] * parts[1]) + (parts[2] * parts[2]));
         return new Vector3((float)(parts[0] / length), (float)(parts[1] / length), (float)(parts[2] / length));
     }

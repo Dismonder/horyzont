@@ -10,8 +10,16 @@ public static class PropShapesV1
 {
     /// <summary>The body of a kind at scale 1.</summary>
     /// <param name="kind">The kind.</param>
-    /// <returns>Its body; the skeleton returns an empty one.</returns>
-#pragma warning disable CA1801, IDE0060 // K6-31 B4: the skeleton does not read the kind yet.
-    public static PropShape Get(PropKindV1 kind) => default; // K6-31 B4.
-#pragma warning restore CA1801, IDE0060
+    /// <returns>Its body; empty for <see cref="PropKindV1.None"/> and values outside the enum.</returns>
+    public static PropShape Get(PropKindV1 kind) => kind switch
+    {
+        PropKindV1.Pine => new PropShape(9f, 0.35f),
+        PropKindV1.PineTall => new PropShape(14f, 0.45f),
+        PropKindV1.Broadleaf or PropKindV1.BroadleafAutumn => new PropShape(8f, 0.4f),
+        PropKindV1.Bush => new PropShape(1.2f, 0.5f),
+        PropKindV1.Rock => new PropShape(0.6f, 0.5f),
+        PropKindV1.Boulder => new PropShape(1.4f, 1.2f),
+        PropKindV1.Crystals => new PropShape(1.0f, 0.6f),
+        _ => default,
+    };
 }

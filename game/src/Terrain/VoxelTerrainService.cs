@@ -395,6 +395,15 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
     }
 
     /// <inheritdoc />
+    /// <remarks>Step B4 of K6-31: the main-thread check only; the sampler of the planet (<c>PlanetSurfaceSampler</c>) arrives in C5, so no planet has props yet.</remarks>
+    public bool TrySampleGeneratedSurface(PlanetId planet, Vector3 direction, out float radius)
+    {
+        EnsureMainThread();
+        radius = 0f;
+        return false;
+    }
+
+    /// <inheritdoc />
     /// <exception cref="InvalidOperationException">
     /// Unknown planet or shape, a terrain fault (<see cref="FirstFault"/>), versions other than the affected blocks, or an area that
     /// is not editable; nothing changed.

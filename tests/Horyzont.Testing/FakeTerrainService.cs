@@ -70,10 +70,7 @@ public sealed class FakeTerrainService(float surfaceRadius = 4000f, float voxelS
     /// <summary>Number of <see cref="TrySampleGeneratedSurface"/> calls.</summary>
     public int GeneratedSurfaceCalls { get; private set; }
 
-    /// <summary>
-    /// The generated surface radius in a direction (K6-31 D6). It is not yet a member of <see cref="ITerrainService"/> (step B4 of K6-31),
-    /// so the tests call it through this class.
-    /// </summary>
+    /// <summary>The generated surface radius in a direction (K6-31 D6): <see cref="GeneratedSurfaceRadius"/> when it is set.</summary>
     /// <param name="planet">The planet.</param>
     /// <param name="direction">Unit direction from the planet centre.</param>
     /// <param name="radius">The radius when the surface is known.</param>
