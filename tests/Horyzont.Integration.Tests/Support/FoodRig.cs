@@ -7,6 +7,7 @@ using Horyzont.Core.Intents;
 using Horyzont.Core.Motion;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.World;
+using Horyzont.Core.World.Blocks;
 using Horyzont.Net.Session;
 using Horyzont.Net.Transport;
 using Horyzont.Net.Transport.InMemory;
@@ -26,7 +27,9 @@ namespace Horyzont.Integration.Tests.Support;
 
 /// <summary>
 /// A solo server with the survival rules (food test content), the inventory, the progress replication and the vitals service over an
-/// in-memory network and one client. Several rigs may share a world directory one after another to restart the server.
+/// in-memory network and one client. Several rigs may share a world directory one after another to restart the server. With <c>hazards</c> the content is
+/// <see cref="SurvivalContentFactory.CreateTestWithHazards"/> (K6-34: the suit, the modules and the oxygen generator; the start kit also hands out the refills, the modules and the fuel) and the home planet
+/// has the profile given.
 /// </summary>
 internal sealed class FoodRig : IAsyncDisposable
 {
@@ -38,7 +41,7 @@ internal sealed class FoodRig : IAsyncDisposable
     private readonly InMemoryTransport _serverTransport;
     private readonly List<InMemoryTransport> _clientTransports = [];
 
-    public FoodRig(string directory, ArmedFaults? faults = null)
+    public FoodRig(string directory, ArmedFaults? faults = null, bool hazards = false, string homeProfile = "core:temperate")
     {
         Directory = directory;
         Time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 16, 18, 0, 0, TimeSpan.Zero));
@@ -52,14 +55,20 @@ internal sealed class FoodRig : IAsyncDisposable
             PersistenceOptions = new PersistenceOptions { GameVersion = "k6-33-test", BackupInterval = Timeout.InfiniteTimeSpan },
             Listen = [new InMemoryEndpoint("server")],
             LocalClientEndpoint = new InMemoryEndpoint("local"),
-            BlockTypeKeys = [WorldFactory.StoneBlockKey],
+            BlockTypeKeys = hazards ? HazardBlocks.BlockKeys : [WorldFactory.StoneBlockKey],
+            BlockDefinitions = hazards ? HazardBlocks.DefinitionsFor() : new Dictionary<string, BlockTypeDef>(),
             MaterialKeys = ["stone", "dirt"],
-            Content = SurvivalContentFactory.CreateTestWithFood(),
-            ItemTypeKeys = SurvivalContentFactory.FoodItemKeys,
+            Content = hazards ? SurvivalContentFactory.CreateTestWithHazards(homeProfile) : SurvivalContentFactory.CreateTestWithFood(),
+            ItemTypeKeys = hazards ? SurvivalContentFactory.HazardItemKeys : SurvivalContentFactory.FoodItemKeys,
             Faults = (IPersistenceFaults?)faults ?? Horyzont.Persistence.Faults.NoFaults.Instance,
         };
-        Runtime = new ServerRuntime(ProcessMode.Solo, options, _serverTransport, Terrain, NewWorld, Time, NullLoggerFactory.Instance);
-        InventoryService.Register(Runtime, NullLoggerFactory.Instance);
+        Runtime = new ServerRuntime(ProcessMode.Solo, options, _serverTransport, Terrain, hazards ? NewHazardWorld : NewWorld, Time, NullLoggerFactory.Instance);
+        var inventory = InventoryService.Register(Runtime, NullLoggerFactory.Instance);
+        if (hazards)
+        {
+            StationService.Register(Runtime, inventory, NullLoggerFactory.Instance);
+        }
+
         ProgressReplication.Register(Runtime);
         Vitals = VitalsService.Register(Runtime, Motion, NullLoggerFactory.Instance);
     }
@@ -90,6 +99,10 @@ internal sealed class FoodRig : IAsyncDisposable
     public static WorldState NewWorld() => WorldState.CreateNew(
         WorldFactory.DefaultWorldId, 42, [WorldFactory.HomePlanetParams], [WorldFactory.StoneBlockKey], ["stone", "dirt"],
         SurvivalContentFactory.FoodItemKeys);
+
+    /// <summary>A fresh world for the rig with hazards: the block types of <see cref="HazardBlocks"/> and the item types of the hazard content.</summary>
+    public static WorldState NewHazardWorld() => WorldState.CreateNew(
+        WorldFactory.DefaultWorldId, 42, [WorldFactory.HomePlanetParams], HazardBlocks.BlockKeys, ["stone", "dirt"], SurvivalContentFactory.HazardItemKeys);
 
     public async Task StartAsync() =>
         Assert.IsType<WorldStartResult.Started>(await Runtime.StartAsync(TestContext.Current.CancellationToken));
