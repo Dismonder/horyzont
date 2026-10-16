@@ -190,6 +190,73 @@ public class CraftingUiTests
         AssertThat(rig.Node.Crafting.IsStationOpen).IsFalse();
     }
 
+    [TestCase(Timeout = 60000)]
+    [RequireGodotRuntime]
+    public async Task Texts_ExistInBothLanguages()
+    {
+        await using var scene = EngineTestScene.Create();
+        _ = scene;
+        string[] keys =
+        [
+            "CRAFT_TITLE_HANDS", "CRAFT_TITLE_WORKBENCH", "CRAFT_TITLE_KITCHEN", "CRAFT_TITLE_FABRICATOR", "CRAFT_TITLE_FURNACE",
+            "CRAFT_TITLE_REFINERY", "CRAFT_MAKE", "CRAFT_NONE", "CRAFT_LOCKED", "CRAFT_LEVEL", "CRAFT_NEARBY", "CRAFT_SELECT", "CRAFT_ACTIVE",
+            "CRAFT_NO_RECIPE", "CRAFT_INPUT", "CRAFT_OUTPUT", "CRAFT_FUEL", "REJECT_STATION_REQUIRED", "REJECT_RECIPE_LOCKED",
+            "REJECT_TOO_FAR_FROM_STATION", "PROMPT_STATION_OPEN", "PROMPT_STATION_WORKBENCH", "PROMPT_STATION_FURNACE", "PROMPT_STATION_REFINERY",
+            "PROMPT_STATION_KITCHEN", "PROMPT_STATION_FABRICATOR", "ITEM_CORE_PEAT", "ITEM_CORE_STONE_BRICK", "ITEM_CORE_IRON_INGOT",
+            "ITEM_CORE_GLASS", "ITEM_CORE_FUEL_CELL", "ITEM_CORE_MULTITOOL_T2",
+        ];
+        foreach (var locale in new[] { "en", "pl" })
+        {
+            TranslationServer.SetLocale(locale);
+            foreach (var key in keys)
+            {
+                var text = TranslationServer.Translate(key).ToString();
+                AssertThat(text).IsNotEqual(key);
+                AssertThat(text.Length).IsGreater(0);
+            }
+        }
+
+        TranslationServer.SetLocale("en");
+        AssertThat(TranslationServer.Translate("CRAFT_MAKE").ToString()).IsEqual("Make");
+        AssertThat(TranslationServer.Translate(BlockPromptHud.KeyOfPrompt(new BlockPrompt(BlockPromptKind.OpenStation, _construct, _cell, StationKind.Furnace))).ToString())
+            .IsEqual("[E] Furnace");
+        TranslationServer.SetLocale("pl");
+        AssertThat(TranslationServer.Translate("CRAFT_MAKE").ToString()).IsEqual("Zrób");
+        AssertThat(TranslationServer.Translate("REJECT_TOO_FAR_FROM_STATION").ToString()).IsEqual("Za daleko od stacji");
+        TranslationServer.SetLocale("en");
+        await Task.CompletedTask;
+    }
+
+    [TestCase(Timeout = 60000)]
+    [RequireGodotRuntime]
+    public async Task Panels_ShowTranslatedTexts()
+    {
+        TranslationServer.SetLocale("en");
+        await using var scene = EngineTestScene.Create();
+        var rig = InventoryRig.Create(scene);
+        Know(rig, "core:ore");
+        var screen = await OpenFurnace(scene, rig);
+
+        AssertThat(screen.Station!.TitleText).IsEqual("Furnace");
+        AssertThat(screen.Station.ActiveText).IsEqual("No recipe chosen");
+
+        rig.Node.Inventory.OnMessage(ContainerState.Rejected(_output, RejectReason.OutOfReach));
+        rig.Node.Crafting.OpenStation(StationKind.Workbench, _station);
+        Know(rig, "core:iron_ingot");
+        await scene.WaitFrames(2);
+
+        AssertThat(screen.Crafting!.TitleText).IsEqual("Workbench");
+        AssertThat(screen.Crafting.RowText(0)).Contains("Terrain manipulator II x1");
+        AssertThat(screen.Crafting.RowText(0)).Contains("Needs level 2");
+        AssertThat(screen.Crafting.MakeButton(0).Text).IsEqual("Make");
+        TranslationServer.SetLocale("pl");
+        rig.Node.Refresh();
+        await scene.WaitFrames(2);
+        AssertThat(screen.Crafting.TitleText).IsEqual("Warsztat");
+        AssertThat(screen.Crafting.MakeButton(0).Text).IsEqual("Zrób");
+        TranslationServer.SetLocale("en");
+    }
+
     [TestCase]
     public void StationPrompt_NamesTheStation()
     {
