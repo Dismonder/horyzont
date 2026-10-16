@@ -27,6 +27,7 @@ internal sealed class PropRig
         Feet = World.State.Players.TryGet(Player, out var player) ? player.Position : default;
         Up = Vector3.Normalize(Feet);
         Side = Vector3.Normalize(Vector3.Cross(Up, Vector3.UnitZ));
+        Lateral = Vector3.Normalize(Vector3.Cross(Up, Side));
         Content = SurvivalContentFactory.CreateTestWithProps();
         Held = new HeldTool { HotbarSlot = 3 };
         Picker = new PropPicker(Source, States);
@@ -51,6 +52,8 @@ internal sealed class PropRig
 
     public Vector3 Side { get; }
 
+    public Vector3 Lateral { get; }
+
     public SurvivalContent Content { get; }
 
     public FakeSource Source { get; } = new();
@@ -70,9 +73,9 @@ internal sealed class PropRig
     public ToolController Controller { get; }
 
     /// <summary>Puts a prop on the ground at a horizontal distance from the feet.</summary>
-    public PropInstance Add(PropKindV1 kind, float meters, float scale = 1f)
+    public PropInstance Add(PropKindV1 kind, float meters, float scale = 1f, float lateral = 0f)
     {
-        var anchor = Vector3.Normalize(Feet + (Side * meters)) * Feet.Length();
+        var anchor = Vector3.Normalize(Feet + (Side * meters) + (Lateral * lateral)) * Feet.Length();
         var id = PropId.Create(0, 100 + (int)_next, 100, 0);
         _next++;
         var prop = new PropInstance(id, kind, anchor, Vector3.Normalize(anchor), scale);

@@ -82,8 +82,28 @@ public sealed class ToolController
         WaitingForServer = false;
         if (!IsUsable(aim))
         {
+            Props?.Clear();
             Preview = default;
             return;
+        }
+
+        var primary = input.PrimaryPressed || input.PrimaryHeld;
+        var secondary = input.SecondaryPressed || input.SecondaryHeld;
+        if (Props is { } props)
+        {
+            // K6-31: the hand and the multitool hit the prop under the crosshair instead of digging under it; too weak a tool sends nothing.
+            props.Observe(aim, _world, Settings.Tool, clientTick);
+            if (props.HasTarget && primary)
+            {
+                Preview = default;
+                if (props.CanHit && Begin(PaceClass.Prop, !input.PrimaryPressed, clientTick))
+                {
+                    Send(props.CreateHit(), clientTick);
+                    props.NoteHit(clientTick);
+                }
+
+                return;
+            }
         }
 
         if (Settings.Tool == ToolKind.None)
@@ -92,8 +112,6 @@ public sealed class ToolController
             return;
         }
 
-        var primary = input.PrimaryPressed || input.PrimaryHeld;
-        var secondary = input.SecondaryPressed || input.SecondaryHeld;
         if (Settings.Tool == ToolKind.TerrainManipulator)
         {
             Preview = _previews.ForTerrainTool(aim, Settings, fill: secondary && !primary);
@@ -137,6 +155,7 @@ public sealed class ToolController
     {
         _pending.Tick(clientTick);
         WaitingForServer = false;
+        Props?.Clear();
         Preview = default;
     }
 

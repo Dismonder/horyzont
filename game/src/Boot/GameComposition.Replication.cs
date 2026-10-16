@@ -2,6 +2,7 @@ using Godot;
 
 using Horyzont.Client.Blocks;
 using Horyzont.Client.Movement;
+using Horyzont.Client.Props;
 using Horyzont.Client.Replication;
 using Horyzont.Client.Tools;
 using Horyzont.Core.Simulation;
@@ -85,8 +86,10 @@ public sealed partial class GameComposition
         // A process that runs the server shares its world with the local client; only a remote client mirrors the constructs.
         var mirror = Server is null ? new ConstructMirror(_env.Time) : null;
         var blockEntities = new ClientBlockEntities();
-        var replication = new ClientReplication(Client.Session.Send, mirror, _env.Time, blockEntities);
+        var propStates = mirror is not null ? new ClientPropStates() : null;
+        var replication = new ClientReplication(Client.Session.Send, mirror, _env.Time, blockEntities, propStates);
         BlockEntities = blockEntities;
+        PropStates = propStates ?? PropStates;
         replication.Decoder.AddSink(LocalPlayer);
         if (_fullSnapshots is not null)
         {

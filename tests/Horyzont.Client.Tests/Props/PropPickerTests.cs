@@ -77,7 +77,7 @@ public sealed class PropPickerTests
         Assert.Equal(PropKindV1.Boulder, pick.Prop.Kind);
 
         // A ray that passes beside the body misses it.
-        Assert.False(rig.Picker.TryPick(rig.AimAt(rock, 0.7f) with { Direction = Vector3.Normalize(rig.AimAt(rock, 0.7f).Direction + (rig.Side * 0.5f)) }, rig.World, rig.World.Rules, out _));
+        Assert.False(rig.Picker.TryPick(rig.AimAt(rock, 0.7f) with { Direction = Vector3.Normalize(rig.AimAt(rock, 0.7f).Direction + (rig.Lateral * 0.8f)) }, rig.World, rig.World.Rules, out _));
     }
 
     private static Horyzont.Core.Ids.PlanetId FakeWorldPlanet => Horyzont.Client.Tests.Tools.FakeToolWorldView.Planet;

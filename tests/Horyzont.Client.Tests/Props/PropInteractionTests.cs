@@ -79,7 +79,7 @@ public sealed class PropInteractionTests
     {
         var rig = new PropRig();
         var tree = rig.Add(PropKindV1.Pine, 3f);
-        var tall = rig.Add(PropKindV1.PineTall, 5f);
+        var tall = rig.Add(PropKindV1.PineTall, 5f, lateral: 5f);
         var aim = rig.AimAt(tree, 1.2f);
 
         // Bare hands (tier 0) on a pine that wants tier 1: told so, and nothing goes out, not even a dig under the tree.

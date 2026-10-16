@@ -25,7 +25,7 @@ public sealed class ClientReplication : IClientSessionListener
         ArgumentNullException.ThrowIfNull(send);
         _send = send;
         BlockEntities = blockEntities;
-        PropStates = propStates;
+        HarvestedProps = propStates;
         Constructs = constructs;
         Entities = new EntityMirror(time);
         Decoder = new SnapshotDecoder(id => _send(new SnapshotAck(id)));
@@ -50,7 +50,7 @@ public sealed class ClientReplication : IClientSessionListener
     public Blocks.ClientBlockEntities? BlockEntities { get; }
 
     /// <summary>Gets the harvested props; null when not tracked (a host and a solo player read the world of the server).</summary>
-    public Props.ClientPropStates? PropStates { get; }
+    public Props.ClientPropStates? HarvestedProps { get; }
 
     /// <inheritdoc />
     public void OnMessage(Message message)
@@ -85,6 +85,9 @@ public sealed class ClientReplication : IClientSessionListener
             case BlockEntityStates states:
                 BlockEntities?.Apply(states);
                 break;
+            case PropStates states:
+                HarvestedProps?.Apply(states);
+                break;
             case OperationApplied operation:
                 Entities.Apply(operation);
                 Constructs?.Apply(operation);
@@ -99,6 +102,7 @@ public sealed class ClientReplication : IClientSessionListener
         Entities.Clear();
         Constructs?.Clear();
         BlockEntities?.Clear();
+        HarvestedProps?.Clear();
     }
 
     private void Request(Core.Ids.EntityId entity) => _send(new ResyncRequest(entity));
