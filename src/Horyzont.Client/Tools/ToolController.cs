@@ -56,6 +56,9 @@ public sealed class ToolController
             BlockOrientation.Identity);
     }
 
+    /// <summary>Gets or sets the hitting of props with the hand and the multitool (K6-31); null leaves the press to the terrain tool.</summary>
+    public Props.PropInteraction? Props { get; set; }
+
     /// <summary>Gets the current tool and its parameters.</summary>
     public ToolSettings Settings { get; private set; }
 
