@@ -2,13 +2,14 @@ using System.Text;
 using System.Text.Json;
 
 using Horyzont.Core.Items;
+using Horyzont.Core.Props;
 using Horyzont.Core.Protocol;
 
 namespace Horyzont.Core.Content;
 
 /// <summary>
-/// Reads and validates the survival content (D16 of K6-29W): <c>items/items.json</c>, <c>terrain/yields.json</c> and <c>start.json</c>.
-/// Every error is an <see cref="InvalidDataException"/> naming the file and the JSON path. Unknown properties (e.g. <c>visual</c>) are ignored.
+/// Reads and validates the survival content (D16 of K6-29W): <c>items/items.json</c>, <c>terrain/yields.json</c> and <c>start.json</c>,
+/// and since K6-31 the optional <c>props/props.json</c>. Every error is an <see cref="InvalidDataException"/> naming the file and the JSON path. Unknown properties (e.g. <c>visual</c>) are ignored.
 /// </summary>
 public static class ContentLoader
 {
@@ -25,20 +26,26 @@ public static class ContentLoader
     public const string PropsFile = "props/props.json";
 
     private const int MaxStackLimit = 999;
+    private const int MaxPropHitPoints = 1000;
+    private const int MaxPropYieldEntries = 8;
+
+    /// <summary>The longest regrow time of a prop: 30 days in seconds (K6-31 review of B1).</summary>
+    private const int MaxRegrowSeconds = 2_592_000;
 
     private static readonly JsonDocumentOptions _options = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = false };
 
-    /// <summary>Reads the three files from a content root directory.</summary>
-    /// <param name="contentRoot">Directory with <see cref="ItemsFile"/>, <see cref="YieldsFile"/> and <see cref="StartFile"/>.</param>
+    /// <summary>Reads the files from a content root directory; <see cref="PropsFile"/> only when it exists.</summary>
+    /// <param name="contentRoot">Directory with <see cref="ItemsFile"/>, <see cref="YieldsFile"/>, <see cref="StartFile"/> and optionally <see cref="PropsFile"/>.</param>
     /// <returns>The content.</returns>
     /// <exception cref="InvalidDataException">The content is invalid.</exception>
     public static SurvivalContent LoadDirectory(string contentRoot)
     {
         ArgumentNullException.ThrowIfNull(contentRoot);
-        return Parse(
-            File.ReadAllText(Path.Combine(contentRoot, ItemsFile)),
-            File.ReadAllText(Path.Combine(contentRoot, YieldsFile)),
-            File.ReadAllText(Path.Combine(contentRoot, StartFile)));
+        var items = File.ReadAllText(Path.Combine(contentRoot, ItemsFile));
+        var yields = File.ReadAllText(Path.Combine(contentRoot, YieldsFile));
+        var start = File.ReadAllText(Path.Combine(contentRoot, StartFile));
+        var propsPath = Path.Combine(contentRoot, PropsFile);
+        return File.Exists(propsPath) ? Parse(items, yields, start, File.ReadAllText(propsPath)) : Parse(items, yields, start);
     }
 
     /// <summary>Parses and validates the content.</summary>
@@ -47,7 +54,22 @@ public static class ContentLoader
     /// <param name="startJson">Text of <see cref="StartFile"/>.</param>
     /// <returns>The content.</returns>
     /// <exception cref="InvalidDataException">The content is invalid.</exception>
-    public static SurvivalContent Parse(string itemsJson, string yieldsJson, string startJson)
+    public static SurvivalContent Parse(string itemsJson, string yieldsJson, string startJson) => ParseAll(itemsJson, yieldsJson, startJson, null);
+
+    /// <summary>Parses and validates the content with the harvestable props (K6-31 D8).</summary>
+    /// <param name="itemsJson">Text of <see cref="ItemsFile"/>.</param>
+    /// <param name="yieldsJson">Text of <see cref="YieldsFile"/>.</param>
+    /// <param name="startJson">Text of <see cref="StartFile"/>.</param>
+    /// <param name="propsJson">Text of <see cref="PropsFile"/>.</param>
+    /// <returns>The content.</returns>
+    /// <exception cref="InvalidDataException">The content is invalid.</exception>
+    public static SurvivalContent Parse(string itemsJson, string yieldsJson, string startJson, string propsJson)
+    {
+        ArgumentNullException.ThrowIfNull(propsJson);
+        return ParseAll(itemsJson, yieldsJson, startJson, propsJson);
+    }
+
+    private static SurvivalContent ParseAll(string itemsJson, string yieldsJson, string startJson, string? propsJson)
     {
         ArgumentNullException.ThrowIfNull(itemsJson);
         ArgumentNullException.ThrowIfNull(yieldsJson);
@@ -71,33 +93,38 @@ public static class ContentLoader
             startKit = ParseStart(document.RootElement, catalog);
         }
 
+        PropDef[] props = [];
+        if (propsJson is not null)
+        {
+            using var document = Open(propsJson, PropsFile);
+            props = ParseProps(document.RootElement, catalog);
+        }
+
         for (var i = 0; i < items.Length; i++)
         {
             var key = items[i].Key;
-            if ((items[i].Flags & ItemFlags.Retired) == 0 && !HasSource(key, yields, startKit))
+            if ((items[i].Flags & ItemFlags.Retired) == 0 && !HasSource(key, yields, startKit, props))
             {
-                throw Invalid(ItemsFile, $"$.items[{i}]", $"item '{key}' has no source (a terrain yield or the start kit)");
+                throw Invalid(ItemsFile, $"$.items[{i}]", $"item '{key}' has no source (a terrain yield, a prop or the start kit)");
             }
         }
 
-        return new SurvivalContent(catalog, yields, startKit);
+        return new SurvivalContent(catalog, yields, startKit, props);
     }
 
-    /// <summary>Parses and validates the content with the harvestable props (K6-31 D8).</summary>
-    /// <param name="itemsJson">Text of <see cref="ItemsFile"/>.</param>
-    /// <param name="yieldsJson">Text of <see cref="YieldsFile"/>.</param>
-    /// <param name="startJson">Text of <see cref="StartFile"/>.</param>
-    /// <param name="propsJson">Text of <see cref="PropsFile"/>.</param>
-    /// <returns>The content.</returns>
-    /// <exception cref="InvalidDataException">The content is invalid.</exception>
-    public static SurvivalContent Parse(string itemsJson, string yieldsJson, string startJson, string propsJson)
+    private static bool HasSource(string key, TerrainYieldDef[] yields, StartKitDef startKit, PropDef[] props)
     {
-        ArgumentNullException.ThrowIfNull(propsJson);
-        return Parse(itemsJson, yieldsJson, startJson); // K6-31 B3: props, their validation and HasSource.
-    }
+        foreach (var prop in props)
+        {
+            foreach (var entry in prop.Yield)
+            {
+                if (entry.ItemKey == key)
+                {
+                    return true;
+                }
+            }
+        }
 
-    private static bool HasSource(string key, TerrainYieldDef[] yields, StartKitDef startKit)
-    {
         foreach (var yield in yields)
         {
             if (yield.ItemKey == key)
@@ -227,6 +254,79 @@ public static class ContentLoader
         }
 
         return [.. yields];
+    }
+
+    private static PropDef[] ParseProps(JsonElement root, ItemCatalog catalog)
+    {
+        RequireObject(root, "$", PropsFile);
+        if (RequiredInt(root, "formatVersion", "$", PropsFile, 1, 1) != 1)
+        {
+            throw Invalid(PropsFile, "$.formatVersion", "unsupported version");
+        }
+
+        var array = RequiredArray(root, "props", "$", PropsFile);
+        var props = new List<PropDef>();
+        var kinds = new HashSet<PropKindV1>();
+        var index = 0;
+        foreach (var element in array.EnumerateArray())
+        {
+            var path = $"$.props[{index}]";
+            RequireObject(element, path, PropsFile);
+            var key = RequiredKey(element, "key", path, PropsFile);
+            if (!PropKeys.TryGetKind(key, out var kind))
+            {
+                throw Invalid(PropsFile, path + ".key", $"unknown prop key '{key}'");
+            }
+
+            if (!kinds.Add(kind))
+            {
+                throw Invalid(PropsFile, path + ".key", $"duplicate key '{key}'");
+            }
+
+            var hitPoints = RequiredInt(element, "hitPoints", path, PropsFile, 1, MaxPropHitPoints);
+            var toolTier = RequiredInt(element, "toolTier", path, PropsFile, 0, byte.MaxValue);
+            var regrowSeconds = RequiredInt(element, "regrowSeconds", path, PropsFile, 0, MaxRegrowSeconds);
+            var yieldArray = RequiredArray(element, "yield", path, PropsFile);
+            var yield = new List<PropYield>();
+            var yieldIndex = 0;
+            foreach (var entry in yieldArray.EnumerateArray())
+            {
+                var entryPath = $"{path}.yield[{yieldIndex}]";
+                if (yieldIndex >= MaxPropYieldEntries)
+                {
+                    throw Invalid(PropsFile, path + ".yield", $"at most {MaxPropYieldEntries} entries");
+                }
+
+                RequireObject(entry, entryPath, PropsFile);
+                var item = RequiredKey(entry, "item", entryPath, PropsFile);
+                if (!catalog.TryGet(item, out _))
+                {
+                    throw Invalid(PropsFile, entryPath + ".item", $"unknown item '{item}'");
+                }
+
+                var count = RequiredInt(entry, "count", entryPath, PropsFile, 1, MaxStackLimit);
+                yield.Add(new PropYield(item, (ushort)count));
+                yieldIndex++;
+            }
+
+            if (yield.Count == 0)
+            {
+                throw Invalid(PropsFile, path + ".yield", $"expected 1..{MaxPropYieldEntries} entries");
+            }
+
+            props.Add(new PropDef(key, (ushort)hitPoints, (byte)toolTier, yield, (uint)regrowSeconds));
+            index++;
+        }
+
+        foreach (var kind in Enum.GetValues<PropKindV1>())
+        {
+            if (kind != PropKindV1.None && !kinds.Contains(kind))
+            {
+                throw Invalid(PropsFile, "$.props", $"missing prop '{PropKeys.KeyOf(kind)}'");
+            }
+        }
+
+        return [.. props];
     }
 
     private static StartKitDef ParseStart(JsonElement root, ItemCatalog catalog)

@@ -89,8 +89,8 @@ public static class SurvivalContentFactory
         """;
 
     /// <summary>
-    /// The start kit of <see cref="StartJson"/> plus the tier 2 tool in hotbar slot 2. Wood and fibre are in the bag only so that the content
-    /// parses while the props are not yet a source of items (K6-31 B3); the tests never apply the kit.
+    /// The start kit of <see cref="StartJson"/> plus the tier 2 tool in hotbar slot 2. Wood and fibre are in the bag as well, which keeps
+    /// the content parsing without <see cref="PropsJson"/> (the three-file overload); the tests never apply the kit.
     /// </summary>
     public const string PropStartJson = """
         {
