@@ -245,6 +245,21 @@ public static class OperationCodec
                 w.WriteByte(fs.State);
                 break;
 
+            case PropHarvestOp ph:
+                w.WriteByte((byte)OperationKind.PropHarvest);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(ph.Planet.Value);
+                CoreCodecPrimitives.WritePropId(w, ph.Prop);
+                w.WriteVarUInt(ph.Tick.Value);
+                break;
+
+            case PropRegrowOp pr:
+                w.WriteByte((byte)OperationKind.PropRegrow);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(pr.Planet.Value);
+                CoreCodecPrimitives.WritePropId(w, pr.Prop);
+                break;
+
             case EntityReparentOp er:
                 w.WriteByte((byte)OperationKind.EntityReparent);
                 w.WriteByte(CurrentFormatVersion);
@@ -370,7 +385,8 @@ public static class OperationCodec
             || (kindByte >= (byte)OperationKind.ShipModeSet && kindByte <= (byte)OperationKind.MarkerRemove)
             || (kindByte >= (byte)OperationKind.Compound && kindByte <= (byte)OperationKind.ContainerConfigure)
             || kindByte is (byte)OperationKind.BlockEntitySet or (byte)OperationKind.ItemDiscover or (byte)OperationKind.RespawnPointSet
-                or (byte)OperationKind.ProgressKeyGrant or (byte)OperationKind.BlockFunctionStateSet;
+                or (byte)OperationKind.ProgressKeyGrant or (byte)OperationKind.PropRegrow or (byte)OperationKind.PropHarvest
+                or (byte)OperationKind.BlockFunctionStateSet;
         if (!known)
         {
             throw new ProtocolViolationException($"Unknown operation kind {kindByte}.");
@@ -491,6 +507,15 @@ public static class OperationCodec
                 }
 
                 return new BlockFunctionStateSetOp(fsConstruct, fsCell, fsType, fsState);
+
+            case OperationKind.PropHarvest:
+                var phPlanet = new PlanetId(r.ReadVarUInt());
+                var phProp = CoreCodecPrimitives.ReadPropId(ref r);
+                return new PropHarvestOp(phPlanet, phProp, new Tick(r.ReadVarUInt()));
+
+            case OperationKind.PropRegrow:
+                var prPlanet = new PlanetId(r.ReadVarUInt());
+                return new PropRegrowOp(prPlanet, CoreCodecPrimitives.ReadPropId(ref r));
 
             case OperationKind.TerrainEdit:
                 var planet = new PlanetId(r.ReadVarUInt());

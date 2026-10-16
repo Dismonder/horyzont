@@ -6,6 +6,7 @@ using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
 using Horyzont.Core.Progress;
+using Horyzont.Core.Props;
 using Horyzont.Core.Space;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -51,6 +52,7 @@ public sealed class WorldState
         Containers = new ContainerStore(_tracker);
         BlockEntities = new BlockEntityStore(_tracker);
         Progress = new PlayerProgressStore(_tracker);
+        HarvestedProps = new HarvestedPropStore(_tracker);
         ProgressKeys = new ProgressKeyStore(_tracker);
     }
 
@@ -123,6 +125,8 @@ public sealed class WorldState
     /// <summary>Progress of the players (K6-30; only the respawn point).</summary>
     public PlayerProgressStore Progress { get; }
 
+    /// <summary>Harvested props (K6-31).</summary>
+    public HarvestedPropStore HarvestedProps { get; }
     /// <summary>Progress keys of the world (K6-32).</summary>
     public ProgressKeyStore ProgressKeys { get; }
 
@@ -490,6 +494,22 @@ public sealed class WorldState
             }
         }
 
+        var propKeys = _tracker.HarvestedProps.ToArray();
+        Array.Sort(propKeys, static (a, b) => a.Planet.Value != b.Planet.Value ? a.Planet.Value.CompareTo(b.Planet.Value) : a.Prop.Value.CompareTo(b.Prop.Value));
+        var upsertedProps = new List<HarvestedPropRecord>();
+        var removedProps = new List<HarvestedPropKey>();
+        foreach (var key in propKeys)
+        {
+            if (HarvestedProps.TryGetTick(key.Planet, key.Prop, out var harvestTick))
+            {
+                upsertedProps.Add(new HarvestedPropRecord(key.Planet, key.Prop, harvestTick));
+            }
+            else
+            {
+                removedProps.Add(key);
+            }
+        }
+
         var progressKeys = _tracker.ProgressKeys ? ProgressKeys.Sorted.ToArray() : null;
         _tracker.Clear();
         _inFlight = new WorldCheckpoint(
@@ -504,6 +524,8 @@ public sealed class WorldState
             RemovedBlockEntities = removedEntities,
             UpsertedProgress = upsertedProgress,
             RemovedProgress = removedProgress,
+            UpsertedHarvestedProps = upsertedProps,
+            RemovedHarvestedProps = removedProps,
             ProgressKeys = progressKeys,
         };
         return _inFlight;
@@ -603,6 +625,16 @@ public sealed class WorldState
         foreach (var id in failed.RemovedProgress)
         {
             _tracker.MarkProgress(id);
+        }
+
+        foreach (var prop in failed.UpsertedHarvestedProps)
+        {
+            _tracker.MarkHarvestedProp(new HarvestedPropKey(prop.Planet, prop.Prop));
+        }
+
+        foreach (var key in failed.RemovedHarvestedProps)
+        {
+            _tracker.MarkHarvestedProp(key);
         }
 
         if (failed.ProgressKeys is not null)

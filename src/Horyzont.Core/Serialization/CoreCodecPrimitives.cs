@@ -14,6 +14,29 @@ internal static class CoreCodecPrimitives
     /// <summary>True for every defined <see cref="RejectReason"/>: the Planet reasons 0-21, the Space reasons 30-39 and the survival reasons 40-43 and 54, 57.</summary>
     public static bool IsKnownRejectReason(byte value) => Enum.IsDefined((RejectReason)value);
 
+    /// <summary>Writes a prop identifier as a varuint; bits 63-61 and 15-0 must be zero and the face below 6 (K6-31 D4).</summary>
+    public static void WritePropId(ByteWriter w, PropId prop)
+    {
+        if (!prop.IsValid)
+        {
+            throw new ArgumentException($"Invalid prop identifier {prop.Value}: reserved bits set or face above 5.", nameof(prop));
+        }
+
+        w.WriteVarUInt(prop.Value);
+    }
+
+    /// <summary>Reads a prop identifier written by <see cref="WritePropId"/>.</summary>
+    public static PropId ReadPropId(ref ByteReader r)
+    {
+        var prop = new PropId(r.ReadVarUInt());
+        if (!prop.IsValid)
+        {
+            throw new ProtocolViolationException($"Invalid prop identifier {prop.Value}: reserved bits set or face above 5.");
+        }
+
+        return prop;
+    }
+
     public static void WriteFrameRef(ByteWriter w, FrameRef f)
     {
         if (f.Kind < FrameKind.System || f.Kind > FrameKind.Construct)

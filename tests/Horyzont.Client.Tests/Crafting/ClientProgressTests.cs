@@ -53,7 +53,7 @@ public sealed class ClientProgressTests
     public void Replication_ProgressState_ReachesClientProgress_DisconnectClearsIt()
     {
         var progress = new ClientProgress();
-        var replication = new ClientReplication(_ => { }, null, null, null, progress);
+        var replication = new ClientReplication(_ => { }, null, null, null, progress: progress);
         Assert.Same(progress, replication.Progress);
 
         replication.OnMessage(new PlayerProgressState(Bits(4), ["k"]));

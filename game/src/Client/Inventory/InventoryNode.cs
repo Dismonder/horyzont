@@ -81,6 +81,9 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
     /// <summary>Gets the visuals of the items.</summary>
     public ItemVisuals Visuals { get; private set; } = null!;
 
+    /// <summary>Gets the survival content the node was given (item definitions, yields, props); null before <c>Initialize</c>.</summary>
+    public SurvivalContent? Content => _content;
+
     /// <summary>Gets the tool that each item selects.</summary>
     public ItemToolMap ToolMap { get; private set; } = ItemToolMap.Default;
 

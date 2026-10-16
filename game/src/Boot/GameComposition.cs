@@ -410,6 +410,7 @@ public sealed partial class GameComposition
         composition.ConfigureReplication();
         composition.ConfigureClientCrafting();
         composition.ConfigureTerrainReplication();
+        composition.ConfigureProps();
         composition.ConfigureMotion();
         composition.ConfigureNavigation();
         composition.ConfigurePlatform();
@@ -442,6 +443,7 @@ public sealed partial class GameComposition
     partial void ConfigurePlanets();
     partial void ConfigureReplication();
     partial void ConfigureTerrainReplication();
+    partial void ConfigureProps();
     partial void ConfigureMotion();
     partial void ConfigureNavigation();
     partial void ConfigurePlatform();
@@ -525,6 +527,7 @@ public sealed partial class GameComposition
             tools.AddChild(new BlockGhostPreview(tools));
             tools.AddChild(new ToolHud(tools));
             tools.AddChild(new BlockPromptHud(tools));
+            tools.AddChild(new Horyzont.Game.Client.Props.PropPromptHud(tools));
         }
 
         if (demo)

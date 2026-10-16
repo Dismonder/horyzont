@@ -5,6 +5,9 @@ ITEM_CORE_STONE,Stone,Kamień
 ITEM_CORE_SOIL,Soil,Ziemia
 ITEM_CORE_SAND,Sand,Piasek
 ITEM_CORE_ORE,Ore,Ruda
+ITEM_CORE_WOOD,Wood,Drewno
+ITEM_CORE_FIBER,Fiber,Włókno
+ITEM_CORE_CRYSTAL,Crystal,Kryształ
 ITEM_CORE_PEAT,Peat,Torf
 ITEM_CORE_STONE_BRICK,Stone brick,Cegła kamienna
 ITEM_CORE_IRON_INGOT,Iron ingot,Sztabka żelaza

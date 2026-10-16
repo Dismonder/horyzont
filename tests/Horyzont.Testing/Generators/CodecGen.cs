@@ -190,7 +190,7 @@ public static class CodecGen
     /// <summary>Chunks of 4096 well-formed block states in assorted shapes (empty, uniform, sparse, banded, worst-case alternating, random).</summary>
     public static Gen<uint[]> ChunkBlocks { get; } = Gen.Choose(0, 5).SelectMany(shape => Gen.Choose(0, int.MaxValue).SelectMany(seed => BuildChunk(shape, seed)));
 
-    /// <summary>Operations of every kind (1-7, 20-23, 30-37, 40, 44 and 49).</summary>
+    /// <summary>Operations of every kind (1-7, 20-23, 30-37, 40, 44 and 47-49).</summary>
     public static Gen<Operation> Operation => Gen.OneOf(
         TerrainEditOp.Select(o => (Operation)o),
         ConstructCreateOp.Select(o => (Operation)o),
@@ -215,7 +215,30 @@ public static class CodecGen
         ItemDiscoverOp.Select(o => (Operation)o),
         ProgressKeyGrantOp.Select(o => (Operation)o),
         RespawnPointSetOp.Select(o => (Operation)o),
-        BlockFunctionStateSetOp.Select(o => (Operation)o));
+        BlockFunctionStateSetOp.Select(o => (Operation)o),
+        PropHarvestOp.Select(o => (Operation)o),
+        PropRegrowOp.Select(o => (Operation)o));
+
+    /// <summary>Valid prop identifiers (face 0-5, cells and slot over the whole range of an identifier).</summary>
+    public static Gen<PropId> PropId { get; } =
+        from face in Gen.Choose(0, 5)
+        from cellU in Gen.Choose(0, Core.Ids.PropId.MaxCellsPerFace - 1)
+        from cellV in Gen.Choose(0, Core.Ids.PropId.MaxCellsPerFace - 1)
+        from slot in Gen.Choose(0, 3)
+        select Core.Ids.PropId.Create(face, cellU, cellV, slot);
+
+    /// <summary>Prop harvest operations.</summary>
+    public static Gen<PropHarvestOp> PropHarvestOp { get; } =
+        from planet in PlanetId
+        from prop in PropId
+        from tick in Tick
+        select new PropHarvestOp(planet, prop, tick);
+
+    /// <summary>Prop regrow operations.</summary>
+    public static Gen<PropRegrowOp> PropRegrowOp { get; } =
+        from planet in PlanetId
+        from prop in PropId
+        select new PropRegrowOp(planet, prop);
 
     /// <summary>Terrain edit operations.</summary>
     public static Gen<TerrainEditOp> TerrainEditOp { get; } =
@@ -477,7 +500,8 @@ public static class CodecGen
         ContainerId.Select(c => (Intent)new TakeAllIntent(c)),
         BlockInteractIntent.Select(i => (Intent)i),
         BlockConfigIntent.Select(i => (Intent)i),
-        CraftIntent.Select(i => (Intent)i));
+        CraftIntent.Select(i => (Intent)i),
+        PropHitIntent.Select(i => (Intent)i));
 
     /// <summary>Craft intents: a recipe key, 1 to 65535 pieces, a station block or none (K6-32).</summary>
     public static Gen<CraftIntent> CraftIntent { get; } =
@@ -497,6 +521,37 @@ public static class CodecGen
         select new PlayerProgressState(
             types.Aggregate(Horyzont.Core.Progress.ItemTypeBitSet.Empty, (set, type) => set.With(new ItemTypeId((ushort)type))),
             keys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
+
+    /// <summary>Prop hit intents (K6-31): any planet and prop, a hotbar slot of 0 to 255.</summary>
+    public static Gen<PropHitIntent> PropHitIntent { get; } =
+        from planet in PlanetId
+        from prop in PropId
+        from slot in Gen.Choose(0, 255)
+        select new PropHitIntent(planet, prop, (ushort)slot);
+
+    /// <summary>
+    /// Prop states (K6-31): one to five regions of any face, ascending and unique, each with up to six entries ascending, unique and inside
+    /// the region.
+    /// </summary>
+    public static Gen<PropStates> PropStatesMessage { get; } =
+        from planet in PlanetId
+        from regionCount in Gen.Choose(1, 5)
+        from regions in (from face in Gen.Choose(0, 5)
+                         from regionU in Gen.Choose(0, (1 << 17) - 1)
+                         from regionV in Gen.Choose(0, (1 << 17) - 1)
+                         from count in Gen.Choose(0, 6)
+                         from cells in Gen.Choose(0, 255).ArrayOf(count)
+                         from ticks in Tick.ArrayOf(count)
+                         select (Key: ((ulong)(uint)face << 34) | ((ulong)(uint)regionU << 17) | (uint)regionV, Face: face, RegionU: regionU, RegionV: regionV, Cells: cells, Ticks: ticks))
+                        .ArrayOf(regionCount)
+        select new PropStates(
+            planet,
+            regions.DistinctBy(r => r.Key).OrderBy(r => r.Key).Select(r => new PropRegionState(
+                new PropRegionKey(r.Key),
+                r.Cells.Select((c, i) => (Cell: c, Tick: r.Ticks[i])).DistinctBy(e => e.Cell).OrderBy(e => e.Cell)
+                    .Select(e => new HarvestedPropEntry(
+                        Core.Ids.PropId.Create(r.Face, (r.RegionU * 8) + (e.Cell >> 5), (r.RegionV * 8) + ((e.Cell >> 2) & 7), e.Cell & 3), e.Tick))
+                    .ToArray())).ToArray());
 
     /// <summary>Block interaction intents with all three actions (K6-30).</summary>
     public static Gen<BlockInteractIntent> BlockInteractIntent { get; } =
@@ -772,6 +827,7 @@ public static class CodecGen
         ContainerId.Select(c => (Message)new ContainerSubscribe(c)),
         ContainerId.Select(c => (Message)new ContainerUnsubscribe(c)),
         BlockEntityStatesMessage.Select(m => (Message)m),
+        PropStatesMessage.Select(m => (Message)m),
         PlayerProgressStateMessage.Select(m => (Message)m),
         ListUpTo(RegistryEntry(ProtocolConstants.MaxItemTypes), ProtocolConstants.MaxItemTypes, 12).Select(e => (Message)new ItemRegistry(e)));
 

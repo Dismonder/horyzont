@@ -14,6 +14,9 @@ public static class IntentCodec
 {
     private const byte CurrentFormatVersion = 1;
 
+    /// <summary>Highest hotbar slot a <see cref="PropHitIntent"/> can name (K6-31); the hotbar has fewer, the validator checks the real size.</summary>
+    private const ushort MaxToolSlot = 255;
+
     private enum IntentCode : byte
     {
         TerrainTool = 1,
@@ -28,6 +31,7 @@ public static class IntentCodec
         QuickStack = 22,
         TakeAll = 23,
         Craft = 24,
+        PropHit = 27,
         BlockInteract = 28,
         BlockConfig = 29,
     }
@@ -244,6 +248,19 @@ public static class IntentCodec
                 WriteBlockConfig(w, config.Config);
                 break;
 
+            case PropHitIntent hit:
+                if (hit.ToolSlot > MaxToolSlot)
+                {
+                    throw new ArgumentException($"Invalid tool slot {hit.ToolSlot}: at most {MaxToolSlot}.", nameof(intent));
+                }
+
+                w.WriteByte((byte)IntentCode.PropHit);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(hit.Planet.Value);
+                CoreCodecPrimitives.WritePropId(w, hit.Prop);
+                w.WriteVarUInt(hit.ToolSlot);
+                break;
+
             default:
                 throw new ArgumentException($"Unknown intent type {intent.GetType().Name}.", nameof(intent));
         }
@@ -389,6 +406,17 @@ public static class IntentCodec
 
             case IntentCode.TakeAll:
                 return new TakeAllIntent(new ContainerId(r.ReadVarUInt()));
+
+            case IntentCode.PropHit:
+                var phPlanet = new PlanetId(r.ReadVarUInt());
+                var phProp = CoreCodecPrimitives.ReadPropId(ref r);
+                ushort phSlot = r.ReadVarUInt16();
+                if (phSlot > MaxToolSlot)
+                {
+                    throw new ProtocolViolationException($"Invalid tool slot {phSlot}: at most {MaxToolSlot}.");
+                }
+
+                return new PropHitIntent(phPlanet, phProp, phSlot);
 
             case IntentCode.Craft:
                 var recipe = r.ReadString(ProtocolConstants.MaxRecipeKeyBytes);

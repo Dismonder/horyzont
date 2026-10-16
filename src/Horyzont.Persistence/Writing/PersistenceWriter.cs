@@ -555,6 +555,7 @@ public sealed class PersistenceWriter : IAsyncDisposable
             WriteContainers(connection, transaction, checkpoint);
             WriteBlockEntities(connection, transaction, checkpoint);
             WriteProgress(connection, transaction, checkpoint);
+            WriteHarvestedProps(connection, transaction, checkpoint);
             if (checkpoint.ProgressKeys is { } progressKeys)
             {
                 Sql.SetMeta(connection, transaction, Sql.MetaProgressKeys, StateCodec.EncodeProgressKeysBlob(progressKeys));
@@ -785,6 +786,31 @@ public sealed class PersistenceWriter : IAsyncDisposable
                 "INSERT INTO player_progress (player_id, data) VALUES ($id, $data) ON CONFLICT (player_id) DO UPDATE SET data = excluded.data;");
             command.Parameters.AddWithValue("$id", Sql.ToDb(progress.Player.Value));
             command.Parameters.AddWithValue("$data", StateCodec.EncodePlayerProgressBlob(progress));
+            command.ExecuteNonQuery();
+        }
+    }
+
+    private static void WriteHarvestedProps(SqliteConnection connection, SqliteTransaction transaction, Core.Checkpoints.WorldCheckpoint checkpoint)
+    {
+        foreach (var removed in checkpoint.RemovedHarvestedProps)
+        {
+            using var command = Sql.Command(connection, transaction, "DELETE FROM harvested_props WHERE planet_id = $planet AND prop_id = $prop;");
+            command.Parameters.AddWithValue("$planet", Sql.ToDb(removed.Planet.Value));
+            command.Parameters.AddWithValue("$prop", Sql.ToDb(removed.Prop.Value));
+            command.ExecuteNonQuery();
+        }
+
+        foreach (var harvested in checkpoint.UpsertedHarvestedProps)
+        {
+            using var command = Sql.Command(
+                connection, transaction,
+                "INSERT INTO harvested_props (planet_id, prop_id, tick) VALUES ($planet, $prop, $tick) "
+                + "ON CONFLICT (planet_id, prop_id) DO UPDATE SET tick = excluded.tick;");
+            command.Parameters.AddWithValue("$planet", Sql.ToDb(harvested.Planet.Value));
+            command.Parameters.AddWithValue("$prop", Sql.ToDb(harvested.Prop.Value));
+
+            // The tick is stored bit for bit (a ulong in the signed INTEGER), as the other ulong columns are.
+            command.Parameters.AddWithValue("$tick", Sql.ToDb(harvested.Tick.Value));
             command.ExecuteNonQuery();
         }
     }

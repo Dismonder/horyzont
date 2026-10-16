@@ -72,6 +72,12 @@ PROMPT_SLEEP,[E] Sleep (set respawn point),[E] Śpij (ustaw punkt odrodzenia)
 PROMPT_OWN_BED,Your bed,Twoje łóżko
 PROMPT_BED_OCCUPIED,Bed in use,Łóżko zajęte
 PROMPT_UNKNOWN,[E],[E]
+REJECT_TOOL_TIER_TOO_LOW,Tool too weak,Za słabe narzędzie
+PROMPT_PROP_CUT_TREE,[LMB] Fell the tree,[LPM] Zetnij drzewo
+PROMPT_PROP_CUT_BUSH,[LMB] Cut the bush,[LPM] Zetnij krzew
+PROMPT_PROP_BREAK_ROCK,[LMB] Break the rock,[LPM] Rozbij skałę
+PROMPT_PROP_MINE_CRYSTALS,[LMB] Mine the crystals,[LPM] Wydobądź kryształy
+PROMPT_PROP_TOOL_TIER,Needs a tool of tier {0},Wymaga narzędzia poziomu {0}
 REJECT_STATION_REQUIRED,A station or a higher level is needed,Potrzebna stacja albo wyższy poziom
 REJECT_RECIPE_LOCKED,Unknown recipe,Receptura nieznana
 REJECT_TOO_FAR_FROM_STATION,Too far from the station,Za daleko od stacji

@@ -6,7 +6,7 @@ namespace Horyzont.Core.Tests.Content;
 
 /// <summary>
 /// <c>content/recipes/recipes.json</c> (K6-32 D4): the file is optional, every error is an <see cref="InvalidDataException"/> naming the file and the JSON
-/// path, and the result of a recipe is a source of the item. Until step B3 the recipes overload of <see cref="ContentLoader.Parse(string, string, string, string?)"/>
+/// path, and the result of a recipe is a source of the item. Until step B3 the recipes overload of <see cref="ContentLoader.Parse(string, string, string, string?, string?)"/>
 /// is a skeleton, so these tests fail on it. Every refusal test first parses the valid recipe it mutates.
 /// </summary>
 public sealed class RecipeContentTests
@@ -46,7 +46,7 @@ public sealed class RecipeContentTests
 
     private static string Recipes(params string[] entries) => "{ \"formatVersion\": 1, \"recipes\": [ " + string.Join(", ", entries) + " ] }";
 
-    private static SurvivalContent Parse(params string[] entries) => ContentLoader.Parse(Items, Yields, Start, Recipes(entries));
+    private static SurvivalContent Parse(params string[] entries) => ContentLoader.Parse(Items, Yields, Start, null, Recipes(entries));
 
     private static void AssertInvalid(string path, params string[] entries)
     {
@@ -75,7 +75,7 @@ public sealed class RecipeContentTests
     public void Parse_WithoutRecipesFile_EmptyRecipes()
     {
         Assert.Empty(ContentLoader.Parse(SurvivalContentFactory.ItemsJson, SurvivalContentFactory.YieldsJson, SurvivalContentFactory.StartJson).Recipes);
-        Assert.Empty(ContentLoader.Parse(SurvivalContentFactory.ItemsJson, SurvivalContentFactory.YieldsJson, SurvivalContentFactory.StartJson, null).Recipes);
+        Assert.Empty(ContentLoader.Parse(SurvivalContentFactory.ItemsJson, SurvivalContentFactory.YieldsJson, SurvivalContentFactory.StartJson, null, null).Recipes);
 
         // The directory loader treats a missing file as no recipes.
         var root = Path.Combine(Path.GetTempPath(), "horyzont-recipes-" + Guid.NewGuid().ToString("N"));
@@ -166,7 +166,7 @@ public sealed class RecipeContentTests
         // Review B1, 8: the file has its own format version, 1.
         Assert.Single(Parse(Smelt).Recipes);
 
-        var exception = Assert.Throws<InvalidDataException>(() => ContentLoader.Parse(Items, Yields, Start, "{ \"formatVersion\": 2, \"recipes\": [ " + Smelt + " ] }"));
+        var exception = Assert.Throws<InvalidDataException>(() => ContentLoader.Parse(Items, Yields, Start, null, "{ \"formatVersion\": 2, \"recipes\": [ " + Smelt + " ] }"));
         Assert.Contains(ContentLoader.RecipesFile, exception.Message, StringComparison.Ordinal);
         Assert.Contains("$.formatVersion", exception.Message, StringComparison.Ordinal);
     }

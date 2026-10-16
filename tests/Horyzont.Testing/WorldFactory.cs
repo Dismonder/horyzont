@@ -1,5 +1,6 @@
 using System.Numerics;
 
+using Horyzont.Core.Content;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
@@ -54,6 +55,37 @@ public static class WorldFactory
             WorldState.CreateNew(
                 DefaultWorldId, 42, [HomePlanetParams], [StoneBlockKey], ["stone", "dirt", BedrockMaterialKey], SurvivalContentFactory.ItemKeys),
             players);
+
+    /// <summary>Generator profile whose layout (V1) places props (K6-31); <see cref="HomePlanetParams"/> uses an unknown profile and has none.</summary>
+    public const string PropProfile = "core:planet/1";
+
+    /// <summary>
+    /// A world for the props of K6-31: one planet with profile <see cref="PropProfile"/> (radius 4000 m, seed 7), the material keys of
+    /// <see cref="SurvivalContentFactory.PropMaterialKeys"/>, the item keys of <see cref="SurvivalContentFactory.PropItemKeys"/> (ids 1..8) and
+    /// <paramref name="players"/> joined players with empty containers, as in <see cref="CreateWithPlayerContainers"/>.
+    /// </summary>
+    public static WorldState CreateWithProps(int players = 1, string profile = PropProfile) => WithPlayers(
+        WorldState.CreateNew(
+            DefaultWorldId, 42, [HomePlanetParams with { GeneratorProfile = profile }], [StoneBlockKey], SurvivalContentFactory.PropMaterialKeys,
+            SurvivalContentFactory.PropItemKeys),
+        players);
+
+    /// <summary>
+    /// A world like <see cref="CreateWithProps"/> for any content: the item keys of <paramref name="content"/> in file order (ids from 1) and
+    /// the given material keys (ids from 1).
+    /// </summary>
+    public static WorldState CreateForContent(SurvivalContent content, IReadOnlyList<string> materialKeys, int players = 1) => WithPlayers(
+        WorldState.CreateNew(
+            DefaultWorldId, 42, [HomePlanetParams with { GeneratorProfile = PropProfile }], [StoneBlockKey], materialKeys,
+            content.Items.Items.Select(i => i.Key)),
+        players);
+
+    /// <summary>Item type id of a key of <see cref="SurvivalContentFactory.PropItemKeys"/> in a world of <see cref="CreateWithProps"/>.</summary>
+    public static ItemTypeId PropItem(string key)
+    {
+        var index = SurvivalContentFactory.PropItemKeys.ToList().IndexOf(key);
+        return index >= 0 ? new ItemTypeId((ushort)(index + 1)) : throw new ArgumentException($"Unknown test item '{key}'.", nameof(key));
+    }
 
     /// <summary>
     /// <see cref="CreateWithPlayerContainers"/> with the block types of <see cref="FunctionalBlocks.BlockKeys"/> (ids 1..5) and, when

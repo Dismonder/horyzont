@@ -5,10 +5,10 @@ using Horyzont.Core.World;
 namespace Horyzont.Game.Planet.Rendering;
 
 /// <summary>
-/// Trees, bushes, grass, flowers, rocks and crystals of a planet: a <see cref="VoxelInstancer"/> under the terrain node that scatters
-/// the meshes of <c>flora.glb</c> (<c>tools/art/planet_flora.py</c>) over the rendered terrain meshes. Purely visual and not
-/// persistent: no collisions, nothing is saved, and Voxel Tools removes the instances on edited ground by itself. Gameplay objects of
-/// the generator (harvestable trees and rocks with hit points, K6-31) will replace the matching items here.
+/// Grass and flowers of a planet: a <see cref="VoxelInstancer"/> under the terrain node that scatters the meshes of <c>flora.glb</c>
+/// (<c>tools/art/planet_flora.py</c>) over the rendered terrain meshes. Purely visual and not persistent: no collisions, nothing is saved,
+/// and Voxel Tools removes the instances on edited ground by itself. The trees, bushes, rocks, boulders and crystals are gameplay objects of
+/// the generator (K6-31) and are drawn by <see cref="Horyzont.Game.Planet.Props.PropRenderer"/>; this class only loads their meshes.
 /// </summary>
 public static class PlanetFlora
 {
@@ -109,23 +109,12 @@ public static class PlanetFlora
         var trees = radius + PlanetLook.TreeLineMeters;
         var snow = radius + PlanetLook.SnowLineMeters;
 
-        // Forests in large patches, a few lone trees between them.
-        Add("Pine", 3, 0.0035f, 28f, land + 4f, trees + 15f, 0.7f, 1.3f, 1f, Ground.Any, 1f / 220f, 0.15f, snap: true, offset: -0.2f);
-        Add("PineTall", 3, 0.0015f, 24f, land + 25f, trees, 0.8f, 1.2f, 1f, Ground.Any, 1f / 220f, 0.05f, snap: true, offset: -0.2f);
-        Add("Broadleaf", 3, 0.0025f, 22f, land + 3f, trees - 40f, 0.7f, 1.25f, 1f, Ground.Any, 1f / 300f, -0.05f, snap: true, offset: -0.2f);
-        Add("BroadleafAutumn", 3, 0.0012f, 22f, land + 10f, trees - 20f, 0.7f, 1.2f, 1f, Ground.Any, 1f / 180f, -0.25f, snap: true, offset: -0.2f);
-
-        // Undergrowth near the player.
-        Add("Bush", 1, 0.02f, 30f, land + 1f, trees + 10f, 0.6f, 1.4f, 0.4f, Ground.Any, 1f / 90f, 0.1f, snap: true);
+        // Trees, bushes, rocks, boulders and crystals are gameplay objects since K6-31: PropRenderer draws them from the frozen layout V1, so
+        // they are not scattered here (a second, unrelated set would show props that cannot be hit). Only the ground cover stays visual.
         Add("Grass", 0, 0.9f, 32f, land, snow - 10f, 0.7f, 1.4f, 0.6f, Ground.Dirt, 1f / 40f, 0.3f, shadows: false);
         Add("GrassFlowersYellow", 0, 0.05f, 25f, land + 1f, trees, 0.8f, 1.2f, 0.7f, Ground.Dirt, 1f / 30f, -0.2f, shadows: false);
         Add("GrassFlowersPink", 0, 0.04f, 25f, land + 1f, trees, 0.8f, 1.2f, 0.7f, Ground.Dirt, 1f / 25f, -0.3f, shadows: false);
         Add("GrassFlowersBlue", 0, 0.04f, 25f, land + 10f, snow, 0.8f, 1.2f, 0.7f, Ground.Dirt, 1f / 35f, -0.3f, shadows: false);
-
-        // Stones everywhere (also on beaches and under the sea), boulders and rare crystal clusters on the mountains.
-        Add("Rock", 1, 0.006f, 60f, radius - 300f, radius + 300f, 0.4f, 1.6f, 0.2f, Ground.Any, offset: -0.15f);
-        Add("Boulder", 2, 0.0012f, 45f, radius - 300f, radius + 300f, 0.6f, 2.2f, 0.3f, Ground.Any, 1f / 160f, 0.0f, snap: true, offset: -0.6f);
-        Add("Crystals", 2, 0.0008f, 50f, land + 40f, radius + 300f, 0.6f, 1.8f, 0.5f, Ground.Any, 1f / 120f, -0.45f, snap: true, offset: -0.2f);
 
         return new VoxelInstancer
         {
@@ -137,7 +126,9 @@ public static class PlanetFlora
         };
     }
 
-    private static Dictionary<string, Mesh> LoadMeshes()
+    /// <summary>Loads the meshes of <see cref="ModelPath"/> by item name, with the wind shader on the plants that sway.</summary>
+    /// <returns>The meshes; the props of the layout V1 draw them too (K6-31 D20).</returns>
+    internal static Dictionary<string, Mesh> LoadMeshes()
     {
         var scene = GD.Load<PackedScene>(ModelPath) ?? throw new InvalidOperationException($"Model {ModelPath} not found.");
         var root = scene.Instantiate<Node>();
