@@ -38,13 +38,13 @@ public sealed class VitalsStepProperties
     private static Gen<TickEvent> EventGen(int idle, int ordinary, int heavy) => Gen.Frequency(
         (idle, Gen.Constant(new TickEvent(false, false, 0f, 0f))),
         (ordinary, from sprinting in Gen.Elements(false, true)
-            from jumped in Gen.Elements(false, false, true)
-            from extra in Gen.Elements(0f, 0f, 4f, 4f, 12f)
-            from damage in Gen.Elements(0f, 0f, 0f, 0.5f, 8f, 60f)
-            select new TickEvent(sprinting, jumped, extra, damage)),
+                   from jumped in Gen.Elements(false, false, true)
+                   from extra in Gen.Elements(0f, 0f, 4f, 4f, 12f)
+                   from damage in Gen.Elements(0f, 0f, 0f, 0.5f, 8f, 60f)
+                   select new TickEvent(sprinting, jumped, extra, damage)),
         (heavy, from extra in Gen.Elements(0f, 40f)
-            from damage in Gen.Elements(0f, 400f)
-            select new TickEvent(false, false, extra, damage)));
+                from damage in Gen.Elements(0f, 400f)
+                select new TickEvent(false, false, extra, damage)));
 
     /// <summary>
     /// A whole case has one profile: a calm one (long idle stretches, so the regeneration and the recovery from exhaustion are reached and the maxima are

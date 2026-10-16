@@ -89,11 +89,12 @@ public sealed class FoodConservationProperties
             Run(sequence, coverage);
         }
 
-        // The thresholds are first guesses to be tuned in steps A6 and A7, when the rules run.
-        Assert.True(coverage.Eaten >= 20, $"eaten {coverage.Eaten} times");
-        Assert.True(coverage.RefusedByRule >= 10, $"refused by the rule (49) {coverage.RefusedByRule} times");
-        Assert.True(coverage.BrokenRefused >= 10, $"refused compounds {coverage.BrokenRefused} times");
-        Assert.True(coverage.Crafted >= 5, $"crafted {coverage.Crafted} times");
+        // Measured on 400 sequences of 40 steps: about 1100 meals, 880 refusals by the rule, 1500 refused compounds and 60 crafts. The thresholds sit at about a
+        // quarter of that (a fifth for the crafts, the rarest event), a margin for the random cases.
+        Assert.True(coverage.Eaten >= 300, $"eaten {coverage.Eaten} times");
+        Assert.True(coverage.RefusedByRule >= 200, $"refused by the rule (49) {coverage.RefusedByRule} times");
+        Assert.True(coverage.BrokenRefused >= 400, $"refused compounds {coverage.BrokenRefused} times");
+        Assert.True(coverage.Crafted >= 15, $"crafted {coverage.Crafted} times");
     }
 
     private static void Run(Step[] sequence, Coverage? coverage)
