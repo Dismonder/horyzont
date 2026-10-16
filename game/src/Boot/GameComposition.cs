@@ -418,6 +418,7 @@ public sealed partial class GameComposition
         composition.ConfigureClientCrafting();
         composition.ConfigureTerrainReplication();
         composition.ConfigureProps();
+        composition.ConfigureClientVitals();
         composition.ConfigureMotion();
         composition.ConfigureNavigation();
         composition.ConfigurePlatform();
