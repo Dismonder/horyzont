@@ -1,13 +1,14 @@
 using Horyzont.Client.Inventory;
 using Horyzont.Core.Content;
+using Horyzont.Core.Crafting;
 using Horyzont.Core.World.Blocks;
 
 namespace Horyzont.Client.Crafting;
 
 /// <summary>
 /// The recipes the local player sees (K6-32 D8): the recipes of a station kind with a progress key the world has (or none) and an ingredient the
-/// player discovered, counted against the bag and the hotbar. The rule is the one of <c>RecipeBook.IsKnown</c>; the client has no item registry object,
-/// only the keys of message 49, so the rule is applied on <see cref="ClientInventory.TryGetTypeId"/> (a test compares the two for every recipe).
+/// player discovered, counted against the bag and the hotbar. The rule is <c>RecipeBook.IsKnown</c> of the Core (one source with the server); the client
+/// passes its inventory as the item keys of message 49.
 /// </summary>
 public sealed class RecipeList
 {
@@ -29,25 +30,7 @@ public sealed class RecipeList
     /// <summary>True when the player knows the recipe.</summary>
     /// <param name="recipe">The recipe.</param>
     /// <returns>Whether the recipe is visible.</returns>
-    public bool IsKnown(RecipeDef recipe)
-    {
-        ArgumentNullException.ThrowIfNull(recipe);
-        if (recipe.ProgressKey is not null && !_progress.WorldKeys.Contains(recipe.ProgressKey))
-        {
-            return false;
-        }
-
-        var ingredients = recipe.Ingredients;
-        for (var i = 0; i < ingredients.Count; i++)
-        {
-            if (_inventory.TryGetTypeId(ingredients[i].ItemKey, out var type) && _progress.Discovered.Contains(type))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    public bool IsKnown(RecipeDef recipe) => RecipeBook.IsKnown(recipe, _inventory, _progress.Discovered, _progress.WorldKeys);
 
     /// <summary>The recipes of a station kind the player knows, in the order of the content.</summary>
     /// <param name="station">The station kind; <see cref="StationKind.Hands"/> for the recipes of the hands.</param>

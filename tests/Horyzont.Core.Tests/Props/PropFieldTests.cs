@@ -251,4 +251,64 @@ public sealed class PropFieldTests
         Assert.True(sampled <= meeting, $"{sampled} surface samples for {meeting} candidates whose ray meets the sphere.");
         Assert.True(found.Count <= meeting);
     }
+
+    [Fact]
+    public void EstimateLookup_TooFar_NeverRefusesAPropInReach()
+    {
+        const float reach = 8f;
+        var planetRadius = WorldFactory.HomePlanetParams.RadiusMeters;
+        var places = new[]
+        {
+            Vector3.UnitY, Vector3.UnitX, Vector3.Normalize(new Vector3(1, 1, 0)), Vector3.Normalize(new Vector3(1, 1, 1)),
+            Vector3.Normalize(new Vector3(0.001f, 1, 0.001f)), Vector3.Normalize(new Vector3(-1, 0.999f, -1)),
+        };
+        var tooFar = 0;
+        var checkedProps = 0;
+        foreach (var height in new[] { -299f, -150f, 0f, 5f, 150f, 299f })
+        {
+            // The oracle samples; the estimator never has, so its cache is empty and it answers from the hash alone (it does not sample).
+            var f = new PropWorldFixture();
+            f.Terrain.GeneratedSurfaceRadius = planetRadius + height;
+            var estimator = new PropField(f.State, f.Terrain);
+            var props = new List<PropInstance>();
+            foreach (var place in places)
+            {
+                f.Field.CollectInSphere(Planet, place * (planetRadius + height), 40f, props);
+            }
+
+            var sampledBefore = f.Terrain.GeneratedSurfaceCalls;
+            foreach (var prop in props)
+            {
+                checkedProps++;
+                var side = PropFixtures.SideOf(prop);
+                var limit = reach + prop.BodyRadiusMeters;
+                foreach (var margin in new[] { -0.05f, 0.02f, 0.5f, 3f })
+                {
+                    foreach (var up in new[] { -20f, 0f, prop.TrunkHeightMeters, prop.TrunkHeightMeters + 50f })
+                    {
+                        // The eye is at a horizontal distance from the axis of the prop through the centre of the planet, at some height on it.
+                        var eye = prop.Anchor + (side * (limit + margin)) + (prop.Up * up);
+                        var cost = estimator.EstimateLookup(Planet, prop.Id, eye, reach);
+                        if (cost != PropLookupCost.TooFar)
+                        {
+                            continue;
+                        }
+
+                        tooFar++;
+                        var along = Math.Clamp(Vector3.Dot(eye - prop.Anchor, prop.Up), 0f, prop.TrunkHeightMeters);
+                        var nearest = prop.Anchor + (prop.Up * along);
+                        Assert.True(margin > 0f, $"{prop.Id} at height {height} m was refused with the eye {-margin} m inside the reach.");
+                        Assert.True(
+                            Vector3.Distance(eye, nearest) > limit,
+                            $"{prop.Id} at height {height} m was TooFar but the trunk is at {Vector3.Distance(eye, nearest)} m (reach {limit} m).");
+                    }
+                }
+            }
+
+            Assert.Equal(sampledBefore, f.Terrain.GeneratedSurfaceCalls);
+        }
+
+        Assert.True(checkedProps > 20, $"Only {checkedProps} props were examined.");
+        Assert.True(tooFar > checkedProps, $"Only {tooFar} far answers; the test would pass empty.");
+    }
 }

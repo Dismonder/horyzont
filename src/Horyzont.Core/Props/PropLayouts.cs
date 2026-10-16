@@ -7,6 +7,9 @@ public static class PropLayouts
 {
     private static readonly PropLayoutV1 _v1 = new();
 
+    /// <summary>Every layout that <see cref="TryGet"/> can return (a test checks them against <see cref="PropHeightLimitsV1"/>).</summary>
+    internal static IReadOnlyList<IPropLayout> All { get; } = [_v1];
+
     /// <summary>Looks up the layout of a generator profile.</summary>
     /// <param name="generatorProfile">Profile key, for example <c>core:planet/1</c>.</param>
     /// <param name="layout">The layout when the profile has one.</param>

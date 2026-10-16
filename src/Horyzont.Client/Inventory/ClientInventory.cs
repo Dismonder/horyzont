@@ -17,7 +17,7 @@ namespace Horyzont.Client.Inventory;
 /// registry. A delta applies only as the next version of a container; a gap asks the server for the whole state again (spec 03,
 /// "Sieć"). The class changes only on server messages, never on the intents of the player (decision D15).
 /// </summary>
-public sealed class ClientInventory : IClientSessionListener
+public sealed class ClientInventory : IClientSessionListener, IItemTypeKeys
 {
     private readonly ItemCatalog _catalog;
     private readonly Action<ContainerId> _requestState;
@@ -109,6 +109,9 @@ public sealed class ClientInventory : IClientSessionListener
         type = default;
         return false;
     }
+
+    /// <inheritdoc/>
+    bool IItemTypeKeys.TryGetId(string key, out ItemTypeId id) => TryGetTypeId(key, out id);
 
     /// <summary>The number of items of a type in the bag and the hotbar.</summary>
     /// <param name="type">Item type.</param>

@@ -87,12 +87,15 @@ public sealed record GameRules
 
     /// <summary>
     /// Anchor lookups per second that need the generator (a cache miss of a candidate that may be in reach) one player may cause with
-    /// <c>PropHitIntent</c>, refused hits included (K6-31 review fix; a refused hit does not use a hit token).
+    /// <c>PropHitIntent</c>, refused hits included (K6-31 review fix; a refused hit does not use a hit token). Twice
+    /// <see cref="PropHitsPerSecond"/>: a legitimate player needs at most one lookup per hit (the first hit at a new prop; the prop is
+    /// cached after it, refused or not, and digging warms the cache too), so the budget only has to cover the pace of the client and a
+    /// burst after a network stall; every lookup beyond that is the main thread's cost of someone who is not playing.
     /// </summary>
-    public int PropProbesPerSecond { get; init; } = 16;
+    public int PropProbesPerSecond { get; init; } = 8;
 
-    /// <summary>Anchor lookups that need the generator available at once (K6-31 review fix).</summary>
-    public int PropProbeBurst { get; init; } = 16;
+    /// <summary>Anchor lookups that need the generator available at once: twice <see cref="PropHitBurst"/> (K6-31 review fix).</summary>
+    public int PropProbeBurst { get; init; } = 8;
 
     /// <summary>Ticks without a hit after which a worn prop has its full hit points again (K6-31 D10).</summary>
     public int PropDamageResetTicks { get; init; } = 1800;
