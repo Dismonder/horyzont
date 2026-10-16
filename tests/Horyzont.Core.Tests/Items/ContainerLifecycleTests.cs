@@ -113,10 +113,16 @@ public sealed class ContainerLifecycleTests
         Assert.Equal(4, f.Container(id).Size);
         Assert.Equal(version + 1, f.Container(id).Version);
         Assert.Equal(id, Assert.Single(applied.ContainerChanges).Container);
+        Assert.True(Assert.Single(applied.ContainerChanges).Configured);
 
+        var withSlots = f.Apply(new CompoundOp([new ContainerConfigureOp(id, 8, ContainerAccess.Private), FunctionalBlockFixture.Stone(id, 5, 1)]));
+        var change = Assert.Single(withSlots.ContainerChanges);
+        Assert.True(change.Configured);
+        Assert.Equal([(ushort)5], change.Slots);
+        Assert.False(Assert.Single(f.Apply(FunctionalBlockFixture.Stone(id, 0, 1)).ContainerChanges).Configured);
         f.Apply(new ContainerConfigureOp(id, 6, ContainerAccess.Private));
         Assert.Equal(6, f.Container(id).Size);
-        Assert.Equal(version + 2, f.Container(id).Version);
+        Assert.Equal(version + 4, f.Container(id).Version);
     }
 
     [Fact]

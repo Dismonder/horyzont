@@ -219,6 +219,25 @@ public sealed class ChestSubscriptionTests
     }
 
     [Fact]
+    public void ConfigureWithTransferIntoNewSlot_SubscribersGetFullState()
+    {
+        var chest = SetUpChest();
+        Stand(_other, 5f);
+        _service.Handle(_other, new ContainerSubscribe(chest));
+        _sent.Clear();
+
+        _sim.ApplyServerOperation(new CompoundOp(
+        [
+            new ContainerConfigureOp(chest, 12, ContainerAccess.Shared),
+            new ItemTransferOp(new SlotRef(chest, 0), new SlotRef(chest, 10), _stone, 5, 500),
+        ]));
+
+        var state = Assert.IsType<ContainerState>(Assert.Single(SentTo(_other)));
+        Assert.Equal((chest, RejectReason.None, (ushort)12), (state.Container, state.Reason, state.Size));
+        Assert.Contains(new SlotContent(10, new ItemStack(_stone, 5)), state.Slots);
+    }
+
+    [Fact]
     public void Disconnect_SubscriptionDropped()
     {
         var chest = SetUpChest();

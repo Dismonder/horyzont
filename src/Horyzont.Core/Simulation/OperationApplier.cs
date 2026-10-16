@@ -417,7 +417,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 {
                     container.BumpVersion();
                     state.Containers.MarkChanged(containerId);
-                    list[group++] = new ContainerChange(containerId, container.Version, slots);
+                    list[group++] = new ContainerChange(containerId, container.Version, slots, false, WasConfigured(containerId));
                 }
                 else
                 {
@@ -751,6 +751,19 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
 
         _undo.Configure(container, op.Size, op.Access);
         return null;
+    }
+
+    private bool WasConfigured(ContainerId id)
+    {
+        for (var i = 0; i < _undo.ConfiguredCount; i++)
+        {
+            if (_undo.ConfiguredAt(i).Id == id)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>A chest container hosted by a block needs the chest state of that block, as the checkpoint requires; judged at the end of an operation.</summary>
