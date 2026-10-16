@@ -84,6 +84,9 @@ public static class ProtocolConstants
     /// <summary>Longest set of discovered item types in bytes: type ids are 1 to <see cref="MaxItemTypes"/>, so bit 4096 sits in byte 512 (K6-32).</summary>
     public const int MaxDiscoveredBytes = (MaxItemTypes / 8) + 1;
 
+    /// <summary>Largest value of health or stamina in a record or a message (K6-33); a larger, negative or non-finite value is invalid.</summary>
+    public const float MaxVitalValue = 10_000f;
+
     /// <summary>Longest recipe key in UTF-8 bytes (K6-32).</summary>
     public const int MaxRecipeKeyBytes = MaxRegistryKeyBytes;
 

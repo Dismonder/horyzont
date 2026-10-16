@@ -7,6 +7,7 @@ using Horyzont.Core.Progress;
 using Horyzont.Core.Tests.BlockEntities;
 using Horyzont.Core.Tests.Crafting;
 using Horyzont.Core.Tests.Items;
+using Horyzont.Core.Tests.Survival;
 using Horyzont.Core.World;
 using Horyzont.Testing;
 
@@ -30,6 +31,124 @@ public sealed class SurvivalHashTests
     [Fact]
     public void WorldWithCraftingWithoutFood_HashUnchanged() =>
         Assert.Equal(WorldWithCraftingHashBeforeFood, StateHasher.Hash(WorldWithCrafting()));
+
+    [Fact]
+    public void FoodOnly_OpensSurvivalSection()
+    {
+        // A record with only food is a record of progress (D4): the world with it is another world than the one without, and two equal ones agree.
+        var a = new FoodWorld();
+        var b = new FoodWorld();
+        var without = new FoodWorld();
+        Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(without.State));
+
+        a.Apply(FoodWorld.Set(FoodWorld.Player1, FoodWorld.Slot(FoodWorld.Berries, 100)));
+        b.Apply(FoodWorld.Set(FoodWorld.Player1, FoodWorld.Slot(FoodWorld.Berries, 100)));
+
+        Assert.Equal(1, a.State.Progress.Count);
+        Assert.NotEqual(StateHasher.Hash(without.State), StateHasher.Hash(a.State));
+        Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(b.State));
+
+        // Clearing the food removes the record and brings the hash back.
+        a.Apply(FoodWorld.Set(FoodWorld.Player1));
+        Assert.Equal(StateHasher.Hash(without.State), StateHasher.Hash(a.State));
+    }
+
+    [Fact]
+    public void Food_ChangesHash()
+    {
+        var variants = new Func<FoodSlot[]>[]
+        {
+            () => [],
+            () => [FoodWorld.Slot(FoodWorld.Berries, 100)],
+            () => [FoodWorld.Slot(FoodWorld.Berries, 101)],
+            () => [FoodWorld.Slot(FoodWorld.Berries, 0)],
+            () => [FoodWorld.Slot(FoodWorld.Jam, 100)],
+            () => [FoodWorld.Slot(FoodWorld.Berries, 100), FoodWorld.Slot(FoodWorld.Jam, 100)],
+            () => [FoodWorld.Slot(FoodWorld.Berries, 100), FoodWorld.Slot(FoodWorld.Jam, 100), FoodWorld.Slot(FoodWorld.Bread, 100)],
+        };
+
+        var hashes = variants.Select(v =>
+        {
+            var f = new FoodWorld();
+            f.Apply(FoodWorld.Set(FoodWorld.Player1, v()));
+            return StateHasher.Hash(f.State);
+        }).ToList();
+
+        Assert.Equal(variants.Length, hashes.Distinct().Count());
+
+        // The food of another player is another world.
+        var other = new FoodWorld(players: 2);
+        other.Apply(FoodWorld.Set(FoodWorld.Player2, FoodWorld.Slot(FoodWorld.Berries, 100)));
+        var first = new FoodWorld(players: 2);
+        first.Apply(FoodWorld.Set(FoodWorld.Player1, FoodWorld.Slot(FoodWorld.Berries, 100)));
+        Assert.NotEqual(StateHasher.Hash(first.State), StateHasher.Hash(other.State));
+    }
+
+    [Fact]
+    public void FoodSlotOrder_ChangesHash()
+    {
+        var berries = FoodWorld.Slot(FoodWorld.Berries, 100);
+        var jam = FoodWorld.Slot(FoodWorld.Jam, 200);
+        var orders = new[]
+        {
+            new[] { berries, jam },
+            new[] { jam, berries },
+            new[] { berries, default, jam },
+            new[] { default, berries, jam },
+            new[] { default, default, berries },
+            new[] { default, berries },
+            new[] { berries },
+        };
+
+        var hashes = orders.Select(o =>
+        {
+            var f = new FoodWorld();
+            f.Apply(FoodWorld.Set(FoodWorld.Player1, o));
+            return StateHasher.Hash(f.State);
+        }).ToList();
+
+        Assert.Equal(orders.Length, hashes.Distinct().Count());
+    }
+
+    [Fact]
+    public void FoodWithBedAndDiscoveries_AllThreeCount()
+    {
+        var bedOnly = new FoodWorld();
+        bedOnly.Blocks.SetUpBed(FunctionalBlocks.BedCell, FoodWorld.Player1);
+        var withFood = new FoodWorld();
+        withFood.Blocks.SetUpBed(FunctionalBlocks.BedCell, FoodWorld.Player1);
+        withFood.Apply(FoodWorld.Set(FoodWorld.Player1, FoodWorld.Slot(FoodWorld.Berries, 100)));
+        var withDiscovery = new FoodWorld();
+        withDiscovery.Blocks.SetUpBed(FunctionalBlocks.BedCell, FoodWorld.Player1);
+        withDiscovery.Apply(new ItemDiscoverOp(FoodWorld.Player1, FoodWorld.Stone));
+
+        var hashes = new[] { bedOnly, withFood, withDiscovery }.Select(x => StateHasher.Hash(x.State)).ToList();
+
+        Assert.Equal(3, hashes.Distinct().Count());
+    }
+
+    [Fact]
+    public void Vitals_OnlineAndOffline_DoNotChangeHash()
+    {
+        var a = new FoodWorld();
+        var b = new FoodWorld();
+        Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(b.State));
+
+        // Online: the vitals are outside the hash, like the pose.
+        Assert.True(a.Simulation.UpdatePlayerVitals(FoodWorld.Player1, new PlayerVitals(50f, 20f, new Tick(5000), true)));
+        Assert.Equal(StateHasher.Hash(b.State), StateHasher.Hash(a.State));
+
+        // Offline: the player left with the vitals (the checkpoint keeps them), and the worlds still agree.
+        foreach (var f in new[] { a, b })
+        {
+            var state = f.Blocks.Sim.PlayerOf(FoodWorld.Player1);
+            f.Simulation.ApplyServerOperation(new PlayerLeaveOp(FoodWorld.Player1, state.Frame, state.ParentSeq, state.Position, System.Numerics.Quaternion.Identity, 0f));
+        }
+
+        Assert.NotNull(a.Blocks.Sim.PlayerOf(FoodWorld.Player1).Vitals);
+        Assert.Null(b.Blocks.Sim.PlayerOf(FoodWorld.Player1).Vitals);
+        Assert.Equal(StateHasher.Hash(b.State), StateHasher.Hash(a.State));
+    }
 
     [Fact]
     public void WorldWithoutItems_HashUnchanged() => Assert.Equal(DefaultWorldHashBeforeItems, StateHasher.Hash(WorldFactory.CreateDefault()));

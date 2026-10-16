@@ -408,6 +408,15 @@ public sealed class ServerSimulation
         return true;
     }
 
+    /// <summary>
+    /// Health and stamina of a player outside the journal (K6-33, D5; like movement, not in the state hash, saved by the checkpoint with the online player).
+    /// False for a player that is unknown or offline and for invalid values (non-finite, negative or above <see cref="Horyzont.Core.Protocol.ProtocolConstants.MaxVitalValue"/>).
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <param name="vitals">The vitals.</param>
+    /// <returns>True when stored.</returns>
+    public bool UpdatePlayerVitals(PlayerId player, in PlayerVitals vitals) => throw new NotImplementedException("K6-33 A3");
+
     private static int? ComponentOf(Operation operation) => operation is CompoundOp compound ? compound.Components.Count - 1 : null;
 
     private AppliedOperation? TryApplyAndJournal(PlayerId? actor, Operation operation, out string failure, out int componentIndex)

@@ -13,6 +13,10 @@ public static class SurvivalContentFactory
     public const string GemKey = "test:gem";
     public const string StoneKey = "test:stone";
     public const string SoilKey = "test:soil";
+    public const string BerriesKey = "test:berries";
+    public const string JamKey = "test:jam";
+    public const string BrothKey = "test:broth";
+    public const string BreadKey = "test:bread";
 
     public const string ItemsJson = """
         {
@@ -46,6 +50,12 @@ public static class SurvivalContentFactory
 
     /// <summary>Item keys in the order of <see cref="ItemsJson"/>; a world created with them gets ids 1..4 in this order.</summary>
     public static IReadOnlyList<string> ItemKeys { get; } = [ToolKey, GemKey, StoneKey, SoilKey];
+
+    /// <summary>
+    /// <see cref="ItemKeys"/> and four food types (K6-33): a world created with them gets ids 1..8, berries 5, jam 6, broth 7, bread 8. The statistics of the
+    /// food are in <c>FoodContent</c> of the Core tests (the content loader reads the <c>food</c> field in step B3 of K6-33).
+    /// </summary>
+    public static IReadOnlyList<string> FoodItemKeys { get; } = [.. ItemKeys, BerriesKey, JamKey, BrothKey, BreadKey];
 
     /// <summary>Parses the test content.</summary>
     public static SurvivalContent CreateTest() => ContentLoader.Parse(ItemsJson, YieldsJson, StartJson);

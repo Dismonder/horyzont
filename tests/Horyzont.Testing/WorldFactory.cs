@@ -60,11 +60,11 @@ public static class WorldFactory
     /// <paramref name="withConstruct"/>, the construct <see cref="FunctionalBlocks.Construct"/>: a stone floor and plain blocks (no state, no container)
     /// of a chest, a bed, a lamp and a two-block door at the cells of <see cref="FunctionalBlocks"/>, placed by server operations.
     /// </summary>
-    public static WorldState CreateWithFunctionalBlocks(int players = 1, bool withConstruct = true)
+    public static WorldState CreateWithFunctionalBlocks(int players = 1, bool withConstruct = true, IReadOnlyList<string>? itemKeys = null)
     {
         var state = WithPlayers(
             WorldState.CreateNew(
-                DefaultWorldId, 42, [HomePlanetParams], FunctionalBlocks.BlockKeys, ["stone", "dirt", BedrockMaterialKey], SurvivalContentFactory.ItemKeys),
+                DefaultWorldId, 42, [HomePlanetParams], FunctionalBlocks.BlockKeys, ["stone", "dirt", BedrockMaterialKey], itemKeys ?? SurvivalContentFactory.ItemKeys),
             players);
         if (!withConstruct)
         {
@@ -96,6 +96,12 @@ public static class WorldFactory
         return state;
     }
 
+    /// <summary>
+    /// <see cref="CreateWithFunctionalBlocks"/> with the item types of <see cref="SurvivalContentFactory.FoodItemKeys"/> (K6-33): the four test types of
+    /// the other worlds and four food types (ids 5..8), the construct with a bed, and the bag, hotbar and equipment of every player.
+    /// </summary>
+    public static WorldState CreateWithFood(int players = 1) => CreateWithFunctionalBlocks(players, true, SurvivalContentFactory.FoodItemKeys);
+
     private static WorldState WithPlayers(WorldState state, int players)
     {
         var sim = new ServerSimulation(state, new FakeTerrainService(), new InMemoryJournal(), new GameRules(), NullLogger<ServerSimulation>.Instance);
@@ -109,12 +115,12 @@ public static class WorldFactory
         return state;
     }
 
-    /// <summary>Item type id of a key of <see cref="SurvivalContentFactory.ItemKeys"/> in a world of <see cref="CreateWithPlayerContainers"/>.</summary>
+    /// <summary>Item type id of a key of <see cref="SurvivalContentFactory.FoodItemKeys"/> (the first four are the keys of <see cref="SurvivalContentFactory.ItemKeys"/>) in a world of <see cref="CreateWithPlayerContainers"/> or <see cref="CreateWithFood"/>.</summary>
     public static ItemTypeId Item(string key)
     {
-        for (var i = 0; i < SurvivalContentFactory.ItemKeys.Count; i++)
+        for (var i = 0; i < SurvivalContentFactory.FoodItemKeys.Count; i++)
         {
-            if (SurvivalContentFactory.ItemKeys[i] == key)
+            if (SurvivalContentFactory.FoodItemKeys[i] == key)
             {
                 return new ItemTypeId((ushort)(i + 1));
             }

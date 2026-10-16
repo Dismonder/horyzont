@@ -24,6 +24,13 @@ internal sealed class FunctionalBlockFixture
         Sim = new SimFixture(state: WorldFactory.CreateWithFunctionalBlocks(players, withConstruct));
     }
 
+    /// <summary>A fixture over a world made elsewhere, e.g. <see cref="WorldFactory.CreateWithFood"/> (K6-33).</summary>
+    /// <param name="state">The world.</param>
+    public FunctionalBlockFixture(Horyzont.Core.World.WorldState state)
+    {
+        Sim = new SimFixture(state: state);
+    }
+
     private FunctionalBlockFixture(int players, bool withSurvival, ushort chestSlots, bool intents)
     {
         Assert.True(intents);

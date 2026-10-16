@@ -7,4 +7,5 @@ namespace Horyzont.Core.Content;
 /// <param name="Flags">Flags.</param>
 /// <param name="ToolTier">Tool tier, 0 for none.</param>
 /// <param name="EquipmentSlot">Equipment slot.</param>
-public sealed record ItemDef(string Key, ItemCategory Category, ushort MaxStack, ItemFlags Flags, byte ToolTier, EquipmentSlot EquipmentSlot);
+/// <param name="Food">Food statistics (K6-33), null for an item that is not food.</param>
+public sealed record ItemDef(string Key, ItemCategory Category, ushort MaxStack, ItemFlags Flags, byte ToolTier, EquipmentSlot EquipmentSlot, FoodDef? Food = null);
