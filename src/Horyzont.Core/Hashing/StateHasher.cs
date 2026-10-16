@@ -20,12 +20,16 @@ namespace Horyzont.Core.Hashing;
 /// The survival section (item types, next container id, containers) is appended only when the world has item types or containers or a
 /// container counter other than 1, so the hash of a world without items is the same as before K6-29 (D7 of K6-29W). K6-30 (D22) appends
 /// block states (0x42) and respawn points (0x50) to that section, each only when it has entries, and also makes them a reason for the section.
+/// K6-32 (D22) adds the station state to 0x42, and after 0x50 the discoveries (0x44) and the progress keys (0x4B), each only when non-empty; the keys are a
+/// reason for the section too (discoveries live in progress records, which already are). A world without them hashes as before.
 /// </summary>
 public static class StateHasher
 {
     private const byte SurvivalSectionTag = 0x53;
     private const byte BlockEntitiesTag = 0x42;
     private const byte ProgressTag = 0x50;
+    private const byte DiscoveriesTag = 0x44;
+    private const byte ProgressKeysTag = 0x4B;
 
     /// <summary>Hashes a state.</summary>
     /// <param name="state">The state.</param>
@@ -161,7 +165,7 @@ public static class StateHasher
         }
 
         if (state.ItemTypes.Entries.Count > 0 || state.Containers.Count > 0 || state.ContainerIds.NextValue != 1
-            || state.BlockEntities.Count > 0 || state.Progress.Count > 0)
+            || state.BlockEntities.Count > 0 || state.Progress.Count > 0 || state.ProgressKeys.Count > 0)
         {
             Survival(hash, state);
         }
@@ -224,6 +228,21 @@ public static class StateHasher
                     case BedBlockState bed:
                         U64(hash, bed.Owner.Value);
                         break;
+                    case StationBlockState station:
+                        U64(hash, station.Input.Value);
+                        U64(hash, station.Output.Value);
+                        Text(hash, station.Recipe);
+                        if (station.Started is { } started)
+                        {
+                            U32(hash, 1);
+                            U64(hash, started.Value);
+                        }
+                        else
+                        {
+                            U32(hash, 0);
+                        }
+
+                        break;
                 }
             }
         }
@@ -247,6 +266,40 @@ public static class StateHasher
                 {
                     U32(hash, 0);
                 }
+            }
+
+            // K6-32 (D22): the discoveries of the players that have any.
+            var discoverers = 0;
+            foreach (var (_, progress) in state.Progress.Sorted)
+            {
+                discoverers += progress.Discovered is null ? 0 : 1;
+            }
+
+            if (discoverers > 0)
+            {
+                Span<byte> discoveriesTag = [DiscoveriesTag];
+                hash.Append(discoveriesTag);
+                U32(hash, (uint)discoverers);
+                foreach (var (player, progress) in state.Progress.Sorted)
+                {
+                    if (progress.Discovered is { } discovered)
+                    {
+                        U64(hash, player.Value);
+                        U32(hash, (uint)discovered.Bytes.Length);
+                        hash.Append(discovered.Bytes);
+                    }
+                }
+            }
+        }
+
+        if (state.ProgressKeys.Count > 0)
+        {
+            Span<byte> keysTag = [ProgressKeysTag];
+            hash.Append(keysTag);
+            U32(hash, (uint)state.ProgressKeys.Count);
+            foreach (var key in state.ProgressKeys.Sorted)
+            {
+                Text(hash, key);
             }
         }
     }
