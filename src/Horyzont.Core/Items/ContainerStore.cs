@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
+using Horyzont.Core.World.Constructs;
 
 namespace Horyzont.Core.Items;
 
@@ -11,6 +12,8 @@ public sealed class ContainerStore
     private readonly ChangeTracker _tracker;
     private readonly Dictionary<ContainerId, Container> _byId = [];
     private readonly Dictionary<(PlayerId Player, ContainerKind Kind), Container> _byPlayer = [];
+    private readonly Dictionary<(EntityId Construct, CellPos Cell, ContainerKind Kind), Container> _byBlock = [];
+    private readonly Dictionary<(EntityId Construct, CellPos Cell), int> _blockHostCount = [];
     private readonly List<Container> _sorted = [];
 
     internal ContainerStore(ChangeTracker tracker)
@@ -38,6 +41,21 @@ public sealed class ContainerStore
     public bool TryGetOfPlayer(PlayerId player, ContainerKind kind, [NotNullWhen(true)] out Container? container) =>
         _byPlayer.TryGetValue((player, kind), out container);
 
+    /// <summary>Looks up the container of a kind hosted by a construct block (the index host × kind of K6-30).</summary>
+    /// <param name="construct">The construct.</param>
+    /// <param name="cell">Cell of the block.</param>
+    /// <param name="kind">Container kind.</param>
+    /// <param name="container">The container when found.</param>
+    /// <returns>True when the block hosts one of that kind.</returns>
+    public bool TryGetOfBlock(EntityId construct, CellPos cell, ContainerKind kind, [NotNullWhen(true)] out Container? container) =>
+        _byBlock.TryGetValue((construct, cell, kind), out container);
+
+    /// <summary>True when the block hosts a container of any kind.</summary>
+    /// <param name="construct">The construct.</param>
+    /// <param name="cell">Cell of the block.</param>
+    /// <returns>Whether a container is hosted.</returns>
+    public bool IsBlockHost(EntityId construct, CellPos cell) => _blockHostCount.ContainsKey((construct, cell));
+
     /// <summary>Adds a container (operation or load); the caller checked that the id and the player × kind pair are free.</summary>
     internal Container Add(ContainerId id, ContainerKind kind, ContainerHost host, PlayerId owner, ContainerAccess access, ushort size, uint version)
     {
@@ -46,6 +64,12 @@ public sealed class ContainerStore
         if (host.Kind == ContainerHostKind.Player)
         {
             _byPlayer.Add((host.PlayerId, kind), container);
+        }
+        else if (host.Kind == ContainerHostKind.ConstructBlock)
+        {
+            var construct = new EntityId(host.Id);
+            _byBlock.Add((construct, host.Cell, kind), container);
+            _blockHostCount[(construct, host.Cell)] = _blockHostCount.GetValueOrDefault((construct, host.Cell)) + 1;
         }
 
         var index = _sorted.Count;
@@ -58,7 +82,7 @@ public sealed class ContainerStore
         return container;
     }
 
-    /// <summary>Removes a container (undo of a refused compound operation).</summary>
+    /// <summary>Removes a container (operation 36 or undo of a refused compound operation) and frees its host index.</summary>
     internal void Remove(ContainerId id)
     {
         if (!_byId.Remove(id, out var container))
@@ -69,6 +93,20 @@ public sealed class ContainerStore
         if (container.Host.Kind == ContainerHostKind.Player)
         {
             _byPlayer.Remove((container.Host.PlayerId, container.Kind));
+        }
+        else if (container.Host.Kind == ContainerHostKind.ConstructBlock)
+        {
+            var construct = new EntityId(container.Host.Id);
+            _byBlock.Remove((construct, container.Host.Cell, container.Kind));
+            var left = _blockHostCount[(construct, container.Host.Cell)] - 1;
+            if (left == 0)
+            {
+                _blockHostCount.Remove((construct, container.Host.Cell));
+            }
+            else
+            {
+                _blockHostCount[(construct, container.Host.Cell)] = left;
+            }
         }
 
         _sorted.Remove(container);

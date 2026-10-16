@@ -49,8 +49,8 @@ public sealed class WorldState
         Markers = new MarkerStore(_tracker);
         ItemTypes = new ItemTypeRegistry();
         Containers = new ContainerStore(_tracker);
-        BlockEntities = new BlockEntityStore();
-        Progress = new PlayerProgressStore();
+        BlockEntities = new BlockEntityStore(_tracker);
+        Progress = new PlayerProgressStore(_tracker);
     }
 
     /// <summary>World id.</summary>

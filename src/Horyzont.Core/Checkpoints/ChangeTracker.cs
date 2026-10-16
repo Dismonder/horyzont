@@ -1,3 +1,4 @@
+using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Ids;
 using Horyzont.Core.World.Terrain;
 
@@ -18,6 +19,10 @@ internal sealed class ChangeTracker
     internal HashSet<EntityId> ShipStates { get; } = [];
     internal HashSet<ContainerId> Containers { get; } = [];
 
+    internal HashSet<BlockRef> BlockEntities { get; } = [];
+
+    internal HashSet<PlayerId> Progress { get; } = [];
+
     internal void MarkConstruct(EntityId id) => Constructs.Add(id);
 
     internal void MarkChunk(ConstructChunkKey key) => Chunks.Add(key);
@@ -30,6 +35,10 @@ internal sealed class ChangeTracker
     internal void MarkShipState(EntityId id) => ShipStates.Add(id);
     internal void MarkContainer(ContainerId id) => Containers.Add(id);
 
+    internal void MarkBlockEntity(BlockRef key) => BlockEntities.Add(key);
+
+    internal void MarkProgress(PlayerId id) => Progress.Add(id);
+
     internal void Clear()
     {
         Constructs.Clear();
@@ -39,5 +48,7 @@ internal sealed class ChangeTracker
         Markers.Clear();
         ShipStates.Clear();
         Containers.Clear();
+        BlockEntities.Clear();
+        Progress.Clear();
     }
 }
