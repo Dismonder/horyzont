@@ -24,6 +24,12 @@ internal sealed class CraftingFixture
         Blocks = new FunctionalBlockFixture(players);
     }
 
+    /// <summary>A fixture over blocks made elsewhere (for instance the world of <c>FoodWorld</c>).</summary>
+    public CraftingFixture(FunctionalBlockFixture blocks)
+    {
+        Blocks = blocks;
+    }
+
     /// <summary>Cell of the first station.</summary>
     public static CellPos StationCell => FunctionalBlocks.FreeCell;
 

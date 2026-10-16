@@ -41,6 +41,13 @@ public sealed class SurvivalHashTests
     /// <summary>Hash of <see cref="WorldWithCrafting"/> recorded at commit ffd89bb (start of K6-33, before the food slots and the vitals).</summary>
     private const ulong WorldWithCraftingHashBeforeFood = 2493131761482920173UL;
 
+    /// <summary>Hash of <see cref="WorldWithFood"/> recorded at commit 8641631 (start of K6-34, before the suit resources and the oxygen generator).</summary>
+    private const ulong WorldWithFoodHashBeforeHazards = 3312466309173170596UL;
+
+    [Fact]
+    public void WorldWithFoodWithoutHazards_HashUnchanged() =>
+        Assert.Equal(WorldWithFoodHashBeforeHazards, StateHasher.Hash(WorldWithFood()));
+
     [Fact]
     public void WorldWithCraftingWithoutFood_HashUnchanged() =>
         Assert.Equal(WorldWithCraftingHashBeforeFood, StateHasher.Hash(WorldWithCrafting()));
@@ -521,6 +528,21 @@ public sealed class SurvivalHashTests
         f.SetUpStation(CraftingFixture.StationCell, "t:a", new Tick(100));
         f.Apply(CraftingFixture.Discover(CraftingFixture.Player2, CraftingFixture.Gem));
         f.Apply(CraftingFixture.Grant("test:boss"));
+        return f.State;
+    }
+
+    /// <summary>
+    /// The K6-33 world of the food tests (the K6-32 world of <see cref="WorldWithCrafting"/> over the food registry): the bed with the respawn point of
+    /// player 1, a station in work, a discovery of player 2, a progress key and berries in the food slot 0 of player 1. No suit, no oxygen generator.
+    /// </summary>
+    private static WorldState WorldWithFood()
+    {
+        var f = new CraftingFixture(new FoodWorld(players: 2).Blocks);
+        f.Blocks.SetUpBed(FunctionalBlocks.BedCell, FunctionalBlockFixture.Player1);
+        f.SetUpStation(CraftingFixture.StationCell, "t:a", new Tick(100));
+        f.Apply(CraftingFixture.Discover(CraftingFixture.Player2, CraftingFixture.Gem));
+        f.Apply(CraftingFixture.Grant("test:boss"));
+        f.Apply(FoodWorld.Set(FoodWorld.Player1, FoodWorld.Slot(FoodWorld.Berries, 100)));
         return f.State;
     }
 
