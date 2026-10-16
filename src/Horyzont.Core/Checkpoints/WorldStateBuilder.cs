@@ -6,6 +6,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Progress;
+using Horyzont.Core.Props;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.Space;
@@ -105,7 +106,6 @@ public sealed class WorldStateBuilder
     /// <param name="record">The harvested prop.</param>
     public void AddHarvestedProp(HarvestedPropRecord record)
     {
-        // K6-31 A4: check against the planets and the grid, and restore in Build.
         _harvestedProps.Add(record);
     }
 
@@ -315,6 +315,11 @@ public sealed class WorldStateBuilder
             LoadProgress(state, record);
         }
 
+        foreach (var record in _harvestedProps)
+        {
+            LoadHarvestedProp(state, record);
+        }
+
         foreach (var version in _terrain)
         {
             if (!state.Planets.TryGet(version.Key.Planet, out _))
@@ -348,6 +353,28 @@ public sealed class WorldStateBuilder
     {
         const int Limit = CellPos.Limit / ConstructChunk.Size;
         return chunk.X >= -Limit && chunk.X < Limit && chunk.Y >= -Limit && chunk.Y < Limit && chunk.Z >= -Limit && chunk.Z < Limit;
+    }
+
+    /// <summary>Checks the planet, the reserved bits and the grid of the planet; whether the generator has the prop is not checked (ZASADY 4).</summary>
+    private static void LoadHarvestedProp(WorldState state, HarvestedPropRecord record)
+    {
+        if (!state.Planets.TryGet(record.Planet, out var planet))
+        {
+            throw new InvalidDataException($"Harvested prop {record.Prop.Value} belongs to the unknown planet {record.Planet.Value}.");
+        }
+
+        if (!record.Prop.IsValid || !CubeSphereGrid.TryGetCellsPerFace(planet.RadiusMeters, out var cellsPerFace)
+            || record.Prop.CellU >= cellsPerFace || record.Prop.CellV >= cellsPerFace)
+        {
+            throw new InvalidDataException($"Harvested prop {record.Prop.Value} is not an identifier of the grid of planet {record.Planet.Value}.");
+        }
+
+        if (state.HarvestedProps.Contains(record.Planet, record.Prop))
+        {
+            throw new InvalidDataException($"Harvested prop {record.Prop.Value} of planet {record.Planet.Value} is duplicated.");
+        }
+
+        state.HarvestedProps.Load(record);
     }
 
     private static void LoadMarker(WorldState state, MarkerRecord marker)

@@ -190,7 +190,7 @@ public static class CodecGen
     /// <summary>Chunks of 4096 well-formed block states in assorted shapes (empty, uniform, sparse, banded, worst-case alternating, random).</summary>
     public static Gen<uint[]> ChunkBlocks { get; } = Gen.Choose(0, 5).SelectMany(shape => Gen.Choose(0, int.MaxValue).SelectMany(seed => BuildChunk(shape, seed)));
 
-    /// <summary>Operations of every kind (1-7, 20-23, 30-37, 40, 44 and 49).</summary>
+    /// <summary>Operations of every kind (1-7, 20-23, 30-37, 40, 44 and 47-49).</summary>
     public static Gen<Operation> Operation => Gen.OneOf(
         TerrainEditOp.Select(o => (Operation)o),
         ConstructCreateOp.Select(o => (Operation)o),
@@ -213,7 +213,30 @@ public static class CodecGen
         ContainerConfigureOp.Select(o => (Operation)o),
         BlockEntitySetOp.Select(o => (Operation)o),
         RespawnPointSetOp.Select(o => (Operation)o),
-        BlockFunctionStateSetOp.Select(o => (Operation)o));
+        BlockFunctionStateSetOp.Select(o => (Operation)o),
+        PropHarvestOp.Select(o => (Operation)o),
+        PropRegrowOp.Select(o => (Operation)o));
+
+    /// <summary>Valid prop identifiers (face 0-5, cells and slot over the whole range of an identifier).</summary>
+    public static Gen<PropId> PropId { get; } =
+        from face in Gen.Choose(0, 5)
+        from cellU in Gen.Choose(0, Core.Ids.PropId.MaxCellsPerFace - 1)
+        from cellV in Gen.Choose(0, Core.Ids.PropId.MaxCellsPerFace - 1)
+        from slot in Gen.Choose(0, 3)
+        select Core.Ids.PropId.Create(face, cellU, cellV, slot);
+
+    /// <summary>Prop harvest operations.</summary>
+    public static Gen<PropHarvestOp> PropHarvestOp { get; } =
+        from planet in PlanetId
+        from prop in PropId
+        from tick in Tick
+        select new PropHarvestOp(planet, prop, tick);
+
+    /// <summary>Prop regrow operations.</summary>
+    public static Gen<PropRegrowOp> PropRegrowOp { get; } =
+        from planet in PlanetId
+        from prop in PropId
+        select new PropRegrowOp(planet, prop);
 
     /// <summary>Terrain edit operations.</summary>
     public static Gen<TerrainEditOp> TerrainEditOp { get; } =

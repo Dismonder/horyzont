@@ -491,6 +491,22 @@ public sealed class WorldState
             }
         }
 
+        var propKeys = _tracker.HarvestedProps.ToArray();
+        Array.Sort(propKeys, static (a, b) => a.Planet.Value != b.Planet.Value ? a.Planet.Value.CompareTo(b.Planet.Value) : a.Prop.Value.CompareTo(b.Prop.Value));
+        var upsertedProps = new List<HarvestedPropRecord>();
+        var removedProps = new List<HarvestedPropKey>();
+        foreach (var key in propKeys)
+        {
+            if (HarvestedProps.TryGetTick(key.Planet, key.Prop, out var harvestTick))
+            {
+                upsertedProps.Add(new HarvestedPropRecord(key.Planet, key.Prop, harvestTick));
+            }
+            else
+            {
+                removedProps.Add(key);
+            }
+        }
+
         _tracker.Clear();
         _inFlight = new WorldCheckpoint(
             LastOpId, CurrentTick, EntityIds.NextValue, PlayerIds.NextValue,
@@ -504,6 +520,8 @@ public sealed class WorldState
             RemovedBlockEntities = removedEntities,
             UpsertedProgress = upsertedProgress,
             RemovedProgress = removedProgress,
+            UpsertedHarvestedProps = upsertedProps,
+            RemovedHarvestedProps = removedProps,
         };
         return _inFlight;
     }
@@ -602,6 +620,16 @@ public sealed class WorldState
         foreach (var id in failed.RemovedProgress)
         {
             _tracker.MarkProgress(id);
+        }
+
+        foreach (var prop in failed.UpsertedHarvestedProps)
+        {
+            _tracker.MarkHarvestedProp(new HarvestedPropKey(prop.Planet, prop.Prop));
+        }
+
+        foreach (var key in failed.RemovedHarvestedProps)
+        {
+            _tracker.MarkHarvestedProp(key);
         }
 
         _inFlight = null;
