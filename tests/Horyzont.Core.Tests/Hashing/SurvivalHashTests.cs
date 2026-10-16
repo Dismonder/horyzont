@@ -5,6 +5,7 @@ using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Progress;
 using Horyzont.Core.Tests.BlockEntities;
+using Horyzont.Core.Tests.Crafting;
 using Horyzont.Core.Tests.Items;
 using Horyzont.Core.World;
 using Horyzont.Testing;
@@ -156,6 +157,75 @@ public sealed class SurvivalHashTests
         var hashes = variants.Select(v => StateHasher.Hash(v())).ToList();
 
         Assert.Equal(variants.Length, hashes.Distinct().Count());
+    }
+
+    [Fact]
+    public void Discovery_ChangesHash()
+    {
+        var a = new CraftingFixture(players: 2);
+        var b = new CraftingFixture(players: 2);
+        var c = new CraftingFixture(players: 2);
+        var d = new CraftingFixture(players: 2);
+        var e = new CraftingFixture(players: 2);
+        Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(b.State));
+
+        a.Apply(CraftingFixture.Discover(CraftingFixture.Player1, CraftingFixture.Stone));
+        b.Apply(CraftingFixture.Discover(CraftingFixture.Player1, CraftingFixture.Stone));
+        c.Apply(CraftingFixture.Discover(CraftingFixture.Player1, CraftingFixture.Soil));
+        d.Apply(CraftingFixture.Discover(CraftingFixture.Player2, CraftingFixture.Stone));
+        e.Apply(CraftingFixture.Discover(CraftingFixture.Player1, CraftingFixture.Stone));
+        e.Apply(CraftingFixture.Discover(CraftingFixture.Player1, CraftingFixture.Soil));
+
+        var hashes = new[] { a, c, d, e, new CraftingFixture(players: 2) }.Select(x => StateHasher.Hash(x.State)).ToList();
+        Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(b.State));
+        Assert.Equal(hashes.Count, hashes.Distinct().Count());
+    }
+
+    [Fact]
+    public void ProgressKey_ChangesHash()
+    {
+        var a = new CraftingFixture();
+        var b = new CraftingFixture();
+        var c = new CraftingFixture();
+        var d = new CraftingFixture();
+        var e = new CraftingFixture();
+        a.Apply(CraftingFixture.Grant("test:a"));
+        b.Apply(CraftingFixture.Grant("test:a"));
+        c.Apply(CraftingFixture.Grant("test:b"));
+        d.Apply(CraftingFixture.Grant("test:a"));
+        d.Apply(CraftingFixture.Grant("test:b"));
+        e.Apply(CraftingFixture.Grant("test:b"));
+        e.Apply(CraftingFixture.Grant("test:a"));
+
+        // The keys are a set: the order of granting does not matter.
+        Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(b.State));
+        Assert.Equal(StateHasher.Hash(d.State), StateHasher.Hash(e.State));
+        var hashes = new[] { a, c, d, new CraftingFixture() }.Select(x => StateHasher.Hash(x.State)).ToList();
+        Assert.Equal(hashes.Count, hashes.Distinct().Count());
+    }
+
+    [Fact]
+    public void StationStateStarted_ChangesHash()
+    {
+        var states = new (string Recipe, Tick? Started)[]
+        {
+            (string.Empty, null),
+            ("t:a", null),
+            ("t:a", new Tick(100)),
+            ("t:a", new Tick(101)),
+            ("t:b", new Tick(100)),
+        };
+        var hashes = states.Select(s =>
+        {
+            var f = new CraftingFixture();
+            f.SetUpStation(CraftingFixture.StationCell, s.Recipe, s.Started);
+            return StateHasher.Hash(f.State);
+        }).ToList();
+
+        Assert.Equal(states.Length, hashes.Distinct().Count());
+        var again = new CraftingFixture();
+        again.SetUpStation(CraftingFixture.StationCell, "t:a", new Tick(100));
+        Assert.Equal(hashes[2], StateHasher.Hash(again.State));
     }
 
     /// <summary>

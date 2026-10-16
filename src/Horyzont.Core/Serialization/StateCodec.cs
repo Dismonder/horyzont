@@ -885,6 +885,16 @@ public static class StateCodec
         return w.WrittenSpan.ToArray();
     }
 
+    /// <summary>Encodes the progress keys of a world as a SQLite blob (kind 25, version 1; K6-32).</summary>
+    /// <param name="keys">Keys in ordinal order, at most 256, 1 to 64 bytes each.</param>
+    /// <returns>The blob.</returns>
+    public static byte[] EncodeProgressKeysBlob(IReadOnlyList<string> keys) => throw new NotImplementedException("K6-32 A4");
+
+    /// <summary>Decodes a progress keys blob (kind 25).</summary>
+    /// <param name="blob">Blob bytes.</param>
+    /// <returns>The keys in ordinal order.</returns>
+    public static IReadOnlyList<string> DecodeProgressKeysBlob(ReadOnlySpan<byte> blob) => throw new NotImplementedException("K6-32 A4");
+
     /// <summary>Decodes a player progress blob (kind 22).</summary>
     /// <param name="blob">Blob bytes.</param>
     /// <returns>The record.</returns>

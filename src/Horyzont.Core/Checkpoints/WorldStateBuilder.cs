@@ -44,6 +44,7 @@ public sealed class WorldStateBuilder
     private ulong _nextContainerId = 1;
     private readonly List<BlockEntityRecord> _blockEntities = [];
     private readonly List<PlayerProgressRecord> _progress = [];
+    private IReadOnlyList<string>? _progressKeys;
     private bool _built;
 
     /// <summary>Starts a world.</summary>
@@ -98,6 +99,14 @@ public sealed class WorldStateBuilder
     {
         ArgumentNullException.ThrowIfNull(record);
         _progress.Add(record);
+    }
+
+    /// <summary>Sets the progress keys of the world (K6-32); at most 256, 1 to 64 bytes each. Checked in Build.</summary>
+    /// <param name="keys">The keys.</param>
+    public void SetProgressKeys(IReadOnlyList<string> keys)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        _progressKeys = keys; // K6-32 A4: validated and loaded by Build
     }
 
     /// <summary>Adds a planet.</summary>

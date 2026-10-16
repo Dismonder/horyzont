@@ -51,6 +51,7 @@ public sealed class WorldState
         Containers = new ContainerStore(_tracker);
         BlockEntities = new BlockEntityStore(_tracker);
         Progress = new PlayerProgressStore(_tracker);
+        ProgressKeys = new ProgressKeyStore(_tracker);
     }
 
     /// <summary>World id.</summary>
@@ -121,6 +122,9 @@ public sealed class WorldState
 
     /// <summary>Progress of the players (K6-30; only the respawn point).</summary>
     public PlayerProgressStore Progress { get; }
+
+    /// <summary>Progress keys of the world (K6-32).</summary>
+    public ProgressKeyStore ProgressKeys { get; }
 
     /// <summary>True between <see cref="CaptureCheckpoint"/> and its completion or requeue.</summary>
     public bool IsCheckpointInFlight => _inFlight is not null;
