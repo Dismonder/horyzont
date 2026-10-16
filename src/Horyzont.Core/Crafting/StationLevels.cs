@@ -117,7 +117,7 @@ public static class StationLevels
     }
 
     /// <summary>A cheap test on the bounds of a construct: false when no cell of it can be within <paramref name="range"/> of <paramref name="centre"/>.</summary>
-    private static bool IsNear(WorldState state, Construct construct, PlanetId planet, Vector3 centre, float range)
+    internal static bool IsNear(WorldState state, Construct construct, PlanetId planet, Vector3 centre, float range)
     {
         if (construct.BlockCount == 0)
         {
@@ -131,7 +131,7 @@ public static class StationLevels
         return TryToPlanet(state, construct, middle, planet, out var middlePlanet) && Vector3.Distance(middlePlanet, centre) <= range + half;
     }
 
-    private static bool TryToPlanet(WorldState state, Construct construct, Vector3 local, PlanetId planet, out Vector3 point)
+    internal static bool TryToPlanet(WorldState state, Construct construct, Vector3 local, PlanetId planet, out Vector3 point)
     {
         if (state.TryToPlanetFrame(FrameRef.Of(construct.Id), local, out var found, out point) && found == planet)
         {

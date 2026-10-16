@@ -77,6 +77,13 @@ public sealed class Construct
         }
     }
 
+    /// <summary>
+    /// Enumerates the non-empty chunks without allocating, in no defined order. For readers whose result does not depend on the order and that run every
+    /// tick (K6-33 <c>RestEnvironment</c>); <see cref="Chunks"/> sorts and allocates.
+    /// </summary>
+    /// <returns>The struct enumerator of the chunk dictionary.</returns>
+    public Dictionary<ChunkPos, ConstructChunk>.Enumerator EnumerateChunksUnordered() => _chunks.GetEnumerator();
+
     /// <summary>Looks up a chunk.</summary>
     /// <param name="position">Chunk position.</param>
     /// <param name="chunk">The chunk when present.</param>

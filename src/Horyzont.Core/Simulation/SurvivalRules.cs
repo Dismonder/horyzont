@@ -26,6 +26,7 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
     private readonly List<Operation> _components = [];
     private readonly YieldLedger _ledger = new();
     private readonly List<PropInstance> _propsInSphere = [];
+    private readonly FoodRules _food = new(state, content, rules);
 
     /// <summary>
     /// The parameter step of an item intent: zero numbers, slots outside the container, the equipment container and a target equal to the
@@ -79,6 +80,15 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
             case QuickStackIntent:
                 return RejectReason.None;
 
+            case EatIntent eat:
+                // Eating is from the own bag and hotbar only (K6-33 D10, DO USTALENIA-6); anything else, a missing container or a slot outside it is a parameter error.
+                return state.Containers.TryGet(eat.Container, out var eatContainer)
+                    && eatContainer.Owner == player
+                    && eatContainer.Kind is ContainerKind.PlayerBag or ContainerKind.Hotbar
+                    && eat.Slot < eatContainer.Size
+                    ? RejectReason.None
+                    : RejectReason.InvalidParameters;
+
             case TakeAllIntent takeAll:
                 if (!state.Containers.TryGet(takeAll.Container, out var chest))
                 {
@@ -111,6 +121,8 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
                 return ResolveMove(move, out operation);
             case ItemDropIntent drop:
                 return ResolveDrop(drop, out operation);
+            case EatIntent eat:
+                return _food.Resolve(player, eat, out operation);
             case TerrainToolIntent:
                 return ResolveTerrainEdit(player, (TerrainEditOp)IntentResolver.Resolve(state, player, intent, facts), out operation);
             default:

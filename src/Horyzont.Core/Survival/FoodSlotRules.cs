@@ -7,8 +7,6 @@ namespace Horyzont.Core.Survival;
 /// <summary>Where newly eaten food goes (K6-33, D11); a pure function shared by the server and the client.</summary>
 public static class FoodSlotRules
 {
-    /// <summary>Reject reason 49 of the plan; the enum member arrives in step B2.</summary>
-
     /// <summary>Places food in the slots.</summary>
     /// <param name="current">The current slots.</param>
     /// <param name="type">The eaten item type.</param>
