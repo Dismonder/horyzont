@@ -73,7 +73,7 @@ public sealed class DiscoveryTests
     {
         var f = Fixture();
         var chest = f.SetUpChestWith(FunctionalBlocks.ChestCell, Player1, ContainerAccess.Shared, (Gem, 3));
-        f.Accept(Player1, Move(chest, 0, Bag, 0, 2, Gem));
+        f.Accept(Player1, new ItemMoveIntent(new SlotRef(chest, 0), ItemMoveTarget.ToSlot(new SlotRef(Bag, 0)), 2, Gem, 3));
         Assert.True(f.IsDiscovered(Player1, Gem));
         var journaled = f.JournalCount();
 
@@ -121,7 +121,7 @@ public sealed class DiscoveryTests
 
         var ops = f.JournalFrom(journaled);
         Assert.Equal(2, ops.Count);
-        Assert.Equal(new CompoundOp([new ItemDiscoverOp(Player1, Gem), new ItemDiscoverOp(Player1, Stone)]), ops[1]);
+        Assert.Equal([new ItemDiscoverOp(Player1, Gem), new ItemDiscoverOp(Player1, Stone)], Assert.IsType<CompoundOp>(ops[1]).Components);
     }
 
     [Fact]

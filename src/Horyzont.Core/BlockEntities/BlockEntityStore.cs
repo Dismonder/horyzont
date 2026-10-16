@@ -11,6 +11,7 @@ public sealed class BlockEntityStore
     private readonly ChangeTracker _tracker;
     private readonly SortedDictionary<BlockRef, BlockEntityState> _states = [];
     private readonly Dictionary<EntityId, int> _perConstruct = [];
+    private readonly Dictionary<EntityId, int> _stationsPerConstruct = [];
 
     internal BlockEntityStore(ChangeTracker tracker)
     {
@@ -30,6 +31,11 @@ public sealed class BlockEntityStore
     /// <param name="construct">The construct.</param>
     /// <returns>The count.</returns>
     public int CountOf(EntityId construct) => _perConstruct.GetValueOrDefault(construct);
+
+    /// <summary>Number of stations with time (states of kind <see cref="StationBlockState"/>) of one construct (K6-32).</summary>
+    /// <param name="construct">The construct.</param>
+    /// <returns>The count.</returns>
+    public int StationsOf(EntityId construct) => _stationsPerConstruct.GetValueOrDefault(construct);
 
     /// <summary>Looks up the state of a block.</summary>
     /// <param name="key">Construct and cell.</param>
@@ -59,6 +65,8 @@ public sealed class BlockEntityStore
             _perConstruct[key.Construct] = _perConstruct.GetValueOrDefault(key.Construct) + 1;
         }
 
+        CountStation(key.Construct, previous, -1);
+        CountStation(key.Construct, state, 1);
         _tracker.MarkBlockEntity(key);
         return previous;
     }
@@ -68,6 +76,7 @@ public sealed class BlockEntityStore
     {
         _states.Add(key, state);
         _perConstruct[key.Construct] = _perConstruct.GetValueOrDefault(key.Construct) + 1;
+        CountStation(key.Construct, state, 1);
     }
 
     /// <summary>Removes a state and marks it changed.</summary>
@@ -89,7 +98,26 @@ public sealed class BlockEntityStore
             _perConstruct[key.Construct] = left;
         }
 
+        CountStation(key.Construct, previous, -1);
         _tracker.MarkBlockEntity(key);
         return previous;
+    }
+
+    private void CountStation(EntityId construct, BlockEntityState? state, int delta)
+    {
+        if (state is not StationBlockState)
+        {
+            return;
+        }
+
+        var count = _stationsPerConstruct.GetValueOrDefault(construct) + delta;
+        if (count == 0)
+        {
+            _stationsPerConstruct.Remove(construct);
+        }
+        else
+        {
+            _stationsPerConstruct[construct] = count;
+        }
     }
 }

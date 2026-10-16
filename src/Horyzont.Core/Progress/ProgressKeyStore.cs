@@ -19,6 +19,9 @@ public sealed class ProgressKeyStore
     /// <summary>Gets the keys in ordinal order.</summary>
     public IReadOnlyCollection<string> Sorted => _keys;
 
+    /// <summary>Gets the keys as a read-only set (a live view, ordinal order).</summary>
+    public IReadOnlySet<string> AsSet => _keys;
+
     /// <summary>Whether the world has the key.</summary>
     /// <param name="key">The key.</param>
     /// <returns>True when granted.</returns>
