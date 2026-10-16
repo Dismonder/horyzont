@@ -66,7 +66,7 @@ public static class VitalsStep
             exhausted = false;
         }
 
-        return new VitalsStepResult(new PlayerVitals(health, stamina, current.RestedUntil, exhausted), healthMax, staminaMax);
+        return new VitalsStepResult(current with { Health = health, Stamina = stamina, Exhausted = exhausted }, healthMax, staminaMax);
     }
 
     private static float Usable(float value) => float.IsFinite(value) && value > 0f ? value : 0f;

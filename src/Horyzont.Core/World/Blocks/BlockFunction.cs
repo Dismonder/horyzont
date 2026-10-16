@@ -8,7 +8,7 @@ namespace Horyzont.Core.World.Blocks;
 /// <param name="TorqueNewtonMeters">Stabilizer torque, N·m.</param>
 /// <param name="FuelCapacity">Fuel tank capacity, units.</param>
 /// <param name="SpeedCapMetersPerSecond">Pulse drive speed cap, m/s.</param>
-/// <param name="ContainerSlots">Slots of the container of a <see cref="BlockFunctionKind.Chest"/>, 1..256; for a <see cref="BlockFunctionKind.Station"/> with time the input slots.</param>
+/// <param name="ContainerSlots">Slots of the container of a <see cref="BlockFunctionKind.Chest"/>, 1..256; for a <see cref="BlockFunctionKind.Station"/> with time the input slots; for an <see cref="BlockFunctionKind.OxygenGenerator"/> the input slots.</param>
 /// <param name="Station">Station kind of a <see cref="BlockFunctionKind.Station"/> or <see cref="BlockFunctionKind.StationUpgrade"/> (K6-32).</param>
 /// <param name="OutputSlots">Output slots of a station with time, 1..256 (K6-32).</param>
 public readonly record struct BlockFunction(
@@ -54,6 +54,11 @@ public readonly record struct BlockFunction(
     /// <param name="kind">The station kind it upgrades.</param>
     /// <returns>The function.</returns>
     public static BlockFunction CreateStationUpgrade(StationKind kind) => new(BlockFunctionKind.StationUpgrade, Station: kind);
+
+    /// <summary>An oxygen generator (K6-34).</summary>
+    /// <param name="inputSlots">Slots of its input container, 1..256.</param>
+    /// <returns>The function.</returns>
+    public static BlockFunction CreateOxygenGenerator(ushort inputSlots) => new(BlockFunctionKind.OxygenGenerator, ContainerSlots: inputSlots);
 
     /// <summary>A seat block.</summary>
     /// <param name="role">Passenger or navigator.</param>

@@ -53,7 +53,7 @@ public sealed class SuitLoadoutTests
         Assert.Equal(new SuitResources(1f, 1f, 1f, 1f, 1f), stats.Drain);
 
         // The base capacity is a rule.
-        Assert.Equal(new SuitResources(80f, 80f, 80f, 80f, 80f), SuitLoadout.Compute(Equipment(), _modules, _rules with { SuitBaseCapacity = 80f }).Capacity);
+        Assert.Equal(new SuitResources(80f, 80f, 80f, 80f, 80f), SuitLoadout.Compute(Equipment(), _modules, _rules with { SuitBaseCapacity = 80 }).Capacity);
     }
 
     [Fact]

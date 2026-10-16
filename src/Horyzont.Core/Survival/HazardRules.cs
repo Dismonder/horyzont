@@ -10,7 +10,7 @@ public sealed record HazardRules
     public static HazardRules Default { get; } = new();
 
     /// <summary>Capacity of every resource without modules.</summary>
-    public float SuitBaseCapacity { get; init; } = 100f;
+    public ushort SuitBaseCapacity { get; init; } = 100;
 
     /// <summary>Regeneration of a resource per second while it is protected and allowed to regenerate.</summary>
     public float SuitRegenPerSecond { get; init; } = 5f;

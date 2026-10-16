@@ -2,6 +2,7 @@ using System.Numerics;
 
 using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Checkpoints;
+using Horyzont.Core.Content;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
@@ -9,6 +10,7 @@ using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Serialization;
+using Horyzont.Core.Survival;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Terrain;
@@ -84,6 +86,15 @@ public sealed class ProtocolContractTests
         AssertValues((ContainerAccess.Shared, 1), (ContainerAccess.Private, 2));
         AssertValues((BlockEntityKind.Chest, 1), (BlockEntityKind.Bed, 2), (BlockEntityKind.Station, 3), (BlockEntityKind.Teleport, 4),
             (BlockEntityKind.OxygenGenerator, 5), (BlockEntityKind.Planter, 6), (BlockEntityKind.CargoHold, 7));
+        AssertValues((EquipmentSlot.None, 0), (EquipmentSlot.Helmet, 1), (EquipmentSlot.Suit, 2), (EquipmentSlot.Backpack, 3), (EquipmentSlot.Module, 4),
+            (EquipmentSlot.Legs, 5));
+        AssertValues((BlockFunctionKind.None, 0), (BlockFunctionKind.Cockpit, 1), (BlockFunctionKind.Seat, 2), (BlockFunctionKind.Engine, 3),
+            (BlockFunctionKind.Stabilizer, 4), (BlockFunctionKind.FuelTank, 5), (BlockFunctionKind.Cargo, 6), (BlockFunctionKind.LandingGear, 7),
+            (BlockFunctionKind.PulseDrive, 8), (BlockFunctionKind.Door, 9), (BlockFunctionKind.RefuelStation, 10), (BlockFunctionKind.Chest, 11),
+            (BlockFunctionKind.Bed, 12), (BlockFunctionKind.Light, 13), (BlockFunctionKind.Station, 14), (BlockFunctionKind.StationUpgrade, 15),
+            (BlockFunctionKind.OxygenGenerator, 16));
+        AssertValues((HazardKind.Cold, 1), (HazardKind.Heat, 2), (HazardKind.Toxins, 3), (HazardKind.Radiation, 4), (HazardKind.Vacuum, 5));
+        AssertValues((SuitResource.Heating, 1), (SuitResource.Cooling, 2), (SuitResource.Filter, 3), (SuitResource.Shield, 4), (SuitResource.Oxygen, 5));
         AssertValues((BlockInteractAction.Toggle, 1), (BlockInteractAction.Sleep, 2), (BlockInteractAction.SetRespawn, 3));
         AssertValues((BlockConfigKind.TeleportName, 1), (BlockConfigKind.ContainerAccess, 2));
         AssertValues((TerrainShape.Sphere, 1));
