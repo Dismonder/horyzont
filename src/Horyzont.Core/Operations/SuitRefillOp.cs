@@ -14,5 +14,5 @@ namespace Horyzont.Core.Operations;
 public sealed record SuitRefillOp(PlayerId Player, SuitResource Resource, ushort Amount, ushort Capacity) : Operation
 {
     /// <inheritdoc />
-    public override OperationKind Kind => (OperationKind)42; // K6-34 A3: OperationKind.SuitRefill
+    public override OperationKind Kind => OperationKind.SuitRefill;
 }

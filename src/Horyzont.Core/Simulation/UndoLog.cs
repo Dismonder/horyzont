@@ -20,6 +20,7 @@ internal sealed class UndoLog
     private readonly List<ConfigureRecord> _configured = [];
     private readonly List<BlockEntityRecordUndo> _entities = [];
     private readonly List<ProgressRecordUndo> _progress = [];
+    private readonly List<VitalsRecordUndo> _vitals = [];
     private readonly List<PropRecordUndo> _props = [];
     private readonly List<string> _keys = [];
     private readonly List<Step> _steps = [];
@@ -41,6 +42,7 @@ internal sealed class UndoLog
         _configured.Clear();
         _entities.Clear();
         _progress.Clear();
+        _vitals.Clear();
         _props.Clear();
         _keys.Clear();
         _steps.Clear();
@@ -92,6 +94,17 @@ internal sealed class UndoLog
         var previous = value is null ? state.Progress.Remove(player) : state.Progress.Set(value);
         _steps.Add(new Step(StepKind.Progress, _progress.Count));
         _progress.Add(new ProgressRecordUndo(player, previous));
+    }
+
+    /// <summary>
+    /// Stores the whole vitals record of a player (K6-34, D6), remembering the previous one (null when the player had none). The journaled writer of the vitals next to
+    /// <c>ServerSimulation.UpdatePlayerVitals</c>; the caller marks the player changed.
+    /// </summary>
+    internal void SetVitals(PlayerState player, PlayerVitals? value)
+    {
+        _steps.Add(new Step(StepKind.Vitals, _vitals.Count));
+        _vitals.Add(new VitalsRecordUndo(player, player.Vitals));
+        player.Vitals = value;
     }
 
     /// <summary>Adds a prop to the harvested set, remembering that it was not there.</summary>
@@ -170,6 +183,10 @@ internal sealed class UndoLog
                 case StepKind.ProgressKey:
                     state.ProgressKeys.Remove(_keys[step.Index]);
                     break;
+                case StepKind.Vitals:
+                    var vitals = _vitals[step.Index];
+                    vitals.Player.Vitals = vitals.Previous;
+                    break;
                 default:
                     var progress = _progress[step.Index];
                     if (progress.Previous is null)
@@ -192,6 +209,7 @@ internal sealed class UndoLog
         _configured.Clear();
         _entities.Clear();
         _progress.Clear();
+        _vitals.Clear();
         _props.Clear();
         _keys.Clear();
         _steps.Clear();
@@ -207,6 +225,7 @@ internal sealed class UndoLog
         Progress,
         Prop,
         ProgressKey,
+        Vitals,
     }
 
     private readonly record struct Step(StepKind Kind, int Index);
@@ -218,6 +237,8 @@ internal sealed class UndoLog
     private readonly record struct BlockEntityRecordUndo(BlockRef Key, BlockEntityState? Previous);
 
     private readonly record struct ProgressRecordUndo(PlayerId Player, PlayerProgress? Previous);
+
+    private readonly record struct VitalsRecordUndo(PlayerState Player, PlayerVitals? Previous);
 
     private readonly record struct PropRecordUndo(PlanetId Planet, PropId Prop, Tick? PreviousTick);
 }

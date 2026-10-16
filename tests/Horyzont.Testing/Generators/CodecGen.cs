@@ -218,6 +218,7 @@ public static class CodecGen
         RespawnPointSetOp.Select(o => (Operation)o),
         BlockFunctionStateSetOp.Select(o => (Operation)o),
         FoodSetOp.Select(o => (Operation)o),
+        SuitRefillOp.Select(o => (Operation)o),
         PropHarvestOp.Select(o => (Operation)o),
         PropRegrowOp.Select(o => (Operation)o));
 
@@ -438,6 +439,14 @@ public static class CodecGen
         from player in PlayerId
         from slots in FoodSlots
         select new FoodSetOp(player, slots);
+
+    /// <summary>Suit refill operations (K6-34): any resource, amount and capacity of 1 to 1000.</summary>
+    public static Gen<SuitRefillOp> SuitRefillOp =>
+        from player in PlayerId
+        from resource in Gen.Choose(1, 5)
+        from amount in Gen.Frequency((1, Gen.Elements(1, 1000)), (4, Gen.Choose(1, 1000)))
+        from capacity in Gen.Frequency((1, Gen.Elements(1, 1000)), (4, Gen.Choose(1, 1000)))
+        select new SuitRefillOp(player, (Horyzont.Core.Survival.SuitResource)resource, (ushort)amount, (ushort)capacity);
 
     /// <summary>Progress key grants (K6-32).</summary>
     public static Gen<ProgressKeyGrantOp> ProgressKeyGrantOp { get; } = RegistryKey.Select(k => new ProgressKeyGrantOp(k));

@@ -219,7 +219,9 @@ public sealed class SuitRefillOpsTests
         var state = f.Blocks.Sim.PlayerOf(Player1);
         f.Apply(new PlayerLeaveOp(Player1, state.Frame, state.ParentSeq, state.Position, Quaternion.Identity, 0f));
         f.State.CompleteCheckpoint(f.State.CaptureCheckpoint());
-        Assert.DoesNotContain(f.State.CaptureCheckpoint().UpsertedPlayers, p => p.Player == Player1);
+        var empty = f.State.CaptureCheckpoint();
+        Assert.DoesNotContain(empty.UpsertedPlayers, p => p.Player == Player1);
+        f.State.CompleteCheckpoint(empty);
 
         f.Apply(Refill(Player1, SuitResource.Oxygen, 10, 100));
 
