@@ -1,6 +1,8 @@
 using Horyzont.Client.Props;
 using Horyzont.Server.Props;
 
+using Microsoft.Extensions.Logging;
+
 namespace Horyzont.Game.Boot;
 
 // K6-31: the server side of harvestable props. Regrowth and the replication of harvested props are tick participants of every server (solo,
@@ -10,6 +12,9 @@ public sealed partial class GameComposition
 {
     /// <summary>Gets the regrowth of harvested flora; null without a server terrain.</summary>
     public PropRegrowth? PropRegrowth { get; private set; }
+
+    /// <summary>Gets the drawing of the props around the camera; null without a rendering client.</summary>
+    public Horyzont.Game.Planet.Props.PropRenderer? PropRenderer { get; private set; }
 
     /// <summary>Gets the replication of harvested props to remote players; null without a server terrain.</summary>
     public PropReplicator? PropReplication { get; private set; }
@@ -28,6 +33,7 @@ public sealed partial class GameComposition
             PropStates = new SharedPropStates(() => local.RuntimeState is Horyzont.Server.ServerRuntimeState.Running or Horyzont.Server.ServerRuntimeState.SafeMode ? local.Simulation : null);
         }
 
+        ConfigurePropRenderer();
         if (Server is not { } server || TerrainFactory is not { } factory)
         {
             return;
@@ -36,5 +42,29 @@ public sealed partial class GameComposition
         PropRegrowth = PropRegrowth.Register(
             server, () => factory.Terrain?.Service ?? throw new InvalidOperationException("The server terrain is not running."), _env.Loggers);
         PropReplication = PropReplicator.Register(server, _env.Loggers);
+    }
+
+    /// <summary>
+    /// K6-31 D20: draws the props of the layout V1 around the camera of the local player. The anchors come from the same surface sampler the
+    /// server uses (shared when this process runs the server, built from the generator profile otherwise).
+    /// </summary>
+    private void ConfigurePropRenderer()
+    {
+        if (!_env.Render || ClientNode is not { } clientNode || LocalPlayer is not { } player || PropStates is not { } states || Client is not { } client)
+        {
+            return;
+        }
+
+        var renderer = new Horyzont.Game.Planet.Props.PropRenderer { Name = "PropRenderer" };
+        renderer.Initialize(
+            () => ClientStarSystem?.Model is not null ? client.Hello?.Planets : null,
+            () => ClientFrameNodes,
+            () => ViewpointOf(player, client),
+            states,
+            _env.Loggers.CreateLogger<Horyzont.Game.Planet.Props.PropRenderer>(),
+            planet => ServerPlanets?.GetSampler(planet.Id)
+                ?? new Horyzont.Game.Planet.Surface.PlanetSurfaceSampler(planet, Horyzont.Game.Planet.Generators.GeneratorProfiles.CreateGenerator(planet)));
+        clientNode.AddChild(renderer);
+        PropRenderer = renderer;
     }
 }
