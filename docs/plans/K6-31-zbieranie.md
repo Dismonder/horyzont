@@ -367,7 +367,7 @@ Każdy krok kończy się zielonym budowaniem i testami; commity w formacie Conve
 - [x] C2 (patrz „Etap C, krok C2" niżej). Persistence: `WorldLoader`, `PersistenceWriter`, `WorldCreator`; fikstura `world-v3-props.db` (`FixtureGenerator.Generate_WorldV3Props`, `Manual`). Commit `feat(persistence): store harvested props`.
 - [x] C3 (patrz „Etap C, krok C3" niżej). `PropRegrowth` (D14) jako uczestnik ticku; rejestracja w serwerze. Commit `feat(server): regrow flora as server operations`.
 - [x] C4. `PropInterest`, `PropReplicator` (D17); przegląd grepem `PropHarvestOp|PropRegrowOp` — każdy konsument przez `OperationProps`; sprawdzenie, że `EntityReplication` nie wysyła złożonej z samych przedmiotów i obiektów. Commit `feat(server): replicate harvested props by region`.
-- [ ] C5. Gra: `VoxelTerrainService.TrySampleGeneratedSurface` (próbnik planety leniwie, wątek główny, te same kroki co `PlanetSurfaceSampler.SurfaceRadius(direction)`), wczytanie `props.json`, `GameComposition.Props.cs` (część serwerowa); gdUnit `GeneratedSurfaceTests`, `PropFieldDigestTests` (stała zapisana teraz). Commit `feat(game): sample the generator surface for props on the server`.
+- [x] C5. Gra: `VoxelTerrainService.TrySampleGeneratedSurface` (próbnik planety leniwie, wątek główny, te same kroki co `PlanetSurfaceSampler.SurfaceRadius(direction)`), wczytanie `props.json`, `GameComposition.Props.cs` (część serwerowa); gdUnit `GeneratedSurfaceTests`, `PropFieldDigestTests` (stała zapisana teraz). Commit `feat(game): sample the generator surface for props on the server`.
 - [ ] C6. Sprawdzenie (z `dotnet test game` i `smoke` — reguła wspólnego runnera: przed przebiegiem brak procesów Godota i potoku gdUnit).
 
 ### Etap D — klient (wygląd ocenia Dismond)
@@ -772,3 +772,11 @@ Poprawki 1–2 nie zmieniają kontraktów (skrót układu, formaty i wyniki wali
 **Przegląd konsumentów.** Grep `PropHarvestOp|PropRegrowOp`: operacje 47/48 rozpoznają po typie tylko ich aplikator, `OperationProps` i testy; każdy konsument złożonej idzie przez `OperationProps.CollectChanges`. `OperationConstructs.TryGetConstructPart` zwraca fałsz dla złożonej z samych przedmiotów, a `EntityReplication` wraca wcześnie przy pustych `ConstructChanges`: `PropEntityReplicationTests` potwierdza, że klient nie dostaje `OperationApplied` (obok bliźniaka z blokiem, który dostaje).
 
 **Uwaga.** Znany niestabilny `AllocationTests.SubmitPlaceOnFaceOverlappingOtherConstruct_Rejected_DoesNotAllocate` bywa czerwony w pełnym przebiegu Core.Tests, osobno zielony.
+
+### Etap C, krok C5
+
+**Zrobione.** `VoxelTerrainService.TrySampleGeneratedSurface` wywołuje `PlanetSurfaceSampler.SurfaceRadius(direction)` (domyślne kroki) próbnika planety, który daje `GeneratedSurfaces` (wstrzykiwany delegat); `VoxelServerTerrainFactory` ustawia go na `ServerPlanetTerrains.GetSampler`. `props.json` czytał już `SurvivalContentLoader` od B3 (cztery pliki). `GameComposition.Props.cs` rejestruje `PropRegrowth` i `PropReplicator` u każdego serwera z terenem (solo, host, dedykowany) po replikacji encji.
+
+**Odstępstwo od opisu D6 („próbnik leniwie").** Próbniki planet już istnieją: `ServerPlanetTerrains` buduje graf generatora i `PlanetSurfaceSampler` dla każdej planety świata w konstruktorze (także dla planet bez aktywnego węzła terenu), więc serwis je tylko udostępnia; nic nowego nie powstaje przy pierwszym zapytaniu. Dodatkowo próbnik jest tym samym obiektem, którego używa `GetReadiness`, ale bez pamięci kierunków `DirectionRadiusCache` (ta zaokrągla kierunek, więc nie daje wyniku bit w bit).
+
+**Testy (gdUnit4, bez okna).** `GeneratedSurfaceTests` 3/3: równość bit w bit z niezależnym `PlanetSurfaceSampler` dla planety aktywnej i nieaktywnej (100 kierunków każda), nieznana planeta i zły kierunek dają `false`, wywołanie z innego wątku rzuca `InvalidOperationException`. `PropFieldDigestTests.PlanetPropField_GoldenDigest` 1/1: ziarno 21, planeta macierzysta, regiony (ściana 0, 5, 7) i (ściana 3, 40, 12), 78 obiektów, skrót `554016997098247071UL` (kotwica z dokładnością do milimetra, skala do 1/1000); powtórzony dwa razy ten sam.

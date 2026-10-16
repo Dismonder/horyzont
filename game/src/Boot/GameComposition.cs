@@ -406,6 +406,7 @@ public sealed partial class GameComposition
         composition.ConfigurePlanets();
         composition.ConfigureReplication();
         composition.ConfigureTerrainReplication();
+        composition.ConfigureProps();
         composition.ConfigureMotion();
         composition.ConfigureNavigation();
         composition.ConfigurePlatform();
@@ -438,6 +439,7 @@ public sealed partial class GameComposition
     partial void ConfigurePlanets();
     partial void ConfigureReplication();
     partial void ConfigureTerrainReplication();
+    partial void ConfigureProps();
     partial void ConfigureMotion();
     partial void ConfigureNavigation();
     partial void ConfigurePlatform();

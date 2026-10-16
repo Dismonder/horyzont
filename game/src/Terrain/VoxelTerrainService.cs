@@ -8,6 +8,7 @@ using Horyzont.Core.Simulation;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Terrain;
 using Horyzont.Game.Planet;
+using Horyzont.Game.Planet.Surface;
 using Horyzont.Persistence.Terrain;
 using Horyzont.Server.Space;
 
@@ -394,13 +395,30 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
         return true;
     }
 
+    /// <summary>
+    /// Gives <see cref="TrySampleGeneratedSurface"/> the surface sampler of a planet (K6-31 D6): the server planet terrains own one per body,
+    /// built from the generator graph of the planet whether or not its terrain node is active. Main thread; null = no planet has a generated surface.
+    /// </summary>
+    public Func<PlanetId, PlanetSurfaceSampler?>? GeneratedSurfaces { get; set; }
+
     /// <inheritdoc />
-    /// <remarks>Step B4 of K6-31: the main-thread check only; the sampler of the planet (<c>PlanetSurfaceSampler</c>) arrives in C5, so no planet has props yet.</remarks>
+    /// <remarks>
+    /// K6-31 D6: <see cref="PlanetSurfaceSampler.SurfaceRadius(Vector3)"/> with its default strides, the very call the client makes for the
+    /// anchors it draws. Reads the generator only (no player edit), so it needs no loaded block and works for a planet without an active
+    /// terrain. False for an unknown planet, a non-finite or zero direction or while <see cref="GeneratedSurfaces"/> is not set.
+    /// </remarks>
     public bool TrySampleGeneratedSurface(PlanetId planet, Vector3 direction, out float radius)
     {
         EnsureMainThread();
         radius = 0f;
-        return false;
+        var length = direction.Length();
+        if (_shutDown || GeneratedSurfaces is not { } surfaces || !float.IsFinite(length) || length < 1e-6f || surfaces(planet) is not { } sampler)
+        {
+            return false;
+        }
+
+        radius = sampler.SurfaceRadius(direction);
+        return true;
     }
 
     /// <inheritdoc />
