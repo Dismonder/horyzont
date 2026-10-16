@@ -20,12 +20,19 @@ public sealed class SurvivalHashTests
     /// <summary>Hash of <see cref="WorldWithItems"/> recorded at commit b5e427e (start of K6-30, before the block entities and the respawn points).</summary>
     private const ulong WorldWithItemsHashBeforeBlockEntities = 15528921043589756334UL;
 
+    /// <summary>Hash of <see cref="WorldWithBlockEntities"/> recorded at the start of K6-31 (commit a1781ee, before the harvested props).</summary>
+    private const ulong WorldWithBlockEntitiesHashBeforeProps = 17678442467951482955UL;
+
     [Fact]
     public void WorldWithoutItems_HashUnchanged() => Assert.Equal(DefaultWorldHashBeforeItems, StateHasher.Hash(WorldFactory.CreateDefault()));
 
     [Fact]
     public void WorldWithItemsWithoutBlockEntities_HashUnchanged() =>
         Assert.Equal(WorldWithItemsHashBeforeBlockEntities, StateHasher.Hash(WorldWithItems()));
+
+    [Fact]
+    public void WorldWithBlockEntitiesWithoutProps_HashUnchanged() =>
+        Assert.Equal(WorldWithBlockEntitiesHashBeforeProps, StateHasher.Hash(WorldWithBlockEntities()));
 
     [Fact]
     public void BlockEntityChange_ChangesHash()
@@ -169,6 +176,24 @@ public sealed class SurvivalHashTests
             new ContainerCreateOp(chest, ContainerKind.Chest, ContainerHost.Player(ItemFixture.Player1), ItemFixture.Player1, ContainerAccess.Shared, 8),
             ItemFixture.Transfer(ItemFixture.BagSlot(4), new SlotRef(chest, 2), ItemFixture.Stone, 10),
         ]));
+        return f.State;
+    }
+
+    /// <summary>
+    /// The K6-30 world of the functional block tests: two players with their containers and the start kit (a tool in the hotbar, a gem
+    /// and stone in the bag), the functional block construct with a chest with a container and stone, a bed owned by player 1 with its
+    /// respawn point and an open door. No harvested props.
+    /// </summary>
+    private static WorldState WorldWithBlockEntities()
+    {
+        var f = new FunctionalBlockFixture(players: 2);
+        f.Apply(ItemFixture.Create(new SlotRef(FunctionalBlockFixture.Hotbar, 0), ItemFixture.Tool, 1, limit: 1, source: ItemSource.Starter));
+        f.Apply(ItemFixture.Create(new SlotRef(FunctionalBlockFixture.Hotbar, 1), ItemFixture.Gem, 3, limit: 5, source: ItemSource.Starter));
+        f.Apply(ItemFixture.Create(new SlotRef(FunctionalBlockFixture.Bag, 0), ItemFixture.Stone, 40, source: ItemSource.Harvest));
+        var chest = f.SetUpChest(FunctionalBlocks.ChestCell, size: 8);
+        f.Give(chest, 2, 10);
+        f.SetUpBed(FunctionalBlocks.BedCell, FunctionalBlockFixture.Player1);
+        f.Apply(FunctionalBlockFixture.SetFunctionState(FunctionalBlocks.DoorLowCell, FunctionalBlocks.DoorType, 1));
         return f.State;
     }
 
