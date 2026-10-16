@@ -11,8 +11,9 @@ public sealed class SurvivalContent
     private readonly Dictionary<string, RecipeDef> _recipeByKey;
     private readonly PropDef?[] _propByKind;
 
-    internal SurvivalContent(ItemCatalog items, TerrainYieldDef[] yields, StartKitDef startKit, PropDef[] props, RecipeDef[]? recipes = null)
+    internal SurvivalContent(ItemCatalog items, TerrainYieldDef[] yields, StartKitDef startKit, PropDef[] props, RecipeDef[]? recipes = null, HazardContent? hazards = null)
     {
+        Hazards = hazards;
         Recipes = recipes ?? [];
         _recipeByKey = new Dictionary<string, RecipeDef>(Recipes.Count, StringComparer.Ordinal);
         foreach (var recipe in Recipes)
@@ -39,6 +40,12 @@ public sealed class SurvivalContent
             _yieldByMaterial.Add(yield.MaterialKey, yield);
         }
     }
+
+    /// <summary>The hazards and the oxygen generator (K6-34); null when the content has no <c>hazards/hazards.json</c>: then the server runs as in K6-33.</summary>
+    public HazardContent? Hazards { get; }
+
+    /// <summary>Gets a value indicating whether the content has hazards (K6-34).</summary>
+    public bool HasHazards => Hazards is not null;
 
     /// <summary>Item types.</summary>
     public ItemCatalog Items { get; }

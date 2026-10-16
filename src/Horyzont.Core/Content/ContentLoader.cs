@@ -31,6 +31,9 @@ public static class ContentLoader
     /// <summary>Recipes file relative to the content root (K6-32 D4); optional.</summary>
     public const string RecipesFile = "recipes/recipes.json";
 
+    /// <summary>Hazards file relative to the content root (K6-34 D8); optional.</summary>
+    public const string HazardsFile = "hazards/hazards.json";
+
     /// <summary>Most recipes in the file (K6-32 D26).</summary>
     public const int MaxRecipes = 1024;
 
@@ -79,12 +82,14 @@ public static class ContentLoader
         var start = File.ReadAllText(Path.Combine(contentRoot, StartFile));
         var propsPath = Path.Combine(contentRoot, PropsFile);
         var recipesPath = Path.Combine(contentRoot, RecipesFile);
+        var hazardsPath = Path.Combine(contentRoot, HazardsFile);
         return ParseAll(
             items,
             yields,
             start,
             File.Exists(propsPath) ? File.ReadAllText(propsPath) : null,
-            File.Exists(recipesPath) ? File.ReadAllText(recipesPath) : null);
+            File.Exists(recipesPath) ? File.ReadAllText(recipesPath) : null,
+            File.Exists(hazardsPath) ? File.ReadAllText(hazardsPath) : null);
     }
 
     /// <summary>Parses and validates the content.</summary>
@@ -119,8 +124,25 @@ public static class ContentLoader
     public static SurvivalContent Parse(string itemsJson, string yieldsJson, string startJson, string? propsJson, string? recipesJson)
         => ParseAll(itemsJson, yieldsJson, startJson, propsJson, recipesJson);
 
-    private static SurvivalContent ParseAll(string itemsJson, string yieldsJson, string startJson, string? propsJson, string? recipesJson)
+    /// <summary>Parses and validates the content with the props, the recipes and the hazards of <see cref="HazardsFile"/> (K6-34 D8).</summary>
+    /// <param name="itemsJson">Text of <see cref="ItemsFile"/>.</param>
+    /// <param name="yieldsJson">Text of <see cref="YieldsFile"/>.</param>
+    /// <param name="startJson">Text of <see cref="StartFile"/>.</param>
+    /// <param name="propsJson">Text of <see cref="PropsFile"/>, or null when the content has no props.</param>
+    /// <param name="recipesJson">Text of <see cref="RecipesFile"/>, or null when the content has no recipes.</param>
+    /// <param name="hazardsJson">Text of <see cref="HazardsFile"/>, or null when the content has no hazards.</param>
+    /// <returns>The content.</returns>
+    /// <exception cref="InvalidDataException">The content is invalid.</exception>
+    public static SurvivalContent Parse(string itemsJson, string yieldsJson, string startJson, string? propsJson, string? recipesJson, string? hazardsJson)
+        => ParseAll(itemsJson, yieldsJson, startJson, propsJson, recipesJson, hazardsJson);
+
+    private static SurvivalContent ParseAll(string itemsJson, string yieldsJson, string startJson, string? propsJson, string? recipesJson, string? hazardsJson = null)
     {
+        if (hazardsJson is not null)
+        {
+            throw new NotImplementedException("K6-34 B3");
+        }
+
         ArgumentNullException.ThrowIfNull(itemsJson);
         ArgumentNullException.ThrowIfNull(yieldsJson);
         ArgumentNullException.ThrowIfNull(startJson);
