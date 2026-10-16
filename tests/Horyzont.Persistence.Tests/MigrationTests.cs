@@ -14,6 +14,7 @@ public sealed class MigrationTests
     public const string FixtureName = "world-v1.db";
     public const string FixtureV3Name = "world-v3.db";
     public const string FixtureV3BlocksName = "world-v3-blocks.db";
+    public const string FixtureV3PropsName = "world-v3-props.db";
 
     // Newest production schema; the test migrations come right after it (K5-21 added M0002).
     private static int Latest => MigrationRunner.All.Count;
@@ -130,6 +131,61 @@ public sealed class MigrationTests
         Assert.True(sim.State.Containers.TryGet(WorldFactory.BagOf(1), out var bag));
         Assert.Equal(2, bag.GetSlot(0).Count);
         Assert.False(Directory.Exists(dir.BackupsPath) && Directory.GetFiles(dir.BackupsPath).Length > 0);
+    }
+
+    [Fact]
+    public void FixtureWorldV3Props_CopiedToTemp_LoadsAndReplays()
+    {
+        var fixture = Path.Combine(AppContext.BaseDirectory, "Fixtures", FixtureV3PropsName);
+        Assert.True(File.Exists(fixture), $"Missing {fixture}; generate it once with FixtureGenerator (Category=Manual) and commit it.");
+        using var dir = new TempDirectory();
+        File.Copy(fixture, dir.WorldPath);
+
+        // Still schema 3: the table harvested_props came with M0003 and K6-31 added no migration (D3).
+        Assert.Equal(3L, RawDb.Long(dir.WorldPath, "PRAGMA user_version;"));
+        Assert.Equal(3L, RawDb.Long(dir.WorldPath, "SELECT COUNT(*) FROM harvested_props;"));
+
+        var (loaded, sim, _) = WorldHarness.LoadAndReplay(dir.WorldPath);
+
+        // The checkpoint holds the tree, the rock and the bush; the tail harvests a tree of another face and regrows the first tree.
+        Assert.Equal(2, loaded.JournalTail.Count);
+        Assert.Equal(loaded.JournalTail[^1].Id, sim.State.LastOpId);
+        Assert.Equal(3, loaded.State.HarvestedProps.Count);
+        Assert.True(loaded.State.HarvestedProps.Contains(WorldFactory.HomePlanet, PropWorldScript.Tree));
+        Assert.Equal(3, sim.State.HarvestedProps.Count);
+        Assert.False(sim.State.HarvestedProps.Contains(WorldFactory.HomePlanet, PropWorldScript.Tree));
+        Assert.True(sim.State.HarvestedProps.TryGetTick(WorldFactory.HomePlanet, PropWorldScript.Rock, out var rock));
+        Assert.Equal(new Core.Ids.Tick(PropWorldScript.RockTick), rock);
+        Assert.True(sim.State.HarvestedProps.TryGetTick(WorldFactory.HomePlanet, PropWorldScript.Bush, out var bush));
+        Assert.Equal(new Core.Ids.Tick(PropWorldScript.BushTick), bush);
+        Assert.True(sim.State.HarvestedProps.TryGetTick(WorldFactory.HomePlanet, PropWorldScript.Late, out var late));
+        Assert.Equal(new Core.Ids.Tick(PropWorldScript.LateTick), late);
+        Assert.False(Directory.Exists(dir.BackupsPath) && Directory.GetFiles(dir.BackupsPath).Length > 0);
+    }
+
+    [Fact]
+    public void FixtureWorldV3_LoadedWithRepoContent_RegistersPropItems()
+    {
+        var fixture = Path.Combine(AppContext.BaseDirectory, "Fixtures", FixtureV3Name);
+        Assert.True(File.Exists(fixture), $"Missing {fixture}; generate it once with FixtureGenerator (Category=Manual) and commit it.");
+        using var dir = new TempDirectory();
+        File.Copy(fixture, dir.WorldPath);
+        var keys = RepoContent.Load().Items.Items.Select(i => i.Key).ToArray();
+        string[] propItems = ["core:wood", "core:fiber", "core:crystal"];
+        Assert.All(propItems, key => Assert.Contains(key, keys));
+
+        // A world saved before the props gets the item types of the yield of the props when it is loaded with the content of the game
+        // (WorldLoader grows the registry), so a harvest never finds an item missing from the world (K6-31 core review, correction 3).
+        var loaded = WorldLoader.Load(
+            dir.WorldPath, WorldHarness.LoadOptions(dir.WorldPath) with { ItemTypeKeys = keys }, new FakeTimeProvider(_now), NullLogger.Instance);
+
+        foreach (var key in propItems)
+        {
+            Assert.True(loaded.State.ItemTypes.TryGetId(key, out _), $"{key} is not registered.");
+        }
+
+        // What the fixture already had keeps its numbers.
+        Assert.Equal(SurvivalContentFactory.ItemKeys, loaded.State.ItemTypes.Entries.Take(SurvivalContentFactory.ItemKeys.Count).Select(e => e.Key));
     }
 
     [Fact]
