@@ -14,9 +14,68 @@ public static class OperationConstructs
     /// <returns>True when the operation changes a construct.</returns>
     public static bool TryGetConstructPart(Operation operation, [NotNullWhen(true)] out Operation? part)
     {
-        // K6-30 A6: the behaviour.
         ArgumentNullException.ThrowIfNull(operation);
-        part = null;
-        return false;
+        switch (operation)
+        {
+            case ConstructCreateOp or BlockSetOp or BlockClearOp or ShipModeSetOp or BlockFunctionStateSetOp:
+                part = operation;
+                return true;
+            case CompoundOp compound:
+                return TryGetCompoundPart(compound, out part);
+            default:
+                part = null;
+                return false;
+        }
+    }
+
+    private static bool TryGetCompoundPart(CompoundOp compound, [NotNullWhen(true)] out Operation? part)
+    {
+        var components = compound.Components;
+        if (components.Count == 0)
+        {
+            part = null;
+            return false;
+        }
+
+        // A construct edit is the last component of a compound (D12 of K6-30); a compound with function states has no construct edit.
+        if (components[^1] is ConstructCreateOp or BlockSetOp or BlockClearOp)
+        {
+            part = components[^1];
+            return true;
+        }
+
+        var states = 0;
+        for (var i = 0; i < components.Count; i++)
+        {
+            if (components[i] is BlockFunctionStateSetOp)
+            {
+                states++;
+            }
+        }
+
+        if (states == 0)
+        {
+            part = null;
+            return false;
+        }
+
+        if (states == components.Count)
+        {
+            part = compound;
+            return true;
+        }
+
+        var only = new Operation[states];
+        var written = 0;
+        for (var i = 0; i < components.Count; i++)
+        {
+            if (components[i] is BlockFunctionStateSetOp)
+            {
+                only[written++] = components[i];
+            }
+        }
+
+        part = new CompoundOp(only);
+        return true;
     }
 }

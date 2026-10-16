@@ -113,25 +113,51 @@ public sealed class ConstructReplica
     /// <param name="state">New function state, 0..7.</param>
     /// <param name="version">Next version.</param>
     /// <returns>Whether the change was applied; false leaves the copy unchanged.</returns>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Skeleton of K6-30 A6; the behaviour reads the instance.")]
     public bool TrySetFunctionState(CellPos cell, ushort expectedType, byte state, uint version)
     {
-        // K6-30 A6: the behaviour.
-        _ = (cell, expectedType, state, version);
-        return false;
+        if (version != unchecked(Value.Version + 1) || !HoldsBlock(cell, expectedType, state))
+        {
+            return false;
+        }
+
+        Value.ChangeFunctionState(cell, state);
+        Value.BumpVersion();
+        _tracker.Clear();
+        return true;
     }
 
     /// <summary>Applies the function state changes of one operation (a door column, K6-30) as exactly the next version, all or nothing.</summary>
     /// <param name="ops">The changes; every one targets this construct.</param>
     /// <param name="version">Next version, shared by all changes.</param>
     /// <returns>Whether every change was applied; false leaves the copy unchanged.</returns>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Skeleton of K6-30 A6; the behaviour reads the instance.")]
     public bool TrySetFunctionStates(IReadOnlyList<Operations.BlockFunctionStateSetOp> ops, uint version)
     {
-        // K6-30 A6: the behaviour.
-        _ = (ops, version);
-        return false;
+        ArgumentNullException.ThrowIfNull(ops);
+        if (ops.Count == 0 || version != unchecked(Value.Version + 1))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < ops.Count; i++)
+        {
+            if (ops[i].Construct != Value.Id || !HoldsBlock(ops[i].Cell, ops[i].ExpectedType, ops[i].State))
+            {
+                return false;
+            }
+        }
+
+        for (var i = 0; i < ops.Count; i++)
+        {
+            Value.ChangeFunctionState(ops[i].Cell, ops[i].State);
+        }
+
+        Value.BumpVersion();
+        _tracker.Clear();
+        return true;
     }
+
+    private bool HoldsBlock(CellPos cell, ushort expectedType, byte state) =>
+        state < BlockState.FunctionStateCount && expectedType != 0 && cell.IsInBounds && Value.GetBlock(cell).TypeId == expectedType;
 
     /// <summary>Applies the next reparent counter without changing the block version.</summary>
     /// <param name="parent">New parent.</param>
