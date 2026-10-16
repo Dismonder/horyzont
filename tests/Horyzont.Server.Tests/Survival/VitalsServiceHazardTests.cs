@@ -249,7 +249,7 @@ public sealed class VitalsServiceHazardTests
         }
 
         Assert.Equal(0, smallest);
-        Assert.InRange(rig.SuitOf(rig.Alice).Oxygen, 1f, 199f);
+        Assert.InRange(rig.SuitOf(rig.Alice).Oxygen, 150f, 199.9f);
     }
 
     private sealed class ListLogger<T> : ILogger<T>

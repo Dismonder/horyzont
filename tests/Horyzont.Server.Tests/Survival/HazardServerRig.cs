@@ -49,7 +49,14 @@ internal sealed class HazardServerRig
         Vitals = new VitalsService(() => Sim, Motion, Send, () => false, logger);
         Inventory = new InventoryService(() => Sim, Send, () => false, NullLogger<InventoryService>.Instance);
         Stations = new StationService(() => Sim, Inventory.CollectObservedStations, () => false, NullLogger<StationService>.Instance);
+
+        // The players spawn at the pole, inside the blocks of the construct (the rays of the shelter would hit them); the rig puts them on the open ground 100 m away.
+        StandAt(Alice, OpenGround);
+        StandAt(Bob, OpenGround);
     }
+
+    /// <summary>A point on the surface of the planet 100 m from the pole, 10 cm above the ground, where no block of the construct is within 16 m.</summary>
+    public static Vector3 OpenGround { get; } = new(100f, MathF.Sqrt((4000f * 4000f) - (100f * 100f)) + 0.1f, 0f);
 
     public PlayerId Alice { get; } = new(1);
 

@@ -57,6 +57,7 @@ public sealed partial class VitalsService
         data.PreviousVelocity = motion.Velocity;
         data.PreviousParentSeq = player.ParentSeq;
 
+        var suit = StepSuit(sim, player, data, tickRate, now, ref damage);
         var food = sim.State.Progress.TryGet(player.Player, out var progress) ? progress.Food : default;
         var bonus = FoodBonus.Compute(food, _table!, now, tickRate, rules);
         var current = player.Vitals ?? new PlayerVitals(float.NaN, float.NaN, default, false);
@@ -70,7 +71,7 @@ public sealed partial class VitalsService
         var restedUntil = RestTracker.Update(sim, player, data.Rest, now, current.RestedUntil);
         data.HealthMax = result.HealthMax;
         data.StaminaMax = result.StaminaMax;
-        if (!sim.UpdatePlayerVitals(player.Player, result.Vitals with { RestedUntil = restedUntil }))
+        if (!sim.UpdatePlayerVitals(player.Player, result.Vitals with { RestedUntil = restedUntil, Suit = suit ?? result.Vitals.Suit }))
         {
             _logger.VitalsRefused(player.Player.Value);
         }
