@@ -241,6 +241,14 @@ public sealed class ClientInventory : IClientSessionListener
         StateApplied?.Invoke(container);
     }
 
+    private void RequestState(ContainerId container)
+    {
+        if (_awaitingState.Add(container.Value))
+        {
+            _requestState(container);
+        }
+    }
+
     private void ApplyDelta(ContainerDelta delta)
     {
         if (!_containers.TryGetValue(delta.Container.Value, out var container))
@@ -258,23 +266,24 @@ public sealed class ClientInventory : IClientSessionListener
         if (delta.Version != container.Version + 1)
         {
             _logger.DeltaGap(delta.Container.Value, delta.Version, container.Version);
-            if (_awaitingState.Add(delta.Container.Value))
-            {
-                _requestState(delta.Container);
-            }
-
+            RequestState(delta.Container);
             return;
         }
 
-        _net.Clear();
+        // A slot outside the size means the size changed under us (a missed state): treat it like a gap, apply nothing and keep the version.
         foreach (var change in delta.Changed)
         {
             if ((uint)change.Slot >= (uint)container.Size)
             {
                 _logger.SlotOutside(delta.Container.Value, change.Slot, container.Size);
-                continue;
+                RequestState(delta.Container);
+                return;
             }
+        }
 
+        _net.Clear();
+        foreach (var change in delta.Changed)
+        {
             var old = container.Get(change.Slot);
             container.TrySet(change.Slot, change.Stack);
             Add(old.Type, -old.Count);

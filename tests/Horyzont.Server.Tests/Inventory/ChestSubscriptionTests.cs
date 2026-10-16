@@ -47,10 +47,12 @@ public sealed class ChestSubscriptionTests
     private ContainerId SetUpChest(ContainerAccess access = ContainerAccess.Shared, ushort size = 8)
     {
         var chest = _sim.State.ContainerIds.PeekNext();
-        _sim.ApplyServerOperation(new ContainerCreateOp(
-            chest, ContainerKind.Chest, ContainerHost.ConstructBlock(FunctionalBlocks.Construct, FunctionalBlocks.ChestCell), _owner, access, size));
-        _sim.ApplyServerOperation(new BlockEntitySetOp(
-            FunctionalBlocks.Construct, FunctionalBlocks.ChestCell, FunctionalBlocks.ChestType, new ChestBlockState(chest)));
+        _sim.ApplyServerOperation(new CompoundOp(
+        [
+            new ContainerCreateOp(
+                chest, ContainerKind.Chest, ContainerHost.ConstructBlock(FunctionalBlocks.Construct, FunctionalBlocks.ChestCell), _owner, access, size),
+            new BlockEntitySetOp(FunctionalBlocks.Construct, FunctionalBlocks.ChestCell, FunctionalBlocks.ChestType, new ChestBlockState(chest)),
+        ]));
         _sim.ApplyServerOperation(new ItemCreateOp(new SlotRef(chest, 0), _stone, 40, 500, ItemSource.Admin));
         _sent.Clear();
         return chest;
@@ -216,6 +218,25 @@ public sealed class ChestSubscriptionTests
             Assert.Equal((chest, RejectReason.None, (ushort)12, 3U), (state.Container, state.Reason, state.Size, state.Version));
             Assert.Equal(new SlotContent(0, new ItemStack(_stone, 40)), Assert.Single(state.Slots));
         }
+    }
+
+    [Fact]
+    public void ConfigureWithTransferIntoNewSlot_SubscribersGetFullState()
+    {
+        var chest = SetUpChest();
+        Stand(_other, 5f);
+        _service.Handle(_other, new ContainerSubscribe(chest));
+        _sent.Clear();
+
+        _sim.ApplyServerOperation(new CompoundOp(
+        [
+            new ContainerConfigureOp(chest, 12, ContainerAccess.Shared),
+            new ItemTransferOp(new SlotRef(chest, 0), new SlotRef(chest, 10), _stone, 5, 500),
+        ]));
+
+        var state = Assert.IsType<ContainerState>(Assert.Single(SentTo(_other)));
+        Assert.Equal((chest, RejectReason.None, (ushort)12), (state.Container, state.Reason, state.Size));
+        Assert.Contains(new SlotContent(10, new ItemStack(_stone, 5)), state.Slots);
     }
 
     [Fact]

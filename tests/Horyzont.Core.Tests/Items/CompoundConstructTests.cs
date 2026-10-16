@@ -163,12 +163,12 @@ public sealed class CompoundConstructTests
     public void BlockClear_WithHostedContainer_Fails()
     {
         var f = new FunctionalBlockFixture();
-        var container = f.CreateChestContainer(_chestCell);
+        var container = f.SetUpChest(_chestCell);
 
         f.AssertFails(new BlockClearOp(ConstructId, _chestCell));
         Assert.Single(f.HostedBy(_chestCell));
 
-        f.Apply(new ContainerRemoveOp(container));
+        f.RemoveChest(_chestCell, container);
         f.Apply(new BlockClearOp(ConstructId, _chestCell));
         Assert.Equal(BlockState.Empty, f.BlockAt(_chestCell));
     }

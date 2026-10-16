@@ -116,8 +116,9 @@ public sealed class SurvivalHashTests
         var chestA = new FunctionalBlockFixture();
         var chestB = new FunctionalBlockFixture();
         chestA.SetUpChest(FunctionalBlocks.ChestCell);
-        chestB.CreateChestContainer(FunctionalBlocks.ChestCell);
+        chestB.SetUpChest(FunctionalBlocks.ChestCell, access: ContainerAccess.Private);
         Assert.NotEqual(StateHasher.Hash(chestB.State), StateHasher.Hash(chestA.State));
+        Assert.NotEqual(StateHasher.Hash(new FunctionalBlockFixture().State), StateHasher.Hash(chestA.State));
     }
 
     [Fact]

@@ -19,7 +19,7 @@ public sealed class ContainerLifecycleTests
     {
         var f = new FunctionalBlockFixture();
 
-        var id = f.CreateChestContainer(_chestCell, size: 8, access: ContainerAccess.Private);
+        var id = f.SetUpChest(_chestCell, size: 8, access: ContainerAccess.Private);
 
         var container = f.Container(id);
         Assert.Equal(ContainerKind.Chest, container.Kind);
@@ -34,7 +34,7 @@ public sealed class ContainerLifecycleTests
     public void ContainerCreate_ConstructBlockHostEmptyCell_Fails()
     {
         var f = new FunctionalBlockFixture();
-        f.CreateChestContainer(_chestCell);
+        f.SetUpChest(_chestCell);
         var next = f.State.ContainerIds.PeekNext();
 
         f.AssertFails(ChestContainer(next, ConstructId, FunctionalBlocks.FreeCell));
@@ -45,7 +45,7 @@ public sealed class ContainerLifecycleTests
     public void ContainerCreate_SecondOfKindOnSameBlock_Fails()
     {
         var f = new FunctionalBlockFixture();
-        f.CreateChestContainer(_chestCell);
+        f.SetUpChest(_chestCell);
         var next = f.State.ContainerIds.PeekNext();
 
         f.AssertFails(ChestContainer(next, ConstructId, _chestCell));
@@ -59,16 +59,16 @@ public sealed class ContainerLifecycleTests
     public void ContainerRemove_Empty_RemovedAndHostFreed()
     {
         var f = new FunctionalBlockFixture();
-        var id = f.CreateChestContainer(_chestCell);
+        var id = f.SetUpChest(_chestCell);
 
-        var applied = f.Apply(new ContainerRemoveOp(id));
+        var applied = f.Apply(new CompoundOp([new ContainerRemoveOp(id), ClearState(_chestCell, FunctionalBlocks.ChestType)]));
 
         Assert.False(f.State.Containers.TryGet(id, out _));
         Assert.Empty(f.HostedBy(_chestCell));
         var change = Assert.Single(applied.ContainerChanges);
         Assert.Equal(id, change.Container);
         Assert.True(change.Removed);
-        f.CreateChestContainer(_chestCell);
+        f.SetUpChest(_chestCell);
         Assert.Single(f.HostedBy(_chestCell));
     }
 
@@ -77,9 +77,9 @@ public sealed class ContainerLifecycleTests
     {
         var f = new FunctionalBlockFixture();
         f.Apply(PlaceBlock(FunctionalBlocks.FreeCell, FunctionalBlocks.ChestType));
-        var emptyOne = f.CreateChestContainer(FunctionalBlocks.FreeCell);
-        f.Apply(new ContainerRemoveOp(emptyOne));
-        var full = f.CreateChestContainer(_chestCell);
+        var emptyOne = f.SetUpChest(FunctionalBlocks.FreeCell);
+        f.RemoveChest(FunctionalBlocks.FreeCell, emptyOne);
+        var full = f.SetUpChest(_chestCell);
         f.Apply(Stone(full, 3, 5));
 
         f.AssertFails(new ContainerRemoveOp(full));
@@ -91,8 +91,8 @@ public sealed class ContainerLifecycleTests
     public void ContainerRemove_PlayerContainer_Fails()
     {
         var f = new FunctionalBlockFixture();
-        var id = f.CreateChestContainer(_chestCell);
-        f.Apply(new ContainerRemoveOp(id));
+        var id = f.SetUpChest(_chestCell);
+        f.RemoveChest(_chestCell, id);
 
         // Bag, hotbar and equipment of a player are empty here and still never disappear.
         f.AssertFails(new ContainerRemoveOp(WorldFactory.BagOf(1)));
@@ -104,7 +104,7 @@ public sealed class ContainerLifecycleTests
     public void ContainerConfigure_Access_VersionPlusOne()
     {
         var f = new FunctionalBlockFixture();
-        var id = f.CreateChestContainer(_chestCell, size: 4);
+        var id = f.SetUpChest(_chestCell, size: 4);
         var version = f.Container(id).Version;
 
         var applied = f.Apply(new ContainerConfigureOp(id, 4, ContainerAccess.Private));
@@ -113,17 +113,23 @@ public sealed class ContainerLifecycleTests
         Assert.Equal(4, f.Container(id).Size);
         Assert.Equal(version + 1, f.Container(id).Version);
         Assert.Equal(id, Assert.Single(applied.ContainerChanges).Container);
+        Assert.True(Assert.Single(applied.ContainerChanges).Configured);
 
+        var withSlots = f.Apply(new CompoundOp([new ContainerConfigureOp(id, 8, ContainerAccess.Private), FunctionalBlockFixture.Stone(id, 5, 1)]));
+        var change = Assert.Single(withSlots.ContainerChanges);
+        Assert.True(change.Configured);
+        Assert.Equal([(ushort)5], change.Slots);
+        Assert.False(Assert.Single(f.Apply(FunctionalBlockFixture.Stone(id, 0, 1)).ContainerChanges).Configured);
         f.Apply(new ContainerConfigureOp(id, 6, ContainerAccess.Private));
         Assert.Equal(6, f.Container(id).Size);
-        Assert.Equal(version + 2, f.Container(id).Version);
+        Assert.Equal(version + 4, f.Container(id).Version);
     }
 
     [Fact]
     public void ContainerConfigure_ShrinkOverItems_Fails()
     {
         var f = new FunctionalBlockFixture();
-        var id = f.CreateChestContainer(_chestCell, size: 4);
+        var id = f.SetUpChest(_chestCell, size: 4);
         f.Apply(Stone(id, 3, 5));
         f.Apply(new ContainerConfigureOp(id, 8, ContainerAccess.Shared));
         Assert.Equal(8, f.Container(id).Size);
@@ -139,7 +145,7 @@ public sealed class ContainerLifecycleTests
     public void ContainerConfigure_NoChange_Fails()
     {
         var f = new FunctionalBlockFixture();
-        var id = f.CreateChestContainer(_chestCell, size: 4);
+        var id = f.SetUpChest(_chestCell, size: 4);
         f.Apply(new ContainerConfigureOp(id, 4, ContainerAccess.Private));
 
         f.AssertFails(new ContainerConfigureOp(id, 4, ContainerAccess.Private));

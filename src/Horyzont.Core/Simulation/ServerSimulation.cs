@@ -166,6 +166,12 @@ public sealed class ServerSimulation
             // Functional blocks (K6-30): chests, beds, lamps, doors, quick stack. The operation carries every value from the content.
             if (reason != RejectReason.None)
             {
+                if (_functional.RefusalCostsToken)
+                {
+                    // A refusal that scanned the chests of the world counts against the rate limit of its class, like an accepted intent.
+                    IntentValidator.BucketFor(intent, buckets!)!.Consume();
+                }
+
                 return IntentResult.Rejected(reason);
             }
         }

@@ -25,6 +25,12 @@ internal sealed class FunctionalBlockRules(WorldState state, GameRules rules, Bl
     private const byte LampOn = 1;
 
     private readonly List<Operation> _components = [];
+
+    /// <summary>
+    /// True when the last <see cref="TryResolve"/> refused only after it began to scan the chest index of the world (the costly part of a quick stack): the
+    /// caller then charges the rate limit of item intents for the refusal, so a client cannot repeat it faster than accepted intents.
+    /// </summary>
+    internal bool RefusalCostsToken { get; private set; }
     private readonly List<CellPos> _column = [];
 
     /// <summary>
@@ -40,6 +46,7 @@ internal sealed class FunctionalBlockRules(WorldState state, GameRules rules, Bl
     {
         operation = null!;
         reason = RejectReason.None;
+        RefusalCostsToken = false;
         switch (intent)
         {
             case PlaceBlockIntent place:
@@ -359,6 +366,14 @@ internal sealed class FunctionalBlockRules(WorldState state, GameRules rules, Bl
         }
 
         // Only the chest index is visited, never every container of the world; the list is built once a chest is known to be in reach.
+        // The eye is measured once: a chest out of reach costs one distance, not a lookup of the player.
+        if (!state.Players.TryGet(player, out var playerState) || !ContainerReach.TryGetEye(state, rules, playerState, out var eyePlanet, out var eye))
+        {
+            return RejectReason.NotEnoughItems;
+        }
+
+        // From here on the chest index of the world is scanned (linear in the chests of the world): whatever is refused has cost something.
+        RefusalCostsToken = true;
         var chestIndex = state.Containers.OfKind(ContainerKind.Chest);
         List<ChestCopy>? chests = null;
         for (var i = 0; i < chestIndex.Count; i++)
@@ -366,7 +381,7 @@ internal sealed class FunctionalBlockRules(WorldState state, GameRules rules, Bl
             var container = chestIndex[i];
             if (container.Host.Kind != ContainerHostKind.ConstructBlock
                 || (container.Access != ContainerAccess.Shared && container.Owner != player)
-                || !ContainerReach.TryDistanceFromEye(state, rules, player, new EntityId(container.Host.Id), container.Host.Cell, out var meters)
+                || !ContainerReach.TryDistanceFrom(state, eyePlanet, eye, new EntityId(container.Host.Id), container.Host.Cell, out var meters)
                 || meters > rules.QuickStackRangeMeters)
             {
                 continue;

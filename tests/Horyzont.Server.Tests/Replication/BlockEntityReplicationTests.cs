@@ -40,9 +40,11 @@ public sealed class BlockEntityReplicationTests
     {
         var sim = rig.Runtime.Simulation;
         var container = rig.Runtime.State.ContainerIds.PeekNext();
-        sim.ApplyServerOperation(new ContainerCreateOp(
-            container, ContainerKind.Chest, ContainerHost.ConstructBlock(construct, FunctionalBlocks.ChestCell), owner, ContainerAccess.Shared, 8));
-        sim.ApplyServerOperation(new BlockEntitySetOp(construct, FunctionalBlocks.ChestCell, FunctionalBlocks.ChestType, new ChestBlockState(container)));
+        sim.ApplyServerOperation(new CompoundOp(
+        [
+            new ContainerCreateOp(container, ContainerKind.Chest, ContainerHost.ConstructBlock(construct, FunctionalBlocks.ChestCell), owner, ContainerAccess.Shared, 8),
+            new BlockEntitySetOp(construct, FunctionalBlocks.ChestCell, FunctionalBlocks.ChestType, new ChestBlockState(container)),
+        ]));
         return container;
     }
 
