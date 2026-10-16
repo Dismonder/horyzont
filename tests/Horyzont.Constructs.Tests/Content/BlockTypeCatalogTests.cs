@@ -314,6 +314,16 @@ public sealed class BlockTypeCatalogTests
     }
 
     [Fact]
+    public void Parse_UpgradeOfStationWithoutLevels_Throws()
+    {
+        // Review B1, 9: only the workbench has levels, so an upgrade of any other station would never count and is an error of the content.
+        Parse(FunctionBlock("{ \"kind\": \"station_upgrade\", \"station\": \"workbench\" }"));
+
+        AssertInvalid(FunctionBlock("{ \"kind\": \"station_upgrade\", \"station\": \"furnace\" }"), "$.blocks[0].function.station");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"station_upgrade\", \"station\": \"kitchen\" }"), "$.blocks[0].function.station");
+    }
+
+    [Fact]
     public void Parse_UnknownOrMissingStation_Throws()
     {
         Parse(FunctionBlock("{ \"kind\": \"station_upgrade\", \"station\": \"workbench\" }"));

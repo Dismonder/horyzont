@@ -102,12 +102,13 @@ public sealed class CraftIntentTests
         f.Stock(Bag, 0, Stone, 1);
         f.Discover(Player1, Stone);
 
-        // The same intent is refused 20.5 m from the chest and accepted 19.5 m from it: the distance is the only difference.
-        ReachPlacement.MoveEyeToDistance(f, Player1, FunctionalBlocks.ChestCell, 20.5f);
+        // The same intent is refused 20.01 m from the chest and accepted 19.99 m from it: the distance is the only difference. The boundary
+        // is inclusive (D13, the rule of K6-30 DECYZJA-8), checked 1 cm either side (review B1, 4).
+        ReachPlacement.MoveEyeToDistance(f, Player1, FunctionalBlocks.ChestCell, 20.01f);
         f.AssertRejected(Player1, Craft("t:hand"), RejectReason.NotEnoughItems);
         Assert.Equal(new ItemStack(Stone, 1), f.Container(chest).GetSlot(0));
 
-        ReachPlacement.MoveEyeToDistance(f, Player1, FunctionalBlocks.ChestCell, 19.5f);
+        ReachPlacement.MoveEyeToDistance(f, Player1, FunctionalBlocks.ChestCell, 19.99f);
         f.Accept(Player1, Craft("t:hand"));
     }
 
@@ -298,11 +299,130 @@ public sealed class CraftIntentTests
         var f = WithBench();
         f.Stock(Bag, 0, Brick, 4);
 
-        ReachPlacement.MoveEyeToDistance(f, Player1, BenchCell, 8.5f);
+        // The boundary is inclusive (D14), checked 1 cm either side (review B1, 4).
+        ReachPlacement.MoveEyeToDistance(f, Player1, BenchCell, 8.01f);
         f.AssertRejected(Player1, Craft("t:bench1", 1, BenchCell), TooFarFromStation);
 
-        ReachPlacement.MoveEyeToDistance(f, Player1, BenchCell, 7.5f);
+        ReachPlacement.MoveEyeToDistance(f, Player1, BenchCell, 7.99f);
         f.Accept(Player1, Craft("t:bench1", 1, BenchCell));
+    }
+
+    [Fact]
+    public void Station_Beyond8mWithTooLowLevel_TooFarFromStation()
+    {
+        // Review B1, 3a: the reach is checked before the level.
+        var f = WithBench();
+        f.Stock(Bag, 0, Brick, 1);
+        f.Stock(Bag, 1, Ingot, 1);
+
+        ReachPlacement.MoveEyeToDistance(f, Player1, BenchCell, 8.5f);
+        f.AssertRejected(Player1, Craft("t:bench2", 1, BenchCell), TooFarFromStation);
+
+        ReachPlacement.MoveEyeToDistance(f, Player1, BenchCell, 7.5f);
+        f.AssertRejected(Player1, Craft("t:bench2", 1, BenchCell), StationRequired);
+
+        f.EnsureBlock(new CellPos(1, 1, 1), CraftingBlocks.AnvilType);
+        f.Accept(Player1, Craft("t:bench2", 1, BenchCell));
+    }
+
+    [Fact]
+    public void Station_WrongKindBeyond8m_StationRequired()
+    {
+        // Review B1, 3c: the kind of the station is checked before the reach.
+        var f = WithBench();
+        f.SetUpTimedStation(FurnaceCell);
+        f.Stock(Bag, 0, Brick, 4);
+        f.Accept(Player1, Craft("t:bench1", 1, BenchCell));
+
+        ReachPlacement.MoveEyeToDistance(f, Player1, FurnaceCell, 8.5f);
+        f.AssertRejected(Player1, Craft("t:bench1", 1, FurnaceCell), StationRequired);
+    }
+
+    [Fact]
+    public void Workbench_LevelTooLowAndNoIngredients_StationRequired()
+    {
+        // Review B1, 3d: the station and its level are checked before the sources of the ingredients.
+        var f = WithBench();
+
+        f.AssertRejected(Player1, Craft("t:bench2", 1, BenchCell), StationRequired);
+
+        f.EnsureBlock(new CellPos(1, 1, 1), CraftingBlocks.AnvilType);
+        f.AssertRejected(Player1, Craft("t:bench2", 1, BenchCell), RejectReason.NotEnoughItems);
+    }
+
+    [Fact]
+    public void Recipe_LockedWithoutStation_RecipeLocked()
+    {
+        // Review B1, 3b: the visibility of a recipe is checked before the station.
+        var f = Fixture();
+        f.Stock(Bag, 0, Plate, 1);
+        f.Stock(Bag, 1, Ingot, 1);
+        f.Discover(Player1, Plate, Ingot);
+
+        f.AssertRejected(Player1, Craft("t:fab"), RecipeLocked);
+
+        f.Apply(new ProgressKeyGrantOp(SurvivalContentFactory.Boss2Key));
+        f.AssertRejected(Player1, Craft("t:fab"), StationRequired);
+
+        f.EnsureBlock(BenchCell, CraftingBlocks.FabricatorType);
+        f.Accept(Player1, Craft("t:fab", 1, BenchCell));
+        Assert.Equal(1, f.CountIn(Bag, Module));
+    }
+
+    [Fact]
+    public void Workbench_UpgradeAtRangeBoundary()
+    {
+        // Review B1, 4: an upgrade on another construct 5.01 m from the bench does not count, one 4.99 m from it does (D14, inclusive boundary).
+        var f = WithBench();
+        f.Stock(Bag, 0, Brick, 2);
+        f.Stock(Bag, 1, Ingot, 2);
+        var frame = FrameRef.Of(WorldFactory.HomePlanet);
+
+        // The bench centre is (1.5, 4001.5, 2.5); the cell (0,0,0) of a construct with origin (1, 4001, z) has its centre 0.5 m above z.
+        f.AddConstruct(NearConstruct, frame, new System.Numerics.Vector3(1f, 4001f, 2.5f + 5.01f - 0.5f), new CellPos(0, 0, 0), CraftingBlocks.AnvilType);
+        f.AssertRejected(Player1, Craft("t:bench2", 1, BenchCell), StationRequired);
+
+        f.AddConstruct(new EntityId(103), frame, new System.Numerics.Vector3(1f, 4001f, 2.5f + 4.99f - 0.5f), new CellPos(0, 0, 0), CraftingBlocks.AnvilType);
+        f.Accept(Player1, Craft("t:bench2", 1, BenchCell));
+    }
+
+    [Fact]
+    public void Workbench_TwoIngredients_DestroyOrderByRecipeThenSource()
+    {
+        // Review B1, 11: the ingredients are taken in the order of the recipe (brick, then ingot), each from its sources in order, though the ingot lies in the lower slot.
+        var f = WithBench();
+        f.EnsureBlock(new CellPos(1, 1, 1), CraftingBlocks.AnvilType);
+        f.Stock(Bag, 0, Ingot, 1);
+        f.Stock(Bag, 1, Brick, 1);
+
+        var applied = f.Accept(Player1, Craft("t:bench2", 1, BenchCell));
+
+        var compound = Assert.IsType<CompoundOp>(applied.Operation);
+        Assert.Equal(
+            [
+                new ItemDestroyOp(new SlotRef(Bag, 1), Brick, 1, ItemSink.Craft),
+                new ItemDestroyOp(new SlotRef(Bag, 0), Ingot, 1, ItemSink.Craft),
+                new ItemCreateOp(new SlotRef(Bag, 0), Plate, 1, 500, ItemSource.Craft),
+                new ItemDiscoverOp(Player1, Plate),
+            ],
+            compound.Components);
+    }
+
+    [Fact]
+    public void Workbench_StationContainersAndEquipment_NotSources()
+    {
+        // Review B1, 13 (D13): the containers of a station and the equipment are no sources, a chest is.
+        var f = WithBench();
+        var (input, _) = f.SetUpTimedStation(FurnaceCell);
+        f.Stock(input, 0, Brick, 2);
+        f.Stock(WorldFactory.EquipmentOf(1), 0, Brick, 2);
+
+        f.AssertRejected(Player1, Craft("t:bench1", 1, BenchCell), RejectReason.NotEnoughItems);
+
+        f.SetUpChestWith(new CellPos(2, 1, 2), Player1, ContainerAccess.Shared, (Brick, 2));
+        f.Accept(Player1, Craft("t:bench1", 1, BenchCell));
+        Assert.Equal(2, f.CountIn(input, Brick));
+        Assert.Equal(2, f.CountIn(WorldFactory.EquipmentOf(1), Brick));
     }
 
     [Fact]

@@ -114,13 +114,16 @@ public sealed class MessageCodecProgressTests
     public void Read_InvalidBitset_Throws()
     {
         AssertSame(new PlayerProgressState(Bits(5), []), MessageCodec.Read(Kit.Hex("30 01 01 20 00")));
+        var longest = Enumerable.Repeat((byte)2, 512).Append((byte)1).ToArray();
         AssertSame(
-            new PlayerProgressState(ItemTypeBitSet.FromBytes(Enumerable.Repeat((byte)2, 513).ToArray()), []),
-            MessageCodec.Read(Kit.Hex("30 01 81 04 " + string.Join(' ', Enumerable.Repeat("02", 513)) + " 00")));
+            new PlayerProgressState(ItemTypeBitSet.FromBytes(longest), []),
+            MessageCodec.Read(Kit.Hex("30 01 81 04 " + string.Join(' ', Enumerable.Repeat("02", 512)) + " 01 00")));
 
-        // A trailing zero byte, bit 0 (no item type), 514 bytes, a bitset cut short.
+        // A trailing zero byte, bit 0 (no item type), a bit above type 4096 in byte 512 (review B1, 1), 514 bytes, a bitset cut short.
         Kit.AssertMessageViolation("30 01 02 20 00 00");
         Kit.AssertMessageViolation("30 01 01 21 00");
+        Kit.AssertMessageViolation("30 01 81 04 " + string.Join(' ', Enumerable.Repeat("00", 512)) + " 02 00");
+        Kit.AssertMessageViolation("30 01 81 04 " + string.Join(' ', Enumerable.Repeat("02", 513)) + " 00");
         Kit.AssertMessageViolation("30 01 82 04 " + string.Join(' ', Enumerable.Repeat("02", 514)) + " 00");
         Kit.AssertMessageViolation("30 01 02 20");
     }
@@ -130,18 +133,9 @@ public sealed class MessageCodecProgressTests
     {
         AssertSame(new PlayerProgressState(ItemTypeBitSet.Empty, []), MessageCodec.Read(Kit.Hex("30 01 00 00")));
 
-        // K6-33 extends the message as version 2 by appending fields; until then version 2 is unknown.
+        // The version byte is 01 for every message (review B1, 2): messages are never stored, and the handshake demands an equal protocol version.
+        // K6-33 extends 48 by appending fields at the end and raising the protocol version, not by a second version byte.
         Kit.AssertMessageViolation("30 02 00 00");
         Kit.AssertMessageViolation("30 00 00 00");
-    }
-
-    [Fact]
-    public void FormatVersionOf_IsOneForEveryMessageType()
-    {
-        // The version byte is checked per type (D27): no message but 48 may change, and 48 starts at 1.
-        foreach (var type in Enum.GetValues<MessageType>())
-        {
-            Assert.Equal(1, MessageCodec.FormatVersionOf(type));
-        }
     }
 }

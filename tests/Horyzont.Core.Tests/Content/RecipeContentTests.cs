@@ -155,9 +155,20 @@ public sealed class RecipeContentTests
         // The workbench goes up to level 4; every other station has level 1.
         Assert.Equal(4, Parse(Hand.Replace("\"hands\"", "\"workbench\"", StringComparison.Ordinal).Replace("\"level\": 1", "\"level\": 4", StringComparison.Ordinal)).Recipes[0].Level);
 
-        AssertInvalid(
-            "$.recipes[0].level",
-            Hand.Replace("\"hands\"", $"\"{station}\"", StringComparison.Ordinal).Replace("\"level\": 1", $"\"level\": {level}", StringComparison.Ordinal));
+        // The furnace rows use the recipe of a station with time (review B1, 8), so they do not depend on which of the checks comes first.
+        var template = station == "furnace" ? Smelt : Hand.Replace("\"hands\"", $"\"{station}\"", StringComparison.Ordinal);
+        AssertInvalid("$.recipes[0].level", template.Replace("\"level\": 1", $"\"level\": {level}", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Parse_UnsupportedFormatVersion_Throws()
+    {
+        // Review B1, 8: the file has its own format version, 1.
+        Assert.Empty(ContentLoader.Parse(Items, Yields, Start, "{ \"formatVersion\": 1, \"recipes\": [] }").Recipes);
+
+        var exception = Assert.Throws<InvalidDataException>(() => ContentLoader.Parse(Items, Yields, Start, "{ \"formatVersion\": 2, \"recipes\": [] }"));
+        Assert.Contains(ContentLoader.RecipesFile, exception.Message, StringComparison.Ordinal);
+        Assert.Contains("$.formatVersion", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -213,6 +224,7 @@ public sealed class RecipeContentTests
         "\"fuel\": [ { \"item\": \"test:peat\", \"count\": 1 }, { \"item\": \"test:stone\", \"count\": 1 }, { \"item\": \"test:tool\", \"count\": 1 } ]",
         "$.recipes[0].fuel")]
     [InlineData("\"progressKey\": null", "\"progressKey\": \"\"", "$.recipes[0].progressKey")]
+    [InlineData("\"progressKey\": null", "\"progressKey\": \"a\ud800b\"", "$.recipes[0].progressKey")]
     [InlineData("\"progressKey\": null", "\"progressKey\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"", "$.recipes[0].progressKey")]
     public void Parse_BadEntries_Throw(string from, string to, string path)
     {

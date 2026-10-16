@@ -84,6 +84,12 @@ public static class ProtocolConstants
     /// <summary>Longest set of discovered item types in bytes: type ids are 1 to <see cref="MaxItemTypes"/>, so bit 4096 sits in byte 512 (K6-32).</summary>
     public const int MaxDiscoveredBytes = (MaxItemTypes / 8) + 1;
 
+    /// <summary>
+    /// Most stations with time (furnace, refinery) in one construct (K6-32, review B1, 7): with this many the state message of a construct
+    /// (<see cref="Messages.BlockEntityStates"/>, at most 113 678 bytes) still fits <see cref="MaxReliableMessageBytes"/>. A rule may lower it, never raise it.
+    /// </summary>
+    public const int MaxTimedStationsPerConstruct = 512;
+
     /// <summary>Longest recipe key in UTF-8 bytes (K6-32).</summary>
     public const int MaxRecipeKeyBytes = MaxRegistryKeyBytes;
 

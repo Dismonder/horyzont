@@ -173,6 +173,9 @@ public sealed class ProtocolContractTests
         Assert.Equal(4096, ProtocolConstants.MaxCompoundComponents);
         Assert.Equal(160 * 1024, ProtocolConstants.MaxCompoundBytes);
         Assert.Equal(4096, ProtocolConstants.MaxBlockEntitiesPerConstruct);
+        Assert.Equal(512, ProtocolConstants.MaxTimedStationsPerConstruct);
+        Assert.Equal(256, ProtocolConstants.MaxProgressKeys);
+        Assert.Equal(513, ProtocolConstants.MaxDiscoveredBytes);
         Assert.Equal(32, ProtocolConstants.MaxTeleportNameBytes);
     }
 

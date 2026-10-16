@@ -33,4 +33,14 @@ public sealed class GameRulesTests
         Assert.Equal(512, rules.MaxTimedStationsPerConstruct);
         Assert.True(rules.StationUseRangeMeters >= rules.ContainerKeepRangeMeters);
     }
+
+    [Fact]
+    public void TimedStationsAboveProtocolCap_Throws()
+    {
+        // Review B1, 7: the limit protects the format of message 46, so a rule can lower it but never raise it.
+        Assert.Equal(512, new GameRules { MaxTimedStationsPerConstruct = 512 }.MaxTimedStationsPerConstruct);
+        Assert.Equal(1, new GameRules { MaxTimedStationsPerConstruct = 1 }.MaxTimedStationsPerConstruct);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new GameRules { MaxTimedStationsPerConstruct = 513 });
+        Assert.Throws<ArgumentOutOfRangeException>(() => new GameRules { MaxTimedStationsPerConstruct = -1 });
+    }
 }

@@ -105,7 +105,7 @@ public sealed class IntentCodecCraftTests
         Kit.AssertIntentViolation("18 01 00 02 00");
         Kit.AssertIntentViolation("18 01 41 " + string.Join(' ', Enumerable.Repeat("78", 65)) + " 01 00");
         Kit.AssertIntentViolation("18 01 02 C3 28 01 00");
-        Kit.AssertIntentViolation("18 01 05 74 3A 61 01 00");
+        Kit.AssertIntentViolation("18 01 06 74 3A 61 01 00");
         Kit.AssertIntentViolation("18 02 03 74 3A 61 02 00");
         Kit.AssertIntentViolation("18 01 03 74 3A 61 02 01 05");
         Kit.AssertIntentViolation("18 01 03 74 3A 61 02 00 00");

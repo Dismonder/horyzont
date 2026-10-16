@@ -92,6 +92,11 @@ public sealed class StationIntentTests
     [Fact]
     public void PlaceFurnace_AtConstructLimit_InvalidParameters()
     {
+        // The twin (review B1, 7): with the default rules the same two furnaces are accepted, so the refusal below comes from the limit and not from the cell.
+        var twin = Fixture();
+        twin.Accept(Player1, PlaceOnFloor(CraftingBlocks.FurnaceType));
+        twin.Accept(Player1, PlaceOnFace(_top, Face.PosX, CraftingBlocks.FurnaceType));
+
         var f = Fixture(rules: new GameRules { MaxTimedStationsPerConstruct = 1 });
         f.Accept(Player1, PlaceOnFloor(CraftingBlocks.FurnaceType));
 
@@ -235,6 +240,11 @@ public sealed class StationIntentTests
 
         f.AssertRejected(Player1, Remove(FurnaceCell), RejectReason.ContainerNotEmpty);
         Assert.False(f.BlockAt(FurnaceCell).IsEmpty);
+
+        // The twin (review B1, 16): once the ore is gone the same removal is accepted.
+        f.Apply(new ItemDestroyOp(new SlotRef(input, 0), Ore, 1, ItemSink.Admin));
+        f.Accept(Player1, Remove(FurnaceCell));
+        Assert.True(f.BlockAt(FurnaceCell).IsEmpty);
     }
 
     [Fact]
@@ -295,15 +305,57 @@ public sealed class StationIntentTests
     {
         var f = Fixture();
         var (input, _) = f.SetUpTimedStation(FurnaceCell);
-        var chest = f.SetUpChestWith(FunctionalBlocks.ChestCell, Player1, ContainerAccess.Shared, (Ore, 1));
+        // Review B1, 5: the chest has room for only 2 more ore (498 of 500), so 3 stay in the bag; a quick stack that treated the input of the furnace as a
+        // chest would put them there.
+        var chest = f.SetUpChestWith(FunctionalBlocks.ChestCell, Player1, ContainerAccess.Shared, (Ore, 498), (Soil, 500), (Soil, 500), (Soil, 500));
         f.Stock(input, 0, Ore, 1);
         f.Stock(Bag, 0, Ore, 5);
 
         f.Accept(Player1, new QuickStackIntent());
 
-        Assert.Equal(6, f.CountIn(chest, Ore));
+        Assert.Equal(500, f.CountIn(chest, Ore));
         Assert.Equal(1, f.CountIn(input, Ore));
-        Assert.Equal(0, f.CountIn(Bag, Ore));
+        Assert.Equal(3, f.CountIn(Bag, Ore));
+    }
+
+    [Fact]
+    public void MoveBetweenTwoFurnaces_SettlesBoth_InBlockRefOrder()
+    {
+        // Review B1, 10: the settlements before and after an intent go in ascending BlockRef order, not in the order the intent names the stations.
+        // A (FurnaceCell) runs and has a piece due; B (FurnaceCell2, the later ref and the source of the move) has a full output, so its piece is stalled.
+        var f = Fixture();
+        var started = f.State.CurrentTick;
+        var (inA, outA) = f.SetUpTimedStation(FurnaceCell, "t:smelt", started);
+        var (inB, outB) = f.SetUpTimedStation(FurnaceCell2, "t:smelt", started);
+        f.Stock(inA, 0, Ore, 4);
+        f.Stock(inA, 1, Peat, 1);
+        f.Stock(inB, 0, Ore, 4);
+        f.Stock(inB, 1, Peat, 2);
+        f.Stock(outB, 0, Ingot, 5);
+        f.Stock(outB, 1, Peat, 1);
+        f.Wait(60);
+        var journaled = f.JournalCount();
+
+        // The peat leaves the output of B: A gets the fuel for its second piece, B gets room for an ingot.
+        f.Accept(Player1, Move(outB, 1, inA, 1, 1, Peat, 1));
+
+        var ops = f.JournalFrom(journaled);
+        Assert.Equal(5, ops.Count);
+
+        // Before: A settles its piece (a compound), B only loses its start (nothing fits); the intent; after: A starts the second piece, B starts again.
+        var settleA = Assert.IsType<CompoundOp>(ops[0]);
+        Assert.IsType<BlockEntitySetOp>(settleA.Components[^1]);
+        Assert.Equal(FurnaceCell, ((BlockEntitySetOp)settleA.Components[^1]).Cell);
+        Assert.Equal(
+            new BlockEntitySetOp(ConstructId, FurnaceCell2, CraftingBlocks.FurnaceType, new StationBlockState(inB, outB, "t:smelt", null)),
+            ops[1]);
+        Assert.IsType<ItemTransferOp>(ops[2]);
+        Assert.Equal(
+            new BlockEntitySetOp(ConstructId, FurnaceCell, CraftingBlocks.FurnaceType, new StationBlockState(inA, outA, "t:smelt", f.State.CurrentTick)),
+            ops[3]);
+        Assert.Equal(
+            new BlockEntitySetOp(ConstructId, FurnaceCell2, CraftingBlocks.FurnaceType, new StationBlockState(inB, outB, "t:smelt", f.State.CurrentTick)),
+            ops[4]);
     }
 
     [Fact]
@@ -323,6 +375,29 @@ public sealed class StationIntentTests
                 new ItemDestroyOp(new SlotRef(input, 0), Ore, 4, ItemSink.Station),
                 new ItemDestroyOp(new SlotRef(input, 1), Peat, 2, ItemSink.Fuel),
                 new ItemCreateOp(new SlotRef(output, 0), Ingot, 2, 5, ItemSource.Station),
+                new BlockEntitySetOp(ConstructId, FurnaceCell, CraftingBlocks.FurnaceType, new StationBlockState(input, output, "t:smelt", null)),
+            ],
+            compound.Components);
+    }
+
+    [Fact]
+    public void TrySettleStation_FuelInLowerSlot_IngredientsFirst()
+    {
+        // Review B1, 11: the ingredients are taken before the fuel, whatever the slots: the peat lies in slot 0, the ore in slot 1.
+        var f = Fixture();
+        var (input, output) = f.SetUpTimedStation(FurnaceCell, "t:smelt", f.State.CurrentTick);
+        f.Stock(input, 0, Peat, 1);
+        f.Stock(input, 1, Ore, 2);
+        f.Wait(60);
+
+        var applied = f.Sim.Sim.TrySettleStation(At(FurnaceCell));
+
+        var compound = Assert.IsType<CompoundOp>(Assert.IsType<AppliedOperation>(applied).Operation);
+        Assert.Equal(
+            [
+                new ItemDestroyOp(new SlotRef(input, 1), Ore, 2, ItemSink.Station),
+                new ItemDestroyOp(new SlotRef(input, 0), Peat, 1, ItemSink.Fuel),
+                new ItemCreateOp(new SlotRef(output, 0), Ingot, 1, 5, ItemSource.Station),
                 new BlockEntitySetOp(ConstructId, FurnaceCell, CraftingBlocks.FurnaceType, new StationBlockState(input, output, "t:smelt", null)),
             ],
             compound.Components);

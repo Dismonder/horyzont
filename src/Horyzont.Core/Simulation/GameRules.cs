@@ -1,3 +1,5 @@
+using Horyzont.Core.Protocol;
+
 namespace Horyzont.Core.Simulation;
 
 /// <summary>
@@ -7,6 +9,8 @@ namespace Horyzont.Core.Simulation;
 /// </summary>
 public sealed record GameRules
 {
+    private readonly int _maxTimedStationsPerConstruct = ProtocolConstants.MaxTimedStationsPerConstruct;
+
     /// <summary>Simulation ticks per second.</summary>
     public int TickRate { get; init; } = 60;
 
@@ -92,7 +96,17 @@ public sealed record GameRules
 
     /// <summary>
     /// Most stations with time (furnace, refinery) in one construct: the state of each is in message 46, whose size is limited to
-    /// <c>ProtocolConstants.MaxReliableMessageBytes</c> (K6-32, review A1 note a). Placing one more is <c>InvalidParameters</c>.
+    /// <c>ProtocolConstants.MaxReliableMessageBytes</c> (K6-32, review A1 note a). Placing one more is <c>InvalidParameters</c>. A value above
+    /// <see cref="ProtocolConstants.MaxTimedStationsPerConstruct"/> is refused (review B1, 7): the limit protects the protocol format.
     /// </summary>
-    public int MaxTimedStationsPerConstruct { get; init; } = 512;
+    public int MaxTimedStationsPerConstruct
+    {
+        get => _maxTimedStationsPerConstruct;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, ProtocolConstants.MaxTimedStationsPerConstruct);
+            ArgumentOutOfRangeException.ThrowIfNegative(value);
+            _maxTimedStationsPerConstruct = value;
+        }
+    }
 }

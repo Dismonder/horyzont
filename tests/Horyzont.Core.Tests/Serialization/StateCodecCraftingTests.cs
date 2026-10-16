@@ -136,6 +136,17 @@ public sealed class StateCodecCraftingTests
     }
 
     [Fact]
+    public void BitsetBitAbove4096_Throws()
+    {
+        // Review B1, 1: the valid twin sets bit 0 of byte 512 (type 4096), the refused blob sets bit 1 (type 4097, which does not exist).
+        var valid = Kit.Concat(Kit.Hex("16 02 04 02 81 04"), new byte[512], [0x01]);
+        var above = Kit.Concat(Kit.Hex("16 02 04 02 81 04"), new byte[512], [0x02]);
+
+        Assert.True(StateCodec.DecodePlayerProgressBlob(valid).Discovered!.Contains(new ItemTypeId(4096)));
+        Kit.AssertViolation(d => StateCodec.DecodePlayerProgressBlob(d), above);
+    }
+
+    [Fact]
     public void ProgressKeysBlob_RoundTrip()
     {
         // Ordinal order: upper case before lower case.

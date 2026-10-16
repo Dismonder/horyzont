@@ -61,13 +61,17 @@ public sealed class MessageCodecStationTests
     [Fact]
     public void ConstructWithTheMostTimedStations_FitsOneReliableMessage()
     {
-        // The worst case: 512 stations with the longest recipe key and the largest ids and ticks, and the other 3584 entries chests with the largest ids.
+        // The real worst case (review B1, 4 and 6): the construct id ulong.MaxValue (10 bytes), cells with 2-byte zigzag coordinates (6 bytes), 512 stations
+        // with the longest recipe key and the largest ids and ticks (103 bytes each) and 3584 chests with the largest ids (17 bytes each):
+        // 2 + 10 + 2 + 512 x 103 + 3584 x 17 = 113 678 bytes.
         var limit = new GameRules().MaxTimedStationsPerConstruct;
+        Assert.Equal(ProtocolConstants.MaxTimedStationsPerConstruct, limit);
         Assert.Equal(512, limit);
 
         var message = Many(limit, ProtocolConstants.MaxBlockEntitiesPerConstruct - limit);
         var frame = Kit.Encode(message);
 
+        Assert.Equal(113_678, frame.Length);
         Assert.True(frame.Length < ProtocolConstants.MaxReliableMessageBytes, $"{frame.Length} bytes");
         Assert.Equal(message.Entries.Count, Assert.IsType<BlockEntityStates>(MessageCodec.Read(frame)).Entries.Count);
     }
@@ -81,9 +85,10 @@ public sealed class MessageCodecStationTests
 
     private static BlockEntityStates Many(int stations, int chests)
     {
+        var construct = new EntityId(ulong.MaxValue);
         var cells = Enumerable.Range(0, stations + chests)
-            .Select(i => new CellPos(i % 64, (i / 64) % 64, i / 4096))
-            .OrderBy(cell => new BlockRef(new EntityId(1), cell))
+            .Select(i => new CellPos(-2048 + (i % 64), -2048 + ((i / 64) % 64), -2048 + (i / 4096)))
+            .OrderBy(cell => new BlockRef(construct, cell))
             .ToArray();
         var recipe = new string('r', 64);
         var entries = new List<BlockEntityEntry>(cells.Length);
@@ -95,6 +100,6 @@ public sealed class MessageCodecStationTests
             entries.Add(new BlockEntityEntry(cells[i], state));
         }
 
-        return new BlockEntityStates(new EntityId(1), entries);
+        return new BlockEntityStates(construct, entries);
     }
 }
