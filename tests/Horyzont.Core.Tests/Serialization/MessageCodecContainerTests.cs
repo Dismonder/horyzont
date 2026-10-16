@@ -77,13 +77,13 @@ public sealed class MessageCodecContainerTests
         Assert.Throws<ArgumentException>(() => Kit.Encode(State() with { Kind = (ContainerKind)10 }));
         Assert.Throws<ArgumentException>(() => Kit.Encode(State() with { Access = 0 }));
         Assert.Throws<ArgumentException>(() => Kit.Encode(ContainerState.Rejected(new ContainerId(1), RejectReason.ContainerLocked) with { Size = 3 }));
-        Assert.Throws<ArgumentException>(() => Kit.Encode(ContainerState.Rejected(new ContainerId(1), (RejectReason)44)));
+        Assert.Throws<ArgumentException>(() => Kit.Encode(ContainerState.Rejected(new ContainerId(1), (RejectReason)47)));
         Assert.Throws<ArgumentException>(() => Kit.Encode(new ContainerDelta(new ContainerId(1), 1, [Slot(256, 1, 1)])));
         Assert.Throws<ArgumentException>(() => Kit.Encode(new ItemRegistry([new RegistryEntry(4097, "a")])));
     }
 
     [Theory]
-    [InlineData("28 01 05 2C")]
+    [InlineData("28 01 05 2F")]
     [InlineData("28 01 05 16")]
     [InlineData("28 01 05 00 0A 02 0A 03 00")]
     [InlineData("28 01 05 00 02 03 0A 03 00")]
@@ -112,7 +112,7 @@ public sealed class MessageCodecContainerTests
         }
 
         Kit.AssertMessageViolation("0C 01 03 16 00");
-        Kit.AssertMessageViolation("0C 01 03 2C 00");
+        Kit.AssertMessageViolation("0C 01 03 2F 00");
         Kit.AssertMessageViolation("0C 01 03 26 00");
     }
 }

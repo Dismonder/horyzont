@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "recipes": [
+    { "key": "core:peat", "station": "hands", "level": 1,
+      "ingredients": [ { "item": "core:soil", "count": 3 } ],
+      "result": { "item": "core:peat", "count": 1 } },
+    { "key": "core:stone_brick", "station": "hands", "level": 1,
+      "ingredients": [ { "item": "core:stone", "count": 2 } ],
+      "result": { "item": "core:stone_brick", "count": 1 } },
+    { "key": "core:iron_ingot", "station": "furnace", "level": 1, "timeSeconds": 20,
+      "ingredients": [ { "item": "core:ore", "count": 2 } ],
+      "fuel": [ { "item": "core:peat", "count": 1 } ],
+      "result": { "item": "core:iron_ingot", "count": 1 } },
+    { "key": "core:glass", "station": "furnace", "level": 1, "timeSeconds": 15,
+      "ingredients": [ { "item": "core:sand", "count": 2 } ],
+      "fuel": [ { "item": "core:peat", "count": 1 } ],
+      "result": { "item": "core:glass", "count": 1 } },
+    { "key": "core:fuel_cell", "station": "refinery", "level": 1, "timeSeconds": 30,
+      "ingredients": [ { "item": "core:iron_ingot", "count": 1 }, { "item": "core:sand", "count": 2 } ],
+      "fuel": [ { "item": "core:peat", "count": 1 } ],
+      "result": { "item": "core:fuel_cell", "count": 1 } },
+    { "key": "core:multitool_t2", "station": "workbench", "level": 2,
+      "ingredients": [ { "item": "core:iron_ingot", "count": 4 }, { "item": "core:glass", "count": 2 }, { "item": "core:stone_brick", "count": 4 } ],
+      "result": { "item": "core:multitool_t2", "count": 1 } }
+  ]
+}

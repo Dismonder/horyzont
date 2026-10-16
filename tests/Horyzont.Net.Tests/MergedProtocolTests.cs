@@ -22,12 +22,12 @@ namespace Horyzont.Net.Tests;
 public sealed class MergedProtocolTests
 {
     [Theory]
-    [InlineData(14)]
     [InlineData(15)]
     [InlineData(16)]
-    public void Handshake_MergedProtocolVersion_AcceptsOnlyFifteen(int version)
+    [InlineData(17)]
+    public void Handshake_MergedProtocolVersion_AcceptsOnlySixteen(int version)
     {
-        Assert.Equal(15, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(16, ProtocolConstants.ProtocolVersion);
         using var h = new SessionHarness();
         var raw = h.AddRaw();
         Assert.True(h.RunUntil(() => raw.IsConnected, TimeSpan.FromSeconds(1)));
@@ -36,7 +36,7 @@ public sealed class MergedProtocolTests
 
         Assert.True(h.RunUntil(() => raw.Messages().Any(), TimeSpan.FromSeconds(2)));
         var response = Assert.Single(raw.Messages());
-        if (version == 15)
+        if (version == 16)
         {
             Assert.IsType<ServerHello>(response);
             Assert.Single(h.ServerHooks.Joined);
@@ -54,8 +54,8 @@ public sealed class MergedProtocolTests
         var enumIds = Enum.GetValues<MessageType>().Select(value => (int)value).ToArray();
         Assert.Equal(enumIds.Length, enumIds.Distinct().Count());
         // MessageType ranges: 26..29 remain in K2-K4; Space 30 and 34..39 are unimplemented
-        // (spec 02 reserves 30/34 for seats). Survival 44, 45, 47, 48 belong to later packages (spec 03).
-        int[] reserved = [26, 27, 28, 29, 30, 34, 35, 36, 37, 38, 39, 44, 45, 47, 48];
+        // (spec 02 reserves 30/34 for seats). Survival 44, 45, 47 belong to later packages (spec 03).
+        int[] reserved = [26, 27, 28, 29, 30, 34, 35, 36, 37, 38, 39, 44, 45, 47];
         Assert.Equal(Enumerable.Range(1, 49).Except(reserved), enumIds);
         var messages = typeof(Message).Assembly.GetTypes()
             .Where(type => !type.IsAbstract && typeof(Message).IsAssignableFrom(type))
@@ -71,6 +71,7 @@ public sealed class MergedProtocolTests
         Assert.Equal(33, (int)MessageType.MarkersState);
         Assert.Equal(40, (int)MessageType.ContainerState);
         Assert.Equal(46, (int)MessageType.BlockEntityStates);
+        Assert.Equal(48, (int)MessageType.PlayerProgressState);
         Assert.Equal(49, (int)MessageType.ItemRegistry);
     }
 

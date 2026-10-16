@@ -44,4 +44,10 @@ public enum BlockFunctionKind : byte
 
     /// <summary>A lamp; <c>FunctionState</c> 1 is on (K6-30).</summary>
     Light = 13,
+
+    /// <summary>A crafting station; the station kind and, for stations with time, the slots are parameters of the function (K6-32).</summary>
+    Station = 14,
+
+    /// <summary>An upgrade of a station (a workbench level) when it stands within the upgrade range (K6-32).</summary>
+    StationUpgrade = 15,
 }

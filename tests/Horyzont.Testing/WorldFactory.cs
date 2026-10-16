@@ -60,11 +60,33 @@ public static class WorldFactory
     /// <paramref name="withConstruct"/>, the construct <see cref="FunctionalBlocks.Construct"/>: a stone floor and plain blocks (no state, no container)
     /// of a chest, a bed, a lamp and a two-block door at the cells of <see cref="FunctionalBlocks"/>, placed by server operations.
     /// </summary>
-    public static WorldState CreateWithFunctionalBlocks(int players = 1, bool withConstruct = true, IReadOnlyList<string>? itemKeys = null)
+    public static WorldState CreateWithFunctionalBlocks(int players = 1, bool withConstruct = true) =>
+        CreateBlockWorld(players, withConstruct, FunctionalBlocks.BlockKeys, SurvivalContentFactory.ItemKeys, [HomePlanetParams]);
+
+    /// <summary>
+    /// <see cref="CreateWithFunctionalBlocks"/> with the item types of <see cref="SurvivalContentFactory.CraftingItemKeys"/> (ids 1..12) and the block types of
+    /// <see cref="CraftingBlocks.BlockKeys"/> (ids 1..13); the construct is the same as there. With <paramref name="secondPlanet"/> the world has
+    /// <see cref="SecondPlanet"/> too (K6-32).
+    /// </summary>
+    /// <param name="players">Number of players.</param>
+    /// <param name="secondPlanet">Whether the world has a second planet.</param>
+    /// <returns>The world.</returns>
+    public static WorldState CreateWithCrafting(int players = 1, bool secondPlanet = false) =>
+        CreateBlockWorld(
+            players, true, CraftingBlocks.BlockKeys, SurvivalContentFactory.CraftingItemKeys,
+            secondPlanet ? [HomePlanetParams, SecondPlanetParams] : [HomePlanetParams]);
+
+    /// <summary>Id of the second planet of <see cref="CreateWithCrafting"/> with <c>secondPlanet</c>.</summary>
+    public static readonly PlanetId SecondPlanet = new(2);
+
+    /// <summary>The second planet of <see cref="CreateWithCrafting"/> with <c>secondPlanet</c>.</summary>
+    public static PlanetParams SecondPlanetParams => new(SecondPlanet, new SystemId(1), 9, "core:test/2");
+
+    private static WorldState CreateBlockWorld(
+        int players, bool withConstruct, IReadOnlyList<string> blockKeys, IReadOnlyList<string> itemKeys, PlanetParams[] planets)
     {
         var state = WithPlayers(
-            WorldState.CreateNew(
-                DefaultWorldId, 42, [HomePlanetParams], FunctionalBlocks.BlockKeys, ["stone", "dirt", BedrockMaterialKey], itemKeys ?? SurvivalContentFactory.ItemKeys),
+            WorldState.CreateNew(DefaultWorldId, 42, planets, blockKeys, ["stone", "dirt", BedrockMaterialKey], itemKeys),
             players);
         if (!withConstruct)
         {
@@ -100,7 +122,8 @@ public static class WorldFactory
     /// <see cref="CreateWithFunctionalBlocks"/> with the item types of <see cref="SurvivalContentFactory.FoodItemKeys"/> (K6-33): the four test types of
     /// the other worlds and four food types (ids 5..8), the construct with a bed, and the bag, hotbar and equipment of every player.
     /// </summary>
-    public static WorldState CreateWithFood(int players = 1) => CreateWithFunctionalBlocks(players, true, SurvivalContentFactory.FoodItemKeys);
+    public static WorldState CreateWithFood(int players = 1) =>
+        CreateBlockWorld(players, true, FunctionalBlocks.BlockKeys, SurvivalContentFactory.FoodItemKeys, [HomePlanetParams]);
 
     private static WorldState WithPlayers(WorldState state, int players)
     {
@@ -115,9 +138,17 @@ public static class WorldFactory
         return state;
     }
 
-    /// <summary>Item type id of a key of <see cref="SurvivalContentFactory.FoodItemKeys"/> (the first four are the keys of <see cref="SurvivalContentFactory.ItemKeys"/>) in a world of <see cref="CreateWithPlayerContainers"/> or <see cref="CreateWithFood"/>.</summary>
+    /// <summary>Item type id of a key of <see cref="SurvivalContentFactory.CraftingItemKeys"/> (its first four are <see cref="SurvivalContentFactory.ItemKeys"/>) in a world of <see cref="CreateWithPlayerContainers"/> or <see cref="CreateWithCrafting"/>, or of a food key of <see cref="SurvivalContentFactory.FoodItemKeys"/> (ids 5..8) in a world of <see cref="CreateWithFood"/>.</summary>
     public static ItemTypeId Item(string key)
     {
+        for (var i = 0; i < SurvivalContentFactory.CraftingItemKeys.Count; i++)
+        {
+            if (SurvivalContentFactory.CraftingItemKeys[i] == key)
+            {
+                return new ItemTypeId((ushort)(i + 1));
+            }
+        }
+
         for (var i = 0; i < SurvivalContentFactory.FoodItemKeys.Count; i++)
         {
             if (SurvivalContentFactory.FoodItemKeys[i] == key)

@@ -1,8 +1,10 @@
 using System.Numerics;
 
+using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Content;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
+using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
@@ -28,6 +30,11 @@ public sealed class ServerSimulation
     private readonly IntentValidator _validator;
     private readonly SurvivalRules? _survival;
     private readonly FunctionalBlockRules _functional;
+    private readonly CraftingRules _crafting;
+    private readonly StationSettlements? _settlements;
+    private readonly List<BlockRef> _settleBefore = [];
+    private readonly List<BlockRef> _settleAfter = [];
+    private readonly List<Discovery> _discoveries = [];
     private readonly Dictionary<PlayerId, PlayerBuckets> _buckets = [];
     private readonly List<PlayerBuckets> _bucketList = [];
 
@@ -89,6 +96,10 @@ public sealed class ServerSimulation
         _applier = new OperationApplier(state, terrain);
         _survival = survival is null ? null : new SurvivalRules(state, terrain, survival, rules);
         _functional = new FunctionalBlockRules(state, rules, content, survival);
+        _crafting = new CraftingRules(state, rules, content, survival);
+
+        // The settlements and the automatic discoveries are on only when the content has recipes (K6-32 D9b); without them the K6-29W and K6-30 journals stay as they were.
+        _settlements = survival is { Recipes.Count: > 0 } ? new StationSettlements(state, rules, survival) : null;
         Survival = survival;
         _validator = new IntentValidator(state, terrain, rules, content, _survival, _functional);
     }
@@ -134,13 +145,26 @@ public sealed class ServerSimulation
             return IntentResult.Rejected(reason);
         }
 
+        // A station the intent touches is settled before the intent is resolved (K6-32 D16a); the settlement stays applied if the intent is refused.
+        if (_settlements is not null)
+        {
+            CollectStations(player, intent);
+            SettleStations(_settleBefore);
+        }
+
         Operation operation;
         var survivalResolved = false;
-        if (_functional.TryResolve(player, intent, facts, out operation, out reason))
+        if (_crafting.TryResolve(player, intent, facts, out operation, out reason) || _functional.TryResolve(player, intent, facts, out operation, out reason))
         {
-            // Functional blocks (K6-30): chests, beds, lamps, doors, quick stack. The operation carries every value from the content.
+            // Crafting and stations (K6-32), functional blocks (K6-30): chests, beds, lamps, doors, quick stack. The operation carries every value from the content.
             if (reason != RejectReason.None)
             {
+                if (_functional.RefusalCostsToken)
+                {
+                    // A refusal that scanned the chests of the world counts against the rate limit of its class, like an accepted intent.
+                    IntentValidator.BucketFor(intent, buckets!)!.Consume();
+                }
+
                 return IntentResult.Rejected(reason);
             }
         }
@@ -176,6 +200,14 @@ public sealed class ServerSimulation
         }
 
         RaiseApplied(applied);
+
+        // The journal order of an intent (K6-32 D9, D16): the settlement before, the intent, the discovery of what it brought, the settlement after.
+        DiscoverAfter(applied);
+        if (_settlements is not null)
+        {
+            SettleStations(_settleAfter);
+        }
+
         return IntentResult.Accepted(applied);
     }
 
@@ -229,7 +261,49 @@ public sealed class ServerSimulation
                 ? $"{operation.Kind} breaks a precondition: {failure}"
                 : $"{operation.Kind} breaks a precondition of component {componentIndex}: {failure}");
         RaiseApplied(applied);
+        DiscoverAfter(applied);
         return applied;
+    }
+
+    /// <summary>
+    /// Discovers every item type the player holds in the bag, the hotbar or the equipment and has not discovered yet, as one server operation
+    /// (K6-32 D9c); for a player who joined before the discoveries existed.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <returns>The applied operation (a single <see cref="ItemDiscoverOp"/> or a compound of them in ascending type order), null when there is nothing to discover or the content has no recipes.</returns>
+    public AppliedOperation? DiscoverHeldItems(PlayerId player)
+    {
+        EnsureNotFaulted();
+        if (_settlements is null)
+        {
+            return null;
+        }
+
+        _discoveries.Clear();
+        foreach (var kind in _heldKinds)
+        {
+            if (State.Containers.TryGetOfPlayer(player, kind, out var container))
+            {
+                for (var slot = 0; slot < container.Size; slot++)
+                {
+                    CollectDiscovery(player, container.GetSlot(slot));
+                }
+            }
+        }
+
+        return ApplyDiscoveries();
+    }
+
+    /// <summary>
+    /// Settles a station with time at the current tick as one server operation (K6-32 D16): the pieces done since the start move from the input to the
+    /// output.
+    /// </summary>
+    /// <param name="station">The block with the station state.</param>
+    /// <returns>The applied operation, null when nothing changes (no state, no recipe, no piece done and the same start).</returns>
+    public AppliedOperation? TrySettleStation(BlockRef station)
+    {
+        EnsureNotFaulted();
+        return SettleStation(station);
     }
 
     /// <summary>Applies a <see cref="PlayerLeaveOp"/> with the current kinematics for every online player, by player id.</summary>
@@ -417,7 +491,166 @@ public sealed class ServerSimulation
     /// <returns>True when stored.</returns>
     public bool UpdatePlayerVitals(PlayerId player, in PlayerVitals vitals) => throw new NotImplementedException("K6-33 A3");
 
+    private static readonly ContainerKind[] _heldKinds = [ContainerKind.PlayerBag, ContainerKind.Hotbar, ContainerKind.Equipment];
+
     private static int? ComponentOf(Operation operation) => operation is CompoundOp compound ? compound.Components.Count - 1 : null;
+
+    /// <summary>Fills the lists of stations to settle before and after <paramref name="intent"/> of <paramref name="player"/> (K6-32 D17), each ascending and without repeats.</summary>
+    private void CollectStations(PlayerId player, Intent intent)
+    {
+        _settleBefore.Clear();
+        _settleAfter.Clear();
+        switch (intent)
+        {
+            case ItemMoveIntent move:
+                AddStation(_settleAfter, move.From.Container);
+                AddStation(_settleAfter, move.To.Container);
+                break;
+            case TakeAllIntent takeAll:
+                AddStation(_settleAfter, takeAll.Container);
+                break;
+            case CraftIntent { Station: { } craftAt }
+                when ContainerReach.TryDistanceFromEye(State, Rules, player, craftAt.Construct, craftAt.Cell, out var meters) && meters <= Rules.StationUseRangeMeters:
+                // Only a station in use range is settled; the resolver refuses a farther one without the world changing.
+                AddStation(_settleBefore, craftAt);
+                break;
+            case RemoveBlockIntent remove:
+                AddStation(_settleBefore, new BlockRef(remove.Construct, remove.Cell));
+                break;
+            default:
+                return;
+        }
+
+        if (_settleAfter.Count > 0)
+        {
+            _settleBefore.AddRange(_settleAfter);
+        }
+
+        _settleBefore.Sort();
+        _settleAfter.Sort();
+    }
+
+    private void AddStation(List<BlockRef> list, ContainerId id)
+    {
+        if (State.Containers.TryGet(id, out var container) && container.Host.Kind == ContainerHostKind.ConstructBlock
+            && container.Kind is ContainerKind.StationInput or ContainerKind.StationOutput)
+        {
+            AddStation(list, new BlockRef(new EntityId(container.Host.Id), container.Host.Cell));
+        }
+    }
+
+    private void AddStation(List<BlockRef> list, BlockRef block)
+    {
+        if (!list.Contains(block) && State.BlockEntities.TryGet(block, out var entity) && entity is StationBlockState)
+        {
+            list.Add(block);
+        }
+    }
+
+    private void SettleStations(List<BlockRef> stations)
+    {
+        for (var i = 0; i < stations.Count; i++)
+        {
+            SettleStation(stations[i]);
+        }
+    }
+
+    /// <summary>Applies, journals and announces the settlement of one station, when it changes anything.</summary>
+    private AppliedOperation? SettleStation(BlockRef station)
+    {
+        if (_settlements is null || !_settlements.TryBuild(station, State.CurrentTick, out var operation))
+        {
+            return null;
+        }
+
+        var applied = TryApplyAndJournal(null, operation, out var failure, out _)
+            ?? throw new InvalidOperationException($"A settlement of a station breaks a precondition: {failure}");
+        RaiseApplied(applied);
+        return applied;
+    }
+
+    /// <summary>
+    /// The automatic discovery (K6-32 D9b): the item types now in the changed slots of the containers of players that the owner has not discovered,
+    /// ascending by owner and type, as one operation after the operation that put them there. It changes no container, so it does not trigger itself.
+    /// </summary>
+    private void DiscoverAfter(AppliedOperation applied)
+    {
+        if (_settlements is null || applied.ContainerChanges.Count == 0)
+        {
+            return;
+        }
+
+        _discoveries.Clear();
+        for (var i = 0; i < applied.ContainerChanges.Count; i++)
+        {
+            var change = applied.ContainerChanges[i];
+            if (change.Removed || !State.Containers.TryGet(change.Container, out var container) || container.Host.Kind != ContainerHostKind.Player
+                || container.Kind is not (ContainerKind.PlayerBag or ContainerKind.Hotbar or ContainerKind.Equipment))
+            {
+                continue;
+            }
+
+            for (var s = 0; s < change.Slots.Count; s++)
+            {
+                if (change.Slots[s] < container.Size)
+                {
+                    CollectDiscovery(container.Host.PlayerId, container.GetSlot(change.Slots[s]));
+                }
+            }
+        }
+
+        ApplyDiscoveries();
+    }
+
+    private void CollectDiscovery(PlayerId owner, ItemStack stack)
+    {
+        if (stack.IsEmpty || (State.Progress.TryGet(owner, out var progress) && progress.DiscoveredItems.Contains(stack.Type)))
+        {
+            return;
+        }
+
+        var found = new Discovery(owner, stack.Type);
+        if (!_discoveries.Contains(found))
+        {
+            _discoveries.Add(found);
+        }
+    }
+
+    private AppliedOperation? ApplyDiscoveries()
+    {
+        if (_discoveries.Count == 0)
+        {
+            return null;
+        }
+
+        _discoveries.Sort(static (a, b) =>
+        {
+            var byOwner = a.Owner.Value.CompareTo(b.Owner.Value);
+            return byOwner != 0 ? byOwner : a.Type.Value.CompareTo(b.Type.Value);
+        });
+        Operation operation;
+        if (_discoveries.Count == 1)
+        {
+            operation = new ItemDiscoverOp(_discoveries[0].Owner, _discoveries[0].Type);
+        }
+        else
+        {
+            var components = new Operation[_discoveries.Count];
+            for (var i = 0; i < components.Length; i++)
+            {
+                components[i] = new ItemDiscoverOp(_discoveries[i].Owner, _discoveries[i].Type);
+            }
+
+            operation = new CompoundOp(components);
+        }
+
+        var applied = TryApplyAndJournal(null, operation, out var failure, out _)
+            ?? throw new InvalidOperationException($"A discovery breaks a precondition: {failure}");
+        RaiseApplied(applied);
+        return applied;
+    }
+
+    private readonly record struct Discovery(PlayerId Owner, ItemTypeId Type);
 
     private AppliedOperation? TryApplyAndJournal(PlayerId? actor, Operation operation, out string failure, out int componentIndex)
     {

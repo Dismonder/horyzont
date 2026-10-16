@@ -68,6 +68,11 @@ public sealed class ItemTypeBitSet : IEquatable<ItemTypeBitSet>
             throw new ArgumentException("Bit 0 stands for no item type.", nameof(bytes));
         }
 
+        if (bytes.Length == ProtocolConstants.MaxDiscoveredBytes && (bytes[^1] & 0xFE) != 0)
+        {
+            throw new ArgumentException("Only type 4096 fits into the last byte of a discovery set.", nameof(bytes));
+        }
+
         return new ItemTypeBitSet(bytes.ToArray());
     }
 

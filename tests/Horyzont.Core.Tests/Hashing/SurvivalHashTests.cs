@@ -22,8 +22,13 @@ public sealed class SurvivalHashTests
     /// <summary>Hash of <see cref="WorldWithItems"/> recorded at commit b5e427e (start of K6-30, before the block entities and the respawn points).</summary>
     private const ulong WorldWithItemsHashBeforeBlockEntities = 15528921043589756334UL;
 
-    /// <summary>Hash of <see cref="WorldWithBlockEntities"/> recorded at commit 06814a8 (start of K6-32, before discoveries, progress keys and stations).</summary>
-    private const ulong WorldWithBlockEntitiesHashBeforeCrafting = 256735958396369194UL;
+    /// <summary>
+    /// Hash of <see cref="WorldWithBlockEntities"/> as K6-30 leaves it (commit 2fa618b), before discoveries, progress keys and stations. Re-pinned when K6-30
+    /// was merged: K6-30 rebuilt the chest fixture as one CompoundOp (container and state together, so the chest-consistency check holds), which changes the
+    /// hash of this mock-up (container ids, versions) without any production change to the hash. The old value, 256735958396369194, was recorded at 06814a8;
+    /// the new one was measured on a clean K6-30 checkout with the same world, and K6-32 agrees with it.
+    /// </summary>
+    private const ulong WorldWithBlockEntitiesHashBeforeCrafting = 8435541483743415689UL;
 
     /// <summary>Hash of <see cref="WorldWithCrafting"/> recorded at commit ffd89bb (start of K6-33, before the food slots and the vitals).</summary>
     private const ulong WorldWithCraftingHashBeforeFood = 2493131761482920173UL;
@@ -182,8 +187,9 @@ public sealed class SurvivalHashTests
         var chestA = new FunctionalBlockFixture();
         var chestB = new FunctionalBlockFixture();
         chestA.SetUpChest(FunctionalBlocks.ChestCell);
-        chestB.CreateChestContainer(FunctionalBlocks.ChestCell);
+        chestB.SetUpChest(FunctionalBlocks.ChestCell, access: ContainerAccess.Private);
         Assert.NotEqual(StateHasher.Hash(chestB.State), StateHasher.Hash(chestA.State));
+        Assert.NotEqual(StateHasher.Hash(new FunctionalBlockFixture().State), StateHasher.Hash(chestA.State));
     }
 
     [Fact]

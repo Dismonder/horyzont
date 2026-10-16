@@ -476,7 +476,27 @@ public static class CodecGen
         Gen.Constant<Intent>(new QuickStackIntent()),
         ContainerId.Select(c => (Intent)new TakeAllIntent(c)),
         BlockInteractIntent.Select(i => (Intent)i),
-        BlockConfigIntent.Select(i => (Intent)i));
+        BlockConfigIntent.Select(i => (Intent)i),
+        CraftIntent.Select(i => (Intent)i));
+
+    /// <summary>Craft intents: a recipe key, 1 to 65535 pieces, a station block or none (K6-32).</summary>
+    public static Gen<CraftIntent> CraftIntent { get; } =
+        from recipe in RegistryKey
+        from count in Gen.Frequency((3, Gen.Choose(1, 50)), (1, Gen.Choose(1, ushort.MaxValue)))
+        from station in Optional(from construct in EntityId
+                                 from cell in Cell
+                                 select new Horyzont.Core.BlockEntities.BlockRef(construct, cell))
+        select new CraftIntent(recipe, (ushort)count, station);
+
+    /// <summary>The discoveries and progress keys message: a sparse set of item types 1 to 4096 and ascending distinct keys (K6-32).</summary>
+    public static Gen<PlayerProgressState> PlayerProgressStateMessage { get; } =
+        from typeCount in Gen.Choose(0, 6)
+        from types in Gen.Choose(1, ProtocolConstants.MaxItemTypes).ArrayOf(typeCount)
+        from keyCount in Gen.Choose(0, 5)
+        from keys in RegistryKey.ArrayOf(keyCount)
+        select new PlayerProgressState(
+            types.Aggregate(Horyzont.Core.Progress.ItemTypeBitSet.Empty, (set, type) => set.With(new ItemTypeId((ushort)type))),
+            keys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
 
     /// <summary>Block interaction intents with all three actions (K6-30).</summary>
     public static Gen<BlockInteractIntent> BlockInteractIntent { get; } =
@@ -752,6 +772,7 @@ public static class CodecGen
         ContainerId.Select(c => (Message)new ContainerSubscribe(c)),
         ContainerId.Select(c => (Message)new ContainerUnsubscribe(c)),
         BlockEntityStatesMessage.Select(m => (Message)m),
+        PlayerProgressStateMessage.Select(m => (Message)m),
         ListUpTo(RegistryEntry(ProtocolConstants.MaxItemTypes), ProtocolConstants.MaxItemTypes, 12).Select(e => (Message)new ItemRegistry(e)));
 
     /// <summary>Ship status messages (K5-26): any ship and tick, non-negative finite values, any flags, a defined launch block.</summary>

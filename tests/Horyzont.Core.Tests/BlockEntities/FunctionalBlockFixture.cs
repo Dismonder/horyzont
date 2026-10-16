@@ -31,18 +31,44 @@ internal sealed class FunctionalBlockFixture
         Sim = new SimFixture(state: state);
     }
 
-    private FunctionalBlockFixture(int players, bool withSurvival, ushort chestSlots, bool intents)
+    private FunctionalBlockFixture(int players, bool withSurvival, ushort chestSlots, bool intents, GameRules? rules)
     {
         Assert.True(intents);
         var state = WorldFactory.CreateWithFunctionalBlocks(players);
         Sim = new SimFixture(
-            state: state, content: FunctionalBlocks.ContentFor(state, chestSlots),
+            rules, state: state, content: FunctionalBlocks.ContentFor(state, chestSlots),
             survival: withSurvival ? SurvivalContentFactory.CreateTest() : null);
         for (var n = 1; n <= players; n++)
         {
             Move(new PlayerId((ulong)n), StandFor(n));
         }
     }
+
+    private FunctionalBlockFixture(int players, CraftingOptions options)
+    {
+        var state = WorldFactory.CreateWithCrafting(players, options.SecondPlanet);
+        Sim = new SimFixture(
+            rules: options.Rules, state: state, content: CraftingBlocks.ContentFor(state),
+            survival: options.WithRecipes ? SurvivalContentFactory.CreateTestWithRecipes() : SurvivalContentFactory.CreateCraftingWithoutRecipes());
+        for (var n = 1; n <= players; n++)
+        {
+            Move(new PlayerId((ulong)n), StandFor(n));
+        }
+    }
+
+    private readonly record struct CraftingOptions(bool SecondPlanet, bool WithRecipes, GameRules? Rules);
+
+    /// <summary>
+    /// A fixture for crafting intents (K6-32 stage B): the world of <see cref="WorldFactory.CreateWithCrafting"/> with the block content of
+    /// <see cref="CraftingBlocks.ContentFor"/> and the survival content of <see cref="SurvivalContentFactory.CreateTestWithRecipes"/> (or, without
+    /// <paramref name="withRecipes"/>, <see cref="SurvivalContentFactory.CreateCraftingWithoutRecipes"/>). Player n stands at <see cref="StandFor"/>.
+    /// </summary>
+    /// <param name="players">Number of players.</param>
+    /// <param name="withRecipes">Whether the survival content has the test recipes.</param>
+    /// <param name="secondPlanet">Whether the world has a second planet.</param>
+    /// <param name="rules">Game rules, null for the defaults.</param>
+    public static FunctionalBlockFixture ForCrafting(int players = 1, bool withRecipes = true, bool secondPlanet = false, GameRules? rules = null) =>
+        new(players, new CraftingOptions(secondPlanet, withRecipes, rules));
 
     /// <summary>
     /// A fixture for intents (K6-30 stage B): the simulation has the block content of <see cref="FunctionalBlocks.ContentFor"/> and, unless
@@ -52,8 +78,9 @@ internal sealed class FunctionalBlockFixture
     /// <param name="players">Number of players.</param>
     /// <param name="withSurvival">Whether the simulation has survival content.</param>
     /// <param name="chestSlots">Slots of the container of a chest block.</param>
-    public static FunctionalBlockFixture ForIntents(int players = 1, bool withSurvival = true, ushort chestSlots = 4) =>
-        new(players, withSurvival, chestSlots, intents: true);
+    /// <param name="rules">Rules of the simulation (default rules when null).</param>
+    public static FunctionalBlockFixture ForIntents(int players = 1, bool withSurvival = true, ushort chestSlots = 4, GameRules? rules = null) =>
+        new(players, withSurvival, chestSlots, intents: true, rules);
 
     /// <summary>Feet of player <paramref name="n"/> (1-based): 3 m in front of the row of blocks, 1 m above the floor; 0.5 m apart.</summary>
     public static Vector3 StandFor(int n) => new(2f + (0.5f * (n - 1)), 4001f, 3f);
@@ -107,8 +134,7 @@ internal sealed class FunctionalBlockFixture
     {
         EnsureBlock(cell, FunctionalBlocks.ChestType);
         var id = State.ContainerIds.PeekNext();
-        Apply(ChestContainer(id, ConstructId, cell, size, access, owner));
-        Apply(SetChestState(cell, id));
+        Apply(new CompoundOp([ChestContainer(id, ConstructId, cell, size, access, owner), SetChestState(cell, id)]));
         return id;
     }
 
@@ -179,21 +205,17 @@ internal sealed class FunctionalBlockFixture
         ContainerId id, EntityId construct, CellPos cell, ushort size = 4, ContainerAccess access = ContainerAccess.Shared, PlayerId owner = default) =>
         new(id, ContainerKind.Chest, ContainerHost.ConstructBlock(construct, cell), owner.IsNone ? Player1 : owner, access, size);
 
-    /// <summary>Creates a chest container hosted by the block in <paramref name="cell"/> (a plain chest block of the construct).</summary>
-    public ContainerId CreateChestContainer(CellPos cell, ushort size = 4, ContainerAccess access = ContainerAccess.Shared)
+    /// <summary>Creates a chest container and the state that refers to it for the chest block in <paramref name="cell"/>, in one compound (the applier keeps the two together).</summary>
+    public ContainerId SetUpChest(CellPos cell, ushort size = 4, ContainerAccess access = ContainerAccess.Shared)
     {
         var id = State.ContainerIds.PeekNext();
-        Apply(ChestContainer(id, ConstructId, cell, size, access));
+        Apply(new CompoundOp([ChestContainer(id, ConstructId, cell, size, access), SetChestState(cell, id)]));
         return id;
     }
 
-    /// <summary>Creates a chest container and the state that refers to it for the chest block in <paramref name="cell"/>.</summary>
-    public ContainerId SetUpChest(CellPos cell, ushort size = 4, ContainerAccess access = ContainerAccess.Shared)
-    {
-        var id = CreateChestContainer(cell, size, access);
-        Apply(SetChestState(cell, id));
-        return id;
-    }
+    /// <summary>Removes the empty chest container and the state that refers to it in one compound (the applier keeps the two together).</summary>
+    public void RemoveChest(CellPos cell, ContainerId container) =>
+        Apply(new CompoundOp([new ContainerRemoveOp(container), ClearState(cell, FunctionalBlocks.ChestType)]));
 
     public static BlockEntitySetOp SetChestState(CellPos cell, ContainerId container) =>
         new(ConstructId, cell, FunctionalBlocks.ChestType, new ChestBlockState(container));

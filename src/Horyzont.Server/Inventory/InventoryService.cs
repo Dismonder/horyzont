@@ -1,3 +1,4 @@
+using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Content;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
@@ -161,7 +162,8 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
             return true;
         }
 
-        if (container.Kind != ContainerKind.Chest || container.Host.Kind != ContainerHostKind.ConstructBlock || !HasAccess(container, player))
+        if (container.Kind is not (ContainerKind.Chest or ContainerKind.StationInput or ContainerKind.StationOutput)
+            || container.Host.Kind != ContainerHostKind.ConstructBlock || !HasAccess(container, player))
         {
             Reject(player, subscribe.Container, RejectReason.ContainerLocked, "locked");
             return true;
@@ -172,6 +174,12 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
         {
             Reject(player, subscribe.Container, RejectReason.OutOfReach, "out of reach");
             return true;
+        }
+
+        // K6-32 D16b: the pieces of a station that are due are settled before its state is sent, so the player opens a station that is up to date.
+        if (container.Kind is (ContainerKind.StationInput or ContainerKind.StationOutput) && !_isReadOnly())
+        {
+            sim.TrySettleStation(new BlockRef(new EntityId(container.Host.Id), container.Host.Cell));
         }
 
         if (!_chestSubscribers.TryGetValue(container.Id, out var subscribers))
@@ -239,6 +247,39 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
         }
 
         _scratch.Clear();
+    }
+
+    /// <summary>
+    /// Adds the stations with time that somebody has open (a subscriber to either of their containers) to <paramref name="stations"/>, once each, ascending
+    /// by block (K6-32 D16c). The list is not cleared.
+    /// </summary>
+    /// <param name="stations">The list to add to.</param>
+    public void CollectObservedStations(List<BlockRef> stations)
+    {
+        ArgumentNullException.ThrowIfNull(stations);
+        if (_attached is not { } sim || _chestSubscribers.Count == 0)
+        {
+            return;
+        }
+
+        var first = stations.Count;
+        foreach (var pair in _chestSubscribers)
+        {
+            if (pair.Value.Count == 0 || !sim.State.Containers.TryGet(pair.Key, out var container)
+                || container.Kind is not (ContainerKind.StationInput or ContainerKind.StationOutput) || container.Host.Kind != ContainerHostKind.ConstructBlock)
+            {
+                continue;
+            }
+
+            var block = new BlockRef(new EntityId(container.Host.Id), container.Host.Cell);
+            if (stations.IndexOf(block, first) < 0)
+            {
+                stations.Add(block);
+            }
+        }
+
+        // The dictionary has no order the world may depend on: the stations are settled in block order.
+        System.Runtime.InteropServices.CollectionsMarshal.AsSpan(stations)[first..].Sort();
     }
 
     private static bool HasAccess(Container container, PlayerId player) =>
@@ -397,6 +438,13 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
                 continue;
             }
 
+            if (change.Configured)
+            {
+                // A change of size or access (also together with slots) is more than a delta can say: the owner gets the whole state.
+                _send(container.Owner, StateOf(container));
+                continue;
+            }
+
             SendDelta(container.Owner, container, change, applied.Id.Value);
         }
     }
@@ -413,7 +461,7 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
         _logger.DeltaSent(player.Value, container.Id.Value, change.Version, opId);
     }
 
-    /// <summary>Sends a change of a chest container to its subscribers: slots as a delta, a change of size or access (operation 37) as the whole state.</summary>
+    /// <summary>Sends a change of a chest container to its subscribers: slots as a delta, a change of size or access (operation 37, also together with slots) as the whole state.</summary>
     private void SendChestChange(Container container, ContainerChange change, ulong opId)
     {
         if (change.Version <= 1 || !_chestSubscribers.TryGetValue(container.Id, out var subscribers))
@@ -423,7 +471,7 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
 
         // Copied: ending a subscription changes the list.
         var targets = subscribers.ToArray();
-        var configured = change.Slots.Count == 0;
+        var configured = change.Configured;
         foreach (var player in targets)
         {
             if (!HasAccess(container, player))

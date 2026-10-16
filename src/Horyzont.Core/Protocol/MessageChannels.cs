@@ -19,7 +19,7 @@ public static class MessageChannels
             or MessageType.Disconnect or MessageType.TerrainSync or MessageType.TerrainView or MessageType.ResyncRequest or MessageType.ServerStatus or MessageType.JoinUnavailable
             or MessageType.StarSystemState or MessageType.MarkersState
             or MessageType.ContainerState or MessageType.ContainerDelta or MessageType.ContainerSubscribe
-            or MessageType.ContainerUnsubscribe or MessageType.BlockEntityStates or MessageType.ItemRegistry
+            or MessageType.ContainerUnsubscribe or MessageType.BlockEntityStates or MessageType.ItemRegistry or MessageType.PlayerProgressState
             => DeliveryChannel.ReliableOrdered,
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown message type."),
     };

@@ -45,6 +45,7 @@ public sealed class ProtocolContractTests
             (RejectReason.NoLineOfSight, 19), (RejectReason.WrongPlanet, 20), (RejectReason.ServerReadOnly, 21),
             (RejectReason.NoCockpit, 30), (RejectReason.ShipAnchored, 31), (RejectReason.NoEngine, 37), (RejectReason.MarkerLimit, 36), (RejectReason.ShipNotParked, 39),
             (RejectReason.InventoryFull, 40), (RejectReason.NotEnoughItems, 41), (RejectReason.ContainerChanged, 42), (RejectReason.ContainerLocked, 43),
+            (RejectReason.StationRequired, 44), (RejectReason.RecipeLocked, 45), (RejectReason.TooFarFromStation, 46),
             (RejectReason.NotOwner, 54), (RejectReason.ContainerNotEmpty, 57));
         AssertValues((MessageType.ClientHello, 1), (MessageType.ServerHello, 2), (MessageType.HandshakeReject, 3), (MessageType.ClientReady, 4),
             (MessageType.TerrainCacheReport, 5), (MessageType.TerrainBlockData, 6), (MessageType.TerrainChecksums, 7), (MessageType.ConstructState, 8),
@@ -54,7 +55,9 @@ public sealed class ProtocolContractTests
             (MessageType.ShipStatus, 31), (MessageType.StarSystemState, 32),
             (MessageType.MarkersState, 33),
             (MessageType.ContainerState, 40), (MessageType.ContainerDelta, 41), (MessageType.ContainerSubscribe, 42),
-            (MessageType.ContainerUnsubscribe, 43), (MessageType.BlockEntityStates, 46), (MessageType.ItemRegistry, 49));
+            (MessageType.ContainerUnsubscribe, 43), (MessageType.BlockEntityStates, 46), (MessageType.PlayerProgressState, 48), (MessageType.ItemRegistry, 49));
+        AssertValues((StationKind.Hands, 0), (StationKind.Workbench, 1), (StationKind.Furnace, 2), (StationKind.Refinery, 3), (StationKind.Kitchen, 4),
+            (StationKind.Fabricator, 5));
         AssertValues((DeliveryChannel.ReliableOrdered, 0), (DeliveryChannel.Unreliable, 1));
         AssertValues((HandshakeRejectCode.WrongProtocol, 1), (HandshakeRejectCode.WrongBuild, 2), (HandshakeRejectCode.ServerFull, 3),
             (HandshakeRejectCode.BadPassword, 4), (HandshakeRejectCode.Banned, 5), (HandshakeRejectCode.AlreadyConnected, 6),
@@ -93,7 +96,7 @@ public sealed class ProtocolContractTests
     }
 
     /// <summary>
-    /// K2-10 adds reject reason 21 (and raised the protocol version from 1 to 2; K2-11 raises it to 3, K6-29W to 14, K6-30 to 15, see <see cref="ProtocolVersion_MatchesDocumentedMergeValue"/>).
+    /// K2-10 adds reject reason 21 (and raised the protocol version from 1 to 2; K2-11 raises it to 3, K6-29W to 14, K6-30 to 15, K6-32 to 16, see <see cref="ProtocolVersion_MatchesDocumentedMergeValue"/>).
     /// </summary>
     [Fact]
     public void RejectReason_ServerReadOnly_RoundTrips()
@@ -128,7 +131,7 @@ public sealed class ProtocolContractTests
 
         Assert.Equal(new byte[] { 12, 1, 7, value, 0 }, bytes);
         Assert.Equal(reply, MessageCodec.Read(bytes));
-        foreach (byte undefined in new byte[] { 22, 29, 32, 33, 34, 35, 38, 44, 255 })
+        foreach (byte undefined in new byte[] { 22, 29, 32, 33, 34, 35, 38, 47, 255 })
         {
             var copy = (byte[])bytes.Clone();
             copy[3] = undefined;
@@ -152,14 +155,14 @@ public sealed class ProtocolContractTests
     [Fact]
     public void ProtocolVersion_MatchesDocumentedMergeValue()
     {
-        Assert.Equal(15, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(16, ProtocolConstants.ProtocolVersion);
         Assert.Equal(0x3F, ProtocolConstants.InputButtonsMask);
     }
 
     [Fact]
     public void Constants_GoldenValues()
     {
-        Assert.Equal(15, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(16, ProtocolConstants.ProtocolVersion);
         Assert.Equal(262144, ProtocolConstants.MaxReliableMessageBytes);
         Assert.Equal(1150, ProtocolConstants.MaxUnreliableMessageBytes);
         Assert.Equal(32, ProtocolConstants.MaxDisplayNameBytes);
@@ -173,6 +176,9 @@ public sealed class ProtocolContractTests
         Assert.Equal(4096, ProtocolConstants.MaxCompoundComponents);
         Assert.Equal(160 * 1024, ProtocolConstants.MaxCompoundBytes);
         Assert.Equal(4096, ProtocolConstants.MaxBlockEntitiesPerConstruct);
+        Assert.Equal(512, ProtocolConstants.MaxTimedStationsPerConstruct);
+        Assert.Equal(256, ProtocolConstants.MaxProgressKeys);
+        Assert.Equal(513, ProtocolConstants.MaxDiscoveredBytes);
         Assert.Equal(32, ProtocolConstants.MaxTeleportNameBytes);
     }
 
@@ -232,6 +238,7 @@ public sealed class ProtocolContractTests
             new ContainerSubscribe(new ContainerId(1)),
             new ContainerUnsubscribe(new ContainerId(1)),
             new BlockEntityStates(new EntityId(1), []),
+            new PlayerProgressState(Horyzont.Core.Progress.ItemTypeBitSet.Empty, []),
             new ItemRegistry([]),
         ];
 

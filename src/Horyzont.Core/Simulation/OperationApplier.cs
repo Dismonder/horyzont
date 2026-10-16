@@ -34,6 +34,11 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
     private readonly UndoLog _undo = new();
     private readonly List<(ulong Container, ushort Slot)> _touched = [];
     private readonly List<BlockFunctionStateSetOp> _pendingStates = [];
+
+    // Blocks whose chest state or chest container the running operation created or removed, with the component that did it: the state
+    // and the container must agree again by the end of the operation (the checkpoint rejects a world in which they do not).
+    private readonly List<(BlockRef Block, int Component)> _chestKeys = [];
+    private int _component = -1;
     private readonly List<ulong> _pendingConstructs = [];
 
     // Cells whose station state or station containers the operation touched; judged at the end of the operation (D19 of K6-32).
@@ -72,7 +77,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 return ok;
             case var _ when IsComponent(operation):
                 BeginOperation();
-                failure = ApplyComponent(operation) ?? CheckStations() ?? string.Empty;
+                failure = ApplyComponent(operation) ?? CheckChestConsistency(out _) ?? CheckStations() ?? string.Empty;
                 if (failure.Length != 0)
                 {
                     _undo.Rollback(state);
@@ -131,6 +136,8 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
     {
         _pendingStates.Clear();
         _stationCells.Clear();
+        _chestKeys.Clear();
+        _component = -1;
         _viewSet = null;
         _viewCreate = null;
     }
@@ -284,6 +291,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         var otherCount = terrainEdit is null && !lastIsConstructEdit ? components.Count : components.Count - 1;
         for (var i = 0; i < otherCount; i++)
         {
+            _component = i;
             var refused = ApplyComponent(components[i]);
             if (refused is not null)
             {
@@ -292,6 +300,15 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 componentIndex = i;
                 return false;
             }
+        }
+
+        // A chest state and its container may come and go in either order inside a compound; judged once all components are applied.
+        if (CheckChestConsistency(out var inconsistentAt) is { } inconsistent)
+        {
+            _undo.Rollback(state);
+            failure = inconsistent;
+            componentIndex = inconsistentAt;
+            return false;
         }
 
         if (CheckStations() is { } stationFailure)
@@ -417,7 +434,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 {
                     container.BumpVersion();
                     state.Containers.MarkChanged(containerId);
-                    list[group++] = new ContainerChange(containerId, container.Version, slots);
+                    list[group++] = new ContainerChange(containerId, container.Version, slots, false, WasConfigured(containerId));
                 }
                 else
                 {
@@ -694,6 +711,11 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             _stationCells.Add(new BlockRef(new EntityId(op.Host.Id), op.Host.Cell));
         }
 
+        if (op.ContainerKind == ContainerKind.Chest && op.Host.Kind == ContainerHostKind.ConstructBlock)
+        {
+            _chestKeys.Add((new BlockRef(new EntityId(op.Host.Id), op.Host.Cell), _component));
+        }
+
         state.ContainerIds.MarkUsed(op.Id);
         _undo.AddCreated(state.Containers.Add(op.Id, op.ContainerKind, op.Host, op.Owner, op.Access, op.Size, 0));
         return null;
@@ -732,6 +754,11 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             _stationCells.Add(new BlockRef(new EntityId(container.Host.Id), container.Host.Cell));
         }
 
+        if (container.Kind == ContainerKind.Chest && container.Host.Kind == ContainerHostKind.ConstructBlock)
+        {
+            _chestKeys.Add((new BlockRef(new EntityId(container.Host.Id), container.Host.Cell), _component));
+        }
+
         _undo.Remove(state, container);
         return null;
     }
@@ -765,6 +792,41 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         return null;
     }
 
+    private bool WasConfigured(ContainerId id)
+    {
+        for (var i = 0; i < _undo.ConfiguredCount; i++)
+        {
+            if (_undo.ConfiguredAt(i).Id == id)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// A chest container hosted by a block and the chest state of that block belong together, as the checkpoint requires (both directions);
+    /// judged at the end of an operation for every block whose state or chest container the operation touched.
+    /// </summary>
+    private string? CheckChestConsistency(out int component)
+    {
+        for (var i = 0; i < _chestKeys.Count; i++)
+        {
+            var (key, at) = _chestKeys[i];
+            var hasState = state.BlockEntities.TryGet(key, out var entity) && entity is ChestBlockState;
+            var hasContainer = state.Containers.TryGetOfBlock(key.Construct, key.Cell, ContainerKind.Chest, out var container);
+            if (hasState != hasContainer || (hasState && ((ChestBlockState)entity!).Container != container!.Id))
+            {
+                component = at;
+                return hasContainer ? "a chest container needs the chest state of its block" : "a chest state needs the chest container of its block";
+            }
+        }
+
+        component = -1;
+        return null;
+    }
+
     private string? ApplyBlockEntitySet(BlockEntitySetOp op)
     {
         var key = new BlockRef(op.Construct, op.Cell);
@@ -785,6 +847,11 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             if (existing is StationBlockState)
             {
                 _stationCells.Add(key);
+            }
+
+            if (existing.Kind == BlockEntityKind.Chest)
+            {
+                _chestKeys.Add((key, _component));
             }
 
             _undo.SetBlockEntity(state, key, null);
@@ -822,6 +889,12 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 if (CheckStationState(op, station) is { } stationFailure)
                 {
                     return stationFailure;
+                }
+
+                // The cap keeps the construct's block states message within one reliable message (the validator checks it too, but server operations bypass it).
+                if (existing is null && state.BlockEntities.StationsOf(op.Construct) >= ProtocolConstants.MaxTimedStationsPerConstruct)
+                {
+                    return "too many stations with time in the construct";
                 }
 
                 _stationCells.Add(key);
@@ -947,7 +1020,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
 
     /// <summary>
     /// At the end of an operation, for every cell where it touched a station state or a station container (D19 of K6-32): a station state needs both of
-    /// its containers, and a station container needs the state of its cell that points at it. Chests are not judged here (a gap of K6-30, not changed).
+    /// its containers, and a station container needs the state of its cell that points at it. Chests are judged by <see cref="CheckChestConsistency"/>, just before.
     /// </summary>
     private string? CheckStations()
     {

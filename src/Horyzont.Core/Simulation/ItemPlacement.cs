@@ -27,6 +27,19 @@ internal static class ItemPlacement
         return count - remaining;
     }
 
+    /// <summary>
+    /// Creates up to <paramref name="count"/> items in one container (K6-32 D12): first into stacks of the type, slots ascending, then into empty slots,
+    /// slots ascending. One <see cref="ItemCreateOp"/> per slot.
+    /// </summary>
+    /// <returns>Number of items placed; the rest does not fit.</returns>
+    internal static int CreateInContainer(
+        ContainerId id, Span<ItemStack> slots, ItemTypeId type, int count, ushort limit, ItemSource source, List<Operation> output)
+    {
+        var remaining = Fill(id, slots, type, count, limit, stacks: true, source, output);
+        remaining = Fill(id, slots, type, remaining, limit, stacks: false, source, output);
+        return count - remaining;
+    }
+
     /// <summary>Number of items of a type in the slots.</summary>
     internal static int CountOf(ReadOnlySpan<ItemStack> slots, ItemTypeId type)
     {

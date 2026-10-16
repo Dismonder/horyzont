@@ -101,4 +101,20 @@ public sealed class ItemTypeBitSetTests
         Assert.Throws<ArgumentException>(() => ItemTypeBitSet.FromBytes([0x00]));
         Assert.Throws<ArgumentException>(() => ItemTypeBitSet.FromBytes([0x21]));
     }
+
+    [Fact]
+    public void FromBytes_BitAbove4096_Throws()
+    {
+        // Review B1, 1: byte 512 holds type 4096 (bit 0) and the bits 1 to 7 stand for types 4097 to 4103, which do not exist.
+        var at4096 = new byte[513];
+        at4096[512] = 0x01;
+        var at4097 = new byte[513];
+        at4097[512] = 0x02;
+        var at4103 = new byte[513];
+        at4103[512] = 0x80;
+
+        Assert.True(ItemTypeBitSet.FromBytes(at4096).Contains(new ItemTypeId(4096)));
+        Assert.Throws<ArgumentException>(() => ItemTypeBitSet.FromBytes(at4097));
+        Assert.Throws<ArgumentException>(() => ItemTypeBitSet.FromBytes(at4103));
+    }
 }

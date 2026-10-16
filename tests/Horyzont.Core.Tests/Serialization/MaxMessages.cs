@@ -7,6 +7,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Progress;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Space;
@@ -184,25 +185,53 @@ public static class MaxMessages
             new ContainerSubscribe(new ContainerId(ulong.MaxValue)),
             new ContainerUnsubscribe(new ContainerId(ulong.MaxValue)),
             MaxBlockEntityStates(),
+            MaxPlayerProgressState(),
             // 4096 entries of 64-byte keys would need 268 KiB; the registry fits the reliable channel with keys of up to 60 bytes
             // (K6-29W stage B deviation), and the writer refuses a larger frame.
             new ItemRegistry(Enumerable.Range(1, ProtocolConstants.MaxItemTypes).Select(i => new RegistryEntry((ushort)i, Text(60))).ToArray()),
         ];
     }
     /// <summary>
-    /// 4096 beds (K6-30): two-byte coordinates (the 16 x 16 x 16 cells of one chunk away from the origin, ascending), a maximal owner
-    /// id of ten bytes; 17 bytes an entry, about 68 KiB of the 256 KiB channel.
+    /// The worst case of message 46 (K6-30, K6-32 review B1, 4 and 6): the construct id <c>ulong.MaxValue</c>, 512 stations with time (the most the
+    /// protocol allows) with the longest recipe key and the largest ids and ticks, and 3584 chests with the largest ids; 6-byte cells (2-byte
+    /// coordinates). 113 678 bytes of the 256 KiB channel.
     /// </summary>
-    public static BlockEntityStates MaxBlockEntityStates()
+    public static BlockEntityStates MaxBlockEntityStates() =>
+        BlockEntityStatesOf(ProtocolConstants.MaxTimedStationsPerConstruct, ProtocolConstants.MaxBlockEntitiesPerConstruct - ProtocolConstants.MaxTimedStationsPerConstruct);
+
+    /// <summary>A state list of one construct with the largest values: the stations first (in cell order of the whole list), then the chests.</summary>
+    /// <param name="stations">Number of stations with time.</param>
+    /// <param name="chests">Number of chests.</param>
+    /// <returns>The message.</returns>
+    public static BlockEntityStates BlockEntityStatesOf(int stations, int chests)
     {
         var construct = new EntityId(ulong.MaxValue);
-        var entries = new List<BlockEntityEntry>(ProtocolConstants.MaxBlockEntitiesPerConstruct);
-        for (var i = 0; i < ProtocolConstants.MaxBlockEntitiesPerConstruct; i++)
+        var cells = Enumerable.Range(0, stations + chests)
+            .Select(i => new CellPos(-2048 + (i % 64), -2048 + ((i / 64) % 64), -2048 + (i / 4096)))
+            .OrderBy(cell => new BlockRef(construct, cell))
+            .ToArray();
+        var recipe = new string('r', ProtocolConstants.MaxRecipeKeyBytes);
+        var entries = new List<BlockEntityEntry>(cells.Length);
+        for (var i = 0; i < cells.Length; i++)
         {
-            entries.Add(new BlockEntityEntry(new CellPos(64 + (i >> 8), 64 + ((i >> 4) & 15), 64 + (i & 15)), new BedBlockState(new PlayerId(ulong.MaxValue))));
+            BlockEntityState state = i < stations
+                ? new StationBlockState(new ContainerId(ulong.MaxValue - 1), new ContainerId(ulong.MaxValue), recipe, new Tick(ulong.MaxValue))
+                : new ChestBlockState(new ContainerId(ulong.MaxValue));
+            entries.Add(new BlockEntityEntry(cells[i], state));
         }
 
-        return new BlockEntityStates(construct, entries.OrderBy(e => new BlockRef(construct, e.Cell)).ToArray());
+        return new BlockEntityStates(construct, entries);
+    }
+
+    /// <summary>The largest message 48 (K6-32): all 4096 item types (bits 1 to 4096) and 256 keys of 64 UTF-8 bytes, ascending.</summary>
+    public static PlayerProgressState MaxPlayerProgressState()
+    {
+        var bytes = new byte[ProtocolConstants.MaxDiscoveredBytes];
+        Array.Fill(bytes, (byte)0xFF);
+        bytes[0] = 0xFE;
+        bytes[^1] = 0x01;
+        var keys = Enumerable.Range(0, ProtocolConstants.MaxProgressKeys).Select(i => $"{i:D3}" + Text(ProtocolConstants.MaxRegistryKeyBytes - 3)).ToArray();
+        return new PlayerProgressState(ItemTypeBitSet.FromBytes(bytes), keys);
     }
 
     /// <summary>512 markers with the largest ids, owners and 32-byte names (about 37 KB, K5-27 decision 6).</summary>

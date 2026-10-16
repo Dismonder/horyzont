@@ -529,6 +529,11 @@ public sealed class WorldStateBuilder
                     throw new InvalidDataException($"The station at {record.Cell} of construct {record.Construct.Value} has an invalid recipe.");
                 }
 
+                if (state.BlockEntities.StationsOf(record.Construct) >= ProtocolConstants.MaxTimedStationsPerConstruct)
+                {
+                    throw new InvalidDataException($"Construct {record.Construct.Value} has more than {ProtocolConstants.MaxTimedStationsPerConstruct} stations with time.");
+                }
+
                 break;
             default:
                 throw new InvalidDataException($"Block state kind {record.State.Kind} is not supported.");

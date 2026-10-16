@@ -2,6 +2,7 @@ using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Protocol;
 using Horyzont.Core.Tests.BlockEntities;
 
 using static Horyzont.Core.Tests.BlockEntities.FunctionalBlockFixture;
@@ -50,7 +51,7 @@ public sealed class StationStateOpsTests
     {
         var f = new CraftingFixture();
         var (input, output) = f.SetUpStation(CraftingFixture.StationCell);
-        var chestAtStation = f.Blocks.CreateChestContainer(CraftingFixture.StationCell);
+        var chestAtStation = f.Blocks.SetUpChestAt(CraftingFixture.StationCell2, FunctionalBlockFixture.Player1);
 
         f.Apply(CraftingFixture.StationState(CraftingFixture.StationCell, input, output, "t:a"));
         f.AssertFails(CraftingFixture.StationState(CraftingFixture.StationCell, input, chestAtStation, "t:a"));
@@ -205,5 +206,23 @@ public sealed class StationStateOpsTests
         Assert.Equal(2, f.Blocks.HostedBy(CraftingFixture.StationCell).Count());
         Assert.True(f.Blocks.HasState(CraftingFixture.StationCell, out _));
         Assert.NotEqual(input, output);
+    }
+
+    [Fact]
+    public void BlockEntitySet_StationAboveTimedCap_Fails()
+    {
+        var f = new CraftingFixture();
+
+        // The accepted counterpart: the 512th station of the construct. The 513th is refused whole (containers, state and block) and the hash stays.
+        f.PlaceStations(ProtocolConstants.MaxTimedStationsPerConstruct);
+        Assert.Equal(ProtocolConstants.MaxTimedStationsPerConstruct, f.State.BlockEntities.StationsOf(FunctionalBlockFixture.ConstructId));
+        f.AssertFails(f.PlaceStation(CraftingFixture.GridCell(ProtocolConstants.MaxTimedStationsPerConstruct), inputSlots: 1, outputSlots: 1));
+
+        // Another kind of state is not limited by the station cap: a chest still fits.
+        f.Blocks.SetUpChest(Horyzont.Testing.FunctionalBlocks.ChestCell);
+
+        // Rewriting an existing station is no new station.
+        var (input, output) = f.StationContainersOf(CraftingFixture.GridCell(0));
+        f.Apply(CraftingFixture.StationState(CraftingFixture.GridCell(0), input, output, "t:a"));
     }
 }
