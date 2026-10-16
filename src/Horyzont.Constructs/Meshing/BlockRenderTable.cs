@@ -86,5 +86,5 @@ public sealed class BlockRenderTable
     private static BlockRenderInfo From(BlockTypeContent content, bool isMissing, ShapeMesh? doorOpen) =>
         new(
             content.Def.Shape, content.Def.MaterialId, content.Def.HasCollision, isMissing, content.Mesh, content.Def.Function.Kind,
-            content.Def.Function.Kind == BlockFunctionKind.Door ? doorOpen : null);
+            content.Def.Function.Kind == BlockFunctionKind.Door ? doorOpen : null, content.Light);
 }
