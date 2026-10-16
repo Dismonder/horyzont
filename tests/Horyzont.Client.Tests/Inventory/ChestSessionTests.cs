@@ -56,6 +56,34 @@ public sealed class ChestSessionTests
     }
 
     [Fact]
+    public void Open_InputOfAGenerator_Opened()
+    {
+        var rig = new Rig().Watch();
+        rig.Chests.Open(_chestId, _construct, _cell);
+
+        // The input of an oxygen generator (K6-34 D20) is a station input hosted by the block: the panel of the chest shows it when it is the one that was asked for.
+        rig.Fixture.Inventory.OnMessage(new ContainerState(_chestId, RejectReason.None, ContainerKind.StationInput, ContainerAccess.Shared, 2, 1, []));
+
+        Assert.True(rig.Chests.IsOpen);
+        Assert.Equal(1, rig.Opened);
+        Assert.True(rig.Fixture.Inventory.TryGetContainer(_chestId, out _));
+    }
+
+    [Fact]
+    public void StationInputOfAnotherBlock_NotTaken_NotForgotten()
+    {
+        var rig = new Rig().Watch();
+        rig.Chests.Open(_chestId, _construct, _cell);
+        var other = new ContainerId(11);
+
+        // The input of a station with time belongs to the station session: the chest session neither opens on it nor drops it from the inventory.
+        rig.Fixture.Inventory.OnMessage(new ContainerState(other, RejectReason.None, ContainerKind.StationInput, ContainerAccess.Shared, 2, 1, []));
+
+        Assert.True(rig.Chests.IsOpening);
+        Assert.True(rig.Fixture.Inventory.TryGetContainer(other, out _));
+    }
+
+    [Fact]
     public void Open_StateStored_Opened()
     {
         var rig = new Rig().Watch();

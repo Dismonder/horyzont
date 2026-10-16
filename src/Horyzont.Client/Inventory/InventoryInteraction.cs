@@ -40,6 +40,12 @@ public sealed class InventoryInteraction : IClientSessionListener
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
+    /// <summary>
+    /// Gets or sets a value indicating whether the equipment can be taken from and put into (K6-34 D13, D20): true when the world has the hazard content; without it the server refuses every move
+    /// that touches the equipment, so the client does not offer it.
+    /// </summary>
+    public bool EquipmentEnabled { get; set; }
+
     /// <summary>Gets the chest session, or null.</summary>
     public ChestSession? Chests { get; }
 
@@ -249,6 +255,11 @@ public sealed class InventoryInteraction : IClientSessionListener
         }
 
         var there = container.Get(target.Slot);
+        if (!EquipmentAllows(held, target, container, there, count))
+        {
+            return InteractionOutcome.Ignored;
+        }
+
         var allowed = there.IsEmpty
             || (there.Type == held.Type && !IsFull(there))
             || (there.Type != held.Type && count == held.SourceCount); // a swap moves the whole source stack
@@ -262,12 +273,31 @@ public sealed class InventoryInteraction : IClientSessionListener
         return InteractionOutcome.Sent;
     }
 
+    // The moves that touch the equipment (K6-34 D13, D20): what goes into a slot must fit it, one item at a time, and in a swap the item that comes back must fit the slot it comes back to.
+    private bool EquipmentAllows(HeldStack held, SlotRef target, ClientContainer targetContainer, ItemStack there, ushort count)
+    {
+        if (targetContainer.Kind == ContainerKind.Equipment
+            && !(_inventory.TryGetDef(held.Type, out var heldDef) && EquipmentDropRules.CanPlace(target.Slot, heldDef, count)))
+        {
+            return false;
+        }
+
+        var swaps = !there.IsEmpty && there.Type != held.Type;
+        if (swaps && _inventory.TryGetContainer(held.Source.Container, out var source) && source.Kind == ContainerKind.Equipment)
+        {
+            return _inventory.TryGetDef(there.Type, out var thereDef) && EquipmentDropRules.CanPlace(held.Source.Slot, thereDef, there.Count);
+        }
+
+        return true;
+    }
+
     private bool IsFull(ItemStack stack) => _inventory.TryGetDef(stack.Type, out var def) && stack.Count >= def.MaxStack;
 
     private bool TryGetUsable(SlotRef slot, out ClientContainer container)
     {
         if (_inventory.TryGetContainer(slot.Container, out var found)
-            && found.Kind is ContainerKind.PlayerBag or ContainerKind.Hotbar or ContainerKind.Chest or ContainerKind.StationInput or ContainerKind.StationOutput
+            && (found.Kind is ContainerKind.PlayerBag or ContainerKind.Hotbar or ContainerKind.Chest or ContainerKind.StationInput or ContainerKind.StationOutput
+                || (EquipmentEnabled && found.Kind == ContainerKind.Equipment))
             && slot.Slot < found.Size)
         {
             container = found;

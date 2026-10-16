@@ -32,4 +32,7 @@ public enum BlockPromptKind : byte
 
     /// <summary>Open a station: the crafting panel (workbench, kitchen, fabricator) or the panel with the input and the output (furnace, refinery; K6-32).</summary>
     OpenStation = 10,
+
+    /// <summary>An oxygen generator: opens its input like a chest (K6-34).</summary>
+    OpenGenerator = 11,
 }
