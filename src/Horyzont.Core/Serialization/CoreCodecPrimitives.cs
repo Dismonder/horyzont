@@ -245,8 +245,30 @@ internal static class CoreCodecPrimitives
                 w.WriteByte((byte)BlockEntityKind.Bed);
                 w.WriteVarUInt(bed.Owner.Value);
                 break;
+            case StationBlockState station:
+                ArgumentNullException.ThrowIfNull(station.Recipe);
+                if (station.Started is not null && station.Recipe.Length == 0)
+                {
+                    throw new ArgumentException("A started station needs a recipe.", nameof(state));
+                }
+
+                w.WriteByte((byte)BlockEntityKind.Station);
+                w.WriteVarUInt(station.Input.Value);
+                w.WriteVarUInt(station.Output.Value);
+                w.WriteString(station.Recipe, ProtocolConstants.MaxRecipeKeyBytes);
+                if (station.Started is { } started)
+                {
+                    w.WriteByte(1);
+                    w.WriteVarUInt(started.Value);
+                }
+                else
+                {
+                    w.WriteByte(0);
+                }
+
+                break;
             default:
-                throw new ArgumentException($"A block state of format 1 is a chest or a bed, not {state?.GetType().Name ?? "null"}.", nameof(state));
+                throw new ArgumentException($"A block state of format 1 is a chest, a bed or a station, not {state?.GetType().Name ?? "null"}.", nameof(state));
         }
     }
 
@@ -261,6 +283,23 @@ internal static class CoreCodecPrimitives
                 return new ChestBlockState(new ContainerId(r.ReadVarUInt()));
             case (byte)BlockEntityKind.Bed:
                 return new BedBlockState(new PlayerId(r.ReadVarUInt()));
+            case (byte)BlockEntityKind.Station:
+                var input = new ContainerId(r.ReadVarUInt());
+                var output = new ContainerId(r.ReadVarUInt());
+                var recipe = r.ReadString(ProtocolConstants.MaxRecipeKeyBytes);
+                byte flags = r.ReadByte();
+                if (flags > 1)
+                {
+                    throw new ProtocolViolationException($"Unknown station flags {flags}.");
+                }
+
+                Tick? started = flags == 1 ? new Tick(r.ReadVarUInt()) : null;
+                if (started is not null && recipe.Length == 0)
+                {
+                    throw new ProtocolViolationException("A started station needs a recipe.");
+                }
+
+                return new StationBlockState(input, output, recipe, started);
             default:
                 throw new ProtocolViolationException($"Unknown or reserved block state kind {kind}.");
         }

@@ -68,7 +68,7 @@ public sealed class ProtocolContractTests
         AssertValues((BlockShape.Cube, 1), (BlockShape.Mesh, 2));
         AssertValues((BlobKind.ConstructHeader, 1), (BlobKind.Player, 2), (BlobKind.ConstructChunk, 3), (BlobKind.PlanetParams, 4),
             (BlobKind.TerrainBlock, 5), (BlobKind.StarSystemParams, 10), (BlobKind.Marker, 11), (BlobKind.ShipState, 12), (BlobKind.Container, 20),
-            (BlobKind.BlockEntity, 21), (BlobKind.PlayerProgress, 22));
+            (BlobKind.BlockEntity, 21), (BlobKind.PlayerProgress, 22), (BlobKind.ProgressKeys, 25));
         AssertValues((ItemSource.Harvest, 1), (ItemSource.Craft, 2), (ItemSource.Station, 3), (ItemSource.Crop, 4), (ItemSource.Refund, 5),
             (ItemSource.Loot, 6), (ItemSource.Admin, 7), (ItemSource.Recovered, 8), (ItemSource.Starter, 9));
         AssertValues((ItemSink.Craft, 1), (ItemSink.Station, 2), (ItemSink.Eat, 3), (ItemSink.Fuel, 4), (ItemSink.BuildCost, 5),

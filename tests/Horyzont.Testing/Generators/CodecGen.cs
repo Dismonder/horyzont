@@ -212,6 +212,8 @@ public static class CodecGen
         ContainerRemoveOp.Select(o => (Operation)o),
         ContainerConfigureOp.Select(o => (Operation)o),
         BlockEntitySetOp.Select(o => (Operation)o),
+        ItemDiscoverOp.Select(o => (Operation)o),
+        ProgressKeyGrantOp.Select(o => (Operation)o),
         RespawnPointSetOp.Select(o => (Operation)o),
         BlockFunctionStateSetOp.Select(o => (Operation)o));
 
@@ -360,16 +362,41 @@ public static class CodecGen
         from access in Gen.Elements(Enum.GetValues<ContainerAccess>())
         select new ContainerConfigureOp(id, (ushort)size, access);
 
-    /// <summary>Block states of format 1: a chest, a bed or none (K6-30).</summary>
+    /// <summary>Keys and recipe names: 1 to 32 characters, ASCII and two-byte letters, so at most 64 bytes of UTF-8 (K6-32).</summary>
+    public static Gen<string> RegistryKey { get; } =
+        from length in Gen.Choose(1, 32)
+        from chars in Gen.Elements("abcdefgxyz:_09ąęż".ToCharArray()).ArrayOf(length)
+        select new string(chars);
+
+    /// <summary>The state of a station with time: its containers, a recipe up to 64 bytes or none, a start tick only with a recipe (K6-32).</summary>
+    public static Gen<Horyzont.Core.BlockEntities.StationBlockState> StationState { get; } =
+        from input in ContainerId
+        from output in ContainerId
+        from recipe in Gen.OneOf(Gen.Constant(string.Empty), RegistryKey)
+        from started in recipe.Length == 0 ? Gen.Constant<Tick?>(null) : Optional(VarU64.Select(v => new Tick(v)))
+        select new Horyzont.Core.BlockEntities.StationBlockState(input, output, recipe, started);
+
+    /// <summary>Block states of format 1: a chest, a bed, a station or none (K6-30, K6-32).</summary>
     public static Gen<Horyzont.Core.BlockEntities.BlockEntityState?> BlockEntityStateOrNone { get; } = Gen.OneOf(
         Gen.Constant<Horyzont.Core.BlockEntities.BlockEntityState?>(null),
         ContainerId.Select(c => (Horyzont.Core.BlockEntities.BlockEntityState?)new Horyzont.Core.BlockEntities.ChestBlockState(c)),
-        PlayerId.Select(p => (Horyzont.Core.BlockEntities.BlockEntityState?)new Horyzont.Core.BlockEntities.BedBlockState(p)));
+        PlayerId.Select(p => (Horyzont.Core.BlockEntities.BlockEntityState?)new Horyzont.Core.BlockEntities.BedBlockState(p)),
+        StationState.Select(s => (Horyzont.Core.BlockEntities.BlockEntityState?)s));
 
-    /// <summary>Block states of messages: a chest or a bed (K6-30).</summary>
+    /// <summary>Block states of messages: a chest, a bed or a station (K6-30, K6-32).</summary>
     private static Gen<Horyzont.Core.BlockEntities.BlockEntityState> BlockEntityStateOfEntry { get; } = Gen.OneOf(
         ContainerId.Select(c => (Horyzont.Core.BlockEntities.BlockEntityState)new Horyzont.Core.BlockEntities.ChestBlockState(c)),
-        PlayerId.Select(p => (Horyzont.Core.BlockEntities.BlockEntityState)new Horyzont.Core.BlockEntities.BedBlockState(p)));
+        PlayerId.Select(p => (Horyzont.Core.BlockEntities.BlockEntityState)new Horyzont.Core.BlockEntities.BedBlockState(p)),
+        StationState.Select(s => (Horyzont.Core.BlockEntities.BlockEntityState)s));
+
+    /// <summary>Discoveries: a player and an item type 1 to 4096 (K6-32).</summary>
+    public static Gen<ItemDiscoverOp> ItemDiscoverOp { get; } =
+        from player in PlayerId
+        from type in Gen.Choose(1, ProtocolConstants.MaxItemTypes)
+        select new ItemDiscoverOp(player, new ItemTypeId((ushort)type));
+
+    /// <summary>Progress key grants (K6-32).</summary>
+    public static Gen<ProgressKeyGrantOp> ProgressKeyGrantOp { get; } = RegistryKey.Select(k => new ProgressKeyGrantOp(k));
 
     /// <summary>Block state lists of one construct: strictly ascending by cell (chunk, then index in the chunk), no repeats (K6-30).</summary>
     public static Gen<BlockEntityStates> BlockEntityStatesMessage { get; } =

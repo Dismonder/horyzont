@@ -32,6 +32,9 @@ public enum BlobKind : byte
     /// <summary>The state of a functional block (K6-30).</summary>
     BlockEntity = 21,
 
-    /// <summary>The progress of a player; in version 1 only the respawn point (K6-30).</summary>
+    /// <summary>The progress of a player; in version 1 only the respawn point (K6-30), in version 2 also the discovered item types (K6-32).</summary>
     PlayerProgress = 22,
+
+    /// <summary>The progress keys of a world (K6-32).</summary>
+    ProgressKeys = 25,
 }

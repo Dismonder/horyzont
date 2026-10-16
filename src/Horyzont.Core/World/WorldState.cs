@@ -482,7 +482,7 @@ public sealed class WorldState
         {
             if (Progress.TryGet(id, out var progress))
             {
-                upsertedProgress.Add(new PlayerProgressRecord(id, progress.RespawnBed));
+                upsertedProgress.Add(new PlayerProgressRecord(id, progress.RespawnBed, progress.Discovered));
             }
             else
             {
@@ -490,6 +490,7 @@ public sealed class WorldState
             }
         }
 
+        var progressKeys = _tracker.ProgressKeys ? ProgressKeys.Sorted.ToArray() : null;
         _tracker.Clear();
         _inFlight = new WorldCheckpoint(
             LastOpId, CurrentTick, EntityIds.NextValue, PlayerIds.NextValue,
@@ -503,6 +504,7 @@ public sealed class WorldState
             RemovedBlockEntities = removedEntities,
             UpsertedProgress = upsertedProgress,
             RemovedProgress = removedProgress,
+            ProgressKeys = progressKeys,
         };
         return _inFlight;
     }
@@ -601,6 +603,11 @@ public sealed class WorldState
         foreach (var id in failed.RemovedProgress)
         {
             _tracker.MarkProgress(id);
+        }
+
+        if (failed.ProgressKeys is not null)
+        {
+            _tracker.MarkProgressKeys();
         }
 
         _inFlight = null;

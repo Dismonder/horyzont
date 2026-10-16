@@ -7,6 +7,7 @@ using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Progress;
 using Horyzont.Core.Protocol;
+using Horyzont.Core.Serialization;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.Space;
 using Horyzont.Core.World;
@@ -106,7 +107,7 @@ public sealed class WorldStateBuilder
     public void SetProgressKeys(IReadOnlyList<string> keys)
     {
         ArgumentNullException.ThrowIfNull(keys);
-        _progressKeys = keys; // K6-32 A4: validated and loaded by Build
+        _progressKeys = keys;
     }
 
     /// <summary>Adds a planet.</summary>
@@ -297,6 +298,23 @@ public sealed class WorldStateBuilder
             LoadBlockEntity(state, record);
         }
 
+        // A station container hosted by a block needs the station state that points at it (the other direction is checked in LoadBlockEntity).
+        foreach (var kind in new[] { ContainerKind.StationInput, ContainerKind.StationOutput })
+        {
+            var stationContainers = state.Containers.OfKind(kind);
+            for (var i = 0; i < stationContainers.Count; i++)
+            {
+                var container = stationContainers[i];
+                if (container.Host.Kind != ContainerHostKind.ConstructBlock
+                    || !(state.BlockEntities.TryGet(new BlockRef(new EntityId(container.Host.Id), container.Host.Cell), out var entity)
+                        && entity is StationBlockState stationState
+                        && (kind == ContainerKind.StationInput ? stationState.Input : stationState.Output) == container.Id))
+                {
+                    throw new InvalidDataException($"Station container {container.Id.Value} has no station state on its host block.");
+                }
+            }
+        }
+
         // A chest container hosted by a block needs the matching chest state (the other direction is checked in LoadBlockEntity).
         var chests = state.Containers.OfKind(ContainerKind.Chest);
         for (var i = 0; i < chests.Count; i++)
@@ -314,6 +332,8 @@ public sealed class WorldStateBuilder
         {
             LoadProgress(state, record);
         }
+
+        LoadProgressKeys(state);
 
         foreach (var version in _terrain)
         {
@@ -495,6 +515,21 @@ public sealed class WorldStateBuilder
                 }
 
                 break;
+            case StationBlockState station:
+                var host = ContainerHost.ConstructBlock(record.Construct, record.Cell);
+                if (!state.Containers.TryGet(station.Input, out var input) || input.Kind != ContainerKind.StationInput || input.Host != host
+                    || !state.Containers.TryGet(station.Output, out var output) || output.Kind != ContainerKind.StationOutput || output.Host != host)
+                {
+                    throw new InvalidDataException($"The station at {record.Cell} of construct {record.Construct.Value} has no input and output containers hosted by the block.");
+                }
+
+                if (!StrictUtf8.TryGetByteCount(station.Recipe, out var recipeBytes) || recipeBytes > ProtocolConstants.MaxRecipeKeyBytes
+                    || (station.Started is not null && recipeBytes == 0))
+                {
+                    throw new InvalidDataException($"The station at {record.Cell} of construct {record.Construct.Value} has an invalid recipe.");
+                }
+
+                break;
             default:
                 throw new InvalidDataException($"Block state kind {record.State.Kind} is not supported.");
         }
@@ -504,12 +539,52 @@ public sealed class WorldStateBuilder
 
     private static void LoadProgress(WorldState state, PlayerProgressRecord record)
     {
-        if (!state.Players.TryGet(record.Player, out _) || record.RespawnBed is null || state.Progress.TryGet(record.Player, out _))
+        // A record exists if and only if it has a respawn point or a discovery (D7).
+        if (!state.Players.TryGet(record.Player, out _) || (record.RespawnBed is null && record.Discovered is null) || state.Progress.TryGet(record.Player, out _))
         {
-            throw new InvalidDataException($"Progress of player {record.Player.Value} is for an unknown player, has no respawn point or is duplicated.");
+            throw new InvalidDataException($"Progress of player {record.Player.Value} is for an unknown player, is empty or is duplicated.");
         }
 
-        state.Progress.Load(new PlayerProgress(record.Player, record.RespawnBed));
+        if (record.Discovered is { } discovered)
+        {
+            for (var type = 1; type <= ProtocolConstants.MaxItemTypes; type++)
+            {
+                if (discovered.Contains(new ItemTypeId((ushort)type)) && !state.ItemTypes.IsKnown(new ItemTypeId((ushort)type)))
+                {
+                    throw new InvalidDataException($"Player {record.Player.Value} discovered the unknown item type {type}.");
+                }
+            }
+        }
+
+        state.Progress.Load(new PlayerProgress(record.Player, record.RespawnBed, record.Discovered));
+    }
+
+    private void LoadProgressKeys(WorldState state)
+    {
+        if (_progressKeys is not { } keys)
+        {
+            return;
+        }
+
+        if (keys.Count > ProtocolConstants.MaxProgressKeys)
+        {
+            throw new InvalidDataException($"The world has {keys.Count} progress keys, the most is {ProtocolConstants.MaxProgressKeys}.");
+        }
+
+        for (var i = 0; i < keys.Count; i++)
+        {
+            if (!StrictUtf8.TryGetByteCount(keys[i], out var bytes) || bytes == 0 || bytes > ProtocolConstants.MaxRegistryKeyBytes)
+            {
+                throw new InvalidDataException("A progress key is empty, longer than 64 bytes or not valid UTF-8.");
+            }
+
+            if (i > 0 && string.CompareOrdinal(keys[i - 1], keys[i]) >= 0)
+            {
+                throw new InvalidDataException("Progress keys must be strictly ascending in ordinal order.");
+            }
+
+            state.ProgressKeys.Load(keys[i]);
+        }
     }
 
     private static void CheckEntity(WorldState state, EntityId id)
