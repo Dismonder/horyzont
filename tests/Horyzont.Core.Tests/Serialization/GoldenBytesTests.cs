@@ -334,7 +334,7 @@ public sealed class GoldenBytesTests
         var planet = new Horyzont.Core.World.PlanetParams(new PlanetId(1), new SystemId(1), 7, "core:test/1");
 
         Assert.Equal(new byte[] { 1, 1 }, StateCodec.EncodeConstructHeaderBlob(header).AsSpan(0, 2).ToArray());
-        Assert.Equal(new byte[] { 2, 2 }, StateCodec.EncodePlayerBlob(player).AsSpan(0, 2).ToArray());
+        Assert.Equal(new byte[] { 2, 3 }, StateCodec.EncodePlayerBlob(player).AsSpan(0, 2).ToArray());
         Assert.Equal(new byte[] { 3, 1 }, StateCodec.EncodeChunkBlob(new uint[4096]).AsSpan(0, 2).ToArray());
         Assert.Equal(new byte[] { 4, 1 }, StateCodec.EncodePlanetBlob(planet).AsSpan(0, 2).ToArray());
     }

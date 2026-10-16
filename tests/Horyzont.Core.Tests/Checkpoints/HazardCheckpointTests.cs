@@ -186,7 +186,9 @@ public sealed class HazardCheckpointTests
 
         // The world after a crash: the checkpoint and the tail. The refill of an offline player must put the record into the next checkpoint, with the new suit.
         var loaded = Load(f.State, checkpoint);
-        Assert.DoesNotContain(loaded.CaptureCheckpoint().UpsertedPlayers, p => p.Player == Player1);
+        var first = loaded.CaptureCheckpoint();
+        Assert.DoesNotContain(first.UpsertedPlayers, p => p.Player == Player1);
+        loaded.CompleteCheckpoint(first);
         var replay = new Horyzont.Core.Tests.SimFixture(state: loaded);
         foreach (var entry in tail)
         {

@@ -402,18 +402,26 @@ public static class CodecGen
         from started in recipe.Length == 0 ? Gen.Constant<Tick?>(null) : Optional(VarU64.Select(v => new Tick(v)))
         select new Horyzont.Core.BlockEntities.StationBlockState(input, output, recipe, started);
 
-    /// <summary>Block states of format 1: a chest, a bed, a station or none (K6-30, K6-32).</summary>
+    /// <summary>The state of an oxygen generator: its input container and an optional start tick (K6-34).</summary>
+    public static Gen<Horyzont.Core.BlockEntities.OxygenGeneratorBlockState> GeneratorState { get; } =
+        from input in ContainerId
+        from started in Optional(VarU64.Select(v => new Tick(v)))
+        select new Horyzont.Core.BlockEntities.OxygenGeneratorBlockState(input, started);
+
+    /// <summary>Block states of format 1: a chest, a bed, a station, an oxygen generator or none (K6-30, K6-32, K6-34).</summary>
     public static Gen<Horyzont.Core.BlockEntities.BlockEntityState?> BlockEntityStateOrNone { get; } = Gen.OneOf(
         Gen.Constant<Horyzont.Core.BlockEntities.BlockEntityState?>(null),
         ContainerId.Select(c => (Horyzont.Core.BlockEntities.BlockEntityState?)new Horyzont.Core.BlockEntities.ChestBlockState(c)),
         PlayerId.Select(p => (Horyzont.Core.BlockEntities.BlockEntityState?)new Horyzont.Core.BlockEntities.BedBlockState(p)),
-        StationState.Select(s => (Horyzont.Core.BlockEntities.BlockEntityState?)s));
+        StationState.Select(s => (Horyzont.Core.BlockEntities.BlockEntityState?)s),
+        GeneratorState.Select(s => (Horyzont.Core.BlockEntities.BlockEntityState?)s));
 
-    /// <summary>Block states of messages: a chest, a bed or a station (K6-30, K6-32).</summary>
+    /// <summary>Block states of messages: a chest, a bed, a station or an oxygen generator (K6-30, K6-32, K6-34).</summary>
     private static Gen<Horyzont.Core.BlockEntities.BlockEntityState> BlockEntityStateOfEntry { get; } = Gen.OneOf(
         ContainerId.Select(c => (Horyzont.Core.BlockEntities.BlockEntityState)new Horyzont.Core.BlockEntities.ChestBlockState(c)),
         PlayerId.Select(p => (Horyzont.Core.BlockEntities.BlockEntityState)new Horyzont.Core.BlockEntities.BedBlockState(p)),
-        StationState.Select(s => (Horyzont.Core.BlockEntities.BlockEntityState)s));
+        StationState.Select(s => (Horyzont.Core.BlockEntities.BlockEntityState)s),
+        GeneratorState.Select(s => (Horyzont.Core.BlockEntities.BlockEntityState)s));
 
     /// <summary>Discoveries: a player and an item type 1 to 4096 (K6-32).</summary>
     public static Gen<ItemDiscoverOp> ItemDiscoverOp { get; } =
@@ -783,7 +791,17 @@ public static class CodecGen
         from stamina in Gen.Choose(0, 40_000)
         from rested in VarU64
         from exhausted in Gen.Elements(true, false)
-        select new PlayerVitals(health / 4f, stamina / 4f, new Tick(rested), exhausted);
+        from suit in Optional(SuitResourcesGen)
+        select new PlayerVitals(health / 4f, stamina / 4f, new Tick(rested), exhausted, suit);
+
+    /// <summary>The five suit resources (K6-34): each 0 to 1000 in steps of a quarter.</summary>
+    public static Gen<Horyzont.Core.Survival.SuitResources> SuitResourcesGen =>
+        from heating in Gen.Choose(0, 4000)
+        from cooling in Gen.Choose(0, 4000)
+        from filter in Gen.Choose(0, 4000)
+        from shield in Gen.Choose(0, 4000)
+        from oxygen in Gen.Choose(0, 4000)
+        select new Horyzont.Core.Survival.SuitResources(heating / 4f, cooling / 4f, filter / 4f, shield / 4f, oxygen / 4f);
 
     /// <summary>Player records with vitals or without (K6-33), for the player blob.</summary>
     public static Gen<PlayerRecord> PlayerRecordWithVitals { get; } =

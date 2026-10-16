@@ -30,14 +30,14 @@ public sealed class StateCodecVitalsTests
     {
         // 80 = 00 00 A0 42, 55.5 = 00 00 5E 42, 36000 = A0 99 02 as varuint.
         var vitals = new PlayerVitals(80f, 55.5f, new Tick(36000), false);
-        Assert.Equal("02 02 " + Body + " 01 00 00 A0 42 00 00 5E 42 A0 99 02", Kit.ToHex(StateCodec.EncodePlayerBlob(_player with { Vitals = vitals })));
+        Assert.Equal("02 03 " + Body + " 01 00 00 A0 42 00 00 5E 42 A0 99 02", Kit.ToHex(StateCodec.EncodePlayerBlob(_player with { Vitals = vitals })));
 
         // Exhausted: bit 1 as well; health 1 = 00 00 80 3F, stamina 0, no rested bonus.
         var exhausted = new PlayerVitals(1f, 0f, default, true);
-        Assert.Equal("02 02 " + Body + " 03 00 00 80 3F 00 00 00 00 00", Kit.ToHex(StateCodec.EncodePlayerBlob(_player with { Vitals = exhausted })));
+        Assert.Equal("02 03 " + Body + " 03 00 00 80 3F 00 00 00 00 00", Kit.ToHex(StateCodec.EncodePlayerBlob(_player with { Vitals = exhausted })));
 
         // No vitals: the flag byte 00 and nothing after it.
-        Assert.Equal("02 02 " + Body + " 00", Kit.ToHex(StateCodec.EncodePlayerBlob(_player)));
+        Assert.Equal("02 03 " + Body + " 00", Kit.ToHex(StateCodec.EncodePlayerBlob(_player)));
     }
 
     [Fact]
@@ -46,7 +46,7 @@ public sealed class StateCodecVitalsTests
         // -0 passes the validity check (it equals 0), but the bytes must be canonical: 00 00 00 00, not 00 00 00 80.
         var positive = new PlayerVitals(0f, 0f, default, true);
         var negative = new PlayerVitals(-0f, -0f, default, true);
-        Assert.Equal("02 02 " + Body + " 03 00 00 00 00 00 00 00 00 00", Kit.ToHex(StateCodec.EncodePlayerBlob(_player with { Vitals = positive })));
+        Assert.Equal("02 03 " + Body + " 03 00 00 00 00 00 00 00 00 00", Kit.ToHex(StateCodec.EncodePlayerBlob(_player with { Vitals = positive })));
 
         Assert.Equal(Kit.ToHex(StateCodec.EncodePlayerBlob(_player with { Vitals = positive })), Kit.ToHex(StateCodec.EncodePlayerBlob(_player with { Vitals = negative })));
     }
@@ -64,7 +64,7 @@ public sealed class StateCodecVitalsTests
         {
             var record = _player with { Vitals = vitals };
             var blob = StateCodec.EncodePlayerBlob(record);
-            Assert.Equal(2, blob[1]);
+            Assert.Equal(3, blob[1]);
             DeepAssert.Equal(record, StateCodec.DecodePlayerBlob(blob));
             Assert.Equal(vitals, StateCodec.DecodePlayerBlob(blob).Vitals);
             Assert.Equal(blob, StateCodec.EncodePlayerBlob(StateCodec.DecodePlayerBlob(blob)));
@@ -76,7 +76,7 @@ public sealed class StateCodecVitalsTests
     {
         var blob = StateCodec.EncodePlayerBlob(_player);
 
-        Assert.Equal(2, blob[1]);
+        Assert.Equal(3, blob[1]);
         Assert.Null(StateCodec.DecodePlayerBlob(blob).Vitals);
         DeepAssert.Equal(_player, StateCodec.DecodePlayerBlob(blob));
     }
@@ -166,12 +166,13 @@ public sealed class StateCodecVitalsTests
     }
 
     [Fact]
-    public void PlayerBlob_Version3_Throws()
+    public void PlayerBlob_Version4_Throws()
     {
         Assert.Null(StateCodec.DecodePlayerBlob(Blob(2, "00")).Vitals);
+        Assert.Null(StateCodec.DecodePlayerBlob(Blob(3, "00")).Vitals);
 
-        // Version 3 is K6-34 (suit resources), not known to this build.
-        Kit.AssertViolation(d => StateCodec.DecodePlayerBlob(d), Blob(3, "00"));
+        // Version 4 is not known to this build (version 3 is K6-34, the suit resources).
+        Kit.AssertViolation(d => StateCodec.DecodePlayerBlob(d), Blob(4, "00"));
         Kit.AssertViolation(d => StateCodec.DecodePlayerBlob(d), Blob(0, "00"));
     }
 
