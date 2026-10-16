@@ -1,6 +1,7 @@
 using System.Numerics;
 
 using Horyzont.Core.BlockEntities;
+using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Motion;
 using Horyzont.Core.Operations;
@@ -183,6 +184,43 @@ public sealed class RestTrackerTests
         Prepare(heated: false);
         _rig.Place(FoodServerRig.CampfireCell, FoodBlocks.CampfireType);
         _rig.Seat(_rig.Alice);
+
+        _rig.Tick(100);
+
+        Assert.False(Last().RestConditionsMet);
+    }
+
+    [Fact]
+    public void InFlyingShip_NoRest()
+    {
+        // The twin of Seated_RoofAndHeat_After1200Ticks_Rested: the same seat, roof and fire, but the construct is in the frame of the star system (a ship in flight).
+        Prepare();
+        _rig.Seat(_rig.Alice);
+        _rig.Tick(100);
+        Assert.True(Last().RestConditionsMet);
+        Assert.True(_rig.Sim.State.Constructs.TryGet(FunctionalBlocks.Construct, out var ship));
+        _rig.Sim.ApplyServerOperation(new EntityReparentOp(
+            FunctionalBlocks.Construct, new FrameRef(FrameKind.System, 1), ship.ParentSeq + 1, new Vector3(0f, 9000f, 0f), Quaternion.Identity, Vector3.Zero, null));
+
+        _rig.Tick(1500);
+
+        Assert.False(Last().RestConditionsMet);
+        Assert.False(Last().Rested);
+    }
+
+    [Fact]
+    public void Seated_InTiltedConstruct_RoofNotAboveTheSeat()
+    {
+        // The roof is straight above the seat in the frame of the construct; tilted 45 degrees it is 2 m to the side of the vertical ray of the planet (the B6 note for C3).
+        // The point of the evaluation must also leave the cell of the seat: a tilted cube reaches 0.87 m from its centre, so a point 0.5 m up would be inside the seat itself.
+        Prepare();
+        _rig.Seat(_rig.Alice);
+        _rig.Tick(100);
+        Assert.True(Last().RestConditionsMet);
+        Assert.True(_rig.Sim.State.Constructs.TryGet(FunctionalBlocks.Construct, out var construct));
+        _rig.Sim.ApplyServerOperation(new EntityReparentOp(
+            FunctionalBlocks.Construct, construct.Parent, construct.ParentSeq + 1, construct.Origin,
+            Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 4f), Vector3.Zero, null));
 
         _rig.Tick(100);
 
