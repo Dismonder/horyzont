@@ -363,7 +363,7 @@ Każdy krok kończy się zielonym budowaniem i testami; commity w formacie Conve
 - [x] B3. Treść: `BlockFunctionKind` 11–13, `BlockFunction.ContainerSlots`, `BlockTypeCatalog`, `BlockTypeContent` (światło), nowe typy w `blocks.json`, materiał `lamp`, nazwy w `blocks.csv`. Commit `feat(content): add chests, a bed, a lamp and a wooden door`.
 - [x] B4. `SurvivalRules` z `BlockContentTable`; `FunctionalBlockRules` (postawienie, rozbiórka, Toggle z kolumną, Sleep/SetRespawn, config, quick stack, take all); `ContainerReach`; walidator (28, 29, 22, 23; `BucketFor`; D21; D23); `GameRules`. Commit `feat(core): resolve chests, beds, doors, lamps and quick stacking`.
 - [x] B5. `ConstructDirtyChunks` przez `OperationConstructs` i 49; `ChunkMesher` (otwarte drzwi, komórki lamp), `BuiltInShapeMeshes` (`builtin:door_open`). Commit `feat(constructs): mesh open doors and report lamp cells`.
-- [ ] B6. Sprawdzenie (niżej).
+- [x] B6. Sprawdzenie (niżej).
 
 ### Etap C — zapis i serwer
 
@@ -630,3 +630,10 @@ Przegląd tylko odczytem planu i opisu B1 (commit e214887; bez uruchamiania test
 - `ConstructDirtyChunks.Collect` bierze część budowli złożonej z `OperationConstructs.TryGetConstructPart` (składowa 2–4 albo same składowe 49), a operację 49 traktuje jak `BlockSetOp` (komórka i sąsiednie chunki, bo otwarte drzwi odsłaniają ściany sąsiadów). Złożona bez części budowli (same przedmioty) niczego nie brudzi.
 - `BlockRenderInfo` ma `Function` i `OpenMesh`; `BlockRenderTable.Build` daje każdemu blokowi `Door` jednorazowo zbudowaną siatkę `builtin:door_open` (panel 0,1 m przy ścianie −X, nie jest wymieniona w treści). `ChunkMesher`: drzwi z `FunctionState` ≠ 0 są kształtem prefabrykowanym bez kolizji i nie zasłaniają ścian sąsiadów; lampa z `FunctionState` ≠ 0 trafia do `ChunkMeshData.LightCells` (komórki budowli, rosnąco po x, y, z; tylko wnętrze chunka). Zamknięte drzwi i wyłączona lampa rysują się jak zwykły sześcian.
 - **Poprawka testu B1:** `Collect_CompoundWithBlockSet_DirtiesCell` (kolumna drzwi) używał komórek z `z = 0`, których sąsiedni chunk `Z − 1` też jest brudny; komórki przesunięte na `z = 8`, żeby test sprawdzał to, co opisuje (dwa chunki wzdłuż osi Y).
+
+### Etap B, krok B6 — sprawdzenie (2026-10-16)
+
+- `dotnet build Horyzont.sln`: 0 ostrzeżeń, 0 błędów. `dotnet format Horyzont.sln --verify-no-changes`: czysto.
+- `dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"`: Architecture 12, Client 591, Integration 34, Net 166, Constructs 131, Persistence 203, Core 1802, Server 360 (+1 pominięty, istniejący) zielone, razem 3299. W jednym pełnym przebiegu `AllocationTests.SubmitPlaceOnFaceOverlappingOtherConstruct_Rejected_DoesNotAllocate` padł (zimny JIT, znany flak z A1/A2); osobno i w kolejnym przebiegu `Core.Tests` zielony.
+- `git diff b5e427e..HEAD` na `Golden/TerrainJournals`, `TerrainJournalGoldenCorpusTests.cs`, `DeterminismTests.cs` i `src/Horyzont.Persistence/Migrations`: pusty.
+- Zostaje etap C (zapis i serwer): testy z tabeli etapu C (C1), bez zmian w tym kroku. Przeglądu Opus wymaga całość zmian Core (`FunctionalBlockRules`, `IntentValidator`, `SurvivalRules`, kodeki 22/23/28/29/46, `ProtocolVersion` 15).
