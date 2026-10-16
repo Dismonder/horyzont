@@ -1,14 +1,17 @@
 using System.Text;
 using System.Text.Json;
 
+using Horyzont.Core.Crafting;
 using Horyzont.Core.Items;
 using Horyzont.Core.Protocol;
+using Horyzont.Core.World.Blocks;
 
 namespace Horyzont.Core.Content;
 
 /// <summary>
-/// Reads and validates the survival content (D16 of K6-29W): <c>items/items.json</c>, <c>terrain/yields.json</c> and <c>start.json</c>.
-/// Every error is an <see cref="InvalidDataException"/> naming the file and the JSON path. Unknown properties (e.g. <c>visual</c>) are ignored.
+/// Reads and validates the survival content (D16 of K6-29W): <c>items/items.json</c>, <c>terrain/yields.json</c> and <c>start.json</c>, and from K6-32
+/// the optional <c>recipes/recipes.json</c>. Every error is an <see cref="InvalidDataException"/> naming the file and the JSON path. Unknown
+/// properties (e.g. <c>visual</c>) are ignored.
 /// </summary>
 public static class ContentLoader
 {
@@ -24,21 +27,38 @@ public static class ContentLoader
     /// <summary>Recipes file relative to the content root (K6-32 D4); optional.</summary>
     public const string RecipesFile = "recipes/recipes.json";
 
+    /// <summary>Most recipes in the file (K6-32 D26).</summary>
+    public const int MaxRecipes = 1024;
+
+    /// <summary>Most ingredients of a recipe (K6-32 D26).</summary>
+    public const int MaxRecipeIngredients = 8;
+
+    /// <summary>Most fuel entries of a recipe (K6-32 D26).</summary>
+    public const int MaxRecipeFuel = 2;
+
+    /// <summary>Longest time of a piece in seconds (K6-32 D26).</summary>
+    public const int MaxRecipeSeconds = 3600;
+
     private const int MaxStackLimit = 999;
+
+    // Stands for an unpaired surrogate in the text: such a character has no UTF-8 form, so the JSON parser would refuse the whole file without a path.
+    private const char InvalidCharacter = '￿';
 
     private static readonly JsonDocumentOptions _options = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = false };
 
-    /// <summary>Reads the three files from a content root directory.</summary>
-    /// <param name="contentRoot">Directory with <see cref="ItemsFile"/>, <see cref="YieldsFile"/> and <see cref="StartFile"/>.</param>
+    /// <summary>Reads the files from a content root directory; a missing <see cref="RecipesFile"/> means no recipes.</summary>
+    /// <param name="contentRoot">Directory with <see cref="ItemsFile"/>, <see cref="YieldsFile"/>, <see cref="StartFile"/> and optionally <see cref="RecipesFile"/>.</param>
     /// <returns>The content.</returns>
     /// <exception cref="InvalidDataException">The content is invalid.</exception>
     public static SurvivalContent LoadDirectory(string contentRoot)
     {
         ArgumentNullException.ThrowIfNull(contentRoot);
+        var recipesPath = Path.Combine(contentRoot, RecipesFile);
         return Parse(
             File.ReadAllText(Path.Combine(contentRoot, ItemsFile)),
             File.ReadAllText(Path.Combine(contentRoot, YieldsFile)),
-            File.ReadAllText(Path.Combine(contentRoot, StartFile)));
+            File.ReadAllText(Path.Combine(contentRoot, StartFile)),
+            File.Exists(recipesPath) ? File.ReadAllText(recipesPath) : null);
     }
 
     /// <summary>Parses and validates the content.</summary>
@@ -47,7 +67,16 @@ public static class ContentLoader
     /// <param name="startJson">Text of <see cref="StartFile"/>.</param>
     /// <returns>The content.</returns>
     /// <exception cref="InvalidDataException">The content is invalid.</exception>
-    public static SurvivalContent Parse(string itemsJson, string yieldsJson, string startJson)
+    public static SurvivalContent Parse(string itemsJson, string yieldsJson, string startJson) => Parse(itemsJson, yieldsJson, startJson, null);
+
+    /// <summary>Parses and validates the content with the recipes of <see cref="RecipesFile"/> (K6-32 D4).</summary>
+    /// <param name="itemsJson">Text of <see cref="ItemsFile"/>.</param>
+    /// <param name="yieldsJson">Text of <see cref="YieldsFile"/>.</param>
+    /// <param name="startJson">Text of <see cref="StartFile"/>.</param>
+    /// <param name="recipesJson">Text of <see cref="RecipesFile"/>, or null when the content has no recipes.</param>
+    /// <returns>The content.</returns>
+    /// <exception cref="InvalidDataException">The content is invalid.</exception>
+    public static SurvivalContent Parse(string itemsJson, string yieldsJson, string startJson, string? recipesJson)
     {
         ArgumentNullException.ThrowIfNull(itemsJson);
         ArgumentNullException.ThrowIfNull(yieldsJson);
@@ -71,30 +100,35 @@ public static class ContentLoader
             startKit = ParseStart(document.RootElement, catalog);
         }
 
+        RecipeDef[] recipes = [];
+        if (recipesJson is not null)
+        {
+            using var document = Open(recipesJson, RecipesFile);
+            recipes = ParseRecipes(document.RootElement, catalog);
+        }
+
         for (var i = 0; i < items.Length; i++)
         {
             var key = items[i].Key;
-            if ((items[i].Flags & ItemFlags.Retired) == 0 && !HasSource(key, yields, startKit))
+            if ((items[i].Flags & ItemFlags.Retired) == 0 && !HasSource(key, yields, startKit, recipes))
             {
-                throw Invalid(ItemsFile, $"$.items[{i}]", $"item '{key}' has no source (a terrain yield or the start kit)");
+                throw Invalid(ItemsFile, $"$.items[{i}]", $"item '{key}' has no source (a terrain yield, the start kit or a recipe)");
             }
         }
 
-        return new SurvivalContent(catalog, yields, startKit);
+        return new SurvivalContent(catalog, yields, startKit, recipes);
     }
 
-    /// <summary>Parses and validates the content with the recipes of <see cref="RecipesFile"/>. Skeleton: with recipes the body arrives with step B3.</summary>
-    /// <param name="itemsJson">Text of <see cref="ItemsFile"/>.</param>
-    /// <param name="yieldsJson">Text of <see cref="YieldsFile"/>.</param>
-    /// <param name="startJson">Text of <see cref="StartFile"/>.</param>
-    /// <param name="recipesJson">Text of <see cref="RecipesFile"/>, or null when the content has no recipes.</param>
-    /// <returns>The content.</returns>
-    /// <exception cref="InvalidDataException">The content is invalid.</exception>
-    public static SurvivalContent Parse(string itemsJson, string yieldsJson, string startJson, string? recipesJson) =>
-        recipesJson is null ? Parse(itemsJson, yieldsJson, startJson) : throw new NotImplementedException("K6-32 B3");
-
-    private static bool HasSource(string key, TerrainYieldDef[] yields, StartKitDef startKit)
+    private static bool HasSource(string key, TerrainYieldDef[] yields, StartKitDef startKit, RecipeDef[] recipes)
     {
+        foreach (var recipe in recipes)
+        {
+            if (recipe.Result.ItemKey == key)
+            {
+                return true;
+            }
+        }
+
         foreach (var yield in yields)
         {
             if (yield.ItemKey == key)
@@ -273,16 +307,173 @@ public static class ContentLoader
         return new StartKitDef(bag, hotbar, equipment, entries);
     }
 
+    private static RecipeDef[] ParseRecipes(JsonElement root, ItemCatalog catalog)
+    {
+        RequireObject(root, "$", RecipesFile);
+        if (!root.TryGetProperty("formatVersion", out var version) || version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out var number) || number != 1)
+        {
+            throw Invalid(RecipesFile, "$.formatVersion", "must be 1");
+        }
+
+        var array = RequiredArray(root, "recipes", "$", RecipesFile);
+        if (array.GetArrayLength() > MaxRecipes)
+        {
+            throw Invalid(RecipesFile, "$.recipes", $"more than {MaxRecipes} recipes");
+        }
+
+        var recipes = new List<RecipeDef>();
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        var index = 0;
+        foreach (var element in array.EnumerateArray())
+        {
+            var path = $"$.recipes[{index}]";
+            RequireObject(element, path, RecipesFile);
+            var key = RequiredKey(element, "key", path, RecipesFile);
+            if (!keys.Add(key))
+            {
+                throw Invalid(RecipesFile, path + ".key", $"duplicate key '{key}'");
+            }
+
+            var station = RequiredEnum<StationKind>(element, "station", path, RecipesFile);
+            var level = RequiredInt(element, "level", path, RecipesFile, 1, StationKinds.MaxLevel(station));
+            var timed = StationKinds.IsTimed(station);
+            var seconds = 0;
+            if (timed)
+            {
+                seconds = RequiredInt(element, "timeSeconds", path, RecipesFile, 1, MaxRecipeSeconds);
+            }
+            else if (element.TryGetProperty("timeSeconds", out _))
+            {
+                throw Invalid(RecipesFile, path + ".timeSeconds", "only a station with time has a time per piece");
+            }
+
+            var ingredients = ParseEntries(element, "ingredients", path, catalog, 1, MaxRecipeIngredients, required: true, []);
+            var ingredientKeys = new HashSet<string>(ingredients.Select(i => i.ItemKey), StringComparer.Ordinal);
+            if (!timed && element.TryGetProperty("fuel", out var fuelElement) && !(fuelElement.ValueKind == JsonValueKind.Array && fuelElement.GetArrayLength() == 0))
+            {
+                throw Invalid(RecipesFile, path + ".fuel", "only a station with time uses fuel");
+            }
+
+            var fuel = timed ? ParseEntries(element, "fuel", path, catalog, 0, MaxRecipeFuel, required: false, ingredientKeys) : [];
+            var result = ParseResult(element, path, catalog);
+            string? progressKey = null;
+            if (element.TryGetProperty("progressKey", out var keyElement) && keyElement.ValueKind != JsonValueKind.Null)
+            {
+                progressKey = RequiredKey(element, "progressKey", path, RecipesFile);
+            }
+
+            recipes.Add(new RecipeDef(key, station, (byte)level, ingredients, fuel, result, (uint)seconds, progressKey));
+            index++;
+        }
+
+        return [.. recipes];
+    }
+
+    private static RecipeEntry[] ParseEntries(
+        JsonElement recipe, string name, string path, ItemCatalog catalog, int min, int max, bool required, HashSet<string> forbidden)
+    {
+        if (!required && !recipe.TryGetProperty(name, out _))
+        {
+            return [];
+        }
+
+        var array = RequiredArray(recipe, name, path, RecipesFile);
+        var count = array.GetArrayLength();
+        if (count < min || count > max)
+        {
+            throw Invalid(RecipesFile, $"{path}.{name}", $"must have {min}..{max} entries");
+        }
+
+        var entries = new RecipeEntry[count];
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var index = 0;
+        foreach (var element in array.EnumerateArray())
+        {
+            var entryPath = $"{path}.{name}[{index}]";
+            RequireObject(element, entryPath, RecipesFile);
+            var def = RequiredItem(element, entryPath, catalog);
+            if (!seen.Add(def.Key))
+            {
+                throw Invalid(RecipesFile, entryPath + ".item", $"item '{def.Key}' repeats in this list");
+            }
+
+            if (forbidden.Contains(def.Key))
+            {
+                throw Invalid(RecipesFile, entryPath + ".item", $"item '{def.Key}' is also an ingredient");
+            }
+
+            entries[index] = new RecipeEntry(def.Key, (ushort)RequiredInt(element, "count", entryPath, RecipesFile, 1, MaxStackLimit));
+            index++;
+        }
+
+        return entries;
+    }
+
+    private static RecipeEntry ParseResult(JsonElement recipe, string path, ItemCatalog catalog)
+    {
+        var resultPath = path + ".result";
+        if (!recipe.TryGetProperty("result", out var element))
+        {
+            throw Invalid(RecipesFile, resultPath, "expected an object");
+        }
+
+        RequireObject(element, resultPath, RecipesFile);
+        var def = RequiredItem(element, resultPath, catalog);
+        return new RecipeEntry(def.Key, (ushort)RequiredInt(element, "count", resultPath, RecipesFile, 1, def.MaxStack));
+    }
+
+    // An item of a recipe is known and not retired (spec 03, "Obsługa błędów").
+    private static ItemDef RequiredItem(JsonElement entry, string path, ItemCatalog catalog)
+    {
+        var key = RequiredKey(entry, "item", path, RecipesFile);
+        if (!catalog.TryGet(key, out var def))
+        {
+            throw Invalid(RecipesFile, path + ".item", $"unknown item '{key}'");
+        }
+
+        return (def.Flags & ItemFlags.Retired) != 0 ? throw Invalid(RecipesFile, path + ".item", $"item '{key}' is retired") : def;
+    }
+
     private static JsonDocument Open(string json, string file)
     {
         try
         {
-            return JsonDocument.Parse(json, _options);
+            return JsonDocument.Parse(MarkUnpairedSurrogates(json), _options);
         }
         catch (JsonException e)
         {
             throw new InvalidDataException($"{file}: invalid JSON: {e.Message}", e);
         }
+        catch (ArgumentException e)
+        {
+            throw new InvalidDataException($"{file}: invalid JSON: {e.Message}", e);
+        }
+    }
+
+    private static string MarkUnpairedSurrogates(string text)
+    {
+        StringBuilder? builder = null;
+        for (var i = 0; i < text.Length; i++)
+        {
+            var c = text[i];
+            var paired = char.IsHighSurrogate(c) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]);
+            if (paired)
+            {
+                builder?.Append(c).Append(text[i + 1]);
+                i++;
+            }
+            else if (char.IsSurrogate(c))
+            {
+                builder ??= new StringBuilder(text, 0, i, text.Length);
+                builder.Append(InvalidCharacter);
+            }
+            else
+            {
+                builder?.Append(c);
+            }
+        }
+
+        return builder?.ToString() ?? text;
     }
 
     private static void RequireObject(JsonElement element, string path, string file)
@@ -312,9 +503,9 @@ public static class ContentLoader
         }
 
         var text = value.GetString()!;
-        if (text.Length == 0 || Encoding.UTF8.GetByteCount(text) > ProtocolConstants.MaxRegistryKeyBytes)
+        if (text.Length == 0 || text.Contains(InvalidCharacter, StringComparison.Ordinal) || Encoding.UTF8.GetByteCount(text) > ProtocolConstants.MaxRegistryKeyBytes)
         {
-            throw Invalid(file, $"{path}.{name}", $"a key has 1..{ProtocolConstants.MaxRegistryKeyBytes} UTF-8 bytes");
+            throw Invalid(file, $"{path}.{name}", $"a key has 1..{ProtocolConstants.MaxRegistryKeyBytes} UTF-8 bytes and no unpaired surrogate");
         }
 
         return text;

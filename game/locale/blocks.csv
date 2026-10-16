@@ -22,4 +22,12 @@ BLOCK_CHEST_METAL,Metal chest,Skrzynia metalowa
 BLOCK_BED,Bed,Łóżko
 BLOCK_LAMP,Lamp,Lampa
 BLOCK_WOOD_DOOR,Wooden door,Drzwi drewniane
+BLOCK_WORKBENCH,Workbench,Warsztat
+BLOCK_WORKBENCH_ANVIL,Anvil,Kowadło
+BLOCK_WORKBENCH_TOOLRACK,Tool rack,Stojak na narzędzia
+BLOCK_WORKBENCH_GRINDSTONE,Grindstone,Kamień szlifierski
+BLOCK_FURNACE,Furnace,Piec
+BLOCK_REFINERY,Refinery,Rafineria
+BLOCK_KITCHEN,Kitchen,Kuchnia
+BLOCK_FABRICATOR,Fabricator,Fabrykator
 BLOCK_MISSING,Missing block,Brakujący blok

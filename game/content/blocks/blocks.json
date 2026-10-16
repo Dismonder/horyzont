@@ -35,6 +35,14 @@
     { "key": "core:chest_metal", "shape": "cube", "mass": 200, "material": "metal", "function": { "kind": "chest", "slots": 40 } },
     { "key": "core:bed", "shape": "mesh", "mesh": "builtin:slab", "mass": 120, "material": "ship_fabric", "function": { "kind": "bed" } },
     { "key": "core:lamp", "shape": "cube", "mass": 20, "material": "lamp", "function": { "kind": "light", "range": 8, "color": "#FFD9A0", "energy": 1.5 } },
-    { "key": "core:wood_door", "shape": "cube", "mass": 100, "material": "wood", "function": { "kind": "door" } }
+    { "key": "core:wood_door", "shape": "cube", "mass": 100, "material": "wood", "function": { "kind": "door" } },
+    { "key": "core:workbench", "shape": "cube", "mass": 150, "material": "wood", "function": { "kind": "station", "station": "workbench" } },
+    { "key": "core:workbench_anvil", "shape": "cube", "mass": 250, "material": "metal", "function": { "kind": "station_upgrade", "station": "workbench" } },
+    { "key": "core:workbench_toolrack", "shape": "cube", "mass": 60, "material": "wood", "function": { "kind": "station_upgrade", "station": "workbench" } },
+    { "key": "core:workbench_grindstone", "shape": "cube", "mass": 180, "material": "stone", "function": { "kind": "station_upgrade", "station": "workbench" } },
+    { "key": "core:furnace", "shape": "cube", "mass": 400, "material": "stone", "function": { "kind": "station", "station": "furnace", "inputSlots": 4, "outputSlots": 4 } },
+    { "key": "core:refinery", "shape": "cube", "mass": 600, "material": "metal", "function": { "kind": "station", "station": "refinery", "inputSlots": 4, "outputSlots": 4 } },
+    { "key": "core:kitchen", "shape": "cube", "mass": 120, "material": "wood", "function": { "kind": "station", "station": "kitchen" } },
+    { "key": "core:fabricator", "shape": "cube", "mass": 500, "material": "ship_console", "function": { "kind": "station", "station": "fabricator" } }
   ]
 }

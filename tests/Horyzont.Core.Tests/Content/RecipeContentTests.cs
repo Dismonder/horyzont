@@ -164,9 +164,9 @@ public sealed class RecipeContentTests
     public void Parse_UnsupportedFormatVersion_Throws()
     {
         // Review B1, 8: the file has its own format version, 1.
-        Assert.Empty(ContentLoader.Parse(Items, Yields, Start, "{ \"formatVersion\": 1, \"recipes\": [] }").Recipes);
+        Assert.Single(Parse(Smelt).Recipes);
 
-        var exception = Assert.Throws<InvalidDataException>(() => ContentLoader.Parse(Items, Yields, Start, "{ \"formatVersion\": 2, \"recipes\": [] }"));
+        var exception = Assert.Throws<InvalidDataException>(() => ContentLoader.Parse(Items, Yields, Start, "{ \"formatVersion\": 2, \"recipes\": [ " + Smelt + " ] }"));
         Assert.Contains(ContentLoader.RecipesFile, exception.Message, StringComparison.Ordinal);
         Assert.Contains("$.formatVersion", exception.Message, StringComparison.Ordinal);
     }
@@ -182,7 +182,6 @@ public sealed class RecipeContentTests
     [Theory]
     [InlineData("\"key\": \"t:smelt\"", "\"key\": \"\"")]
     [InlineData("\"key\": \"t:smelt\"", "\"key\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"")]
-    [InlineData("\"key\": \"t:smelt\"", "\"key\": \"a\ud800b\"")]
     [InlineData("\"key\": \"t:smelt\"", "\"key\": 7")]
     [InlineData("\"station\": \"furnace\"", "\"station\": \"forge\"")]
     [InlineData("\"station\": \"furnace\"", "\"station\": \"none\"")]
@@ -224,13 +223,23 @@ public sealed class RecipeContentTests
         "\"fuel\": [ { \"item\": \"test:peat\", \"count\": 1 }, { \"item\": \"test:stone\", \"count\": 1 }, { \"item\": \"test:tool\", \"count\": 1 } ]",
         "$.recipes[0].fuel")]
     [InlineData("\"progressKey\": null", "\"progressKey\": \"\"", "$.recipes[0].progressKey")]
-    [InlineData("\"progressKey\": null", "\"progressKey\": \"a\ud800b\"", "$.recipes[0].progressKey")]
     [InlineData("\"progressKey\": null", "\"progressKey\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"", "$.recipes[0].progressKey")]
     public void Parse_BadEntries_Throw(string from, string to, string path)
     {
         Parse(Smelt);
 
         AssertInvalid(path, Smelt.Replace(from, to, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Parse_UnpairedSurrogate_Throws()
+    {
+        // A lone surrogate has no UTF-8 form (review A1 note d, review B1 note 8). It is built at run time: an attribute argument would turn it into U+FFFD.
+        var lone = "a" + (char)0xD800 + "b";
+        Parse(Smelt);
+
+        AssertInvalid("$.recipes[0].key", Smelt.Replace("\"t:smelt\"", $"\"{lone}\"", StringComparison.Ordinal));
+        AssertInvalid("$.recipes[0].progressKey", Smelt.Replace("\"progressKey\": null", $"\"progressKey\": \"{lone}\"", StringComparison.Ordinal));
     }
 
     [Fact]

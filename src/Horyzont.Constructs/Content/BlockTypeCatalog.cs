@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
+using Horyzont.Core.Crafting;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.World.Blocks;
 
@@ -255,6 +256,26 @@ public sealed partial class BlockTypeCatalog
                 function = BlockFunction.Bed;
                 allowed = [];
                 break;
+            case "station":
+                var station = ReadStation(element, path);
+                if (StationKinds.IsTimed(station))
+                {
+                    function = BlockFunction.CreateStation(station, ReadSlots(element, path, "inputSlots"), ReadSlots(element, path, "outputSlots"));
+                    allowed = ["station", "inputSlots", "outputSlots"];
+                }
+                else
+                {
+                    function = BlockFunction.CreateStation(station);
+                    allowed = ["station"];
+                }
+
+                break;
+            case "station_upgrade":
+                var upgraded = ReadStation(element, path);
+                Require(StationKinds.MaxLevel(upgraded) > 1, $"{path}.station", $"'{upgraded.ToString().ToLowerInvariant()}' has no levels, so an upgrade of it would never count");
+                function = BlockFunction.CreateStationUpgrade(upgraded);
+                allowed = ["station"];
+                break;
             case "light":
                 function = BlockFunction.Light;
                 light = new BlockLightDef(
@@ -275,15 +296,27 @@ public sealed partial class BlockTypeCatalog
         return function;
     }
 
-    private static ushort ReadChestSlots(JsonElement parent, string path)
+    private static ushort ReadChestSlots(JsonElement parent, string path) => ReadSlots(parent, path, "slots");
+
+    private static ushort ReadSlots(JsonElement parent, string path, string name)
     {
-        Require(parent.TryGetProperty("slots", out var value), $"{path}.slots", "is required");
+        Require(parent.TryGetProperty(name, out var value), $"{path}.{name}", "is required");
         var slots = 0;
         Require(
             value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out slots) && slots is >= 1 and <= ProtocolConstants.MaxContainerSlots,
-            $"{path}.slots", $"must be an integer 1..{ProtocolConstants.MaxContainerSlots}");
+            $"{path}.{name}", $"must be an integer 1..{ProtocolConstants.MaxContainerSlots}");
         return (ushort)slots;
     }
+
+    private static StationKind ReadStation(JsonElement parent, string path) => ReadString(parent, path, "station") switch
+    {
+        "workbench" => StationKind.Workbench,
+        "furnace" => StationKind.Furnace,
+        "refinery" => StationKind.Refinery,
+        "kitchen" => StationKind.Kitchen,
+        "fabricator" => StationKind.Fabricator,
+        _ => throw Invalid($"{path}.station", "must be 'workbench', 'furnace', 'refinery', 'kitchen' or 'fabricator'"),
+    };
 
     private static byte ReadTier(JsonElement parent, string path)
     {

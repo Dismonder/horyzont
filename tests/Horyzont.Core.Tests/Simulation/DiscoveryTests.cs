@@ -134,6 +134,11 @@ public sealed class DiscoveryTests
 
         Assert.DoesNotContain(f.JournalFrom(journaled), op => op is ItemDiscoverOp);
         Assert.False(f.IsDiscovered(Player1, Gem));
+
+        // The twin (review B1, 14): the same item in the bag of the player is discovered, so the line above is a rule and not a missing feature.
+        f.Stock(Bag, 0, Gem, 1);
+        Assert.Equal(new ItemDiscoverOp(Player1, Gem), f.JournalFrom(journaled)[^1]);
+        Assert.True(f.IsDiscovered(Player1, Gem));
     }
 
     [Fact]
