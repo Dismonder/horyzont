@@ -112,11 +112,11 @@ public sealed class RecipeListTests
         Assert.True(stone.Value >= 100);
         Assert.False(recipes.IsKnown(hand));
 
-        progress.Apply(new PlayerProgressState(ItemTypeBitSet.Empty.With(stone), []));
+        progress.Apply(new PlayerProgressState(ItemTypeBitSet.Empty.With(stone), [], FoodSlots.Empty));
         Assert.True(recipes.IsKnown(hand));
 
         // The id the content order would give is not the discovered one.
-        progress.Apply(new PlayerProgressState(ItemTypeBitSet.Empty.With(CraftingClientFixture.Item(SurvivalContentFactory.StoneKey)), []));
+        progress.Apply(new PlayerProgressState(ItemTypeBitSet.Empty.With(CraftingClientFixture.Item(SurvivalContentFactory.StoneKey)), [], FoodSlots.Empty));
         Assert.False(recipes.IsKnown(hand));
     }
 }
