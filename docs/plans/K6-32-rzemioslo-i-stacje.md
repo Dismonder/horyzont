@@ -1,0 +1,488 @@
+# K6-32 · Rzemiosło i stacje
+
+| | |
+| --- | --- |
+| Prowadzi | Gemini 3.8 Flash (Antigravity, myślenie High; reguły: `AGENTS.md`, `docs/ZASADY.md`, ten plan). Kroki A1 i B1 (zatwierdzenie kontraktów Core przed kodem) oraz przegląd Core A+B — Opus 5.5 |
+| Testy akceptacyjne | Gemini 3.8 Flash, przed kodem (ZASADY §8); testy i kontrakty etapów A i B zatwierdza Opus 5.5 **przed** implementacją. Dotyczy to operacji 43 i 45, rodzaju stanu bloku `Station`, bloba 22 w wersji 2, bloba 25, intencji 24, odmów 44–46, komunikatu 48, czystej funkcji stacji i skrótu |
+| Przegląd | PR: Sonnet 5.5 (pakiet Gemini, ZASADY §9), a ponieważ pakiet zmienia Core i kontrakty chronione, także Opus 5.5 (ZASADY §3, §12). Wygląd panelu rzemiosła i panelu stacji ocenia Dismond. **Wykonawca nie uruchamia gry z oknem** (zakaz właściciela): weryfikacja to xUnit i gdUnit bez okna, a zrzuty i ocena wyglądu należą do właściciela |
+| Zależy od | **Wyłącznie** K6-29 (wycinek K6-29W: przedmioty, kontenery, operacje 30–35, `M0003_Survival`) i K6-30 (bloki funkcyjne: `BlockEntity`, operacje 36, 37, 40, 44, 49, reguły `CompoundOp` D12, `OperationConstructs`, blob 22 w wersji 1, `ProtocolVersion` 15). **Nie** zależy od K6-31 i nie korzysta z jego kodu (D0) |
+| Gałąź | `pakiet/k6-32-rzemioslo` od `main` po scaleniu K6-30 (do tego czasu od `pakiet/k6-30-bloki-funkcyjne`). **Nie** od `pakiet/k6-31-zbieranie` |
+| Kamień milowy | K6 Przetrwanie; odbiór według spec 03, wiersz K6-32: „rzemiosło z 5 skrzyń atomowe; piec według ticków” |
+
+**Cel:** gracz robi przedmioty z receptur zapisanych jako dane (`content/recipes/recipes.json`). Może robić je „w rękach”, przy warsztacie (poziomy 1–4 z ulepszeń w promieniu 5 m), w kuchni i w fabrykatorze, a w piecu i rafinerii przetwarzać wsad w czasie. Składniki pochodzą z plecaka, paska i skrzyń w promieniu 20 m od stacji. Każde rzemiosło to jedna `CompoundOp`, więc wynik jest atomowy nawet przy pięciu skrzyniach. Piec i rafineria liczą gotowe sztuki czystą funkcją ticków, a rozliczenie jest operacją serwera przy interakcji. Gracz odkrywa przedmioty (`ItemDiscoverOp`, 43), a świat zbiera klucze postępu (`ProgressKeyGrantOp`, 45). Recepturę widać, gdy gracz odkrył któryś składnik i świat ma jej klucz. Klient poznaje swoje odkrycia i klucze świata z `PlayerProgressState` (48). Formaty są te ze spec 03, więc K6-33 (jedzenie), K6-34 (generator tlenu), K6-38 (uprawy), K7-44 (amunicja), K7-47 (klucze od bossów), K8-54 (drzewo receptur) i K9-59 (komenda `progress`) je rozszerzają, a nie zastępują.
+
+## Kontekst
+
+- `docs/ZASADY.md`: §2 (każda zmiana świata to operacja; `OperationTerrain`/`OperationConstructs`; składowa nieodwracalna ostatnia z widokiem efektywnym), §3 (kontrakty chronione; linia 68 — zmiana appliera bez podbicia formatu tylko przy niezmienionym korpusie i `DeterminismTests`; linia 74 — zakresy kodów), §4 (applier nie czyta treści; „zdarzenia czasowe (… rozliczenie stacji …) są operacjami serwera”; operacja niesie limit stosu), §5, §6, §7, §8, §9, §11, §12.
+- `docs/spec/03-przetrwanie.md`: Rzemiosło i stacje (l. 72–87: receptura jako dane, odkrywanie, klucze postępu, składniki z plecaka, paska i wspólnych kontenerów w promieniu 20 m, wynik do plecaka albo `InventoryFull` przed zużyciem, tabela stacji, stacja z czasem jako czysta funkcja ticków); Przedmioty i treść (l. 215–219: `ContentLoader`, walidacja „nieznany składnik”, „przedmiot bez źródła”, `Retired`); Bloki ze stanem (l. 230: „postęp stacji (tick startu, paliwo)”); Stan gracza (l. 235–238: odkryte przedmioty jako zbiór bitów po `ItemTypeId`, `ProgressKeys` w `meta`, `ProgressKeyGrantOp` 45); Reguły w Core (l. 242: `RecipeDef` i przetwarzanie stacji jako czyste funkcje wspólne dla serwera i klienta); Operacje (l. 263–267: 43, 45; l. 280–283: tabela akcji „Rzemiosło”, „Rozliczenie stacji z czasem”, „Postawienie bloku” z kontenerem stacji); Intencje (l. 308: 24 `CraftIntent`); Odmowy (l. 319: 44 `StationRequired`, 45 `RecipeLocked`, 46 `TooFarFromStation`); Sieć (l. 335: 48 `PlayerProgressState`; l. 339: stację subskrybuje się z 6 m, koniec powyżej 8 m; l. 343: „pasek postępu stacji klient liczy sam z ticku startu”); Zapis (l. 358, 362: blob 22, `meta` `progress_keys` blob 25; l. 368: skrót obejmuje klucze i dziennikowane pola `PlayerProgress`); Obsługa błędów (l. 380, 383, 386, 388); Testy (l. 401–402: atomowość rzemiosła, piec według ticków); Pakiety (l. 434).
+- `docs/plan/plan-projektu.md:133` (K6-32: Gemini 3.8 Flash; zależy od K6-29, K6-30) oraz zależne: `:135` K6-34 (generator tlenu rozlicza ogniwa tak samo jak stacja), `:139` K6-38 (grządki jako stan bloku z czasem), `:152` K7-44 (amunicja z receptur), `:155` K7-47 (boss daje klucz przez 45), `:169` K8-54 (drzewo receptur, solwer osiągalności), `:181` K9-59 (komenda `progress` na operacji 45).
+- `docs/plans/K6-29W-ekwipunek-i-wydobycie.md` — D4/D5 (`CompoundOp`, `UndoLog`), D7 (warunkowa sekcja skrótu), D8 (reguły Przetrwania tylko z treścią), D10 (`ItemPlacement`), D16 (`ContentLoader`).
+- `docs/plans/K6-30-bloki-funkcyjne.md` — D4 (`BlockEntityKind.Station = 3` zarezerwowany dla K6-32; „kolejne pakiety dopisują rodzaj — nowa wartość dyskryminatora, istniejące bajty bez zmian”), D8 (wzór złożonej przy postawieniu i rozbiórce skrzyni), D9 (dostęp i zasięg kontenerów blokowych 6/8 m od oka), D11 (blob 22 w wersji 1; „K6-33 dokłada pola jako wersję 2”), D12/D13 (reguły złożonej, indeks gospodarz × rodzaj, który przewiduje dwa kontenery stacji na jednym bloku), D15 (`BlockEntityStates` 46), D20 (subskrypcje), D21 (bez treści Przetrwania), D22 (warunkowe podsekcje skrótu); przeglądy A1 i B1 (zasada „test odmowy zaczyna od poprawnego odpowiednika”).
+- `docs/plans/K1-03-core-stan-i-operacje.md:614-622` (zakresy Przetrwania: operacje 30–49, odmowy 40–59, komunikaty 40–49, intencje 20–39, bloby 20–29); `docs/plans/README.md` D4 (`ProtocolVersion` = `main` + 1 przy scaleniu), X5 (router), X6 (fixture protokołu).
+
+Kod, na którym pakiet buduje (stan sprawdzony grepem w worktree `serene-wescoff-6bc4f5`, 2026-10-16). Worktree ma już kod K6-31, więc kolumna „uwaga” mówi, co jest z K6-31 i czego K6-32 **nie** używa.
+
+| Co | Gdzie | Uwaga |
+| --- | --- | --- |
+| `OperationKind`: 1–7, 20–23, 30–37, 40, 44, 47, 48, 49 → **wolne 43 i 45** | `src/Horyzont.Core/Operations/OperationKind.cs` | 47, 48 to K6-31 (zarezerwowane, nie używać) |
+| `OperationApplier.TryApply` / `TryApplyCompound`, `IsComponent` (l. 116–118: 31–37, 40, 44, 49 oraz 47/48 z K6-31), `ApplyContainerCreate` (gospodarz `ConstructBlock`, indeks `TryGetOfBlock` po rodzaju), `ApplyContainerRemove` (odmawia kontenera gracza), `ApplyBlockEntitySet` (l. 746–805: `Chest`, `Bed`, `default` → „block state kind not supported”), `ApplyRespawnPointSet` (l. 807: brak łóżka → `_undo.SetProgress(state, player, null)`, czyli usuwa rekord) | `src/Horyzont.Core/Simulation/OperationApplier.cs` | |
+| `IntentCodec`, prywatny `IntentCode`: 1–3, 10, 13–15, 20–23, 27, 28, 29 → **wolne 24** | `src/Horyzont.Core/Serialization/IntentCodec.cs:19-34` | 27 to K6-31 |
+| `RejectReason`: 0–21, 30, 31, 36, 37, 39, 40–43, 53, 54, 57 → **wolne 44, 45, 46** | `src/Horyzont.Core/Intents/RejectReason.cs` | 53 to K6-31 |
+| `MessageType`: …, 40–43, 45, 46, 49 → **wolne 48** (47 należy do `WorldSettingsState`, 44 do `PlayerVitals` z K6-33) | `src/Horyzont.Core/Protocol/MessageType.cs` | 45 to K6-31 |
+| `BlobKind`: 1–5, 10–12, 20, 21, 22 → **wolne 25** (23 `WorldSettings`, 24 `PersistentEntity` dla reszty K6-29) | `src/Horyzont.Core/Serialization/BlobKind.cs` | |
+| `ProtocolConstants.ProtocolVersion` = 16 w worktree (15 po K6-30, 16 po K6-31); `MaxRegistryKeyBytes = 64`, `MaxItemTypes = 4096`, `MaxContainerSlots = 256`, `MaxBlockEntitiesPerConstruct = 4096`, `MaxCompoundComponents = 4096`, `MaxCompoundBytes = 160 KiB` | `src/Horyzont.Core/Protocol/ProtocolConstants.cs` | D2 |
+| `StateCodec`: `ValidateBlobHeader` (l. 909) wymaga wersji = `CurrentFormatVersion` (1) dla **każdego** bloba; blob 22 w wersji 1 (l. 868–907: gracz, bajt flag, bit 0 = punkt odrodzenia, inne bity → `ProtocolViolationException`) | `src/Horyzont.Core/Serialization/StateCodec.cs` | D20 |
+| `BlockEntityKind` (`Chest` 1, `Bed` 2, `Station` 3 zarezerwowany „for K6-32”), `BlockEntityState` (`abstract record`, konstruktor `private protected`), `ChestBlockState`, `BedBlockState`, `BlockRef`, `BlockEntityStore` | `src/Horyzont.Core/BlockEntities/` | |
+| `PlayerProgress(PlayerId Player, BedRef? RespawnBed)`; `PlayerProgressStore` („rekord istnieje tylko dla gracza z punktem odrodzenia”) | `src/Horyzont.Core/Progress/` | D7 |
+| `WorldStateBuilder.Build`: sprawdza, że kontener `Chest` z gospodarzem blokowym ma stan `Chest` (l. 300–311); `LoadBlockEntity` (`default` → wyjątek, l. 525); `LoadProgress` odrzuca rekord bez punktu odrodzenia (l. 534) | `src/Horyzont.Core/Checkpoints/WorldStateBuilder.cs` | |
+| `StateHasher`: sekcja Przetrwania `0x53` (warunek l. 165–166), podsekcje `0x42` stany bloków, `0x50` postęp graczy (l. 233–253, rekord bez łóżka hashuje `0`), `0x48` zebrane obiekty (K6-31) | `src/Horyzont.Core/Hashing/StateHasher.cs` | 0x48 to K6-31 |
+| `ContainerKind`: `PlayerBag` 1, `Hotbar` 2, `Equipment` 3, `Chest` 4, `CargoHold` 5, **`StationInput` 6, `StationOutput` 7**, `Tombstone` 8, `DroppedItem` 9; `ItemSource.Craft` 2, `Station` 3; `ItemSink.Craft` 1, `Station` 2, `Fuel` 4 — wszystkie są od formatu 1 | `src/Horyzont.Core/Items/` | bez zmian formatu |
+| `ContainerStore`: `OfKind(kind)`, `TryGetOfBlock(construct, cell, kind)`, `IsBlockHost`, `TryGetOfPlayer`; `ContainerHost.ConstructBlock(construct, cell)` | `src/Horyzont.Core/Items/` | |
+| `ItemCreateOp(SlotRef Slot, ItemTypeId Type, ushort Count, ushort StackLimit, ItemSource Source)`, `ItemDestroyOp(SlotRef Slot, ItemTypeId Type, ushort Count, ItemSink Sink)` | `src/Horyzont.Core/Operations/` | |
+| `ItemPlacement` (`Create` → pasek i plecak, `CountOf`, `Destroy`, `MoveAny`; prywatne `Fill`) | `src/Horyzont.Core/Simulation/ItemPlacement.cs` | D12: nowa metoda „tylko plecak” |
+| `ItemTypeRegistry.TryGetId(key)`, `TryGetKey(id)`, `IsKnown(id)` | `src/Horyzont.Core/Items/ItemTypeRegistry.cs` | |
+| `ContentLoader` (`ItemsFile`, `YieldsFile`, `StartFile`; `LoadDirectory`, `Parse`; `HasSource` = urobek terenu lub zestaw startowy), `SurvivalContent`, `ItemDef(Key, Category, MaxStack, Flags, ToolTier, EquipmentSlot)`, `ItemFlags` (w tym `Retired`), `ItemCategory` (`Component` 8) | `src/Horyzont.Core/Content/` | worktree ma też `PropsFile`, 4-argumentowy `Parse` i `HasSource` z obiektami — to K6-31 |
+| `SurvivalRules.CheckItemParameters` / `CheckContainer` (l. 378–396: blokowy kontener tylko `Chest`) / `CheckChest` (dostęp `Shared` albo właściciel, zasięg `ContainerKeepRangeMeters` od oka) | `src/Horyzont.Core/Simulation/SurvivalRules.cs` | w worktree konstruktor ma `PropField?` z K6-31 |
+| `FunctionalBlockRules.TryResolve` (`PlaceBlockIntent` z funkcją `Chest`/`Bed`/`Light`, `RemoveBlockIntent` na komórce ze stanem: `default` → `InvalidParameters`, l. 227), `ResolveQuickStack` (tylko `OfKind(Chest)`), `ResolveTakeAll` | `src/Horyzont.Core/Simulation/FunctionalBlockRules.cs` | |
+| `IntentValidator.Validate` (l. 47–112), `BucketFor` (l. 115), `HasValidParameters` (l. 125), `CheckBlockTarget` | `src/Horyzont.Core/Simulation/IntentValidator.cs` | |
+| `ServerSimulation`: konstruktor (l. 75–100), `Submit` (l. 128–210: walidacja → `FunctionalBlockRules.TryResolve` → `SurvivalRules.Resolve` → `TryApplyAndJournal` → `Commit` → kubełek → `RaiseApplied`), `ApplyServerOperation` (l. 253), `Applied` | `src/Horyzont.Core/Simulation/ServerSimulation.cs` | w worktree jest gałąź `PropHitIntent` z K6-31 |
+| `ContainerReach.TryDistanceFromEye`, `TryGetEye` | `src/Horyzont.Core/Simulation/ContainerReach.cs` | |
+| `GameRules` (`TickRate` 60, `ReachMeters` 8, `ItemIntentsPerSecond` 20, `ItemIntentBurst` 40, `ContainerOpenRangeMeters` 6, `ContainerKeepRangeMeters` 8, `QuickStackRangeMeters` 10; właściwości `init`) | `src/Horyzont.Core/Simulation/GameRules.cs` | |
+| `AppliedOperation(…, TerrainVersions, ConstructChanges, ContainerChanges)` — **bez** listy zmian postępu ani stanów bloków | `src/Horyzont.Core/Operations/AppliedOperation.cs` | D10: odczyt składowych |
+| `BlockFunction` (rekord struct: `Kind`, `Seat`, `Tier`, …, `ContainerSlots`), `BlockFunctionKind` 0–13 (`Chest` 11, `Bed` 12, `Light` 13) → **wolne 14, 15** | `src/Horyzont.Core/World/Blocks/` | treść, nie format |
+| `BlockTypeCatalog` (`FormatVersion = 2`, `ParseFunction` l. 195), treść bloków (24 typy) | `src/Horyzont.Constructs/Content/BlockTypeCatalog.cs`, `game/content/blocks/blocks.json` | |
+| Treść przedmiotów w worktree: `core:multitool` (tier 1), `core:build_tool`, `core:stone`, `core:soil`, `core:sand`, `core:ore`, a z K6-31 `core:wood`, `core:fiber`, `core:crystal`; urobek: stone, dirt→soil, sand, ore; zestaw startowy: multitool i build_tool na pasku | `game/content/items/items.json`, `terrain/yields.json`, `start.json` | wood/fiber/crystal nie istnieją bez K6-31 (D24) |
+| `M0003_Survival`: tabele `player_progress (player_id, data)`, `block_entities`, `meta (key TEXT, value BLOB)`; `Sql.MetaNextContainerId`; fikstury `world-v1.db`, `world-v3.db`, `world-v3-blocks.db` | `src/Horyzont.Persistence/`, `tests/Horyzont.Persistence.Tests/Fixtures/` | D3 |
+| `InventoryService` (`OnPlayerReady` l. 77, subskrypcja l. 144–191: obcy kontener tylko `Chest` z gospodarzem blokowym, `CheckSubscriptions` co 10 ticków, l. 197) | `src/Horyzont.Server/Inventory/InventoryService.cs` | D17 |
+| `IServerPlayerObserver.OnPlayerReady`, `GameServerHooks.OnPlayerReady` (l. 123), wzór obserwatora z `Applied`: `MarkerReplication` | `src/Horyzont.Server/` | D10 |
+| `BlockEntityReplicator` (46 po `BlockEntitySetOp`), `SharedBlockEntities` (host i solo) | `src/Horyzont.Server/Replication/`, `src/Horyzont.Client/Blocks/` | stan stacji jedzie w 46 bez zmian |
+| Klient: `ClientInventory`, `ChestSession` (l. 230: tylko `Chest`), `InventoryInteraction` (l. 116, 262: dozwolone rodzaje), `BlockInteraction` (l. 117–120: podpowiedzi według `BlockFunctionKind`), `ClientBlockEntities` | `src/Horyzont.Client/Inventory/`, `src/Horyzont.Client/Blocks/` | |
+| Gra: `InventoryScreen`, `ChestPanel`, `InventoryNode`, `HudTheme`, `SlotView`, `ItemTooltip`; `SurvivalContentLoader.Load` (`game/src/Content/`); tick serwera: `GameHudMetricsSource.TryGetServerTick` (host: `server.State.CurrentTick`, klient zdalny: tick z migawek) | `game/src/Client/Inventory/`, `game/src/Content/`, `game/src/UI/GameHudMetricsSource.cs` | D23 |
+| Testy kontraktu: `tests/Horyzont.Core.Tests/Protocol/ProtocolContractTests.cs` (`ProtocolVersion_MatchesDocumentedMergeValue`, `Constants_GoldenValues`, `Enums_GoldenValues`, `Operations_EachRecordReturnsItsKind_AndEveryKindHasARecord`, `Messages_EachRecordReturnsItsType_AndEveryTypeHasARecord`), `tests/Horyzont.Net.Tests/MergedProtocolTests.cs` | | |
+
+## Zakres
+
+1. **Core: model i operacje.** `StationBlockState` (rodzaj 3) z kontenerami wejścia i wyjścia, aktywną recepturą i tickiem startu; odkrycia w `PlayerProgress` (`ItemTypeBitSet`); `ProgressKeyStore` w `WorldState`; operacje 43 `ItemDiscoverOp` i 45 `ProgressKeyGrantOp` (składowe odwracalne z `UndoLog`); rozszerzenie operacji 40 o rodzaj `Station`; operacja 44 zachowuje odkrycia; kodeki, blob 22 w wersji 2, blob 25, checkpoint, builder, skrót.
+2. **Core: czyste funkcje.** `RecipeBook.IsKnown` (widoczność receptury), `StationProcess` (rozliczenie stacji z czasem z ticków), `StationLevels` (poziom warsztatu z ulepszeń), `OperationProgress` (odczyt zmian postępu ze złożonej).
+3. **Treść.** `RecipeDef` i `recipes/recipes.json` w `ContentLoader` z walidacją; `StationKind`; rodzaje funkcji bloku `Station` i `StationUpgrade`; bloki stacji i ulepszeń; nowe przedmioty demonstracyjne (D24).
+4. **Core: intencje i protokół.** `CraftIntent` (24); odmowy 44, 45, 46; rzemiosło natychmiastowe (ręce, warsztat, kuchnia, fabrykator) jako jedna złożona; wybór receptury i rozliczenie pieca i rafinerii; postawienie i rozbiórka stacji z kontenerami; automatyczne odkrywanie trzymanych przedmiotów; komunikat 48; `ProtocolVersion`.
+5. **Zapis i serwer.** Blob 22 v2 i `meta.progress_keys`; subskrypcje kontenerów stacji z rozliczeniem przy otwarciu; rozliczanie obserwowanych stacji; wysyłka 48.
+6. **Klient i gra (tylko to, co pakiet musi pokazać).** Panel rzemiosła w ekranie ekwipunku (ręce) i przy stacji (E), panel pieca i rafinerii z wejściem, wyjściem i paskiem postępu, teksty PL/EN.
+
+Poza zakresem:
+
+| Co | Gdzie |
+| --- | --- |
+| Koszt postawienia stacji i ulepszeń z ekwipunku, zwrot przy rozbiórce | K6-36 |
+| Jedzenie jako skutek (statystyki, `FoodSetOp`), pola K6-33 w `PlayerProgress` | K6-33 |
+| Generator tlenu (ten sam wzór rozliczenia z ticków, rodzaj stanu 5) | K6-34 |
+| Ładownia `CargoHold` jako źródło składników (dopisuje rodzaj do listy źródeł D13) | K6-37 |
+| Grządki, nasiona | K6-38 |
+| Pełny interfejs: poziom warsztatu na ekranie, kolejka rzemiosła, sortowanie i wyszukiwanie receptur, ikony, podgląd przewidywany | K6-39 |
+| Klucze od bossów | K7-47 |
+| Drzewo receptur, poziomy materiałów, solwer osiągalności, docelowe liczby treści | K8-54 |
+| Komenda konsoli `progress` i administratorzy | K9-59 |
+| Ustawienia świata (`WorldSettingsSetOp` 46, komunikat 47, blob 23) | reszta K6-29 / K6-39 |
+| Grafika stacji, animacja ognia w piecu | K8-50 |
+
+## Decyzje
+
+Każda decyzja rozstrzyga miejsce, w którym specyfikacja milczy, jest sprzeczna z kodem albo pakiet świadomie bierze jej wycinek. Odstępstwa od spec 03 są oznaczone **[odstępstwo]** i trafiają do opisu PR. Kwestie, których nie da się ustalić z kodu ani specyfikacji, są oznaczone **DO USTALENIA-n** z proponowaną decyzją. Wykonawca stosuje propozycję, dopóki Opus 5.5 albo właściciel nie zdecyduje inaczej w kroku A1 lub B1.
+
+- **D0. Baza bez K6-31.** Gałąź powstaje od `main` po K6-30. Kod K6-31 może nie istnieć i nie wolno się na nim opierać. Chodzi o: `PropField`, `PropRules`, `PropDamageLedger`, operacje 47/48, intencję 27, komunikat 45, odmowę 53, podsekcję skrótu `0x48`, `ContentLoader.PropsFile` i 4-argumentowy `Parse`, `SurvivalRules(…, PropField?)`, gałąź `PropHitIntent` w `Submit`, przedmioty `core:wood/fiber/crystal`. Jego numery zostają zarezerwowane: K6-32 ich nie używa. Kolizje przy rebase opisuje sekcja „Rebase i kolejność scaleń”.
+- **D1. Kody w tym pakiecie (zakres Przetrwania, K1-03; każdy sprawdzony grepem jako wolny).** Operacje 43 `ItemDiscoverOp` i 45 `ProgressKeyGrantOp`; intencja 24 `CraftIntent`; odmowy `StationRequired` 44, `RecipeLocked` 45, `TooFarFromStation` 46; komunikat 48 `PlayerProgressState`; blob 25 `ProgressKeys`; blob 22 w wersji 2; rodzaj stanu bloku `Station` = 3 (wartość już zarezerwowana w `BlockEntityKind`). Treść, nie format: `BlockFunctionKind.Station` = 14 i `StationUpgrade` = 15. Pozostałe numery ze spec (41, 42, 46 operacji; 25, 26, 30–33 intencji; 47 komunikatu) zostają nieużyte, a kodeki odrzucają je jako nieznane.
+- **D2. `ProtocolVersion` = (`main` w chwili scalenia) + 1** (README D4). Gdy K6-32 wejdzie do `main` przed K6-31, wartość to 16; po K6-31 — 17. Aktualizowane są istniejące testy `ProtocolContractTests.ProtocolVersion_MatchesDocumentedMergeValue` i `Constants_GoldenValues`.
+- **D3. Bez nowej migracji.** `player_progress` (blob 22) i `meta` istnieją od `M0003_Survival`. Klucze postępu to wiersz `meta` o kluczu `progress_keys` (blob 25), zapisywany upsertem w transakcji checkpointu; brak wiersza oznacza pusty zbiór. Numer M0004 zostaje wolny. Nowa fikstura `world-v3-crafting.db` (D25) zabezpiecza dane pakietu przed przyszłymi migracjami.
+- **D4. Receptury jako dane: `content/recipes/recipes.json`, format 1.** Wczytuje go `ContentLoader` (nowa stała `RecipesFile = "recipes/recipes.json"`, plik opcjonalny jak przyszłe pliki treści; jego brak daje `Recipes` puste). Wpis:
+  ```json
+  { "key": "core:iron_ingot", "station": "furnace", "level": 1, "progressKey": null,
+    "ingredients": [ { "item": "core:ore", "count": 2 } ], "fuel": [ { "item": "core:peat", "count": 1 } ],
+    "result": { "item": "core:iron_ingot", "count": 1 }, "timeSeconds": 20 }
+  ```
+  `RecipeDef(string Key, StationKind Station, byte Level, IReadOnlyList<RecipeEntry> Ingredients, IReadOnlyList<RecipeEntry> Fuel, RecipeEntry Result, uint TimeSeconds, string? ProgressKey)`, `RecipeEntry(string ItemKey, ushort Count)`. Walidacja (`InvalidDataException` z plikiem i ścieżką JSON, wzór istniejących): klucz receptury unikalny, 1–64 B UTF-8; `station` jedną z nazw `StationKind` (bez `none`); `level` w 1…`StationKinds.MaxLevel(station)`; 1–8 składników, każdy przedmiot znany, nie `Retired`, liczba 1…999, bez powtórzeń; `fuel` 0–2 wpisy, dozwolone **tylko** dla stacji z czasem, przedmioty różne od składników; `result`: przedmiot znany, nie `Retired` (spec l. 388), liczba 1…`MaxStack` przedmiotu; `timeSeconds` wymagane w 1…3600 dla stacji z czasem, zabronione dla pozostałych; `progressKey` `null` albo klucz 1–64 B; najwyżej `MaxRecipes = 1024`. `HasSource` uznaje wynik receptury za źródło przedmiotu, więc nowe przedmioty demonstracyjne przechodzą walidację „przedmiot bez źródła”.
+- **D5. Stacje jako enum w Core. DO USTALENIA-9.** `StationKind : byte` (`src/Horyzont.Core/World/Blocks/StationKind.cs`, obok `SeatRole`, bo czyta go `BlockFunction`): `Hands` 0, `Workbench` 1, `Furnace` 2, `Refinery` 3, `Kitchen` 4, `Fabricator` 5. `StationKinds` (`src/Horyzont.Core/Crafting/StationKinds.cs`): `IsTimed(kind)` (Furnace, Refinery), `MaxLevel(kind)` (Workbench 4, pozostałe 1). Zachowanie stacji (z czasem albo bez, poziomy) jest kodem, nie treścią, bo każde zachowanie ma własną ścieżkę rozstrzygania. Nowa stacja wymaga więc kodu, a nowe receptury tylko treści.
+- **D6. Bloki stacji i ulepszeń (treść).** `BlockFunctionKind.Station = 14`, `StationUpgrade = 15`. `BlockFunction` dostaje parametry `StationKind Station = Hands` i `ushort OutputSlots = 0`. Dla stacji z czasem `ContainerSlots` oznacza miejsca wejścia, a `OutputSlots` miejsca wyjścia. Fabryki: `CreateStation(StationKind kind, ushort inputSlots = 0, ushort outputSlots = 0)`, `CreateStationUpgrade(StationKind kind)`. `BlockTypeCatalog` przyjmuje `{"kind":"station","station":"workbench"}`, `{"kind":"station","station":"furnace","inputSlots":4,"outputSlots":4}` i `{"kind":"station_upgrade","station":"workbench"}`. Stacja z czasem wymaga obu liczb miejsc w 1…256, stacja bez czasu ich zabrania, `hands` jest niedozwolone. `FormatVersion` zostaje 2, bo rodzaje są tylko dopisane (precedens: `chest`, `bed`, `light` w K6-30).
+- **D7. Odkrycia w `PlayerProgress`.** `ItemTypeBitSet` (`src/Horyzont.Core/Progress/ItemTypeBitSet.cs`): niemutowalna klasa `sealed` z równością po zawartości, `Empty`, `Contains(ItemTypeId)`, `With(ItemTypeId)`, `Without(ItemTypeId)` (dla cofania), `Count`, `IsEmpty`, bajty kanoniczne (bit `i` w bajcie `i / 8`, od najmłodszego; bez końcowych bajtów zerowych; bit 0 zawsze 0, bo 0 = brak typu). `PlayerProgress(PlayerId Player, BedRef? RespawnBed, ItemTypeBitSet? Discovered = null)` z właściwością pomocniczą `DiscoveredItems => Discovered ?? ItemTypeBitSet.Empty`. **Niezmiennik zmienia się z „rekord ⇔ punkt odrodzenia” na „rekord ⇔ punkt odrodzenia albo co najmniej jedno odkrycie”.** Skutki, które muszą być w kodzie: `ApplyRespawnPointSet` z brakiem łóżka u gracza z odkryciami zapisuje rekord z `RespawnBed = null`, a nie usuwa go; ustawienie łóżka zachowuje odkrycia (`existing with { RespawnBed = bed }`); `LoadProgress` odrzuca tylko rekord pusty; komentarze XML w `PlayerProgress`, `PlayerProgressStore` i `StateCodec` dostają nowy niezmiennik. Stare dzienniki nie mają odkryć, więc powtórka operacji 44 daje identyczny wynik (ZASADY §3, linia 68). **Do przeglądu Opus.**
+- **D8. Widoczność receptury (czysta funkcja, wspólna dla serwera i klienta).** `RecipeBook.IsKnown(RecipeDef recipe, ItemTypeRegistry registry, ItemTypeBitSet discovered, IReadOnlySet<string> worldKeys)`: (`ProgressKey` jest `null` albo należy do `worldKeys`) **i** co najmniej jeden **składnik** (nie paliwo) ma `ItemTypeId` w rejestrze i bit w `discovered`. `CraftIntent` z recepturą nieznaną → `RecipeLocked` (45). Spec: „Gracz odkrywa recepturę, gdy pierwszy raz trzyma któryś składnik i świat ma jej klucz postępu” — widoczność wynika ze stanu, więc receptury nie mają własnego zapisu.
+- **D9. Odkrywanie trzymanych przedmiotów. DO USTALENIA-1.** Spec umieszcza `ItemDiscoverOp` w złożonej rzemiosła („dla nowych przedmiotów”), ale gracz „trzyma składnik” także po kopaniu, wyjęciu ze skrzyni albo z zestawu startowego, a każda z tych ścieżek ma własny resolver z K6-29W/K6-30. **Propozycja:** (a) złożona rzemiosła zawiera `ItemDiscoverOp(gracz, typ wyniku)`, gdy wynik nie jest odkryty (zgodnie ze spec); (b) `ServerSimulation` po każdej operacji z `Submit` i `ApplyServerOperation` (nie w `Replay`), **gdy treść ma receptury**, przegląda `AppliedOperation.ContainerChanges` kontenerów z gospodarzem `Player` (`PlayerBag`, `Hotbar`, `Equipment`), zbiera nieodkryte typy właściciela rosnąco po `ItemTypeId` i stosuje jedną operację serwera (`ItemDiscoverOp` albo `CompoundOp` z samych 43). Robi to po `RaiseApplied` operacji źródłowej, nie w handlerze `Applied` (bez wywołań zagnieżdżonych). Operacja odkrycia nie zmienia kontenerów, więc nie wywołuje kolejnego przeglądu. (c) Publiczne `ServerSimulation.DiscoverHeldItems(PlayerId)` dla `OnPlayerReady` (gracze sprzed K6-32 i zestaw startowy). Przełącznik „treść ma receptury” sprawia, że testy K6-29W/K6-30 bez receptur (skróty, liczby operacji w dzienniku) nie zmieniają się — wzór przełącznika treścią obiektów z przeglądu B1 K6-31. Odrzucona alternatywa: dopisywanie 43 do każdej złożonej w każdym resolverze — zmienia kod trzech pakietów i wymaga symulowania skutku przed zastosowaniem.
+- **D10. Klucze postępu.** `ProgressKeyStore` w `WorldState` (`SortedSet<string>` z `StringComparer.Ordinal`, `Contains`, `Count`, `Sorted`, oznaczanie zmiany w `ChangeTracker.MarkProgressKeys()`). Operacja 45 `ProgressKeyGrantOp(string Key)`: klucz 1–64 B UTF-8 (`ProtocolConstants.MaxRegistryKeyBytes`), świat go nie ma, liczba kluczy < `ProtocolConstants.MaxProgressKeys = 256` → dodanie (cofane w złożonej). Jedyna droga przyznania w K6-32 to `ServerSimulation.ApplyServerOperation(new ProgressKeyGrantOp(key))`, której używają testy. Bossowie (K7-47) i komenda `progress` (K9-59) dopiszą wywołania. Klucze nie mają intencji: gracz nie przyznaje ich sobie sam.
+- **D11. `PlayerProgressState` (48), format 1. DO USTALENIA-2. [odstępstwo]** Klient potrzebuje własnych odkryć i kluczy świata, żeby pokazać receptury, a spec nie ma komunikatu z kluczami świata. Zakres komunikatów 40–49 jest w spec w całości przydzielony, a 47 to `WorldSettingsState` (jeszcze nie istnieje). **Propozycja:** 48 niesie odkrycia właściciela oraz klucze świata: `PlayerProgressState(ItemTypeBitSet Discovered, IReadOnlyList<string> WorldProgressKeys)`; niezawodny uporządkowany, tylko do właściciela. Serwer wysyła go: (1) w `OnPlayerReady` po stanach kontenerów; (2) po każdej operacji, która ma składową 43 tego gracza; (3) po każdej operacji ze składową 45 — do każdego gracza online. Rozpoznaje to po typie `OperationProgress.Collect(Operation, List<PlayerId> discoveredBy, out bool keysChanged)`, które przechodzi też składowe `CompoundOp` (wzór `OperationConstructs`, Pułapki). Punkt odrodzenia i jedzenie dokładają K6-33/K6-35 jako wersję 2 komunikatu (pola dopisane na końcu). Klient zna swoje łóżko z 46 (K6-30, DO USTALENIA-7 tamtego planu).
+- **D12. `CraftIntent` (24) i rzemiosło natychmiastowe.** `CraftIntent(string Recipe, ushort Count, BlockRef? Station)`. Rzemiosło przy stacji bez czasu i w rękach to **jedna** `CompoundOp`: `ItemDestroyOp` na składnikach (ujście `Craft`, jedna na slot, kolejność źródeł D13), potem `ItemCreateOp` z wynikiem **tylko do plecaka** (źródło `Craft`, limit stosu z `ItemDef.MaxStack` w operacji, najpierw stosy tego typu rosnąco po slocie, potem puste sloty rosnąco — nowa `ItemPlacement.CreateInContainer`), na końcu `ItemDiscoverOp` dla nieodkrytego wyniku (D9a). Brak składników → `NotEnoughItems` (41). Miejsce na wynik liczy się na kopii plecaka **po** zdjęciu składników; nie mieści się cały → `InventoryFull` (40), zanim cokolwiek powstanie (spec l. 76, 380; **DO USTALENIA-6**). `Count` 1…`GameRules.MaxCraftCount = 50` (**DO USTALENIA-13**); składniki i wynik mnożone przez `Count`. Złożona przekraczająca `MaxCompoundComponents` jest niemożliwa (składowych jest najwyżej tyle, ile slotów), ale resolver i tak sprawdza limit → `InvalidParameters`. Kubełek `Items`.
+- **D13. Źródła składników. DO USTALENIA-3, -4, -5.** Kolejność: własny `PlayerBag` (sloty rosnąco), własny `Hotbar` (sloty rosnąco), potem kontenery blokowe rodzaju `Chest` z gospodarzem `ConstructBlock`, do których gracz ma dostęp (`Shared` albo właściciel — reguła K6-30 D9), których środek komórki leży w promieniu `GameRules.CraftContainerRangeMeters = 20` od **środka komórki stacji** (rzemiosło przy stacji) albo od **oka gracza** (ręce), na tej samej planecie, posortowane rosnąco po odległości, a przy remisie po `ContainerId`. Kontenery stacji, ekwipunek i kontenery innych graczy nie są źródłami. Spec mówi „wspólnych kontenerów … najpierw plecak, potem kontenery od najbliższego”; pasek między plecakiem a skrzyniami i własna skrzynia prywatna to rozstrzygnięcia tego planu. Ręce nie mają w spec środka promienia — przyjęto oko gracza, jak przy koszcie budowania (spec l. 91). Nowa publiczna statyczna `ContainerReach.TryCellCenter(state, construct, cell, out PlanetId planet, out Vector3 centre)`, której używa też istniejące `TryDistanceFromEye`.
+- **D14. Stacja w intencji: zasięg i poziom. DO USTALENIA-8.** Receptura `Hands`: `Station` musi być `null`, inaczej `InvalidParameters`. Pozostałe: brak `Station` → `StationRequired` (44); nieznana budowla → `UnknownConstruct` (12); komórka poza zakresem → `CellOutOfBounds` (13); pusta → `CellEmpty` (15); blok bez funkcji `Station` albo z innym `StationKind` → `StationRequired` (44); oko dalej niż `GameRules.StationUseRangeMeters = 8` od środka komórki stacji albo inna planeta → `TooFarFromStation` (46), bez sprawdzania linii wzroku (panel stacji jest już otwarty); `StationLevels.Compute(…) < recipe.Level` → `StationRequired` (44). Poziom (`StationLevels.Compute(WorldState, BlockContentTable, EntityId construct, CellPos cell)`): 1 + liczba **różnych typów** bloków z funkcją `StationUpgrade` o tym samym `StationKind`, których środek komórki leży w promieniu `GameRules.StationUpgradeRangeMeters = 5` od środka komórki stacji, w dowolnej budowli na tej samej planecie, obcięte do `StationKinds.MaxLevel`. Budowle przegląda się przez `state.Constructs` (rama → planeta przez `TryToPlanetFrame`), w każdej odrzuca chunki dalsze niż promień plus przekątna chunka i sprawdza komórki pozostałych. Wynik wpływa tylko na przyjęcie intencji, nie na treść operacji. Klient nie liczy poziomu w K6-32 (pokazuje tylko „wymaga poziomu N”, a o reszcie decyduje odmowa; poziom na ekranie dokłada K6-39).
+- **D15. Stacje z czasem: model. DO USTALENIA-7. [odstępstwo]** `StationBlockState(ContainerId Input, ContainerId Output, string Recipe, Tick? Started)` (`Recipe` puste = brak wybranej, `Started` `null` = bezczynna). Paliwo to wpisy `fuel` receptury, zużywane na każdą sztukę z wejścia jak składniki (ujście `Fuel`), więc stan **nie** ma bufora paliwa (spec l. 230 wymienia „paliwo” w stanie — przyjęto prostszy model, w którym paliwo wynika z wejścia). Czysta funkcja `StationProcess.Settle(ReadOnlySpan<ItemStack> input, ReadOnlySpan<ItemStack> output, in StationRecipe recipe, ulong durationTicks, Tick? started, Tick now, ushort resultStackLimit) → StationSettlement(int Done, Tick? NextStarted)`, gdzie `StationRecipe` to receptura przetłumaczona na `ItemTypeId` (składniki, paliwo, wynik), a `durationTicks = TimeSeconds × GameRules.TickRate`:
+  - `possible(in, out)` = min(⌊ilość typu w wejściu / potrzeba⌋ po składnikach i paliwie, miejsce na wynik w wyjściu ÷ liczba wyniku) — liczone na kopiach;
+  - `started == null`: `Done = 0`, `NextStarted = possible ≥ 1 ? now : null`;
+  - `started != null`: `Done = min(possible, ⌊(now − started) / duration⌋)`; po zdjęciu `Done` sztuk: `NextStarted = possible′ ≥ 1 ? started + Done × duration : null`.
+  Ta reguła daje niezmienność („liczba sztuk po N tickach nie zależy od tego, kiedy i jak często ktoś otwiera piec”): rozliczenie bez zmiany wejścia ani wyjścia przesuwa start dokładnie o zrobione sztuki, a postój (brak wsadu, pełne wyjście) kończy się tylko interakcją, która sama rozlicza. Pasek postępu klienta: `StationProcess.Progress(started, now, duration)` = ((now − started) mod duration) / duration, gdy stacja pracuje; `Done > 0` po stronie klienta oznacza „gotowe do odebrania”.
+- **D16. Rozliczenie stacji: kiedy. DO USTALENIA-11.** Rozliczenie to osobna operacja serwera: `CompoundOp[ItemDestroyOp(wejście, ujście Station dla składników / Fuel dla paliwa)…, ItemCreateOp(wyjście, źródło Station)…, BlockEntitySetOp(stacja, typ, nowy stan)]`, ze składowymi tylko przedmiotów i stanu bloku, w kolejności: niszczenie, tworzenie, stan. Gdy stan się nie zmienia (`Done == 0` i ten sam `Started`), operacja nie powstaje. Buduje ją `StationSettlements.TryBuild(BlockRef station, Tick now, out Operation op)`. Wyzwalacze: (a) `ServerSimulation.Submit` przed rozstrzygnięciem i po zastosowaniu intencji, która dotyka stacji (D17), dla każdej dotkniętej stacji — każda jako osobny wpis dziennika z `Applied`; (b) subskrypcja kontenera stacji (`InventoryService`, przed wysłaniem `ContainerState`); (c) `StationService` (serwer) co `GameRules.StationSettleEveryTicks = 10` dla stacji, których kontener ktoś subskrybuje, żeby otwarty panel widział wyniki na bieżąco; (d) nic więcej: nieobserwowana stacja nie tyka, a ticki nie płyną, gdy serwer stoi (spec l. 386). Publiczne `ServerSimulation.TrySettleStation(BlockRef station)` zwraca `AppliedOperation?` dla (b) i (c).
+- **D17. Kontenery stacji: dostęp i intencje.** Stacja z czasem ma dwa kontenery z gospodarzem `ConstructBlock`: `StationInput` (gracz wkłada i wyjmuje) i `StationOutput` (gracz tylko wyjmuje). Właścicielem jest stawiający, dostęp zawsze `Shared` (**DO USTALENIA-14**; `BlockConfigIntent` z dostępem na stacji → `InvalidParameters`, jak w K6-30 dla bloku bez skrzyni). Zasięg jak skrzynia: subskrypcja do `ContainerOpenRangeMeters` (6 m), intencje i utrzymanie subskrypcji do `ContainerKeepRangeMeters` (8 m), od oka do środka komórki. `SurvivalRules.CheckContainer` uznaje rodzaje `Chest`, `StationInput`, `StationOutput` za kontenery blokowe (`CheckChest` → nazwa `CheckBlockContainer`). `ItemMoveIntent` z celem `StationOutput` (slot albo „dowolny”) → `InvalidParameters`. `TakeAllIntent` dozwolony na `StationOutput` i `StationInput`. Szybkie odkładanie (22) nadal tylko do skrzyń. Intencje „dotykające stacji” dla D16a: `ItemMoveIntent` ze źródłem albo celem w kontenerze stacji, `TakeAllIntent` na kontenerze stacji, `CraftIntent` przy stacji z czasem (tylko przed), `RemoveBlockIntent` na komórce ze stanem `Station` (tylko przed).
+- **D18. Stacje: postawienie, wybór receptury, rozbiórka.** Resolver: nowa klasa `CraftingRules` (wewnętrzna, `src/Horyzont.Core/Simulation/`), wołana w `Submit` **przed** `FunctionalBlockRules.TryResolve`. Postawienie bloku `Station` ze stacją z czasem (treść ma receptury): `CompoundOp[ContainerCreateOp(id1, StationInput, ConstructBlock, gracz, Shared, ContainerSlots), ContainerCreateOp(id2 = id1 + 1, StationOutput, …, OutputSlots), BlockEntitySetOp(…, StationBlockState(id1, id2, "", null)), BlockSetOp | ConstructCreateOp]` — składowa budowli ostatnia (K6-30 D12). Identyfikatory: `state.ContainerIds.PeekNext()` i następny (sprawdzić `ContainerIdAllocator`: alokacja w applierze przez `MarkUsed`, więc drugi to `PeekNext().Value + 1`). Stacja bez czasu i ulepszenie to zwykłe bloki (bez stanu, bez kontenerów; rozstrzyga je dotychczasowy kod). Wybór receptury (`CraftIntent` z `Count == 1` przy stacji z czasem; inne `Count` → `InvalidParameters`; ta sama receptura co aktywna → `InvalidParameters`): po rozliczeniu D16a `BlockEntitySetOp(stacja, typ, state with { Recipe = klucz, Started = possible ≥ 1 ? now : null })`. Rozbiórka (po rozliczeniu D16a): oba kontenery puste → `CompoundOp[ContainerRemoveOp(we), ContainerRemoveOp(wy), BlockEntitySetOp(pusty), BlockClearOp]`; inaczej `ContainerNotEmpty` (57). Bez treści receptur: postawienie stacji z czasem → `InvalidParameters` (wzór K6-30 D21); rozbiórka stacji ze stanem → `InvalidParameters` (stan może istnieć tylko z treścią).
+- **D19. Applier: zmiany.** Operacja 40 przyjmuje `StationBlockState`: w widoku efektywnym (K6-30 D12) oba kontenery istnieją, mają rodzaje `StationInput`/`StationOutput` i gospodarza `ConstructBlock(budowla, komórka)`, a `Recipe` ma 0–64 B UTF-8. Applier nie sprawdza receptury w treści ani `Started` względem bieżącego ticku (ZASADY §4: treść czyta resolver). Operacje 43 i 45 dochodzą do `IsComponent` jako składowe odwracalne z wpisami `UndoLog` (`UndoLog.SetProgress` już przywraca poprzedni rekord, a dla kluczy nowy wpis „usuń klucz”). Operacja 44 zachowuje odkrycia (D7). Operacje 1–7, 20–23, 30–37 i 49 bez zmian semantyki; stare dzienniki nie zawierają 43, 45 ani stanu `Station`, więc ich powtórka się nie zmienia (dowód: `git diff` korpusu i `DeterminismTests` pusty). **Do przeglądu Opus.**
+- **D20. Blob 22 w wersji 2.** `[16][02] varuint gracz, bajt flag (bit 0 punkt odrodzenia, bit 1 odkrycia; inne → ProtocolViolationException), [BedRef], [bitset: varuint długość 1…512, bajty kanoniczne]`. Zapis zawsze w wersji 2; odczyt przyjmuje 1 (dotychczasowy dekoder) i 2. `ValidateBlobHeader` dostaje wariant z dozwolonym zakresem wersji dla danego rodzaju (pozostałe bloby nadal wymagają wersji 1). Bitset z bajtem końcowym 0, bitem 0 albo dłuższy niż 512 B → `ProtocolViolationException`. Przy rebase z K6-33 obowiązuje D27.
+- **D21. Blob 25 `ProgressKeys`.** `[19][01] varuint liczba (0…256), klucze rosnąco (ordinal), każdy: varuint długość 1…64 + UTF-8`. Klucze nieposortowane albo powtórzone → `ProtocolViolationException`. Persistence zamienia błąd dekodowania na `WorldCorruptedException`, jak dla bloba 20.
+- **D22. Skrót stanu.** Warunek sekcji Przetrwania (`StateHasher.cs:165`) dostaje `|| state.ProgressKeys.Count > 0`. W podsekcji `0x42` dochodzi przypadek `StationBlockState` (kontener wejścia, kontener wyjścia, długość i bajty UTF-8 receptury, `0`/`1` i tick startu). Na końcu sekcji dochodzą nowe podsekcje, każda tylko gdy niepusta: `0x44` — odkrycia po graczu (tylko rekordy z niepustymi odkryciami: gracz, długość, bajty) i `0x4B` — klucze świata (liczba, potem każdy klucz). Podsekcja `0x50` się nie zmienia, więc skrót świata K6-30 bez odkryć zostaje ten sam (test A0).
+- **D23. Klient bez przewidywania.** Rzemiosło, wybór receptury i rozliczenie pokazują się po odpowiedzi serwera (`ContainerDelta`, 46, 48). Pasek postępu pieca liczy klient (`StationProcess.Progress`) z `Started` z 46 i ticku serwera z tego samego źródła co HUD (`GameHudMetricsSource.TryGetServerTick`: host — tick serwera, klient zdalny — tick z migawek). Host i solo czytają stan bloku przez `SharedBlockEntities` (K6-30).
+- **D24. Treść demonstracyjna. DO USTALENIA-10.** Na bazie bez K6-31 istnieją tylko surowce z kopania (stone, soil, sand, ore), więc pakiet dostarcza mały, spójny zestaw do zagrania i testu ręcznego, który K8-54 zastąpi drzewem docelowym. Liczby to dane do strojenia bez zmiany kodu:
+
+  | Przedmiot (nowy) | Kategoria | Receptura |
+  | --- | --- | --- |
+  | `core:peat` (torf, paliwo) | `component` | ręce: 3 × soil → 1 |
+  | `core:stone_brick` | `component` | ręce: 2 × stone → 1 |
+  | `core:iron_ingot` | `component` | piec: 2 × ore + paliwo 1 × peat → 1, 20 s |
+  | `core:glass` | `component` | piec: 2 × sand + paliwo 1 × peat → 1, 15 s |
+  | `core:fuel_cell` | `component` | rafineria: 1 × iron_ingot + 2 × sand + paliwo 1 × peat → 1, 30 s |
+  | `core:multitool_t2` (`tool`, `toolTier` 2) | `tool` | warsztat poziom 2: 4 × iron_ingot + 2 × glass + 4 × stone_brick → 1 |
+
+  Bloki (nowe, z kosztem zero do K6-36): `core:workbench` (`station` workbench, materiał `wood`), `core:workbench_anvil`, `core:workbench_toolrack`, `core:workbench_grindstone` (każdy `station_upgrade` workbench), `core:furnace` (furnace, wejście 4, wyjście 4, `stone`), `core:refinery` (refinery, 4/4, `metal`), `core:kitchen` (kitchen, `wood`), `core:fabricator` (fabricator, `ship_console`). Kuchnia i fabrykator nie mają receptur w treści gry (posiłki — K6-33/K8-54; fabrykator „odblokowuje boss 2” — K7-47/K8-54). Treść testowa (`SurvivalContentFactory.CreateTestWithRecipes()`) ma receptury dla każdej stacji, w tym fabrykatora z kluczem `test:boss_2`.
+- **D25. Fikstura. DO USTALENIA-12.** Nowa `tests/Horyzont.Persistence.Tests/Fixtures/world-v3-crafting.db` z `FixtureGenerator.Generate_WorldV3Crafting` (kategoria `Manual`): świat z piecem w trakcie pracy (wsad, wybrana receptura, `Started`), dwiema skrzyniami, graczem z odkryciami i punktem odrodzenia, kluczem postępu w `meta`, a w ogonie dziennika z rzemiosłem z dwóch skrzyń i rozliczeniem pieca. Istniejące fikstury bez zmian.
+- **D26. Limity.** `ProtocolConstants.MaxProgressKeys = 256`, `MaxDiscoveredBytes = MaxItemTypes / 8` (512), `MaxRecipeKeyBytes = MaxRegistryKeyBytes`; `GameRules.MaxCraftCount = 50`, `CraftContainerRangeMeters = 20`, `StationUseRangeMeters = 8`, `StationUpgradeRangeMeters = 5`, `StationSettleEveryTicks = 10` (właściwości `init`, jak w K6-30); w `ContentLoader`: `MaxRecipes = 1024`, `MaxRecipeIngredients = 8`, `MaxRecipeFuel = 2`, `MaxRecipeSeconds = 3600`.
+- **D27. Wspólne formaty z równoległym K6-33.** K6-33 (jedzenie) też rozszerza blob 22 i komunikat 48. Pakiet scalany drugi dopisuje swoje pola **na końcu** jako następną wersję (blob 22 v3 z odczytem v1 i v2; komunikat 48 w wersji 2) i nie zmienia bajtów pakietu scalonego wcześniej. Szczegóły w sekcji „Rebase i kolejność scaleń”.
+
+## Kontrakty chronione i wersje
+
+Wszystko w `src/Horyzont.Core/` wymaga przeglądu Opus 5.5 (ZASADY §3), także czyste funkcje i resolver.
+
+| Ścieżka (ZASADY §3) | Zmiana w K6-32 | Co podbić / jak udowodnić |
+| --- | --- | --- |
+| `src/Horyzont.Core/Operations/`, `Simulation/OperationApplier.cs` | nowe rodzaje 43, 45 (format 1); `OperationKind`; `IsComponent`; rodzaj stanu `Station` w operacji 40 (nowy dyskryminator 3, bajty `Chest`/`Bed` bez zmian); operacja 44 zachowuje odkrycia (D7); `OperationProgress` | nowe rekordy w wersji 1; rodzaje 1–37, 40, 44, 49 bez zmiany bajtów i bez zmiany wyniku powtórki starych dzienników — dowód: `git diff <commit startu A>..HEAD` na korpusie złotym i `DeterminismTests` pusty (ZASADY §3, linia 68); przegląd Opus |
+| `src/Horyzont.Core/Intents/` | intencja 24 `CraftIntent`; `RejectReason` 44, 45, 46 | rekord intencji w wersji 1 w `IntentCodec`; `ProtocolVersion` (D2) |
+| `src/Horyzont.Core/Checkpoints/`, typy zapisywane (`BlockEntities/StationBlockState`, `Progress/ItemTypeBitSet`, `Progress/PlayerProgress`) | `PlayerProgressRecord` z odkryciami, `WorldCheckpoint.ProgressKeys`, `ChangeTracker.MarkProgressKeys`, `WorldStateBuilder.SetProgressKeys`, kontrola stanu `Station` i kontenerów stacji w `Build()` | blob 22 → **wersja 2** z odczytem wersji 1 (D20); blob 21 bez nowej wersji (nowy dyskryminator, precedens K6-30 D4, zatwierdza Opus w A1); nowy blob 25 w wersji 1 |
+| `src/Horyzont.Core/World/` | `WorldState.ProgressKeys`; `BlockFunction` (`Station`, `OutputSlots`, fabryki), `BlockFunctionKind` 14/15, nowy `StationKind` | `WorldState` nie jest formatem; `BlockFunction*` i `StationKind` to treść (wiersz `BlockTypeDef.cs`) — nic do podbicia |
+| `src/Horyzont.Core/Hashing/` | `0x44`, `0x4B`, stan `Station` w `0x42`, warunek sekcji (D22) | opis w PR: skróty światów z odkryciami, kluczami albo stacją są nowe; skrót świata K6-30 bez nich bez zmian (test A0) |
+| `src/Horyzont.Core/Protocol/`, `Serialization/` | `MessageType.PlayerProgressState = 48`, `BlobKind.ProgressKeys = 25`, kodeki, `ProtocolConstants` (D26) | `ProtocolVersion` (D2); fixture X6; router X5 |
+| `src/Horyzont.Core/Content/` (`ContentLoader`, `RecipeDef`) | plik receptur, walidacja, `HasSource` | treść, nie format: plik `recipes.json` ma własne `formatVersion` 1; treść należy do kompilacji (`BuildHash`) |
+| `src/Horyzont.Persistence/Migrations/` | **brak zmian** (D3) | `git diff` na `Migrations/` pusty; `user_version` nadal 3 |
+| `game/content/blocks/blocks.json` | nowe typy i rodzaje funkcji | `BlockTypeCatalog.FormatVersion` zostaje 2 |
+| `tests/Horyzont.Core.Tests/Golden/TerrainJournals/`, `TerrainJournalGoldenCorpusTests.cs`, `Hashing/DeterminismTests.cs` | **bez zmian** | `git diff` pusty |
+
+## Projekt
+
+### Pliki
+
+```
+src/Horyzont.Core/
+  World/Blocks/StationKind.cs (nowy), BlockFunction.cs (Station, OutputSlots, CreateStation, CreateStationUpgrade), BlockFunctionKind.cs (14, 15)
+  Crafting/StationKinds.cs, StationRecipe.cs, StationProcess.cs, StationSettlement.cs, RecipeBook.cs, StationLevels.cs   (nowy katalog)
+  Content/RecipeDef.cs, RecipeEntry.cs (nowe), ContentLoader.cs (RecipesFile, ParseRecipes, HasSource), SurvivalContent.cs (Recipes, TryGetRecipe)
+  BlockEntities/StationBlockState.cs (nowy)
+  Progress/ItemTypeBitSet.cs, ProgressKeyStore.cs (nowe), PlayerProgress.cs (Discovered), PlayerProgressStore.cs (komentarz niezmiennika)
+  Operations/ItemDiscoverOp.cs, ProgressKeyGrantOp.cs, OperationProgress.cs (nowe), OperationKind.cs (43, 45)
+  Intents/CraftIntent.cs (nowy), RejectReason.cs (44, 45, 46)
+  Simulation/OperationApplier.cs (43, 45, Station w 40, 44 z odkryciami), UndoLog.cs (klucze, odkrycia),
+             CraftingRules.cs (nowy: CraftIntent, postawienie/rozbiórka stacji z czasem, wybór receptury),
+             StationSettlements.cs (nowy: budowa operacji rozliczenia, lista stacji dotkniętych intencją),
+             ItemPlacement.cs (CreateInContainer), ContainerReach.cs (TryCellCenter), SurvivalRules.cs (kontenery stacji, TakeAll),
+             IntentValidator.cs (24, BucketFor, HasValidParameters), GameRules.cs (D26),
+             ServerSimulation.cs (CraftingRules przed FunctionalBlockRules, hak rozliczenia D16a, odkrywanie D9b, DiscoverHeldItems, TrySettleStation)
+  World/WorldState.cs (ProgressKeys)
+  Checkpoints/PlayerProgressRecord.cs (Discovered), WorldCheckpoint.cs (ProgressKeys), ChangeTracker.cs (MarkProgressKeys), WorldStateBuilder.cs
+  Hashing/StateHasher.cs (D22)
+  Serialization/OperationCodec.cs (43, 45), IntentCodec.cs (24), MessageCodec.cs (48), StateCodec.cs (blob 22 v2, blob 25),
+                CoreCodecPrimitives.cs (StationBlockState, ItemTypeBitSet, klucz tekstowy), BlobKind.cs (25)
+  Protocol/MessageType.cs (48), MessageChannels.cs, ProtocolConstants.cs (D2, D26), Messages/PlayerProgressState.cs (nowy)
+src/Horyzont.Constructs/Content/BlockTypeCatalog.cs (station, station_upgrade)
+src/Horyzont.Persistence/
+  Sql.cs (MetaProgressKeys = "progress_keys"), WorldLoader.cs (blob 22 v1/v2, blob 25), Writing/PersistenceWriter.cs (upsert meta),
+  WorldCreator.cs (świat z kluczami postępu odrzucany jak świat z kontenerami)
+src/Horyzont.Net/Session/MessageRouter.cs (48 od serwera w stanach ContainerState)
+src/Horyzont.Server/
+  Inventory/InventoryService.cs (subskrypcje StationInput/StationOutput, rozliczenie przed ContainerState, lista obserwowanych stacji)
+  Crafting/StationService.cs, ProgressReplication.cs, CraftingLog.cs (nowe)
+src/Horyzont.Client/
+  Crafting/ClientProgress.cs, RecipeList.cs, CraftingSession.cs, StationSession.cs (nowe)
+  Inventory/ClientInventory.cs, InventoryInteraction.cs (kontenery stacji; wyjście tylko jako źródło), ChestSession.cs (bez zmian zachowania)
+  Blocks/BlockInteraction.cs, BlockPromptKind.cs (OpenStation)
+  Replication/ClientReplication.cs (48 → ClientProgress)
+game/
+  content/recipes/recipes.json (nowy), content/items/items.json (D24), content/blocks/blocks.json (D24)
+  src/Content/SurvivalContentLoader.cs (czyta recipes.json)
+  src/Client/Inventory/CraftingPanel.cs, StationPanel.cs (nowe), InventoryScreen.cs, InventoryNode.cs
+  src/Client/Blocks/BlockPromptHud.cs (teksty podpowiedzi stacji)
+  src/Boot/GameComposition.Crafting.cs (nowa część: StationService, ProgressReplication, ClientProgress, sesje)
+  locale/items.csv (ITEM_* nowych przedmiotów, CRAFT_*), locale/blocks.csv (nazwy bloków), locale/tools.csv (REJECT_44..46, PROMPT_STATION_*)
+tests/  (nazwy w „Testy akceptacyjne”)
+```
+
+Nazwy nowych plików to propozycja; istniejące ścieżki sprawdzono w repozytorium. **Nie edytuj `game/locale/ui.csv`** — w worktree ma niezacommitowane zmiany innej sesji (`ui.csv.import`).
+
+### Kontrakty Core (format 1)
+
+| Kod | Typ | Pola w kolejności kodeka | Warunki wstępne appliera |
+| --- | --- | --- | --- |
+| op 43 | `ItemDiscoverOp(PlayerId Player, ItemTypeId Type)` | varuint gracz, varuint typ | gracz znany; typ ≠ 0 i `state.ItemTypes.IsKnown(typ)`; typ < `MaxItemTypes`; gracz nie ma go w odkryciach → `PlayerProgress` z bitem (rekord tworzony, gdy go nie było); cofanie przywraca poprzedni rekord albo jego brak |
+| op 45 | `ProgressKeyGrantOp(string Key)` | varuint długość + UTF-8 | 1–64 B UTF-8; świat nie ma klucza; `ProgressKeys.Count < MaxProgressKeys` → dodanie; cofanie usuwa |
+| op 40 (rozszerzenie) | `BlockEntitySetOp(…, StationBlockState)` | … bajt rodzaju `03`, varuint wejście, varuint wyjście, varuint długość receptury (0 = brak) + UTF-8, bajt flag (bit 0 = pracuje; inne → błąd), [varuint tick startu] | jak dotąd dla stanu niepustego (widok efektywny, typ bloku, rodzaj stanu się nie zmienia, limit 4096) oraz: kontener wejścia istnieje, rodzaj `StationInput`, gospodarz = ta komórka; kontener wyjścia istnieje, rodzaj `StationOutput`, gospodarz = ta komórka; receptura ≤ 64 B |
+| op 44 (semantyka) | `RespawnPointSetOp` bez zmiany bajtów | — | brak łóżka: rekord z odkryciami zostaje z `RespawnBed = null`; rekord bez odkryć znika jak dotąd; łóżko: `existing with { RespawnBed }` |
+
+- Zapis wartości spoza zakresu (flagi, długości, typ 0) → `ArgumentException`; odczyt → `ProtocolViolationException` (wzór K6-29W/K6-30).
+- `CompoundOp` (format 1) przyjmuje 43 i 45 jako składowe odwracalne. Reguła „co najwyżej jedna składowa nieodwracalna, ostatnia” bez zmian.
+- Blob 21: dyskryminator `03` jak w operacji 40 (bez typu bloku). Blob 22 v2: D20. Blob 25: D21.
+- Intencja 24 `CraftIntent(string Recipe, ushort Count, BlockRef? Station)`: varuint długość + UTF-8 (1–64 B), varuint liczba (1…`MaxCraftCount`; kodek sprawdza tylko ≥ 1 i ≤ `ushort`, zakres reguły sprawdza walidator), bajt 0/1, [varuint budowla, `CellPos`].
+- Komunikat 48 `PlayerProgressState(ItemTypeBitSet Discovered, IReadOnlyList<string> WorldProgressKeys)`: bitset (varuint długość 0…512 + bajty kanoniczne), varuint liczba kluczy (0…256), klucze rosnąco (ordinal) jak w blobie 25; niezawodny uporządkowany, S→K, tylko do właściciela.
+- Bajty złote do zatwierdzenia w A1 (nagłówek „rodzaj, wersja”, `CellPos` = trzy varinty zygzak, jak w K6-30): op 43 `2B 01 04 05` (gracz 4, typ 5); op 45 `2D 01 06 74 3A 62 6F 73 73` (`t:boss`); op 40 ze stanem stacji `28 01 05 02 01 00 0B 03 07 08 03 74 3A 61 01 64` (budowla 5, komórka (1,−1,0) jak w bajtach K6-30, typ 11, wejście 7, wyjście 8, receptura `t:a`, pracuje od ticku 100); blob 21 stacji `15 01 05 02 01 00 03 07 08 00 00` (bez receptury, bezczynna); blob 22 v2 `16 02 04 02 01 20` (gracz 4, same odkrycia, bitset 1 B z bitem typu 5); blob 25 `19 01 01 06 74 3A 62 6F 73 73`; intencja 24 `18 01 03 74 3A 61 02 00` (receptura `t:a`, 2 sztuki, bez stacji); komunikat 48 — nagłówek komunikatu jak `BlockEntityStates` (typ `30`, wersja `01`), potem `01 20 00`. Wykonawca liczy bajty kodekiem i porównuje z tą listą; rozbieżność zgłasza w A1, nie poprawia testu po cichu.
+
+### Walidacja i rozwiązanie intencji
+
+Ogólna kolejność `IntentValidator.Validate` bez zmian (gracz → online → parametry → początek promienia → kubełek → walidacja rodzaju). `CraftIntent` należy do kubełka `Items` (`HasValidParameters`, `BucketFor`). Część zależna od treści i stanu jest w `CraftingRules`.
+
+| Intencja | Sprawdzenia (kolejność = kod) | Wynik |
+| --- | --- | --- |
+| `CraftIntent` — parametry (walidator) | brak treści albo `Recipes.Count == 0` → `InvalidParameters`; klucz pusty, > 64 B albo `Count` 0 / > `MaxCraftCount` → `InvalidParameters`; stacja z komórką poza zakresem → `CellOutOfBounds`; kubełek `Items` → `RateLimited` | — |
+| `CraftIntent` — rozstrzygnięcie (`CraftingRules`) | receptura nieznana w treści → `InvalidParameters`; `RecipeBook.IsKnown` = fałsz → `RecipeLocked` (45); stacja wg D14 (`InvalidParameters` dla rąk ze stacją, `StationRequired`, `UnknownConstruct`, `CellEmpty`, `TooFarFromStation`, poziom → `StationRequired`) | dalej według rodzaju stacji |
+| … stacja bez czasu albo ręce | źródła D13; brak składników → `NotEnoughItems` (41); wynik nie mieści się w plecaku po zdjęciu składników → `InventoryFull` (40) | `CompoundOp[ItemDestroyOp…, ItemCreateOp…, ItemDiscoverOp?]` (D12) |
+| … stacja z czasem | `Count ≠ 1` → `InvalidParameters`; komórka bez stanu `Station` → `InvalidParameters`; ta sama receptura co aktywna → `InvalidParameters` | po rozliczeniu D16a: `BlockEntitySetOp` z nową recepturą (D18) |
+| `PlaceBlockIntent` z funkcją `Station` | walidacja K2/K5 bez zmian; stacja z czasem bez treści receptur → `InvalidParameters`; limit stanów budowli → `InvalidParameters` | z czasem: złożona D18; bez czasu i ulepszenie: zwykły `BlockSetOp`/`ConstructCreateOp` |
+| `RemoveBlockIntent` na komórce ze stanem `Station` | walidacja K2/K5; bez treści receptur → `InvalidParameters`; po rozliczeniu niepusty kontener → `ContainerNotEmpty` (57) | złożona D18 |
+| `ItemMoveIntent` z kontenerem stacji | jak K6-30 D9 (`ContainerLocked`, `OutOfReach`); cel w `StationOutput` → `InvalidParameters` | rozliczenie przed i po (D16a), między nimi `ItemTransferOp`/`ItemSwapOp`/złożona przeniesień |
+| `TakeAllIntent` na kontenerze stacji | jak skrzynia (K6-30 D17); dostęp i zasięg D17 | rozliczenie przed i po, między nimi złożona przeniesień |
+| `BlockConfigIntent` z dostępem na stacji | blok bez stanu `Chest` | `InvalidParameters` (bez zmian w kodzie K6-30 — test to potwierdza) |
+
+Treść i teren czyta tylko walidator i resolver. Każda wartość (limit stosu, liczby sztuk, identyfikatory kontenerów, nowy tick startu, rodzaje ujścia i źródła) trafia do operacji (ZASADY §4). `StationSettlements.TryBuild` czyta treść (receptura, czas, limit stosu wyniku) i stan, a operacja niesie wynik.
+
+### Przepływ intencja → walidator → operacja → replikacja → klient
+
+```
+Rzemiosło natychmiastowe (ręce, warsztat, kuchnia, fabrykator)
+  klient: panel rzemiosła (lista z RecipeList: treść + ClientProgress) → CraftIntent(recipe, n, station?)
+  serwer: IntentValidator (parametry, kubełek Items) → CraftingRules: IsKnown, D14, źródła D13, miejsce w plecaku
+          → CompoundOp[ItemDestroyOp(bag/hotbar/skrzynie)…, ItemCreateOp(bag)…, ItemDiscoverOp?] → TryApply → dziennik → Applied
+          → ContainerDelta do subskrybentów (plecak właściciela zawsze, skrzynie — kto je otworzył)
+          → ProgressReplication: składowa 43 → PlayerProgressState do właściciela
+  klient: ClientInventory (delty), ClientProgress (odkrycia) → RecipeList przelicza widoczność
+
+Piec i rafineria
+  postawienie: PlaceBlockIntent(core:furnace) → CompoundOp[ContainerCreate(we), ContainerCreate(wy), BlockEntitySet(Station), BlockSet|ConstructCreate]
+               → OperationApplied (rzut = blok, K6-30 D14) + BlockEntityStates (46)
+  otwarcie:    E → BlockInteraction: stan Station → StationSession: ContainerSubscribe(we), ContainerSubscribe(wy)
+               serwer: InventoryService: dostęp, ≤ 6 m → TrySettleStation → ContainerState ×2; stacja trafia na listę obserwowanych
+  wybór:       panel → CraftIntent(recipe, 1, station) → rozliczenie przed → BlockEntitySetOp(Recipe, Started) → 46
+  wsad:        przeciągnięcie do wejścia → ItemMoveIntent → rozliczenie przed → ItemTransferOp → rozliczenie po (start, gdy było bezczynne)
+  praca:       StationService co 10 ticków, tylko obserwowane: TrySettleStation → CompoundOp[ItemDestroy…, ItemCreate…, BlockEntitySet] → delty + 46
+               klient: pasek = StationProcess.Progress(Started z 46, tick serwera, czas receptury)
+  odbiór:      ItemMoveIntent / TakeAllIntent z wyjścia → rozliczenie przed → przeniesienia → rozliczenie po
+  zamknięcie:  ContainerUnsubscribe ×2; stacja znika z listy obserwowanych, gdy nie ma subskrybentów; dalej nie tyka
+
+Odkrywanie
+  każda operacja z ContainerChanges na kontenerach gracza → ServerSimulation (po RaiseApplied) → ItemDiscoverOp / CompoundOp[43…] → Applied → 48
+  OnPlayerReady: InventoryService (kontenery) → ProgressReplication: DiscoverHeldItems(gracz), potem PlayerProgressState
+
+Klucz postępu (testy; później bossowie i konsola)
+  ApplyServerOperation(ProgressKeyGrantOp(key)) → checkpoint meta.progress_keys → 48 do wszystkich online → RecipeList pokazuje receptury z kluczem
+```
+
+### Interfejs użytkownika (tylko to, co pakiet musi pokazać)
+
+Styl i komponenty z K6-29W/K6-30 (`HudTheme`, `SlotView`, `ItemTooltip`, `ChestPanel` jako wzór). **Najpierw wygląd statyczny** (układ, rozmiary, teksty), oceniony przez Dismonda na zrzutach, dopiero potem zachowanie.
+
+- **Panel rzemiosła** (w ekranie ekwipunku obok siatki plecaka): lista widocznych receptur bieżącej stacji (bez stacji — receptury rąk); każda pozycja: nazwa wyniku × liczba, składniki z liczbą „mam / potrzeba” (plecak + pasek; skrzynie w promieniu liczy dopiero serwer — tekst „+ skrzynie w pobliżu”), „wymaga poziomu N” przy warsztacie; pole liczby (1…50) i przycisk „Zrób”. Pozycje bez składników są wyszarzone, ale klikalne (decyduje serwer).
+- **Panel stacji z czasem** (piec, rafineria): siatka wejścia, siatka wyjścia, aktywna receptura z przyciskiem „Wybierz” przy każdej widocznej recepturze stacji, pasek postępu bieżącej sztuki, przycisk „Weź wszystko” przy wyjściu. Przenoszenie myszą jak w K6-30 (LPM, PPM, Shift+klik).
+- **Podpowiedź** pod celownikiem: „[E] Warsztat”, „[E] Piec”, „[E] Rafineria”, „[E] Kuchnia”, „[E] Fabrykator”; ulepszenie bez podpowiedzi.
+- **Odmowy**: istniejący komunikat odmowy w HUD z tekstami PL/EN dla 44 („Potrzebna stacja albo wyższy poziom”), 45 („Receptura nieznana”), 46 („Za daleko od stacji”).
+- Esc / Tab / I / oddalenie (odmowa `OutOfReach` dla kontenera stacji) zamyka panel stacji i wysyła `ContainerUnsubscribe` dla obu kontenerów.
+
+## Testy akceptacyjne (napisz najpierw)
+
+Pisze je Gemini 3.8 Flash przed kodem (ZASADY §8), a testy etapów A i B zatwierdza Opus 5.5 przed implementacją (kroki A1, B1). **Zasada z K6-30: test odmowy zaczyna od przyjęcia poprawnego odpowiednika** (kontrola), inaczej przechodziłby bez żadnego zachowania. Tak samo w kodekach: najpierw poprawny round-trip, potem `ArgumentException`/`ProtocolViolationException`.
+
+Pomocnicze w `tests/Horyzont.Testing`:
+- `SurvivalContentFactory.CreateTestWithRecipes()` — treść testowa z recepturami dla każdej stacji: `t:hand` (ręce: 2 × stone → 1 × brick), `t:bench2` (warsztat poziom 2), `t:cook` (kuchnia), `t:fab` (fabrykator, klucz `test:boss_2`), `t:smelt` (piec: 2 × ore + paliwo 1 × peat → 1 × ingot, 1 s = 60 ticków), `t:refine` (rafineria). `CreateTest()` zostaje **bez** receptur (D9: stare testy bez zmian);
+- typy bloków testowych w `BlockContentTable` testów: warsztat, trzy różne ulepszenia warsztatu, piec (wejście 4, wyjście 2), rafineria, kuchnia, fabrykator;
+- `CraftingFixture` (wzór `FunctionalBlockFixture`): stawianie stacji i skrzyń przez intencje, `StandFor(n)`, napełnianie kontenerów przez `ItemCreateOp` serwera, przyznanie klucza;
+- generatory `CodecGen` dla 43, 45, 24, 48 i stanu `Station` (X6) — dopisywane w A4/B2 razem z kodekiem, nie wcześniej (inaczej istniejące testy właściwości kodeka się wywrócą — lekcja K6-30 B1).
+
+### Etap A — model, operacje, kodeki, skrót, czyste funkcje (Core)
+
+| Test (plik: metody) | Kryterium |
+| --- | --- |
+| `Crafting/ItemDiscoverOpsTests`: `Discover_NewType_SetsBitAndCreatesRecord`, `Discover_AlreadyDiscovered_Fails`, `Discover_UnknownPlayer_Fails`, `Discover_TypeNotInRegistry_Fails`, `Discover_TypeZero_Fails`, `Discover_InCompoundWithFailingComponent_RolledBack` | tabela kontraktów; błąd nie zmienia skrótu |
+| `Crafting/ProgressKeyOpsTests`: `Grant_NewKey_Added`, `Grant_ExistingKey_Fails`, `Grant_EmptyOrOver64Bytes_Fails`, `Grant_At256Keys_Fails`, `Grant_InCompoundRolledBack_KeyAbsent` | |
+| `Crafting/StationStateOpsTests`: `BlockEntitySet_StationWithOwnContainers_Stores`, `BlockEntitySet_StationWithForeignInput_Fails`, `BlockEntitySet_StationOutputOfWrongKind_Fails`, `BlockEntitySet_StationRecipeOver64Bytes_Fails`, `PlaceFurnace_Compound_TwoContainersStateAndBlock`, `RemoveFurnace_Compound_ClearsAll`, `BlockClear_FurnaceWithState_Fails` (warunek K6-30 D13 działa dla nowego rodzaju) | D18, D19 |
+| `Crafting/RespawnWithDiscoveriesTests`: `RespawnClear_PlayerWithDiscoveries_KeepsRecord`, `RespawnSet_KeepsDiscoveries`, `RespawnClear_PlayerWithoutDiscoveries_RemovesRecord` (zachowanie K6-30) | D7 |
+| `Crafting/CraftCompoundTests`: `CraftFromFiveChests_OneCompound_AppliedWhole`, `CraftFromFiveChests_LastComponentFails_NothingChanged` (wstrzyknięta zła składowa na końcu: skrót przed = po, `ContainerIds` bez zmian) | spec l. 401 (Core) |
+| `Crafting/StationProcessTests`: `Idle_WithInput_StartsNow`, `Idle_WithoutInput_StaysIdle`, `Running_TwoDurations_TwoDone_StartAdvanced`, `Running_InputRunsOut_DoneLimited_Idle`, `Running_OutputFull_DoneLimitedByRoom_Idle`, `Running_FuelMissing_NoProgress`, `Progress_HalfDuration_Half`, `Settle_NoAllocation` (`GC.GetAllocatedBytesForCurrentThread` = 0; wołane co klatkę przez klienta) | D15 |
+| `Crafting/StationProcessProperties` (FsCheck, 2000 przypadków: losowy wsad, paliwo, wyjście, czas 1–600 ticków, N do 100 000, losowy zbiór ticków pośrednich) | **piec według ticków**: suma `Done` przy rozliczeniu w dowolnych tickach pośrednich = `Done` jednego rozliczenia w N; stan końcowy (wejście, wyjście, `Started`) identyczny |
+| `Crafting/RecipeBookTests`: `NoIngredientDiscovered_Unknown`, `OneIngredientDiscovered_Known`, `OnlyFuelDiscovered_Unknown`, `KeyMissing_Unknown`, `KeyPresent_Known`, `IngredientNotInRegistry_Ignored` | D8 |
+| `Crafting/OperationProgressTests`: `Collect_DiscoverInCompound_ReturnsPlayer`, `Collect_GrantKey_KeysChanged`, `Collect_ItemOnlyCompound_Nothing` | D11 |
+| `Serialization/OperationCodecCraftingTests`: round-trip 43, 45, 40 ze stanem `Station` (z recepturą i bez, pracuje i bezczynna); `GoldenBytes_CraftingOperations` (lista z „Kontrakty Core”); `StationFlagsUnknownBit_Read_Throws`, `DiscoverTypeZero_Write_Throws`, `GrantKeyOver64Bytes_Write_Throws` | zapis `ArgumentException`, odczyt `ProtocolViolationException` |
+| `Serialization/StateCodecCraftingTests`: blob 21 ze stanem `Station`; blob 22 v2 round-trip (same odkrycia, łóżko i odkrycia); `Blob22Version1_StillReads` (bajty z K6-30: `16 01 04 01 05 02 01 00 03` i `16 01 04 00`); `Blob22UnknownFlag_Throws`; `BitsetTrailingZero_Throws`; `BitsetOver512_Throws`; blob 25 round-trip; `Blob25Unsorted_Throws`; `Blob25Duplicate_Throws`; `GoldenBytes_Blobs` | D20, D21 |
+| `Hashing/SurvivalHashTests` (dopisane): `WorldWithBlockEntitiesWithoutCrafting_HashUnchanged` (stała z A0), `Discovery_ChangesHash`, `ProgressKey_ChangesHash`, `StationStateStarted_ChangesHash`; istniejące `WorldWithoutItems_HashUnchanged`, `WorldWithItemsWithoutBlockEntities_HashUnchanged` bez zmian | D22 |
+| `Checkpoints/CraftingCheckpointTests`: `Capture_ChangedProgressKeys_Included`, `Capture_UnchangedProgressKeys_Null`, `Capture_DiscoveryChange_IncludedInProgress`, `Requeue_MarksProgressKeysAgain`, `Builder_RestoresKeysDiscoveriesAndStation`, `Builder_StationWithoutContainers_Throws`, `Builder_StationContainerWithoutState_Throws`, `Builder_DiscoveryOfUnknownType_Throws`, `Builder_EmptyProgressRecord_Throws`, `CheckpointPlusJournal_SameHash` | |
+| `Crafting/CraftingConservationProperties` (FsCheck, 2000 sekwencji po 50 operacji: rzemiosło z losowych źródeł, rozliczenia pieca, przeniesienia, złożone z losowym błędem) | po każdej operacji: suma sztuk każdego typu = Σ create − Σ destroy; kontener stacji ⇔ stan `Station` na bloku |
+| Bez zmian w plikach: `TerrainJournalGoldenCorpusTests`, `Golden/TerrainJournals`, `DeterminismTests` i wszystkie dotychczasowe testy (poza złotymi wartościami enumów i fixture X6) | `git diff <commit startu A>..HEAD` na tych ścieżkach pusty |
+
+### Etap B — treść, intencje, protokół (Core, Constructs, Net)
+
+| Test (plik: metody) | Kryterium |
+| --- | --- |
+| `Content/RecipeContentTests`: `Parse_RepoContent_HasDemoRecipes` (tabela D24), `Parse_WithoutRecipesFile_EmptyRecipes`, `Parse_UnknownIngredient_Throws`, `Parse_RetiredResult_Throws`, `Parse_FuelOnInstantStation_Throws`, `Parse_TimedWithoutTime_Throws`, `Parse_LevelAboveMax_Throws`, `Parse_DuplicateKey_Throws`, `Parse_ResultCountAboveStack_Throws`, `Parse_ItemOnlyFromRecipe_HasSource` | `InvalidDataException` z plikiem i ścieżką JSON |
+| `Constructs.Tests/Content/BlockTypeCatalogTests` (dopisane): `Parse_RepoContent_HasStationsAndUpgrades`, `Parse_TimedStationWithoutSlots_Throws`, `Parse_InstantStationWithSlots_Throws`, `Parse_StationHands_Throws`, `Parse_UnknownStation_Throws`; aktualizacja `ShippedContent_AllShipBlocksPresentWithMass` i `ShippedContent_FixtureDefinitionsMatchBlocksJson`, jeśli liczą klucze `blocks.json` (lekcja K6-30 B1) | |
+| `Simulation/CraftIntentTests`: `Hands_FromBag_CompoundDestroyCreateDiscover`, `Hands_WithStation_InvalidParameters`, `Hands_ChestWithin20mOfPlayer_Used`, `Hands_ChestBeyond20m_NotEnoughItems`, `Workbench_ChestsNearestFirst_ThenById`, `Workbench_BagThenHotbarThenChests`, `Workbench_PrivateChestOfOther_Ignored`, `Workbench_OwnPrivateChest_Used`, `Workbench_NoStation_StationRequired`, `Workbench_WrongStationKind_StationRequired`, `Workbench_Level1ForLevel2Recipe_StationRequired`, `Workbench_TwoDistinctUpgrades_Level3`, `Workbench_SameUpgradeTwice_Level2`, `Workbench_UpgradeOnOtherConstructWithin5m_Counts`, `Workbench_UpgradeBeyond5m_Ignored`, `Station_Beyond8m_TooFarFromStation`, `Station_OtherPlanet_TooFarFromStation`, `Recipe_NoIngredientDiscovered_RecipeLocked`, `Recipe_KeyMissing_RecipeLocked`, `Recipe_KeyGranted_Accepted`, `Result_BagFull_InventoryFull_NothingConsumed`, `Result_FitsAfterIngredientsRemoved_Accepted`, `Count3_MultipliesIngredientsAndResult`, `Count51_InvalidParameters`, `UnknownRecipe_InvalidParameters`, `WithoutRecipesContent_InvalidParameters`, `Burst_ItemsBucket_RateLimited` | D8, D12–D14 |
+| `Simulation/StationIntentTests`: `PlaceFurnace_CompoundWithTwoContainersAndState`, `PlaceFurnace_WithoutRecipesContent_InvalidParameters`, `PlaceWorkbench_PlainBlock`, `SelectRecipe_WithInput_StartedNow`, `SelectRecipe_EmptyInput_Idle`, `SelectSameRecipe_InvalidParameters`, `SelectRecipe_Count2_InvalidParameters`, `MoveOreIntoIdleFurnace_PostSettleStarts`, `MoveIntoOutput_InvalidParameters`, `TakeAllFromOutput_PreSettleIncludesFinished`, `RemoveFurnace_NotEmpty_ContainerNotEmpty`, `RemoveFurnace_Empty_Compound`, `RemoveFurnace_FinishedItemsInOutput_ContainerNotEmpty` (rozliczenie przed rozbiórką), `ConfigureAccessOnFurnace_InvalidParameters`, `QuickStack_IgnoresStationContainers` | D16–D18 |
+| `Simulation/DiscoveryTests`: `DigYield_NewType_DiscoverOpAfterwards`, `MoveFromChest_NewType_Discovered`, `CraftResult_DiscoveredInSameCompound`, `KnownTypes_NoExtraOperation`, `WithoutRecipesContent_NoDiscoveryOps`, `DiscoverHeldItems_StartKit_OneCompound`, `DiscoveryOp_DoesNotRecurse` | D9 |
+| `Simulation/IntentValidationTests` (dopisane): każdy z kodów 44, 45, 46 ma test walidacji (teoria na numerach, jak `Submit_FunctionalBlockScenario_ReturnsNewReason` z K6-30) | |
+| `Serialization/IntentCodecCraftTests`: round-trip 24 (z stacją i bez); `RecipeOver64Bytes_Write_Throws`; `CountZero_Read_Throws`; `UnknownStationFlag_Read_Throws`; bajty złote | |
+| `Serialization/MessageCodecProgressTests`: round-trip 48 (pusty, z odkryciami i kluczami); `Over256Keys_Throws`; `UnsortedKeys_Read_Throws`; bajty złote | |
+| `Protocol/ProtocolContractTests` (istniejące): `ProtocolVersion_MatchesDocumentedMergeValue` (D2), `Constants_GoldenValues` (D26), `Enums_GoldenValues` (op 43, 45; odmowy 44–46; komunikat 48; blob 25; `StationKind`; `BlockEntityKind` bez zmian), listy rekordów; `MaxMessages.All()`, `CodecGen`; `Net.Tests/MergedProtocolTests` | X6 |
+| `Net.Tests/MessageRouterTests` (dopisane albo osobny `PlayerProgressStateRouterTests`) | 48 dozwolony od serwera w tych samych stanach co `ContainerState`, niedozwolony od klienta |
+
+### Etap C — zapis i serwer
+
+| Test (plik: metody) | Kryterium |
+| --- | --- |
+| `Persistence.Tests/CraftingPersistenceTests`: `Checkpoint_WritesProgressKeys_LoadRestores`, `Checkpoint_WritesDiscoveries_LoadRestores`, `Checkpoint_StationState_LoadRestores`, `LoadBlob22Version1_Works`, `CorruptProgressKeysBlob_WorldCorrupted`, `NoProgressKeysRow_EmptySet` | D3, D20, D21 |
+| `Persistence.Tests/MigrationTests`: istniejące testy fikstur bez zmian i zielone; nowy `FixtureWorldV3Crafting_CopiedToTemp_LoadsAndReplays` | `user_version` nadal 3 |
+| `Server.Tests/Inventory/StationSubscriptionTests`: `SubscribeFurnaceInput_Within6m_SettlesThenSendsState`, `SubscribeFurnaceOutput_Beyond6m_OutOfReach`, `WalkAway_EndsBothSubscriptions`, `Delta_ToAllSubscribers` | D17 |
+| `Server.Tests/Crafting/StationServiceTests`: `ObservedFurnace_SettlesWhenItemCompletes`, `UnobservedFurnace_NoOperations` (N ticków bez subskrybentów: zero wpisów dziennika), `ObservedIdleFurnace_NoOperations`, `Settle_EveryTenTicks_NotEveryTick` | D16 |
+| `Server.Tests/Crafting/ProgressReplicationTests`: `PlayerReady_SendsProgressAfterContainers`, `Discovery_SendsToOwnerOnly`, `GrantKey_SendsToAllOnline`, `Host_LocalPlayer_GetsProgressState` | D11 |
+| `Integration.Tests/Crafting/CraftingFlowTests` (klient → `InMemoryTransport` → sesja → symulacja → writer): `CraftFromFiveChests_CrashBetweenComponents_WholeOrNothing` (wzór awarii K6-29W/K6-30: oba punkty), `Furnace_SettleFrequency_SameOutput` (dwa światy z tym samym wsadem, jeden otwierany co 7 ticków, drugi raz na końcu: identyczne wyjście), `Furnace_RestartMidRun_SameResult`, `Furnace_ServerStopped_TicksDoNotFlow`, `TwoClients_SameFurnace_NoDuplication` (2 × 300 intencji, `FakeTimeProvider`), `Discovery_UnlocksRecipe_ClientSeesIt`, `GrantKey_Restart_KeyKept` | odbiór spec: „rzemiosło z 5 skrzyń atomowe; piec według ticków”; skrót po powtórce = skrót przed |
+
+### Etap D — klient
+
+| Test (plik: metody) | Kryterium |
+| --- | --- |
+| `Client.Tests/Crafting/ClientProgressTests`: `State_Replaces`, `Disconnect_Clears` | |
+| `Client.Tests/Crafting/RecipeListTests`: `Hands_ShowsKnownHandRecipesOnly`, `Furnace_ShowsFurnaceRecipes`, `KeyArrives_RecipeAppears`, `HaveCounts_BagPlusHotbar` | wspólne `RecipeBook.IsKnown` |
+| `Client.Tests/Crafting/CraftingSessionTests`: `Craft_SendsIntentWithStation`, `CraftHands_SendsWithoutStation`, `Reject45_ShowsLocked`, `PendingFull_Waiting` | |
+| `Client.Tests/Crafting/StationSessionTests`: `Open_SubscribesBothContainers`, `Close_UnsubscribesBoth`, `ServerOutOfReach_ClosesPanel`, `SelectRecipe_SendsCraftCount1`, `Progress_FromStartedAndServerTick`, `MoveIntoOutput_NotOffered` | D23 |
+| `Client.Tests/Blocks/BlockInteractionTests` (dopisane): `AimFurnace_PromptOpenStation_OpensStationSession`, `AimWorkbench_PromptOpenStation_OpensCrafting`, `AimUpgrade_NoPrompt` | |
+| `game/tests/Inventory/CraftingUiTests` (gdUnit4, bez okna i bez oceny wyglądu) | E na piecu otwiera ekran z panelem stacji i zwalnia mysz; Esc zamyka i wysyła dwa `ContainerUnsubscribe`; panel rzemiosła pokazuje teksty z CSV; przycisk „Zrób” wysyła `CraftIntent` |
+| Ręcznie — **właściciel** (kategoria `Manual`; zrzuty i wynik w `docs/reports/k6-32/`) | solo: rzemiosło w rękach (torf, cegła), warsztat z dwoma ulepszeniami robi `multitool_t2`, piec przetapia rudę z torfem, wyniki pojawiają się przy otwartym panelu, zamknięty piec po powrocie ma wyniki według czasu, restart zachowuje wsad i postęp; zrzuty: panel rzemiosła, panel pieca w trakcie pracy, podpowiedzi — do oceny Dismonda przed scaleniem |
+
+## Kroki
+
+Każdy krok kończy się zielonym budowaniem i testami wymienionymi w kroku (i całością na końcu etapu). Commity małe, Conventional Commits po angielsku. Gdy krok wymaga zmiany pliku spoza listy, wykonawca zapisuje to w „Odstępstwa i uwagi z realizacji”. Po dwóch nieudanych podejściach do tego samego testu — eskalacja z testem i logiem (ZASADY §12).
+
+Komenda kroku (gdy niżej nie podano innej): `dotnet build Horyzont.sln` i `dotnet test <projekt testów> --filter "FullyQualifiedName~<klasa testów>"`.
+
+### Etap A — model, operacje, kodeki, skrót, czyste funkcje (Core) · przegląd Opus w A1
+
+- [ ] **A0.** Zapisz `StateHasher.Hash` świata K6-30 ze stanami bloków (`WorldFactory.CreateWithFunctionalBlocks` + skrzynia z przedmiotami + łóżko z punktem odrodzenia) jako stałą testu `SurvivalHashTests.WorldWithBlockEntitiesWithoutCrafting_HashUnchanged`, policzoną na kodzie **przed** zmianami. Zanotuj commit startowy etapu A w „Odstępstwa i uwagi z realizacji”. Plik: `tests/Horyzont.Core.Tests/Hashing/SurvivalHashTests.cs`. Komenda: `dotnet test tests/Horyzont.Core.Tests --filter "FullyQualifiedName~SurvivalHashTests"`. Commit `test(core): pin the hash of a functional block world`.
+- [ ] **A1 — bramka Opus.** Testy z tabeli etapu A (czerwone) i szkielety typów bez logiki (`// K6-32 A2…A6`). Wartości `OperationKind` 43/45 i `BlobKind` 25 dochodzą dopiero w A3/A4 (lekcja K6-30 A1: wcześniej wywracają `Enums_GoldenValues`); do tego czasu rekordy zwracają `(OperationKind)43`. **Stop: czekaj na przegląd Opus 5.5** kontraktów 43, 45, stanu `Station`, D7, D19, D20, D21, D22, bajtów złotych oraz DO USTALENIA-1, 7, 12. Komenda: `dotnet build Horyzont.sln` (testy mogą być czerwone). Commit `test(core): add crafting contract tests`.
+- [ ] **A2.** Typy: `StationKind`, `StationKinds`, `StationBlockState`, `ItemTypeBitSet`, `PlayerProgress.Discovered`, `ProgressKeyStore`, `WorldState.ProgressKeys`, `ChangeTracker.MarkProgressKeys`, rekordy `ItemDiscoverOp`, `ProgressKeyGrantOp`. Test: `ItemTypeBitSetTests` (nowy: `With_Contains`, `Without_Removes`, `Equality_ByContent`, `Bytes_Canonical`). Commit `feat(core): add station state, discoveries and progress keys`.
+- [ ] **A3.** Applier: 43, 45 w `IsComponent` i `UndoLog`; stan `Station` w `ApplyBlockEntitySet`; operacja 44 z odkryciami (D7); `OperationKind` 43/45 + złote enumy. Testy: `ItemDiscoverOpsTests`, `ProgressKeyOpsTests`, `StationStateOpsTests`, `RespawnWithDiscoveriesTests`, `CraftCompoundTests`, `ProtocolContractTests`. Commit `feat(core): apply discovery, progress key and station state operations`.
+- [ ] **A4.** Kodeki: `OperationCodec` (43, 45), `CoreCodecPrimitives` (stan `Station`, bitset, klucz), `StateCodec` (blob 22 v2 + odczyt v1, blob 25, `ValidateBlobHeader` z zakresem wersji), `BlobKind` 25; `PlayerProgressRecord`, `WorldCheckpoint.ProgressKeys`, `WorldStateBuilder` (`SetProgressKeys`, kontrola stanu `Station` ⇔ kontenery stacji, pusty rekord, nieznany typ), `CaptureCheckpoint`/`Requeue`; `CodecGen`. Testy: `OperationCodecCraftingTests`, `StateCodecCraftingTests`, `CraftingCheckpointTests`. Commit `feat(core): encode and checkpoint crafting state`.
+- [ ] **A5.** `StateHasher` (D22). Testy: `SurvivalHashTests` (A0 nadal zielony). Commit `feat(core): hash discoveries, progress keys and stations`.
+- [ ] **A6.** Czyste funkcje: `StationRecipe`, `StationProcess`, `StationSettlement`, `RecipeBook`, `OperationProgress`. Testy: `StationProcessTests`, `StationProcessProperties`, `RecipeBookTests`, `OperationProgressTests`. Commit `feat(core): add the station process and recipe book functions`.
+- [ ] **A7.** `CraftingConservationProperties` zielony. Mutacja: usuń warunek „kontener wejścia ma gospodarza tę komórkę” → `BlockEntitySet_StationWithForeignInput_Fails` i test właściwości czerwone; cofnij. Mutacja: rozliczenie ustawia `Started = now` zamiast `started + Done × duration` → `StationProcessProperties` czerwony; cofnij. Sprawdzenie końca etapu (niżej) i `git diff` korpusu pusty.
+
+### Etap B — treść, intencje, protokół · przegląd Opus w B1 i po B5
+
+- [ ] **B1 — bramka Opus.** Testy z tabeli etapu B (czerwone), szkielety (`CraftIntent`, `PlayerProgressState`, `CraftingRules`, `StationSettlements`, `StationLevels`, `RecipeDef`). Kody 44–46 i komunikat 48 jako rzutowane liczby do B2 (lekcja K6-30 B1). **Stop: przegląd Opus 5.5** intencji 24, komunikatu 48, kolejności sprawdzeń i DO USTALENIA-2, 3, 4, 5, 6, 8, 9, 10, 11, 13, 14. Commit `test(core): add crafting intent tests`.
+- [ ] **B2.** Protokół: `RejectReason` 44–46; `CraftIntent` + `IntentCodec` (kod 24); `PlayerProgressState` + `MessageCodec`, `MessageType` 48, `MessageChannels`, `MessageRouter`; `ProtocolConstants` (D2, D26); fixture X6, złote testy, `MergedProtocolTests`. Testy: `IntentCodecCraftTests`, `MessageCodecProgressTests`, `ProtocolContractTests`, testy routera. Komenda: `dotnet test tests/Horyzont.Core.Tests` i `dotnet test tests/Horyzont.Net.Tests`. Commit `feat(protocol): add the craft intent and the player progress state`.
+- [ ] **B3.** Treść: `RecipeDef`, `RecipeEntry`, `ContentLoader` (`RecipesFile`, parsowanie, walidacja D4, `HasSource`), `SurvivalContent.Recipes`/`TryGetRecipe`; `BlockFunctionKind` 14/15, `BlockFunction` (`Station`, `OutputSlots`, fabryki), `BlockTypeCatalog`; pliki `game/content/recipes/recipes.json`, `items.json`, `blocks.json` (D24); nazwy w `game/locale/blocks.csv` i `items.csv`. Testy: `RecipeContentTests`, `BlockTypeCatalogTests`. Komenda: `dotnet test tests/Horyzont.Core.Tests --filter "FullyQualifiedName~RecipeContentTests"` i `dotnet test tests/Horyzont.Constructs.Tests`. Commit `feat(content): add recipes, stations and station upgrades`.
+- [ ] **B4.** Reguły: `ContainerReach.TryCellCenter`; `ItemPlacement.CreateInContainer`; `StationLevels`; `CraftingRules` (D12–D14, D18); `StationSettlements` (D16); `SurvivalRules` (kontenery stacji D17, `TakeAll`); `IntentValidator` (24, kubełek); `GameRules` (D26); `ServerSimulation` (kolejność `CraftingRules` → `FunctionalBlockRules`, hak rozliczenia przed i po, odkrywanie D9b po `RaiseApplied`, `DiscoverHeldItems`, `TrySettleStation`). Testy: `CraftIntentTests`, `StationIntentTests`, `DiscoveryTests`, `IntentValidationTests`. Commit `feat(core): resolve crafting, stations and discoveries`.
+- [ ] **B5.** Sprawdzenie końca etapu (niżej). Grep kontrolny: `grep -rn "is ItemDiscoverOp\|is ProgressKeyGrantOp\|case ItemDiscoverOp\|case ProgressKeyGrantOp" src/` — poza applierem, kodekiem i `OperationProgress` nie może być żadnego trafienia (Pułapki).
+- [ ] **B6 — przegląd Opus Core A+B.** Opus przegląda cały diff `src/Horyzont.Core/` od commitu startu A. Uwagi wprowadza się w osobnym commicie `fix(core): apply the core A+B review` przed etapem C.
+
+### Etap C — zapis i serwer
+
+- [ ] **C1.** Testy z tabeli etapu C (czerwone). Commit `test: add crafting persistence and server tests`.
+- [ ] **C2.** Persistence: `Sql.MetaProgressKeys`, `WorldLoader` (blob 22 v1/v2, blob 25; brak wiersza = pusto), `PersistenceWriter` (upsert `meta` w transakcji checkpointu, gdy `ProgressKeys` ≠ `null`), `WorldCreator`; fikstura `world-v3-crafting.db` (`FixtureGenerator.Generate_WorldV3Crafting`, `Manual`, wygenerowana raz i zacommitowana). Testy: `CraftingPersistenceTests`, `MigrationTests`. Komenda: `dotnet test tests/Horyzont.Persistence.Tests`. Commit `feat(persistence): store discoveries, progress keys and stations`.
+- [ ] **C3.** `InventoryService`: subskrypcja `StationInput`/`StationOutput` (D17) z `TrySettleStation` przed `ContainerState`, ta sama kontrola zasięgu co skrzynie w `CheckSubscriptions`, zdarzenie albo zapytanie „stacje z subskrybentami” dla `StationService`. `StationService` (uczestnik ticku, co `StationSettleEveryTicks`). Testy: `StationSubscriptionTests`, `StationServiceTests`. Komenda: `dotnet test tests/Horyzont.Server.Tests`. Commit `feat(server): settle observed stations`.
+- [ ] **C4.** `ProgressReplication` (wzór `MarkerReplication`: `IServerPlayerObserver` + `Applied`; `OnPlayerReady` → `DiscoverHeldItems` → 48; po operacjach według `OperationProgress`), rejestracja **po** `InventoryService` w obserwatorach `GameServerHooks`, `CraftingLog` (`[LoggerMessage]`). Testy: `ProgressReplicationTests`. Commit `feat(server): replicate player progress`.
+- [ ] **C5.** Gra: `SurvivalContentLoader` czyta `recipes.json` (plik wymagany w grze), `GameComposition.Crafting.cs` (serwer: `StationService`, `ProgressReplication`). Testy: `CraftingFlowTests`. Komenda: `dotnet test tests/Horyzont.Integration.Tests --filter "FullyQualifiedName~CraftingFlowTests"`. Commit `feat(game): wire crafting on the server`.
+- [ ] **C6.** Sprawdzenie końca etapu (z `dotnet test game` i `smoke` według reguły wspólnego runnera, Pułapki).
+
+### Etap D — klient (wygląd ocenia Dismond; wykonawca nie uruchamia gry z oknem)
+
+- [ ] **D1.** Testy z tabeli etapu D (czerwone). Commit `test(client): add crafting and station tests`.
+- [ ] **D2.** `src/Horyzont.Client/Crafting/*`; `ClientReplication` (48 → `ClientProgress`); `ClientInventory` i `InventoryInteraction` (kontenery stacji; wyjście tylko jako źródło); `BlockInteraction` + `BlockPromptKind.OpenStation`. Testy: `ClientProgressTests`, `RecipeListTests`, `CraftingSessionTests`, `StationSessionTests`, `BlockInteractionTests`. Komenda: `dotnet test tests/Horyzont.Client.Tests`. Commit `feat(client): craft and run stations`.
+- [ ] **D3 — wygląd statyczny, bramka właściciela.** `CraftingPanel`, `StationPanel`, wpięcie w `InventoryScreen`/`InventoryNode`, podpowiedzi w `BlockPromptHud`, `GameComposition.Crafting.cs` (klient). Najpierw sam układ z danymi przykładowymi; **zrzuty robi i ocenia Dismond**, a wykonawca zapisuje w PR „wygląd czeka na ocenę właściciela”. Test: `game/tests/Inventory/CraftingUiTests`. Komenda: `dotnet test game` (reguła wspólnego runnera). Commit `feat(game): add the crafting and station panels`.
+- [ ] **D4.** Teksty PL/EN: `items.csv` (`ITEM_*` nowych przedmiotów, `CRAFT_*`), `blocks.csv`, `tools.csv` (`REJECT_44`, `REJECT_45`, `REJECT_46`, `PROMPT_STATION_*`); import tłumaczeń (`--import`). **Bez `ui.csv`.** Commit `feat(game): translate crafting texts`.
+- [ ] **D5.** Sprawdzenie końcowe, opis PR (wyniki testów, odstępstwa, rozstrzygnięcia DO USTALENIA, „test ręczny i wygląd — właściciel”). Test ręczny solo ze zrzutami w `docs/reports/k6-32/` wykonuje **właściciel**.
+
+### Sprawdzenie na końcu każdego etapu
+
+```
+dotnet build Horyzont.sln
+dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"
+dotnet format Horyzont.sln --verify-no-changes
+python tools/engine/build.py smoke          # etapy C i D
+dotnet test game                            # etapy C i D (gdUnit4; reguła wspólnego runnera)
+git diff <commit startu A>..HEAD -- tests/Horyzont.Core.Tests/Golden/TerrainJournals tests/Horyzont.Core.Tests/TerrainJournalGoldenCorpusTests.cs tests/Horyzont.Core.Tests/Hashing/DeterminismTests.cs   # pusty
+git diff <commit startu A>..HEAD -- src/Horyzont.Persistence/Migrations   # pusty (D3)
+```
+
+## Ryzyka i odstępstwa
+
+| Ryzyko | Skutek | Odpowiedź |
+| --- | --- | --- |
+| Rzemiosło z wielu skrzyń gubi albo duplikuje przedmioty | przedmiot w dwóch miejscach albo w żadnym | jedna `CompoundOp` przez `TryApply` z `UndoLog`; test właściwości zachowania; test integracyjny z awarią w obu punktach |
+| Rozliczenie stacji zależy od częstotliwości otwierania | różne wyniki u różnych graczy i po restarcie | reguła D15 (start przesuwany o zrobione sztuki, postój tylko przez interakcję); `StationProcessProperties` i `Furnace_SettleFrequency_SameOutput` |
+| Wsad dodany do bezczynnej stacji nigdy nie rusza | piec stoi mimo wsadu | rozliczenie **po** intencji (D16a), test `MoveOreIntoIdleFurnace_PostSettleStarts` |
+| Automatyczne odkrywanie zmienia skróty i liczby operacji w testach K6-29W/K6-30 | czerwone stare testy | włączone tylko przy treści z recepturami (D9); `CreateTest()` bez receptur |
+| Rekord `PlayerProgress` bez łóżka znika razem z odkryciami | gracz traci odkrycia po rozbiórce łóżka | D7 i `RespawnWithDiscoveriesTests` |
+| Wywołanie `ApplyServerOperation` z handlera `Applied` | zagnieżdżone zdarzenia, zła kolejność wiadomości | odkrywanie w `ServerSimulation` po `RaiseApplied`; rozliczenie obserwowanych stacji w ticku `StationService`, nigdy w handlerze |
+| Poziom warsztatu: przegląd wielu budowli | koszt na intencję | odrzucanie chunków poza promieniem; tylko przy recepturze z poziomem > 1; kubełek `Items` |
+| Klient zdalny nie zna dokładnego ticku serwera | pasek postępu skacze | pasek tylko informacyjny; prawdą są delty wyjścia; ten sam tick co HUD |
+| Kolizje z K6-31 i K6-33 przy scaleniu | konflikty w enumach, `ContentLoader`, skrócie, blobie 22, komunikacie 48 | sekcja „Rebase i kolejność scaleń”; rozdzielone numery; pola dopisywane na końcu |
+| Gemini zmienia testy kontraktu, żeby przeszły | ukryta zmiana formatu | bramki A1, B1 i B6 (Opus); `git diff` korpusu; bajty złote z planu |
+
+Odstępstwa od spec 03 (do opisu PR):
+
+- **[odstępstwo] D11:** klucze postępu świata jadą w `PlayerProgressState` (48), bo spec nie ma dla nich komunikatu, a zakres 40–49 jest pełny.
+- **[odstępstwo] D15:** stan stacji nie ma bufora paliwa; paliwo to wpisy receptury zużywane z wejścia na każdą sztukę.
+- **[odstępstwo] D16:** stacja obserwowana (otwarty panel) jest rozliczana co 10 ticków operacją serwera, nie tylko „przy interakcji”; nieobserwowana nie tyka.
+- **[odstępstwo] D9:** poza złożoną rzemiosła odkrycie jest osobną operacją serwera po operacji, która dała przedmiot.
+- **Rozstrzygnięcia, na które spec nie odpowiada:** pasek przed skrzyniami, własna skrzynia prywatna jako źródło, promień rąk od oka gracza, miejsce na wynik po zdjęciu składników, zasięg stacji 8 m, poziom bez pokazania u klienta, treść demonstracyjna, kuchnia i fabrykator bez receptur w grze.
+
+## Odbiór (ZASADY §11)
+
+- [ ] Testy akceptacyjne z tego planu przechodzą w CI (w tym `dotnet test game` i `smoke`); korpus złoty, `DeterminismTests` i migracje bez zmian w plikach.
+- [ ] Przegląd PR: Sonnet 5.5 (pakiet Gemini) i Opus 5.5 (zmiany Core i kontraktów: operacje 43, 45, stan `Station`, D7, blob 22 v2, blob 25, intencja 24, komunikat 48, `ProtocolVersion`); uwagi rozwiązane.
+- [ ] Wygląd paneli zaakceptowany przez Dismonda; test ręczny wykonany przez właściciela (zrzuty w `docs/reports/k6-32/`).
+- [ ] Brak `TODO` bez odnośnika do zgłoszenia.
+- [ ] Checklista kroków odhaczona; odstępstwa i rozstrzygnięcia DO USTALENIA opisane w „Odstępstwa i uwagi z realizacji” i w PR.
+- [ ] Reguły z Pułapek oznaczone „do ZASAD” dopisane do `docs/ZASADY.md`.
+- [ ] Kryterium spec: rzemiosło z 5 skrzyń atomowe (`CraftFromFiveChests_CrashBetweenComponents_WholeOrNothing`); piec według ticków (`StationProcessProperties`, `Furnace_SettleFrequency_SameOutput`, `Furnace_RestartMidRun_SameResult`).
+
+## DO USTALENIA (zbiorczo, z propozycją)
+
+| # | Kwestia | Propozycja | Rozstrzyga |
+| --- | --- | --- | --- |
+| 1 | Odkrywanie poza rzemiosłem | osobna operacja serwera po każdej operacji, która dała graczowi nowy typ; tylko przy treści z recepturami; `DiscoverHeldItems` przy wejściu (D9) | Opus, A1 |
+| 2 | Skąd klient zna klucze świata | w komunikacie 48 razem z odkryciami; 48 do wszystkich online po przyznaniu klucza (D11) | Opus, B1 |
+| 3 | Kolejność źródeł składników | plecak → pasek → skrzynie od najbliższej, remis po `ContainerId` (D13) | Opus, B1 |
+| 4 | Własna skrzynia prywatna jako źródło | tak (ta sama reguła dostępu co K6-30 D9) (D13) | Opus/właściciel, B1 |
+| 5 | Środek promienia 20 m dla rąk | oko gracza (D13) | Opus, B1 |
+| 6 | Miejsce na wynik | liczone po zdjęciu składników; wynik tylko do plecaka (D12) | Opus, B1 |
+| 7 | Paliwo | wpisy `fuel` receptury, bez bufora w stanie stacji (D15) | Opus, A1 |
+| 8 | Zasięg stacji i poziom | 8 m od oka, bez linii wzroku; poziom = 1 + różne typy ulepszeń w 5 m, dowolna budowla na planecie; klient nie liczy poziomu (D14) | Opus, B1 |
+| 9 | Stacje jako enum w kodzie | `StationKind` 0–5, z czasem: piec i rafineria, poziomy: warsztat do 4 (D5) | Opus, B1 |
+| 10 | Treść demonstracyjna | tabela D24; kuchnia i fabrykator bez receptur w grze; zamiana na drewno, gdy K6-31 jest w `main` | właściciel, B1 |
+| 11 | Rozliczanie obserwowanych stacji | co 10 ticków tylko przy subskrybentach (D16) | Opus, B1 |
+| 12 | Fikstura | nowa `world-v3-crafting.db` (D25) | Opus, A1 |
+| 13 | Największa liczba sztuk w jednej intencji | 50 (D12) | właściciel, B1 |
+| 14 | Dostęp kontenerów stacji | zawsze `Shared`, bez zmiany dostępu (D17) | właściciel, B1 |
+
+## Pułapki
+
+- **Rozpoznawanie 43 i 45 po typie.** Każde miejsce, które patrzy na odkrycia albo klucze w operacji, używa `OperationProgress.Collect`, bo obie bywają składową `CompoundOp` (rzemiosło, odkrycia wsadowe, w K7-47 pokonanie bossa). `case ItemDiscoverOp` w serwerze albo kliencie gubi składowe złożonej. (do ZASAD, §2, obok `OperationTerrain` i `OperationConstructs`)
+- **Rozliczenie stacji tylko operacją i tylko przy interakcji albo obserwacji.** Żadnego `Update` co klatkę na serwerze; nieobserwowana stacja nie tyka; postęp wynika z `Started` i ticku. (do ZASAD, §4: przykład obok „zdarzeń czasowych”)
+- **Treść w applierze.** Czas receptury, liczby sztuk, limity stosu, ujścia i źródła wylicza resolver (`CraftingRules`, `StationSettlements`); applier nie czyta `SurvivalContent.Recipes` ani `BlockContentTable` (ZASADY §4). W applierze **nie** ma kodu, który zna `RecipeDef`.
+- **`new PlayerProgress(player, bed)` kasuje odkrycia.** W applierze i builderze zawsze `existing with { … }`; brak łóżka nie usuwa rekordu z odkryciami (D7).
+- **Dwa kontenery stacji w jednej złożonej.** Drugi identyfikator to `PeekNext().Value + 1`, nie drugie `PeekNext()` (alokator przesuwa applier, nie resolver).
+- **Hak rozliczenia w `Submit`.** Rozliczenie „przed” idzie po walidacji, a przed resolverem; rozliczenie „po” tylko wtedy, gdy intencja została zastosowana; każde to osobny wpis dziennika z własnym `RaiseApplied`. Przy odrzuconej intencji zostaje tylko rozliczenie „przed” — to poprawne.
+- **Nie wołaj `ApplyServerOperation` z handlera `Applied`.** Odkrywanie robi `ServerSimulation` po `RaiseApplied`, a rozliczenie obserwowanych stacji `StationService` w swoim ticku.
+- **Bez K6-31.** Nie importuj `Horyzont.Core.Props`, nie używaj `PropField`, `core:wood` ani 4-argumentowego `ContentLoader.Parse`. Jeśli przy starcie pakietu K6-31 jest już w `main`, stosuj sekcję Rebase od pierwszego kroku.
+- **Złote enumy dopiero z kodem.** `OperationKind` 43/45, `BlobKind` 25, `RejectReason` 44–46, `MessageType` 48 i generatory `CodecGen` dopisuje się w krokach A3/A4/B2, nie w A1/B1 (lekcja K6-30).
+- **`ui.csv` nie do ruszania** (zmiany innej sesji); teksty w `items.csv`, `blocks.csv`, `tools.csv`, potem import tłumaczeń.
+- **Wspólny runner CI.** Nie uruchamiaj lokalnie `dotnet test game` ani testów silnika, gdy na samohostowanym runnerze trwa zadanie gry (wspólny potok gdUnit); najpierw sprawdź kolejkę CI.
+- **Gra z oknem.** Wykonawca nie uruchamia gry z oknem; wygląd i test ręczny należą do właściciela.
+
+## Rebase i kolejność scaleń
+
+| Sytuacja | Co zrobić |
+| --- | --- |
+| K6-31 scalony do `main` przed K6-32 | `ProtocolVersion` = `main` + 1 (17); `OperationKind`, `RejectReason`, `MessageType`, `IntentCode`: zachować wartości K6-31 (47, 48, 53, 45, 27) obok wartości K6-32 (konflikty tylko w plikach enumów i złotych testach); `ContentLoader`: oba pliki opcjonalne (`props`, `recipes`) — wspólne prywatne `ParseAll` z dwoma opcjonalnymi tekstami; `HasSource` uwzględnia obiekty i receptury; `SurvivalContent` z obiema listami; `SurvivalRules` z `PropField?`; `Submit`: gałąź `PropHitIntent` zostaje pierwsza, potem `CraftingRules`, potem `FunctionalBlockRules`; skrót: podsekcje K6-32 (`0x44`, `0x4B`) **po** `0x48`; `game/src/Content/SurvivalContentLoader.Load` czyta oba pliki; treść demonstracyjna może użyć `core:wood` jako paliwa zamiast torfu (DO USTALENIA-10) |
+| K6-32 scalony przed K6-31 | K6-31 robi to samo w drugą stronę; K6-32 nic nie zmienia |
+| K6-33 scalony przed K6-32 (blob 22 v2 i komunikat 48 już istnieją) | odkrycia stają się blobem 22 **v3** (pola K6-33 bez zmian, odkrycia na końcu, odczyt v1/v2/v3) i komunikatem 48 **w wersji 2** (odkrycia i klucze dopisane na końcu); bajty złote K6-33 bez zmian, nowe bajty K6-32 do ponownego zatwierdzenia przez Opus |
+| K6-32 scalony przed K6-33 | K6-33 dopisuje swoje pola jako blob 22 v3 i komunikat 48 w wersji 2 |
+| Inny pakiet zajął numer migracji | nie dotyczy (D3) |
+| Zmiana `main` w `OperationApplier`/`IsComponent` | dopisać 43 i 45 do aktualnej listy; nie zmieniać kolejności stosowania składowych |
+
+## Odstępstwa i uwagi z realizacji
+
+(wypełnia wykonawca: commit startu etapu A, wyniki bramek A1/B1/B6, rozstrzygnięcia DO USTALENIA, odstępstwa od kroków)
+
