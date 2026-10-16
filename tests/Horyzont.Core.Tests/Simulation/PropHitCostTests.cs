@@ -38,11 +38,54 @@ public sealed class PropHitCostTests
 
         foreach (var id in ids)
         {
-            // All in one tick: none of them uses a token, so the hit bucket never answers. Existence is not known without sampling.
-            Assert.Equal(RejectReason.InvalidParameters, f.Submit(new PropHitIntent(PropWorldFixture.Planet, id, 0)).Reason);
+            // All in one tick: none of them uses a token, so the hit bucket never answers. A far identifier is out of reach, as it was
+            // before the lookup cost was limited, whether or not the prop exists (that is not known without sampling).
+            Assert.Equal(RejectReason.OutOfReach, f.Submit(new PropHitIntent(PropWorldFixture.Planet, id, 0)).Reason);
         }
 
         Assert.Equal(before, f.Terrain.GeneratedSurfaceCalls);
+    }
+
+    [Fact]
+    public void Hit_NewTreeJustBeyondReach_OutOfReachWithoutSampling()
+    {
+        var f = new PropWorldFixture();
+        var tree = f.FindProp(PropKindV1.Pine);
+        f.StandBeside(tree, f.Sim.Sim.Rules.ReachMeters + tree.BodyRadiusMeters + 0.5f);
+        var before = f.Terrain.GeneratedSurfaceCalls;
+
+        // The first hit at a tree the simulation never saw: a legitimate player at the edge of the reach is told so, not "invalid parameters".
+        Assert.Equal(RejectReason.OutOfReach, f.Hit(tree.Id).Reason);
+        Assert.Equal(before, f.Terrain.GeneratedSurfaceCalls);
+    }
+
+    [Fact]
+    public void Hit_NewTreeJustInsideReach_Accepted()
+    {
+        var f = new PropWorldFixture();
+        var tree = f.FindProp(PropKindV1.Pine);
+        f.StandBeside(tree, f.Sim.Sim.Rules.ReachMeters + tree.BodyRadiusMeters - 0.5f);
+
+        var result = f.Hit(tree.Id);
+
+        Assert.True(result.IsAccepted, $"{result.Reason}");
+    }
+
+    [Fact]
+    public void Hit_HarvestedFarProp_NoHit()
+    {
+        var f = new PropWorldFixture();
+        var tree = f.FindProp(PropKindV1.Pine);
+        f.StandBeside(tree, 3f);
+        for (var hits = 0; hits < 100 && !f.State.HarvestedProps.Contains(PropWorldFixture.Planet, tree.Id); hits++)
+        {
+            Assert.True(f.Hit(tree.Id).IsAccepted);
+        }
+
+        Assert.True(f.State.HarvestedProps.Contains(PropWorldFixture.Planet, tree.Id));
+        f.StandBeside(tree, 100f);
+
+        Assert.Equal(RejectReason.NoHit, f.Hit(tree.Id).Reason);
     }
 
     [Fact]

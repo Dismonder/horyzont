@@ -67,8 +67,12 @@ public sealed class PropHitAllocationTests
         f.Terrain.GeneratedSurfaceRadius = WorldFactory.HomePlanetParams.RadiusMeters + 1000f;
         var refused = new PropHitIntent(PropWorldFixture.Planet, refusedRock.Id, 0);
 
+        // Within reach of the refused prop, or the reach check would answer first and nothing would be sampled (the test would pass empty).
+        f.StandBeside(refusedRock, 3f);
+        var sampled = f.Terrain.GeneratedSurfaceCalls;
         Assert.Equal(RejectReason.InvalidParameters, f.Submit(refused).Reason);
         var calls = f.Terrain.GeneratedSurfaceCalls;
+        Assert.Equal(1, calls - sampled);
         Assert.Equal(RejectReason.InvalidParameters, f.Submit(refused).Reason);
         var before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < Repeats; i++)

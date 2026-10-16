@@ -64,9 +64,9 @@ internal sealed class PropRules(WorldState state, ITerrainService terrain, Survi
         var cost = field.EstimateLookup(hit.Planet, hit.Prop, eye, rules.ReachMeters);
         if (cost == PropLookupCost.TooFar)
         {
-            // Whether the prop exists is not known without sampling, and a refusal of a prop the height band does not accept is
-            // InvalidParameters, so a far identifier that is not in the cache is refused the same way (a cached one gets its own reason).
-            return state.HarvestedProps.Contains(hit.Planet, hit.Prop) ? RejectReason.NoHit : RejectReason.InvalidParameters;
+            // Whether the prop exists is not known without sampling, but whatever it is it is not in reach: a far prop is out of reach (a
+            // player at the edge of the reach hitting a tree for the first time must be told so), a harvested one is gone.
+            return state.HarvestedProps.Contains(hit.Planet, hit.Prop) ? RejectReason.NoHit : RejectReason.OutOfReach;
         }
 
         if (cost == PropLookupCost.Sampling)
