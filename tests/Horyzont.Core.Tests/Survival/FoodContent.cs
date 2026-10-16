@@ -33,24 +33,10 @@ internal static class FoodContent
 
     /// <summary>The content: tool, gem, stone and soil of the test content, then the four foods.</summary>
     /// <returns>The content.</returns>
-    public static SurvivalContent Create()
-    {
-        var basic = SurvivalContentFactory.CreateTest();
-        ItemDef[] items =
-        [
-            .. basic.Items.Items,
-            FoodItem(SurvivalContentFactory.BerriesKey, Berries),
-            FoodItem(SurvivalContentFactory.JamKey, Jam),
-            FoodItem(SurvivalContentFactory.BrothKey, Broth),
-            FoodItem(SurvivalContentFactory.BreadKey, Bread),
-        ];
-        return new SurvivalContent(new ItemCatalog(items), [.. basic.Yields], basic.StartKit, [.. basic.Props], [.. basic.Recipes]);
-    }
+    public static SurvivalContent Create() => SurvivalContentFactory.CreateTestWithFood();
 
     /// <summary>The food table of <see cref="Create"/> for the item types of a world.</summary>
     /// <param name="state">The world, e.g. of <see cref="WorldFactory.CreateWithFood"/>.</param>
     /// <returns>The table.</returns>
     public static FoodTable Table(WorldState state) => FoodTable.Build(Create(), state.ItemTypes);
-
-    private static ItemDef FoodItem(string key, FoodDef food) => new(key, ItemCategory.Food, 20, ItemFlags.Food, 0, EquipmentSlot.None, food);
 }
