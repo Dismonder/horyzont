@@ -438,6 +438,13 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
                 continue;
             }
 
+            if (change.Configured)
+            {
+                // A change of size or access (also together with slots) is more than a delta can say: the owner gets the whole state.
+                _send(container.Owner, StateOf(container));
+                continue;
+            }
+
             SendDelta(container.Owner, container, change, applied.Id.Value);
         }
     }
@@ -454,7 +461,7 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
         _logger.DeltaSent(player.Value, container.Id.Value, change.Version, opId);
     }
 
-    /// <summary>Sends a change of a chest container to its subscribers: slots as a delta, a change of size or access (operation 37) as the whole state.</summary>
+    /// <summary>Sends a change of a chest container to its subscribers: slots as a delta, a change of size or access (operation 37, also together with slots) as the whole state.</summary>
     private void SendChestChange(Container container, ContainerChange change, ulong opId)
     {
         if (change.Version <= 1 || !_chestSubscribers.TryGetValue(container.Id, out var subscribers))
@@ -464,7 +471,7 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
 
         // Copied: ending a subscription changes the list.
         var targets = subscribers.ToArray();
-        var configured = change.Slots.Count == 0;
+        var configured = change.Configured;
         foreach (var player in targets)
         {
             if (!HasAccess(container, player))

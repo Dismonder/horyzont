@@ -58,6 +58,23 @@ public sealed class ClientInventoryTests
     }
 
     [Fact]
+    public void DeltaSlotOutsideSize_RequestsStateAndKeepsVersion()
+    {
+        var fx = new InventoryFixture();
+
+        // Slot 3 is inside the bag, slot 41 is not: the delta is applied wholly or not at all, and the client asks for the state.
+        fx.Delta(InventoryFixture.BagId, 2, (3, InventoryFixture.Stone, 12), (41, InventoryFixture.Stone, 1));
+
+        var bag = fx.Inventory.Bag!;
+        Assert.Equal<uint>(1, bag.Version);
+        Assert.True(bag.Slots[3].IsEmpty);
+        Assert.Equal([InventoryFixture.BagId], fx.Requested);
+
+        fx.Delta(InventoryFixture.BagId, 2, (41, InventoryFixture.Stone, 1));
+        Assert.Equal([InventoryFixture.BagId], fx.Requested); // asked once while waiting for the state
+    }
+
+    [Fact]
     public void Delta_Old_Ignored()
     {
         var fx = new InventoryFixture();

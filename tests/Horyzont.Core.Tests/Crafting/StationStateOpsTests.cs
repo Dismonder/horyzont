@@ -51,7 +51,7 @@ public sealed class StationStateOpsTests
     {
         var f = new CraftingFixture();
         var (input, output) = f.SetUpStation(CraftingFixture.StationCell);
-        var chestAtStation = f.Blocks.CreateChestContainer(CraftingFixture.StationCell);
+        var chestAtStation = f.Blocks.SetUpChestAt(CraftingFixture.StationCell2, FunctionalBlockFixture.Player1);
 
         f.Apply(CraftingFixture.StationState(CraftingFixture.StationCell, input, output, "t:a"));
         f.AssertFails(CraftingFixture.StationState(CraftingFixture.StationCell, input, chestAtStation, "t:a"));

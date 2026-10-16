@@ -63,16 +63,22 @@ internal static class CraftingWorldScript
         h.Sim.ApplyServerOperation(new BlockSetOp(construct, CraftingWorldBuilt.BedCell, BlockState.Create(FunctionalBlocks.BedType, 0)));
 
         var chest = h.State.ContainerIds.PeekNext();
-        h.Sim.ApplyServerOperation(new ContainerCreateOp(
-            chest, ContainerKind.Chest, ContainerHost.ConstructBlock(construct, CraftingWorldBuilt.ChestCell), alice, ContainerAccess.Shared, 8));
-        h.Sim.ApplyServerOperation(new BlockEntitySetOp(construct, CraftingWorldBuilt.ChestCell, FunctionalBlocks.ChestType, new ChestBlockState(chest)));
+        h.Sim.ApplyServerOperation(new CompoundOp(
+            [
+            new ContainerCreateOp(
+            chest, ContainerKind.Chest, ContainerHost.ConstructBlock(construct, CraftingWorldBuilt.ChestCell), alice, ContainerAccess.Shared, 8),
+            new BlockEntitySetOp(construct, CraftingWorldBuilt.ChestCell, FunctionalBlocks.ChestType, new ChestBlockState(chest)),
+            ]));
         h.Sim.ApplyServerOperation(new ItemCreateOp(new SlotRef(chest, 0), Ore, 3, 500, ItemSource.Admin));
         h.Sim.ApplyServerOperation(new ItemCreateOp(new SlotRef(chest, 1), Stone, 1, 500, ItemSource.Admin));
         h.Sim.ApplyServerOperation(new BlockSetOp(construct, CraftingWorldBuilt.Chest2Cell, BlockState.Create(FunctionalBlocks.ChestType, 0)));
         var chest2 = h.State.ContainerIds.PeekNext();
-        h.Sim.ApplyServerOperation(new ContainerCreateOp(
-            chest2, ContainerKind.Chest, ContainerHost.ConstructBlock(construct, CraftingWorldBuilt.Chest2Cell), bob, ContainerAccess.Shared, 8));
-        h.Sim.ApplyServerOperation(new BlockEntitySetOp(construct, CraftingWorldBuilt.Chest2Cell, FunctionalBlocks.ChestType, new ChestBlockState(chest2)));
+        h.Sim.ApplyServerOperation(new CompoundOp(
+            [
+            new ContainerCreateOp(
+            chest2, ContainerKind.Chest, ContainerHost.ConstructBlock(construct, CraftingWorldBuilt.Chest2Cell), bob, ContainerAccess.Shared, 8),
+            new BlockEntitySetOp(construct, CraftingWorldBuilt.Chest2Cell, FunctionalBlocks.ChestType, new ChestBlockState(chest2)),
+            ]));
         h.Sim.ApplyServerOperation(new ItemCreateOp(new SlotRef(chest2, 0), Stone, 1, 500, ItemSource.Admin));
         h.Sim.ApplyServerOperation(new BlockEntitySetOp(construct, CraftingWorldBuilt.BedCell, FunctionalBlocks.BedType, new BedBlockState(alice)));
         h.Sim.ApplyServerOperation(new RespawnPointSetOp(alice, CraftingWorldBuilt.Bed(construct)));

@@ -42,9 +42,12 @@ public sealed class CraftingFlowTests
         var sim = rig.Runtime.Simulation;
         sim.ApplyServerOperation(new BlockSetOp(construct, cell, BlockState.Create(FunctionalBlocks.ChestType, 0)));
         var container = rig.Runtime.State.ContainerIds.PeekNext();
-        sim.ApplyServerOperation(new ContainerCreateOp(
-            container, ContainerKind.Chest, ContainerHost.ConstructBlock(construct, cell), PlayerId.None, ContainerAccess.Shared, FunctionalBlocksRig.ChestSlots));
-        sim.ApplyServerOperation(new BlockEntitySetOp(construct, cell, FunctionalBlocks.ChestType, new ChestBlockState(container)));
+        sim.ApplyServerOperation(new CompoundOp(
+            [
+            new ContainerCreateOp(
+            container, ContainerKind.Chest, ContainerHost.ConstructBlock(construct, cell), PlayerId.None, ContainerAccess.Shared, FunctionalBlocksRig.ChestSlots),
+            new BlockEntitySetOp(construct, cell, FunctionalBlocks.ChestType, new ChestBlockState(container)),
+            ]));
         for (var i = 0; i < items.Length; i++)
         {
             sim.ApplyServerOperation(new ItemCreateOp(new SlotRef(container, (ushort)i), items[i].Type, items[i].Count, 500, ItemSource.Admin));
