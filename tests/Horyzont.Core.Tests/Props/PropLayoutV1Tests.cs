@@ -10,8 +10,9 @@ namespace Horyzont.Core.Tests.Props;
 /// <summary>K6-31 D5: the frozen prop layout V1 of the profile <c>core:planet/1</c>.</summary>
 public sealed class PropLayoutV1Tests
 {
-    // K6-31 A6: recorded after the Opus 5.5 review of the table of D5 approves it; until then this test is red.
-    private const ulong LayoutV1Digest = 0UL;
+    // K6-31 A6: recorded after the Opus 5.5 review of A1 approved the table of D5. Changing PropLayoutV1 changes this value: a new look is a
+    // PropLayoutV2 for a new generator profile, never an edit of V1.
+    private const ulong LayoutV1Digest = 3687299226734270200UL;
 
     private static readonly PropLayoutV1 _layout = new();
 

@@ -349,7 +349,7 @@ Każdy krok kończy się zielonym budowaniem i testami; commity w formacie Conve
 - [x] A3 (commit `feat(core): add prop harvest and regrow operations`). Operacje 47, 48 w applierze jako składowe z `UndoLog`; zbiór składowych złożonej (D13); `OperationProps`. Commit `feat(core): add prop harvest and regrow operations`.
 - [x] A4 (commit `feat(core): encode and checkpoint harvested props`). Kodeki 47/48 (`PropId` w `CoreCodecPrimitives`), `HarvestedPropRecord`, `ChangeTracker`, `WorldCheckpoint`, `WorldStateBuilder`, `CaptureCheckpoint`/`Requeue`. Commit `feat(core): encode and checkpoint harvested props`.
 - [x] A5 (commit `feat(core): hash harvested props`). `StateHasher` (D15) i test A0 zielony. Commit `feat(core): hash harvested props`.
-- [ ] A6. `PropKindV1`, `PropLayoutV1`, `PropLayouts`; złoty skrót `PropLayoutV1_GoldenDigest` zapisany **po** zatwierdzeniu tabeli w A1. Commit `feat(core): add the frozen prop layout v1`.
+- [x] A6 (commit `feat(core): add the frozen prop layout v1`, `PropLayoutV1_GoldenDigest` = 3687299226734270200). `PropKindV1`, `PropLayoutV1`, `PropLayouts`; złoty skrót `PropLayoutV1_GoldenDigest` zapisany **po** zatwierdzeniu tabeli w A1. Commit `feat(core): add the frozen prop layout v1`.
 - [ ] A7. Testy właściwości zielone; sprawdzenie mutacją (usunięty warunek „obiekt niezebrany” w 48 → `PropHarvest_AlreadyHarvested_Fails` i test właściwości czerwone); korpus i `DeterminismTests` bez zmian w plikach.
 
 ### Etap B — treść, intencje, protokół
