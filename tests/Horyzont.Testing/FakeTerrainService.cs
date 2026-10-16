@@ -145,6 +145,11 @@ public sealed class FakeTerrainService(float surfaceRadius = 4000f, float voxelS
     /// </summary>
     public Func<PlanetId, Vector3, bool>? SolidModel { get; set; }
 
+    /// <summary>
+    /// Caves (K6-34): spheres of air inside the terrain. Empty by default, which leaves <see cref="Raycast"/> exactly as it was: a ray that starts below the surface hits at once.
+    /// </summary>
+    public List<TerrainCavity> Cavities { get; } = [];
+
     /// <summary>Counts the calls of <see cref="TrySampleSolid"/>.</summary>
     public int SolidSamples { get; private set; }
 
@@ -173,6 +178,34 @@ public sealed class FakeTerrainService(float surfaceRadius = 4000f, float voxelS
         var c = origin.LengthSquared() - (r * r);
         if (c <= 0)
         {
+            // Inside a cave the ray hits the wall where it leaves the cave, unless it leaves above the surface of the planet.
+            for (var i = 0; i < Cavities.Count; i++)
+            {
+                var cave = Cavities[i];
+                var offset = origin - cave.Center;
+                var caveC = offset.LengthSquared() - (cave.Radius * cave.Radius);
+                if (caveC >= 0)
+                {
+                    continue;
+                }
+
+                var caveB = Vector3.Dot(offset, direction);
+                var exit = -caveB + MathF.Sqrt((caveB * caveB) - caveC);
+                if (exit > maxDistance)
+                {
+                    return false;
+                }
+
+                var wall = origin + (direction * exit);
+                if (wall.LengthSquared() > r * r)
+                {
+                    return false;
+                }
+
+                hit = new TerrainHit(wall, Vector3.Normalize(cave.Center - wall), exit);
+                return true;
+            }
+
             // Inside the terrain: hit right at the origin.
             hit = new TerrainHit(origin, TerrainMath.UpAt(origin), 0f);
             return true;

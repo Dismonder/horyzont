@@ -8,4 +8,8 @@ namespace Horyzont.Core.Content;
 /// <param name="ToolTier">Tool tier, 0 for none.</param>
 /// <param name="EquipmentSlot">Equipment slot.</param>
 /// <param name="Food">Food statistics (K6-33), null for an item that is not food.</param>
-public sealed record ItemDef(string Key, ItemCategory Category, ushort MaxStack, ItemFlags Flags, byte ToolTier, EquipmentSlot EquipmentSlot, FoodDef? Food = null);
+/// <param name="SuitRefill">What the item refills when used on the suit (K6-34), null for an item that is not a refill.</param>
+/// <param name="SuitModule">The suit module statistics (K6-34), null for an item that is not a module.</param>
+public sealed record ItemDef(
+    string Key, ItemCategory Category, ushort MaxStack, ItemFlags Flags, byte ToolTier, EquipmentSlot EquipmentSlot, FoodDef? Food = null,
+    SuitRefillDef? SuitRefill = null, SuitModuleDef? SuitModule = null);

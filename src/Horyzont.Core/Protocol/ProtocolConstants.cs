@@ -105,6 +105,9 @@ public static class ProtocolConstants
     /// <summary>Largest value of health or stamina in a record or a message (K6-33); a larger, negative or non-finite value is invalid.</summary>
     public const float MaxVitalValue = 10_000f;
 
+    /// <summary>Largest value or capacity of a suit resource in a record, a message or an operation (K6-34); a larger, negative or non-finite value is invalid.</summary>
+    public const float MaxSuitValue = 1000f;
+
     /// <summary>
     /// Most stations with time (furnace, refinery) in one construct (K6-32, review B1, 7): with this many the state message of a construct
     /// (<see cref="Messages.BlockEntityStates"/>, at most 113 678 bytes) still fits <see cref="MaxReliableMessageBytes"/>. A rule may lower it, never raise it.

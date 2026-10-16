@@ -57,6 +57,18 @@ public static class SurvivalContentFactory
     /// </summary>
     public static IReadOnlyList<string> FoodItemKeys { get; } = [.. ItemKeys, BerriesKey, JamKey, BrothKey, BreadKey];
 
+    public const string HeatCellKey = "test:heat_cell";
+    public const string OxygenCanisterKey = "test:oxygen_canister";
+    public const string TankModuleKey = "test:module_o2_tank";
+    public const string ThermalModuleKey = "test:module_thermal";
+    public const string FuelPackKey = "test:fuel_pack";
+
+    /// <summary>
+    /// <see cref="FoodItemKeys"/> and five types of K6-34 (ids 9..13): a heat cell and an oxygen canister (suit refills), an oxygen tank and a thermal module (suit modules) and the
+    /// fuel of the oxygen generator. Their statistics are in <c>HazardTestContent</c> of the Core tests (the loader reads them in step B3).
+    /// </summary>
+    public static IReadOnlyList<string> HazardItemKeys { get; } = [.. FoodItemKeys, HeatCellKey, OxygenCanisterKey, TankModuleKey, ThermalModuleKey, FuelPackKey];
+
     /// <summary>Parses the test content.</summary>
     public static SurvivalContent CreateTest() => ContentLoader.Parse(ItemsJson, YieldsJson, StartJson);
 

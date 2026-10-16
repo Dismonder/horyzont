@@ -38,6 +38,9 @@ public sealed class BlockEntityStore
     /// <returns>The count.</returns>
     public int StationsOf(EntityId construct) => _stationsPerConstruct.GetValueOrDefault(construct);
 
+    /// <summary>The blocks with the state of an oxygen generator (K6-34), in the order of <see cref="BlockRef"/>; kept in step with <see cref="Set"/>, <see cref="Load"/> and <see cref="Remove"/>.</summary>
+    public IReadOnlyList<BlockRef> Generators => throw new NotImplementedException("K6-34 A3");
+
     /// <summary>Looks up the state of a block.</summary>
     /// <param name="key">Construct and cell.</param>
     /// <param name="state">The state when found.</param>

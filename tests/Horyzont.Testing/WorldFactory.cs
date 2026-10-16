@@ -160,6 +160,15 @@ public static class WorldFactory
             players, true, FoodBlocks.BlockKeys, SurvivalContentFactory.FoodItemKeys,
             secondPlanet ? [HomePlanetParams, SecondPlanetParams] : [HomePlanetParams]);
 
+    /// <summary>
+    /// <see cref="CreateWithFood"/> with the item types of <see cref="SurvivalContentFactory.HazardItemKeys"/> (K6-34): the types of the food world and the suit refills, modules and
+    /// generator fuel as ids 9..13. A star system and a second body come with step B1.
+    /// </summary>
+    public static WorldState CreateWithHazards(int players = 1, bool secondPlanet = false) =>
+        CreateBlockWorld(
+            players, true, FoodBlocks.BlockKeys, SurvivalContentFactory.HazardItemKeys,
+            secondPlanet ? [HomePlanetParams, SecondPlanetParams] : [HomePlanetParams]);
+
     private static WorldState WithPlayers(WorldState state, int players)
     {
         var sim = new ServerSimulation(state, new FakeTerrainService(), new InMemoryJournal(), new GameRules(), NullLogger<ServerSimulation>.Instance);
@@ -187,6 +196,14 @@ public static class WorldFactory
         for (var i = 0; i < SurvivalContentFactory.FoodItemKeys.Count; i++)
         {
             if (SurvivalContentFactory.FoodItemKeys[i] == key)
+            {
+                return new ItemTypeId((ushort)(i + 1));
+            }
+        }
+
+        for (var i = 0; i < SurvivalContentFactory.HazardItemKeys.Count; i++)
+        {
+            if (SurvivalContentFactory.HazardItemKeys[i] == key)
             {
                 return new ItemTypeId((ushort)(i + 1));
             }
