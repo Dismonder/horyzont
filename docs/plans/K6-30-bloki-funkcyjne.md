@@ -362,7 +362,7 @@ Każdy krok kończy się zielonym budowaniem i testami; commity w formacie Conve
 - [x] B2. `RejectReason` 54, 57; intencje 22, 23, 28, 29; `IntentCodec`; komunikat 46, `MessageCodec`, `MessageChannels`, `MessageRouter`; fixture X6; `ProtocolVersion` = 15 i jego testy. Commit `feat(protocol): add block entity states and functional block intents`.
 - [x] B3. Treść: `BlockFunctionKind` 11–13, `BlockFunction.ContainerSlots`, `BlockTypeCatalog`, `BlockTypeContent` (światło), nowe typy w `blocks.json`, materiał `lamp`, nazwy w `blocks.csv`. Commit `feat(content): add chests, a bed, a lamp and a wooden door`.
 - [x] B4. `SurvivalRules` z `BlockContentTable`; `FunctionalBlockRules` (postawienie, rozbiórka, Toggle z kolumną, Sleep/SetRespawn, config, quick stack, take all); `ContainerReach`; walidator (28, 29, 22, 23; `BucketFor`; D21; D23); `GameRules`. Commit `feat(core): resolve chests, beds, doors, lamps and quick stacking`.
-- [ ] B5. `ConstructDirtyChunks` przez `OperationConstructs` i 49; `ChunkMesher` (otwarte drzwi, komórki lamp), `BuiltInShapeMeshes` (`builtin:door_open`). Commit `feat(constructs): mesh open doors and report lamp cells`.
+- [x] B5. `ConstructDirtyChunks` przez `OperationConstructs` i 49; `ChunkMesher` (otwarte drzwi, komórki lamp), `BuiltInShapeMeshes` (`builtin:door_open`). Commit `feat(constructs): mesh open doors and report lamp cells`.
 - [ ] B6. Sprawdzenie (niżej).
 
 ### Etap C — zapis i serwer
@@ -624,3 +624,9 @@ Przegląd tylko odczytem planu i opisu B1 (commit e214887; bez uruchamiania test
 - **Zasięg przedmiotów:** `ItemMoveIntent` na kontenerze skrzyni: nieistniejący albo cudza prywatna → `ContainerLocked`, dalej niż `ContainerKeepRangeMeters` → `OutOfReach`; `ItemDropIntent` nadal tylko z własnych kontenerów.
 - **Alokacje:** `BlockEntityStore.TryGet` wychodzi wcześniej dla budowli bez stanów (zapytanie do `SortedDictionary` alokuje 40 B, a walidator pyta przy każdej rozbiórce); `ContainerStore` indeksuje gospodarzy blokowych kluczem `BlockRef` zamiast krotki. `AllocationTests` zielone.
 - Poza listą: bez treści Przetrwania rozbiórka komórki ze stanem albo kontenerem (D21) i postawienie skrzyni/łóżka dają `InvalidParameters`; limit `MaxBlockEntitiesPerConstruct` sprawdza walidator przy postawieniu skrzyni/łóżka (D23).
+
+### Etap B, krok B5 (2026-10-16)
+
+- `ConstructDirtyChunks.Collect` bierze część budowli złożonej z `OperationConstructs.TryGetConstructPart` (składowa 2–4 albo same składowe 49), a operację 49 traktuje jak `BlockSetOp` (komórka i sąsiednie chunki, bo otwarte drzwi odsłaniają ściany sąsiadów). Złożona bez części budowli (same przedmioty) niczego nie brudzi.
+- `BlockRenderInfo` ma `Function` i `OpenMesh`; `BlockRenderTable.Build` daje każdemu blokowi `Door` jednorazowo zbudowaną siatkę `builtin:door_open` (panel 0,1 m przy ścianie −X, nie jest wymieniona w treści). `ChunkMesher`: drzwi z `FunctionState` ≠ 0 są kształtem prefabrykowanym bez kolizji i nie zasłaniają ścian sąsiadów; lampa z `FunctionState` ≠ 0 trafia do `ChunkMeshData.LightCells` (komórki budowli, rosnąco po x, y, z; tylko wnętrze chunka). Zamknięte drzwi i wyłączona lampa rysują się jak zwykły sześcian.
+- **Poprawka testu B1:** `Collect_CompoundWithBlockSet_DirtiesCell` (kolumna drzwi) używał komórek z `z = 0`, których sąsiedni chunk `Z − 1` też jest brudny; komórki przesunięte na `z = 8`, żeby test sprawdzał to, co opisuje (dwa chunki wzdłuż osi Y).

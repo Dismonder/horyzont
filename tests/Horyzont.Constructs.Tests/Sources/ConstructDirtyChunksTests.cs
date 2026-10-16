@@ -183,8 +183,8 @@ public sealed class ConstructDirtyChunksTests
         var doorColumn = Run(
             new CompoundOp(
             [
-                new BlockFunctionStateSetOp(_id, new CellPos(3, 15, 0), 5, 1),
-                new BlockFunctionStateSetOp(_id, new CellPos(3, 16, 0), 5, 1),
+                new BlockFunctionStateSetOp(_id, new CellPos(3, 15, 8), 5, 1),
+                new BlockFunctionStateSetOp(_id, new CellPos(3, 16, 8), 5, 1),
             ]),
             new ConstructChange(_id, 7, false));
 

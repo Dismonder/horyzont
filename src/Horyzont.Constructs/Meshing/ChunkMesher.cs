@@ -30,6 +30,7 @@ public sealed class ChunkMesher
     private readonly byte[] _kind = new byte[Padded * Padded * Padded];
     private readonly byte[] _material = new byte[Padded * Padded * Padded];
     private readonly byte[] _solid = new byte[Padded * Padded * Padded];
+    private readonly byte[] _lit = new byte[Padded * Padded * Padded];
     private readonly byte[] _mask = new byte[Size * Size];
 
     /// <summary>Builds render surfaces and collision triangles of the chunk in <paramref name="input"/>.</summary>
@@ -60,7 +61,7 @@ public sealed class ChunkMesher
             }
         }
 
-        EmitShapes(cells, table, output);
+        EmitShapes(cells, table, input.Key.Chunk, output);
     }
 
     private static Vector3 Normal(Face face) => face switch
@@ -92,6 +93,7 @@ public sealed class ChunkMesher
                 _kind[i] = KindEmpty;
                 _material[i] = 0;
                 _solid[i] = 0;
+                _lit[i] = 0;
                 continue;
             }
 
@@ -99,8 +101,14 @@ public sealed class ChunkMesher
 
             // A malformed value (orientation >= 24, unknown bits, type 0 with bits) is drawn as core:missing.
             ref readonly var info = ref (state.IsWellFormed ? ref table.Get(state.TypeId) : ref table.Missing);
+            _lit[i] = info.Function == BlockFunctionKind.Light && state.FunctionState != 0 ? (byte)1 : (byte)0;
             switch (info.Shape)
             {
+                case BlockShape.Cube when info.OpenMesh is not null && state.FunctionState != 0:
+                    // An open door is a thin panel: it hides no face, collides with nothing and is drawn as a prefab shape.
+                    _kind[i] = KindShape;
+                    _solid[i] = 0;
+                    break;
                 case BlockShape.Cube:
                     _kind[i] = KindCube;
                     _solid[i] = info.HasCollision ? (byte)1 : (byte)0;
@@ -233,7 +241,7 @@ public sealed class ChunkMesher
         surface.AddIndex(start + 2);
     }
 
-    private void EmitShapes(ReadOnlySpan<uint> cells, BlockRenderTable table, ChunkMeshData output)
+    private void EmitShapes(ReadOnlySpan<uint> cells, BlockRenderTable table, ChunkPos chunk, ChunkMeshData output)
     {
         for (var x = 0; x < Size; x++)
         {
@@ -242,6 +250,11 @@ public sealed class ChunkMesher
                 for (var z = 0; z < Size; z++)
                 {
                     var index = ChunkMeshInput.Index(x, y, z);
+                    if (_lit[index] != 0)
+                    {
+                        output.AddLightCell(new CellPos((chunk.X << 4) + x, (chunk.Y << 4) + y, (chunk.Z << 4) + z));
+                    }
+
                     if (_kind[index] != KindShape)
                     {
                         continue;
@@ -249,16 +262,20 @@ public sealed class ChunkMesher
 
                     var state = new BlockState(cells[index]);
                     ref readonly var info = ref table.Get(state.TypeId);
-                    if (info.Mesh is { } mesh)
+                    if (info.OpenMesh is { } openMesh && state.FunctionState != 0)
                     {
-                        EmitShape(mesh, in info, state.Orientation, new Vector3(x, y, z), output);
+                        EmitShape(openMesh, in info, state.Orientation, new Vector3(x, y, z), collision: false, output);
+                    }
+                    else if (info.Mesh is { } mesh)
+                    {
+                        EmitShape(mesh, in info, state.Orientation, new Vector3(x, y, z), info.HasCollision, output);
                     }
                 }
             }
         }
     }
 
-    private static void EmitShape(Content.ShapeMesh mesh, in BlockRenderInfo info, byte orientation, Vector3 cell, ChunkMeshData output)
+    private static void EmitShape(Content.ShapeMesh mesh, in BlockRenderInfo info, byte orientation, Vector3 cell, bool collision, ChunkMeshData output)
     {
         var right = Normal(BlockOrientation.Right(orientation));
         var up = Normal(BlockOrientation.Up(orientation));
@@ -288,7 +305,7 @@ public sealed class ChunkMesher
             surface.AddIndex(start + indices[i]);
         }
 
-        if (info.HasCollision)
+        if (collision)
         {
             for (var i = 0; i < indices.Length; i++)
             {

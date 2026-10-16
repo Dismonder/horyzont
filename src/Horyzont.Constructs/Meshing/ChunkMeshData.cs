@@ -20,7 +20,7 @@ public sealed class ChunkMeshData : IDisposable
     public ReadOnlySpan<Vector3> CollisionFaces => _collision.AsSpan();
 
     /// <summary>Cells of the lit lamps of the chunk, in construct cells (K6-30 D7); the game puts a light on each.</summary>
-    public ReadOnlySpan<CellPos> LightCells => _lights.AsSpan(); // K6-30 B5: the mesher fills it.
+    public ReadOnlySpan<CellPos> LightCells => _lights.AsSpan();
 
     /// <summary>True when there is nothing to render and nothing to collide with.</summary>
     public bool IsEmpty => Cubes.IsEmpty && Shapes.IsEmpty && _collision.Count == 0;
@@ -35,6 +35,8 @@ public sealed class ChunkMeshData : IDisposable
     }
 
     internal void AddCollisionVertex(Vector3 position) => _collision.Add(position);
+
+    internal void AddLightCell(CellPos cell) => _lights.Add(cell);
 
     /// <inheritdoc />
     public void Dispose()

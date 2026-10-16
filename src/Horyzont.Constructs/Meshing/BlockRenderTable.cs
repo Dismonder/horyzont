@@ -30,7 +30,8 @@ public sealed class BlockRenderTable
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(catalog);
-        var missing = From(catalog.Missing, true);
+        BuiltInShapeMeshes.TryResolve(BuiltInShapeMeshes.DoorOpenRef, out var doorOpen);
+        var missing = From(catalog.Missing, true, doorOpen);
         var maxId = 0;
         foreach (var entry in registry)
         {
@@ -54,7 +55,7 @@ public sealed class BlockRenderTable
             }
             else if (catalog.TryGet(entry.Key, out var content))
             {
-                infos[entry.Id] = From(content, false);
+                infos[entry.Id] = From(content, false, doorOpen);
             }
             else
             {
@@ -82,6 +83,8 @@ public sealed class BlockRenderTable
         return ref _missing;
     }
 
-    private static BlockRenderInfo From(BlockTypeContent content, bool isMissing) =>
-        new(content.Def.Shape, content.Def.MaterialId, content.Def.HasCollision, isMissing, content.Mesh);
+    private static BlockRenderInfo From(BlockTypeContent content, bool isMissing, ShapeMesh? doorOpen) =>
+        new(
+            content.Def.Shape, content.Def.MaterialId, content.Def.HasCollision, isMissing, content.Mesh, content.Def.Function.Kind,
+            content.Def.Function.Kind == BlockFunctionKind.Door ? doorOpen : null);
 }

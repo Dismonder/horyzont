@@ -36,7 +36,19 @@ public static class ConstructDirtyChunks
             }
         }
 
-        switch (operation)
+        // Item components of a compound move nothing in a construct: only its construct part counts (OperationConstructs, K6-30 D14).
+        var part = operation;
+        if (operation is CompoundOp)
+        {
+            if (!OperationConstructs.TryGetConstructPart(operation, out var constructPart))
+            {
+                return;
+            }
+
+            part = constructPart;
+        }
+
+        switch (part)
         {
             case ConstructCreateOp create:
                 created.Add(create.Construct);
@@ -46,6 +58,20 @@ public static class ConstructDirtyChunks
                 break;
             case BlockClearOp clear:
                 AddCell(clear.Construct, clear.Cell, removed, dirty);
+                break;
+            case BlockFunctionStateSetOp state:
+                AddCell(state.Construct, state.Cell, removed, dirty);
+                break;
+            case CompoundOp states:
+                // Only function states are left in the part of a compound without a construct edit (a door column).
+                foreach (var component in states.Components)
+                {
+                    if (component is BlockFunctionStateSetOp columnState)
+                    {
+                        AddCell(columnState.Construct, columnState.Cell, removed, dirty);
+                    }
+                }
+
                 break;
             case EntityReparentOp reparent:
                 reposed?.Add(reparent.Entity);
