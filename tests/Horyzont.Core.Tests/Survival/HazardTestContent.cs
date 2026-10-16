@@ -79,8 +79,9 @@ internal static class HazardTestContent
     /// <summary>The content: the test items of the food world, then the refills, the modules and the generator fuel.</summary>
     /// <param name="map">Replaces an item definition (for tests with their own modules); null keeps them all.</param>
     /// <param name="hazards">Whether the content has the hazards and the generator (false is the content of K6-33: the items are there, the rules are off).</param>
+    /// <param name="recipes">Whether the content has a recipe (false: no crafting and no settlement of the stations with time; the generators must still be settled).</param>
     /// <returns>The content.</returns>
-    public static SurvivalContent Create(Func<ItemDef, ItemDef>? map = null, bool hazards = true)
+    public static SurvivalContent Create(Func<ItemDef, ItemDef>? map = null, bool hazards = true, bool recipes = true)
     {
         var items = new ItemDef[]
         {
@@ -98,7 +99,7 @@ internal static class HazardTestContent
             new(SurvivalContentFactory.ThermalModuleKey, ItemCategory.Armor, 1, ItemFlags.Armor, 0, EquipmentSlot.Module, SuitModule: Thermal),
             new(SurvivalContentFactory.FuelPackKey, ItemCategory.Component, 100, ItemFlags.None, 0, EquipmentSlot.None),
         };
-        return new SurvivalContent(new ItemCatalog(map is null ? items : [.. items.Select(map)]), [], new StartKitDef(40, 10, 7, []), [], [CutRecipe], hazards ? Hazards : null);
+        return new SurvivalContent(new ItemCatalog(map is null ? items : [.. items.Select(map)]), [], new StartKitDef(40, 10, 7, []), [], recipes ? [CutRecipe] : [], hazards ? Hazards : null);
     }
 
     /// <summary>The module table of <see cref="Create"/> for the item types of a world.</summary>

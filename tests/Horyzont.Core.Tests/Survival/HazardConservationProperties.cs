@@ -85,10 +85,13 @@ public sealed class HazardConservationProperties
     private static void Run(Step[] sequence, Coverage coverage)
     {
         var w = new HazardWorld(survival: true);
+
+        // An empty suit: a player without vitals holds the capacity in every resource, so no refill would be accepted at all.
+        w.SetSuit(Player1, new SuitResources(0f, 0f, 0f, 0f, 0f));
         var input = w.PlaceByIntent(PlacedCell);
         var expected = new Dictionary<ushort, long>();
         var accounted = 0;
-        Account(w, expected, ref accounted);
+        Account(w, expected, ref accounted, coverage);
         foreach (var step in sequence)
         {
             w.AdvanceTicks(3);
@@ -111,11 +114,7 @@ public sealed class HazardConservationProperties
                     break;
                 case Action.Settle:
                     var before = w.Blocks.Sim.Journal.Entries.Count;
-                    if (w.Simulation.TrySettleStation(new BlockRef(FunctionalBlockFixture.ConstructId, PlacedCell)) is { } applied)
-                    {
-                        coverage.Settled(applied.Operation);
-                    }
-
+                    w.Simulation.TrySettleStation(new BlockRef(FunctionalBlockFixture.ConstructId, PlacedCell));
                     Assert.True(w.Blocks.Sim.Journal.Entries.Count >= before);
                     break;
                 default:
@@ -123,7 +122,7 @@ public sealed class HazardConservationProperties
                     break;
             }
 
-            Account(w, expected, ref accounted);
+            Account(w, expected, ref accounted, coverage);
             AssertTotals(w, expected);
             AssertEquipment(w);
             AssertGenerator(w, input);
@@ -212,12 +211,15 @@ public sealed class HazardConservationProperties
     }
 
     /// <summary>Adds the journal entries since the last call to the expected totals (created minus destroyed).</summary>
-    private static void Account(HazardWorld w, Dictionary<ushort, long> expected, ref int accounted)
+    private static void Account(HazardWorld w, Dictionary<ushort, long> expected, ref int accounted, Coverage coverage)
     {
         var entries = w.Blocks.Sim.Journal.Entries;
         for (; accounted < entries.Count; accounted++)
         {
             Account(entries[accounted].Operation, expected);
+
+            // Every settlement counts, whether the step was a settle, a feed or a take-out (the intents settle before and after).
+            coverage.Settled(entries[accounted].Operation);
         }
     }
 

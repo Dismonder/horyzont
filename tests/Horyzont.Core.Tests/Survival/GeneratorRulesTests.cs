@@ -227,6 +227,28 @@ public sealed class GeneratorRulesTests
     }
 
     [Fact]
+    public void Settlement_WithoutRecipes_StillRunsForGenerators()
+    {
+        // The content has hazards but no recipe (review B1b, P3-7): the stations are off, the generators are not. The twin with recipes behaves the same.
+        foreach (var recipes in new[] { true, false })
+        {
+            var w = new HazardWorld(survival: true, recipes: recipes);
+            var input = w.PlaceByIntent(PlacedCell);
+            w.Give(Player1, HazardWorld.Fuel, 3);
+            w.Blocks.Accept(Player1, new ItemMoveIntent(BagSlot(Player1, 0), ItemMoveTarget.ToSlot(Slot(input, 0)), 3, HazardWorld.Fuel, 3));
+            var started = w.Now;
+            Assert.Equal(new OxygenGeneratorBlockState(input, started), w.GeneratorAt(PlacedCell));
+            Assert.Equal(2, FuelIn(w, input));
+
+            w.AdvanceTicks((int)(2 * Per) + 1);
+            Assert.NotNull(w.Simulation.TrySettleStation(At(PlacedCell)));
+
+            Assert.Equal(0, FuelIn(w, input));
+            Assert.Equal(new OxygenGeneratorBlockState(input, new Tick(started.Value + (2 * Per))), w.GeneratorAt(PlacedCell));
+        }
+    }
+
+    [Fact]
     public void StaleExpectation_ContainerChanged_SettlementStays()
     {
         var (w, input) = Generator(slot0: 4);
@@ -237,8 +259,8 @@ public sealed class GeneratorRulesTests
 
         // The client still sees 4 queued cells; the settlement before the intent leaves 2, so the expected count of the move no longer holds (D16a): the move is refused,
         // the settlement stays applied (ServerSimulation.Submit) and is the only new entry of the journal (review B1b, P3-3).
-        w.Blocks.AssertRejected(
-            Player1, new ItemMoveIntent(Slot(input, 0), ItemMoveTarget.ToSlot(BagSlot(Player1, 0)), 2, HazardWorld.Fuel, 4), RejectReason.ContainerChanged);
+        var result = w.Blocks.Submit(new ItemMoveIntent(Slot(input, 0), ItemMoveTarget.ToSlot(BagSlot(Player1, 0)), 2, HazardWorld.Fuel, 4));
+        Assert.Equal(RejectReason.ContainerChanged, result.Reason);
 
         Assert.Equal(2, FuelIn(w, input));
         Assert.Equal(0, FuelIn(w, BagOf(Player1)));

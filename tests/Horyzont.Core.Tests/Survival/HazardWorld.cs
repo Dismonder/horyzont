@@ -30,12 +30,13 @@ internal sealed class HazardWorld
     /// <param name="map">Replaces an item definition of the content (for tests with their own stack limits); null keeps them all.</param>
     /// <param name="secondPlanet">Whether the world has a second planet.</param>
     /// <param name="hazardContent">Whether the survival content has the hazards and the generator (false is the content of K6-33).</param>
+    /// <param name="recipes">Whether the survival content has a recipe (crafting and the settlement of the stations with time).</param>
     public HazardWorld(
-        int players = 1, bool survival = false, HazardRules? hazards = null, Func<ItemDef, ItemDef>? map = null, bool secondPlanet = false, bool hazardContent = true)
+        int players = 1, bool survival = false, HazardRules? hazards = null, Func<ItemDef, ItemDef>? map = null, bool secondPlanet = false, bool hazardContent = true, bool recipes = true)
     {
         var state = WorldFactory.CreateWithHazards(players, secondPlanet);
         Blocks = survival
-            ? new FunctionalBlockFixture(state, HazardTestContent.Create(map, hazardContent), HazardBlocks.ContentFor(state), null, hazards)
+            ? new FunctionalBlockFixture(state, HazardTestContent.Create(map, hazardContent, recipes), HazardBlocks.ContentFor(state), null, hazards)
             : new FunctionalBlockFixture(state);
         if (survival)
         {
