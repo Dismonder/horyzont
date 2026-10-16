@@ -188,6 +188,50 @@ internal static class CoreCodecPrimitives
         };
     }
 
+    /// <summary>
+    /// The three food slots (K6-33): for each slot a varuint type (0 for an empty slot, else 1..4096) and, for a type other than 0 only, a varuint tick of
+    /// eating. Shared by operation 41, blob 22 and message 48.
+    /// </summary>
+    public static void WriteFoodSlots(ByteWriter w, FoodSlots slots)
+    {
+        for (var i = 0; i < FoodSlots.Count; i++)
+        {
+            var slot = slots[i];
+            if (slot.Type.Value > ProtocolConstants.MaxItemTypes)
+            {
+                throw new ArgumentException($"A food type is 1 to {ProtocolConstants.MaxItemTypes}, not {slot.Type.Value}.", nameof(slots));
+            }
+
+            if (slot.IsEmpty && slot.Eaten.Value != 0)
+            {
+                throw new ArgumentException("An empty food slot has no tick.", nameof(slots));
+            }
+
+            w.WriteVarUInt(slot.Type.Value);
+            if (!slot.IsEmpty)
+            {
+                w.WriteVarUInt(slot.Eaten.Value);
+            }
+        }
+    }
+
+    public static FoodSlots ReadFoodSlots(ref ByteReader r)
+    {
+        Span<FoodSlot> read = stackalloc FoodSlot[FoodSlots.Count];
+        for (var i = 0; i < read.Length; i++)
+        {
+            ushort type = r.ReadVarUInt16();
+            if (type > ProtocolConstants.MaxItemTypes)
+            {
+                throw new ProtocolViolationException($"A food type is 1 to {ProtocolConstants.MaxItemTypes}, not {type}.");
+            }
+
+            read[i] = type == 0 ? default : new FoodSlot(new ItemTypeId(type), new Tick(r.ReadVarUInt()));
+        }
+
+        return new FoodSlots(read[0], read[1], read[2]);
+    }
+
     /// <summary>A non-empty stack: varuint type (1..4096), varuint count (at least 1), instance byte 0.</summary>
     public static void WriteItemStack(ByteWriter w, ItemStack stack)
     {

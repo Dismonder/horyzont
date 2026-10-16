@@ -9,6 +9,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Progress;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Serialization;
@@ -215,7 +216,8 @@ public static class CodecGen
         ItemDiscoverOp.Select(o => (Operation)o),
         ProgressKeyGrantOp.Select(o => (Operation)o),
         RespawnPointSetOp.Select(o => (Operation)o),
-        BlockFunctionStateSetOp.Select(o => (Operation)o));
+        BlockFunctionStateSetOp.Select(o => (Operation)o),
+        FoodSetOp.Select(o => (Operation)o));
 
     /// <summary>Terrain edit operations.</summary>
     public static Gen<TerrainEditOp> TerrainEditOp { get; } =
@@ -394,6 +396,25 @@ public static class CodecGen
         from player in PlayerId
         from type in Gen.Choose(1, ProtocolConstants.MaxItemTypes)
         select new ItemDiscoverOp(player, new ItemTypeId((ushort)type));
+
+    /// <summary>Food slots (K6-33): each slot empty or a type 1 to 4096 with any tick; the codec does not check that the types differ (the applier does).</summary>
+    public static Gen<FoodSlots> FoodSlots =>
+        from a in FoodSlotGen
+        from b in FoodSlotGen
+        from c in FoodSlotGen
+        select new FoodSlots(a, b, c);
+
+    private static Gen<FoodSlot> FoodSlotGen => Gen.Frequency(
+        (1, Gen.Constant(default(FoodSlot))),
+        (3, from type in Gen.Choose(1, ProtocolConstants.MaxItemTypes)
+            from tick in Gen.Frequency((3, Gen.Choose(0, 100_000).Select(t => (ulong)t)), (1, Gen.Elements(ulong.MaxValue)))
+            select new FoodSlot(new ItemTypeId((ushort)type), new Tick(tick))));
+
+    /// <summary>Food set operations (K6-33).</summary>
+    public static Gen<FoodSetOp> FoodSetOp =>
+        from player in PlayerId
+        from slots in FoodSlots
+        select new FoodSetOp(player, slots);
 
     /// <summary>Progress key grants (K6-32).</summary>
     public static Gen<ProgressKeyGrantOp> ProgressKeyGrantOp { get; } = RegistryKey.Select(k => new ProgressKeyGrantOp(k));

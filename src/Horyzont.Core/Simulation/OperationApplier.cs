@@ -123,7 +123,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
     /// <summary>Item and state operations: applied with the undo log, alone or as a component of a compound.</summary>
     private static bool IsComponent(Operation operation) =>
         operation is ItemTransferOp or ItemSwapOp or ItemCreateOp or ItemDestroyOp or ContainerCreateOp or ContainerRemoveOp
-            or ContainerConfigureOp or BlockEntitySetOp or RespawnPointSetOp or BlockFunctionStateSetOp or ItemDiscoverOp or ProgressKeyGrantOp;
+            or ContainerConfigureOp or BlockEntitySetOp or RespawnPointSetOp or BlockFunctionStateSetOp or ItemDiscoverOp or ProgressKeyGrantOp or FoodSetOp;
 
     private void BeginOperation()
     {
@@ -524,6 +524,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         ItemDiscoverOp op => ApplyItemDiscover(op),
         ProgressKeyGrantOp op => ApplyProgressKeyGrant(op),
         RespawnPointSetOp op => ApplyRespawnPointSet(op),
+        FoodSetOp op => ApplyFoodSet(op),
         BlockFunctionStateSetOp op => ApplyFunctionState(op),
         _ => $"{operation.Kind} is not an item or state operation",
     };
@@ -922,8 +923,9 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         state.Progress.TryGet(op.Player, out var existing);
         if (op.Bed is not { } bed)
         {
-            // A record with discoveries stays without the respawn point (D7); a record with nothing else goes.
-            _undo.SetProgress(state, op.Player, existing is { Discovered: not null } ? existing with { RespawnBed = null } : null);
+            // A record with discoveries or food stays without the respawn point (K6-32 D7, K6-33 D4); a record with nothing else goes.
+            var cleared = existing is null ? null : existing with { RespawnBed = null };
+            _undo.SetProgress(state, op.Player, cleared is { IsEmpty: false } ? cleared : null);
             return null;
         }
 
@@ -938,6 +940,48 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         }
 
         _undo.SetProgress(state, op.Player, existing is null ? new PlayerProgress(op.Player, bed) : existing with { RespawnBed = bed });
+        return null;
+    }
+
+    /// <summary>Sets the three food slots (K6-33, D12); the applier knows neither the statistics nor the time of the food (ZASADY section 4).</summary>
+    private string? ApplyFoodSet(FoodSetOp op)
+    {
+        if (!state.Players.TryGet(op.Player, out _))
+        {
+            return "player unknown";
+        }
+
+        var slots = op.Slots;
+        for (var i = 0; i < FoodSlots.Count; i++)
+        {
+            var slot = slots[i];
+            if (slot.IsEmpty)
+            {
+                if (slot.Eaten.Value != 0)
+                {
+                    return "an empty food slot must have tick 0";
+                }
+
+                continue;
+            }
+
+            if (slot.Type.Value > ProtocolConstants.MaxItemTypes || !state.ItemTypes.IsKnown(slot.Type))
+            {
+                return "unknown item type";
+            }
+
+            for (var j = 0; j < i; j++)
+            {
+                if (slots[j].Type == slot.Type)
+                {
+                    return "the same food type in two slots";
+                }
+            }
+        }
+
+        state.Progress.TryGet(op.Player, out var existing);
+        var updated = existing is null ? new PlayerProgress(op.Player, null, null, slots) : existing with { Food = slots };
+        _undo.SetProgress(state, op.Player, updated.IsEmpty ? null : updated);
         return null;
     }
 

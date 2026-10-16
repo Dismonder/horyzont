@@ -9,5 +9,5 @@ namespace Horyzont.Core.Operations;
 public sealed record FoodSetOp(PlayerId Player, FoodSlots Slots) : Operation
 {
     /// <inheritdoc />
-    public override OperationKind Kind => (OperationKind)41; // K6-33 A3: OperationKind.FoodSet
+    public override OperationKind Kind => OperationKind.FoodSet;
 }

@@ -489,7 +489,23 @@ public sealed class ServerSimulation
     /// <param name="player">The player.</param>
     /// <param name="vitals">The vitals.</param>
     /// <returns>True when stored.</returns>
-    public bool UpdatePlayerVitals(PlayerId player, in PlayerVitals vitals) => throw new NotImplementedException("K6-33 A3");
+    public bool UpdatePlayerVitals(PlayerId player, in PlayerVitals vitals)
+    {
+        EnsureNotFaulted();
+        if (!State.Players.TryGet(player, out var state) || !state.IsOnline)
+        {
+            return false;
+        }
+
+        if (!vitals.IsValid)
+        {
+            SimulationLog.VitalsRejected(_logger, player.Value);
+            return false;
+        }
+
+        state.Vitals = vitals;
+        return true;
+    }
 
     private static readonly ContainerKind[] _heldKinds = [ContainerKind.PlayerBag, ContainerKind.Hotbar, ContainerKind.Equipment];
 
