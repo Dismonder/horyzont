@@ -1,3 +1,5 @@
+using Horyzont.Core.Protocol;
+
 namespace Horyzont.Core.Survival;
 
 /// <summary>
@@ -51,6 +53,29 @@ public sealed record HazardRules
     /// <summary>Half width of the twilight band of the day-night blend, in the dot product of the up direction and the sun direction.</summary>
     public float TwilightBand { get; init; } = 0.1f;
 
+    /// <summary>
+    /// Checks the ranges the rest of the code relies on (K6-34 review B1, P3-7): a base capacity of 0 would make every refill of the server a malformed operation 42, a period of 0 ticks divides by zero in the
+    /// tracker, and a number of hits above 26 could never be reached. <see cref="Simulation.ServerSimulation"/> calls it once, at its construction.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">A value is outside its range; the message names the property.</exception>
+    public void Validate()
+    {
+        Require(SuitBaseCapacity is >= 1 and <= (ushort)ProtocolConstants.MaxSuitValue, SuitBaseCapacity, nameof(SuitBaseCapacity));
+        Require(IsNonNegative(SuitRegenPerSecond), SuitRegenPerSecond, nameof(SuitRegenPerSecond));
+        Require(MinDrainMultiplier is > 0f and <= 1f, MinDrainMultiplier, nameof(MinDrainMultiplier));
+        Require(IsNonNegative(ZeroDamageCold), ZeroDamageCold, nameof(ZeroDamageCold));
+        Require(IsNonNegative(ZeroDamageHeat), ZeroDamageHeat, nameof(ZeroDamageHeat));
+        Require(IsNonNegative(ZeroDamageToxins), ZeroDamageToxins, nameof(ZeroDamageToxins));
+        Require(IsNonNegative(ZeroDamageRadiation), ZeroDamageRadiation, nameof(ZeroDamageRadiation));
+        Require(IsNonNegative(ZeroDamageVacuum), ZeroDamageVacuum, nameof(ZeroDamageVacuum));
+        Require(IsNonNegative(ShelterRayMeters), ShelterRayMeters, nameof(ShelterRayMeters));
+        Require(ShelterRequiredHits is >= 1 and <= ShelterDirections.Count, ShelterRequiredHits, nameof(ShelterRequiredHits));
+        Require(IsNonNegative(ShelterOriginHeightMeters), ShelterOriginHeightMeters, nameof(ShelterOriginHeightMeters));
+        Require(IsNonNegative(GeneratorRangeMeters), GeneratorRangeMeters, nameof(GeneratorRangeMeters));
+        Require(HazardEvaluateEveryTicks >= 1, HazardEvaluateEveryTicks, nameof(HazardEvaluateEveryTicks));
+        Require(float.IsFinite(TwilightBand) && TwilightBand > 0f, TwilightBand, nameof(TwilightBand));
+    }
+
     /// <summary>Gets the health lost per second at zero for the resource of a hazard.</summary>
     /// <param name="kind">The hazard, 1 to 5.</param>
     /// <returns>The damage per second.</returns>
@@ -64,4 +89,14 @@ public sealed record HazardRules
         HazardKind.Vacuum => ZeroDamageVacuum,
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
+
+    private static bool IsNonNegative(float value) => float.IsFinite(value) && value >= 0f;
+
+    private static void Require(bool valid, object value, string name)
+    {
+        if (!valid)
+        {
+            throw new ArgumentOutOfRangeException(name, value, $"HazardRules.{name} is out of range.");
+        }
+    }
 }

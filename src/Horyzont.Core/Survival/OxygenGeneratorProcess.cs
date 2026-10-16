@@ -33,6 +33,11 @@ public static class OxygenGeneratorProcess
     /// A running one has <c>k = (now - started) / ticksPerCell</c> whole periods behind it (0 when <paramref name="now"/> is before the start): it consumes <c>m = min(cells, k)</c> queued cells,
     /// continues from <c>started + m * ticksPerCell</c> and goes idle when <c>k &gt; cells</c> (the cell that burned has ended and no queued cell followed).
     /// </summary>
+    /// <remarks>
+    /// The function does not know when an item entered the input. The caller must settle <b>before</b> every change of the content of the input (K6-34 review B1, P2-2): taking a cell out without settling first
+    /// returns cells that the function already counts as burned (free protection), and putting a cell into an idle generator whose <c>started</c> is long past, without settling first, makes the next
+    /// settlement destroy the new cell as if it had burned in the past (lost items).
+    /// </remarks>
     /// <param name="cells">Cells waiting in the input (not the one that burns).</param>
     /// <param name="ticksPerCell">Ticks one cell burns.</param>
     /// <param name="started">The tick the current cell was consumed at, null when idle.</param>

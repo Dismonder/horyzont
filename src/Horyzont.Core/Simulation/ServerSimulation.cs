@@ -84,9 +84,14 @@ public sealed class ServerSimulation
     /// The vitals rules of the world (K6-33 core review 1): the single source of the food numbers for the resolver of eating and for the
     /// vitals service of the server, which must be given the same instance. Null means <see cref="VitalsRules.Default"/>.
     /// </param>
+    /// <param name="hazards">
+    /// The hazard rules of the world (K6-34, review A1 3): the single source of the suit numbers (the capacity of a refill, the shelter, the generator range) for the resolvers and for the hazard
+    /// tracker of the server, which must be given the same instance. Null means <see cref="Horyzont.Core.Survival.HazardRules.Default"/>.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException">A value of <paramref name="hazards"/> is out of range (<see cref="Horyzont.Core.Survival.HazardRules.Validate"/>).</exception>
     public ServerSimulation(
         WorldState state, ITerrainService terrain, IJournalSink journal, GameRules rules, ILogger<ServerSimulation> logger,
-        BlockContentTable content, SurvivalContent? survival = null, VitalsRules? vitals = null)
+        BlockContentTable content, SurvivalContent? survival = null, VitalsRules? vitals = null, HazardRules? hazards = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(terrain);
@@ -113,6 +118,8 @@ public sealed class ServerSimulation
         _settlements = survival is { Recipes.Count: > 0 } ? new StationSettlements(state, rules, survival) : null;
         Survival = survival;
         VitalsRules = vitals ?? VitalsRules.Default;
+        HazardRules = hazards ?? HazardRules.Default;
+        HazardRules.Validate();
         _validator = new IntentValidator(state, terrain, rules, content, _survival, _functional, _props);
     }
 
@@ -127,6 +134,9 @@ public sealed class ServerSimulation
 
     /// <summary>The vitals rules of the world; the vitals service of the server takes them from here so that both agree (K6-33 core review 1).</summary>
     public VitalsRules VitalsRules { get; }
+
+    /// <summary>The hazard rules of the world; the hazard tracker of the server takes them from here so that both agree (K6-34, review A1 3).</summary>
+    public HazardRules HazardRules { get; }
 
     /// <summary>Game rules.</summary>
     public GameRules Rules { get; }
