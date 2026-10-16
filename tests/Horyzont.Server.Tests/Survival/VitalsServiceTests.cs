@@ -82,6 +82,39 @@ public sealed class VitalsServiceTests
     }
 
     [Fact]
+    public void Tick_Landing_RealSequenceFalling15_Falling0_Walking0_32Damage()
+    {
+        // The engine zeroes the vertical velocity in the tick of the contact while the mode is still Falling; Walking comes one tick later.
+        Walk(1);
+        _rig.Motion.Set(_rig.Alice, MovementMode.Falling, _fall15);
+        _rig.Tick(1);
+        _rig.Motion.Set(_rig.Alice, MovementMode.Falling, Vector3.Zero);
+        _rig.Tick(1);
+        Assert.Equal(100f, Vitals(_rig.Alice).Health, 0.05f);
+
+        _rig.Motion.Set(_rig.Alice, MovementMode.Walking);
+        _rig.Tick(1);
+
+        Assert.Equal(68f, Vitals(_rig.Alice).Health, 0.05f);
+    }
+
+    [Fact]
+    public void Tick_LongFall_UsesThePeakSpeedOfTheFall()
+    {
+        Walk(1);
+        _rig.Motion.Set(_rig.Alice, MovementMode.Falling, new Vector3(0f, -5f, 0f));
+        _rig.Tick(1);
+        _rig.Motion.Set(_rig.Alice, MovementMode.Falling, _fall15);
+        _rig.Tick(1);
+        _rig.Motion.Set(_rig.Alice, MovementMode.Falling, new Vector3(0f, -12f, 0f));
+        _rig.Tick(1);
+        _rig.Motion.Set(_rig.Alice, MovementMode.Walking);
+        _rig.Tick(1);
+
+        Assert.Equal(68f, Vitals(_rig.Alice).Health, 0.05f);
+    }
+
+    [Fact]
     public void Tick_LandingAfterReparent_NoDamage()
     {
         Walk(1);

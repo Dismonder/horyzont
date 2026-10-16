@@ -82,6 +82,9 @@ public sealed partial class VitalsService
 
         public Vector3 PreviousVelocity { get; set; }
 
+        /// <summary>The largest downward speed of the current fall (m/s), 0 on the ground; the engine zeroes the velocity in the tick of the contact, so the impact is read from here.</summary>
+        public float PeakFallSpeed { get; set; }
+
         public uint PreviousParentSeq { get; set; }
 
         public float PendingDamage { get; set; }
