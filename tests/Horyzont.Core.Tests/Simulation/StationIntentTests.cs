@@ -494,4 +494,98 @@ public sealed class StationIntentTests
             ops[3]);
         Assert.Equal(ops, applied);
     }
+
+    [Fact]
+    public void SelectOtherRecipe_WhileRunning_SettlesOldThenStartsNew()
+    {
+        // Review A+B, fix 6: a furnace smelting (one piece done, the next one under way) is switched to another recipe. The old recipe is settled first
+        // (one piece), then the new recipe starts; the progress of the piece under way is lost and its ingredients stay in the input (D15).
+        var f = Fixture();
+        var started = f.State.CurrentTick;
+        var (input, output) = f.SetUpTimedStation(FurnaceCell, "t:smelt", started);
+        f.Stock(input, 0, Ore, 4);
+        f.Stock(input, 1, Peat, 2);
+        f.Stock(input, 2, Soil, 2);
+        f.Discover(Player1, Ore, Soil);
+        f.Wait(90);
+        var journaled = f.JournalCount();
+
+        f.Accept(Player1, Craft("t:smelt2", 1, FurnaceCell));
+
+        var ops = f.JournalFrom(journaled);
+        Assert.Equal(2, ops.Count);
+        var settle = Assert.IsType<CompoundOp>(ops[0]);
+        Assert.Equal(
+            [
+                new ItemDestroyOp(new SlotRef(input, 0), Ore, 2, ItemSink.Station),
+                new ItemDestroyOp(new SlotRef(input, 1), Peat, 1, ItemSink.Fuel),
+                new ItemCreateOp(new SlotRef(output, 0), Ingot, 1, 5, ItemSource.Station),
+                new BlockEntitySetOp(
+                    ConstructId, FurnaceCell, CraftingBlocks.FurnaceType, new StationBlockState(input, output, "t:smelt", new Tick(started.Value + 60))),
+            ],
+            settle.Components);
+        Assert.Equal(
+            new BlockEntitySetOp(ConstructId, FurnaceCell, CraftingBlocks.FurnaceType, new StationBlockState(input, output, "t:smelt2", f.State.CurrentTick)),
+            ops[1]);
+        Assert.Equal(2, f.CountIn(input, Ore));
+        Assert.Equal(1, f.CountIn(input, Peat));
+        Assert.Equal(1, f.CountIn(output, Ingot));
+    }
+
+    [Fact]
+    public void TrySettleStation_OutputFull_DoneLimitedThenIdle()
+    {
+        // Review A+B, fix 6: two pieces are due, the output has room for one. The compound ends with the state of an idle station (Started = null).
+        var f = Fixture();
+        var (input, output) = f.SetUpTimedStation(FurnaceCell, "t:smelt", f.State.CurrentTick);
+        f.Stock(input, 0, Ore, 4);
+        f.Stock(input, 1, Peat, 2);
+        f.Stock(output, 0, Ingot, 5);
+        f.Stock(output, 1, Ingot, 4);
+        f.Wait(120);
+
+        var applied = f.Sim.Sim.TrySettleStation(At(FurnaceCell));
+
+        var compound = Assert.IsType<CompoundOp>(Assert.IsType<AppliedOperation>(applied).Operation);
+        Assert.Equal(
+            [
+                new ItemDestroyOp(new SlotRef(input, 0), Ore, 2, ItemSink.Station),
+                new ItemDestroyOp(new SlotRef(input, 1), Peat, 1, ItemSink.Fuel),
+                new ItemCreateOp(new SlotRef(output, 1), Ingot, 1, 5, ItemSource.Station),
+                new BlockEntitySetOp(ConstructId, FurnaceCell, CraftingBlocks.FurnaceType, new StationBlockState(input, output, "t:smelt", null)),
+            ],
+            compound.Components);
+        Assert.Null(f.StationAt(FurnaceCell).Started);
+    }
+
+    [Fact]
+    public void TrySettleStation_NothingChanges_AllocatesNothing()
+    {
+        // Review A+B, fix 5: the idle observation of a station (every 10 ticks per observed station) translates no recipe and copies no slots.
+        var f = Fixture();
+        var (input, _) = f.SetUpTimedStation(FurnaceCell, "t:smelt", f.State.CurrentTick);
+        f.Stock(input, 0, Ore, 2);
+        f.Stock(input, 1, Peat, 1);
+        f.Wait(10);
+        var station = At(FurnaceCell);
+        Assert.Null(f.Sim.Sim.TrySettleStation(station));
+        for (var i = 0; i < 100; i++)
+        {
+            f.Sim.Sim.TrySettleStation(station);
+        }
+
+        var allocated = long.MaxValue;
+        for (var round = 0; round < 60 && allocated != 0; round++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 1000; i++)
+            {
+                f.Sim.Sim.TrySettleStation(station);
+            }
+
+            allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+
+        Assert.Equal(0, allocated);
+    }
 }

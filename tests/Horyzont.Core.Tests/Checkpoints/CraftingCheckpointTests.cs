@@ -5,6 +5,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Progress;
+using Horyzont.Core.Protocol;
 using Horyzont.Core.Tests.Crafting;
 using Horyzont.Core.World;
 
@@ -130,6 +131,40 @@ public sealed class CraftingCheckpointTests
 
         Assert.Throws<InvalidDataException>(() => Load(f.State, checkpoint with { UpsertedContainers = [.. withoutStationContainers] }));
         Assert.Throws<InvalidDataException>(() => Load(f.State, checkpoint with { UpsertedContainers = [.. withoutOutput] }));
+    }
+
+    [Fact]
+    public void Builder_TooManyTimedStationsInConstruct_Throws()
+    {
+        var f = new CraftingFixture();
+        f.PlaceStations(ProtocolConstants.MaxTimedStationsPerConstruct);
+        var spare = CraftingFixture.GridCell(ProtocolConstants.MaxTimedStationsPerConstruct);
+        f.Apply(PlaceBlock(spare, CraftingFixture.StationBlockType));
+        var checkpoint = f.State.CaptureCheckpoint();
+
+        // The accepted counterpart: the world with 512 stations loads.
+        Assert.Equal(ProtocolConstants.MaxTimedStationsPerConstruct, Load(f.State, checkpoint).BlockEntities.StationsOf(ConstructId));
+
+        // A 513th station with its own containers in a damaged checkpoint is refused.
+        var host = ContainerHost.ConstructBlock(ConstructId, spare);
+        var input = new ContainerId(checkpoint.NextContainerId);
+        var output = new ContainerId(checkpoint.NextContainerId + 1);
+        var damaged = checkpoint with
+        {
+            NextContainerId = checkpoint.NextContainerId + 2,
+            UpsertedContainers =
+            [
+                .. checkpoint.UpsertedContainers,
+                new ContainerRecord(input, ContainerKind.StationInput, host, Player1, ContainerAccess.Shared, 1, 0, [ItemStack.Empty]),
+                new ContainerRecord(output, ContainerKind.StationOutput, host, Player1, ContainerAccess.Shared, 1, 0, [ItemStack.Empty]),
+            ],
+            UpsertedBlockEntities =
+            [
+                .. checkpoint.UpsertedBlockEntities,
+                new BlockEntityRecord(ConstructId, spare, new StationBlockState(input, output, string.Empty, null)),
+            ],
+        };
+        Assert.Throws<InvalidDataException>(() => Load(f.State, damaged));
     }
 
     [Fact]

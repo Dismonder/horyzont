@@ -194,4 +194,36 @@ public sealed class DiscoveryTests
         Assert.Null(f.Sim.Sim.DiscoverHeldItems(Player1));
         Assert.Equal(journaled, f.JournalCount());
     }
+
+    [Fact]
+    public void ServerOperation_ItemIntoBag_DiscoveredAfter()
+    {
+        // Review A+B, fix 6: the server path (ApplyServerOperation) discovers too; pickups and rewards will use it.
+        var f = Fixture();
+        Assert.False(f.IsDiscovered(Player1, Gem));
+        var journaled = f.JournalCount();
+
+        f.Apply(new ItemCreateOp(new SlotRef(Bag, 0), Gem, 2, 500, ItemSource.Admin));
+
+        var ops = f.JournalFrom(journaled);
+        Assert.Equal(2, ops.Count);
+        Assert.IsType<ItemCreateOp>(ops[0]);
+        Assert.Equal(new ItemDiscoverOp(Player1, Gem), ops[1]);
+    }
+
+    [Fact]
+    public void Discovery_EquipmentSlot_Discovered()
+    {
+        // Review A+B, fix 6: the equipment of the player is held too (the bag, the hotbar and the equipment).
+        var f = Fixture();
+        Assert.True(f.State.Containers.TryGetOfPlayer(Player1, ContainerKind.Equipment, out var equipment));
+        Assert.False(f.IsDiscovered(Player1, Tool));
+        var journaled = f.JournalCount();
+
+        f.Apply(new ItemCreateOp(new SlotRef(equipment.Id, 0), Tool, 1, 1, ItemSource.Admin));
+
+        var ops = f.JournalFrom(journaled);
+        Assert.Equal(2, ops.Count);
+        Assert.Equal(new ItemDiscoverOp(Player1, Tool), ops[1]);
+    }
 }

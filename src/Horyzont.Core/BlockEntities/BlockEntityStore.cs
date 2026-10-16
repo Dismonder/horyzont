@@ -10,6 +10,7 @@ public sealed class BlockEntityStore
 {
     private readonly ChangeTracker _tracker;
     private readonly SortedDictionary<BlockRef, BlockEntityState> _states = [];
+    private readonly Dictionary<BlockRef, BlockEntityState> _lookup = [];
     private readonly Dictionary<EntityId, int> _perConstruct = [];
     private readonly Dictionary<EntityId, int> _stationsPerConstruct = [];
 
@@ -43,14 +44,9 @@ public sealed class BlockEntityStore
     /// <returns>True when the block has a state.</returns>
     public bool TryGet(BlockRef key, [NotNullWhen(true)] out BlockEntityState? state)
     {
-        // The lookup in the sorted dictionary allocates; most constructs have no states, so they skip it (the intent validators ask per intent).
-        if (!_perConstruct.ContainsKey(key.Construct))
-        {
-            state = null;
-            return false;
-        }
-
-        return _states.TryGetValue(key, out state);
+        // The lookup in the sorted dictionary allocates, so the lookups go through a hash index (read by key only, never iterated; the validators and the
+        // station observation ask per intent and per 10 ticks).
+        return _lookup.TryGetValue(key, out state);
     }
 
     /// <summary>Stores or replaces a state and marks it changed; the caller checked the preconditions.</summary>
@@ -60,6 +56,7 @@ public sealed class BlockEntityStore
         ArgumentNullException.ThrowIfNull(state);
         var previous = _states.GetValueOrDefault(key);
         _states[key] = state;
+        _lookup[key] = state;
         if (previous is null)
         {
             _perConstruct[key.Construct] = _perConstruct.GetValueOrDefault(key.Construct) + 1;
@@ -75,6 +72,7 @@ public sealed class BlockEntityStore
     internal void Load(BlockRef key, BlockEntityState state)
     {
         _states.Add(key, state);
+        _lookup.Add(key, state);
         _perConstruct[key.Construct] = _perConstruct.GetValueOrDefault(key.Construct) + 1;
         CountStation(key.Construct, state, 1);
     }
@@ -88,6 +86,7 @@ public sealed class BlockEntityStore
             return null;
         }
 
+        _lookup.Remove(key);
         var left = _perConstruct[key.Construct] - 1;
         if (left == 0)
         {

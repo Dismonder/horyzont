@@ -17,6 +17,11 @@ internal sealed class StationSettlements(WorldState state, GameRules rules, Surv
 {
     private readonly List<Operation> _components = [];
 
+    // The translated recipes by recipe key (read by key only, never iterated). The content is fixed for the life of the simulation and the item types
+    // of a world never grow through operations; a changed number of registry entries (a registry loaded with newer content) drops the cache.
+    private readonly Dictionary<string, (StationRecipe Recipe, ushort Limit)> _translated = [];
+    private int _registryEntries = -1;
+
     /// <summary>Translates a recipe to the item type ids of a world and finds the stack limit of its result.</summary>
     /// <param name="state">The world (the item types).</param>
     /// <param name="survival">Survival content (the item definitions).</param>
@@ -50,7 +55,7 @@ internal sealed class StationSettlements(WorldState state, GameRules rules, Surv
         if (!state.BlockEntities.TryGet(station, out var entity) || entity is not StationBlockState current || current.Recipe.Length == 0
             || !survival.TryGetRecipe(current.Recipe, out var recipe) || !state.Constructs.TryGet(station.Construct, out var construct)
             || !state.Containers.TryGet(current.Input, out var input) || !state.Containers.TryGet(current.Output, out var output)
-            || !TryTranslate(state, survival, recipe, out var translated, out var limit))
+            || !TryTranslateCached(recipe, out var translated, out var limit))
         {
             return false;
         }
@@ -83,10 +88,41 @@ internal sealed class StationSettlements(WorldState state, GameRules rules, Surv
             TakeFromInput(input.Id, inputSlots, translated.Fuel[i], settled.Done, ItemSink.Fuel);
         }
 
-        ItemPlacement.CreateInContainer(
-            output.Id, outputSlots, translated.Result.Type, translated.Result.Count * settled.Done, limit, ItemSource.Station, _components);
+        var wanted = translated.Result.Count * settled.Done;
+        var made = ItemPlacement.CreateInContainer(output.Id, outputSlots, translated.Result.Type, wanted, limit, ItemSource.Station, _components);
+        if (made != wanted)
+        {
+            // Settle and CreateInContainer count the room the same way, so a difference is a broken invariant (a bug), not a state of the world.
+            throw new InvalidOperationException($"The settlement of {station} would create {made} of {wanted} items: the room in the output changed.");
+        }
+
         _components.Add(new BlockEntitySetOp(station.Construct, station.Cell, type, next));
         operation = new CompoundOp(_components.ToArray());
+        return true;
+    }
+
+    private bool TryTranslateCached(RecipeDef recipe, out StationRecipe translated, out ushort limit)
+    {
+        var entries = state.ItemTypes.Entries.Count;
+        if (entries != _registryEntries)
+        {
+            _translated.Clear();
+            _registryEntries = entries;
+        }
+
+        if (_translated.TryGetValue(recipe.Key, out var cached))
+        {
+            translated = cached.Recipe;
+            limit = cached.Limit;
+            return true;
+        }
+
+        if (!TryTranslate(state, survival, recipe, out translated, out limit))
+        {
+            return false;
+        }
+
+        _translated[recipe.Key] = (translated, limit);
         return true;
     }
 

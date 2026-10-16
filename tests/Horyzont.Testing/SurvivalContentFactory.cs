@@ -126,6 +126,8 @@ public static class SurvivalContentFactory
             { "key": "t:smelt", "station": "furnace", "level": 1, "timeSeconds": 1,
               "ingredients": [ { "item": "test:ore", "count": 2 } ], "fuel": [ { "item": "test:peat", "count": 1 } ],
               "result": { "item": "test:ingot", "count": 1 } },
+            { "key": "t:smelt2", "station": "furnace", "level": 1, "timeSeconds": 2,
+              "ingredients": [ { "item": "test:soil", "count": 2 } ], "result": { "item": "test:brick", "count": 1 } },
             { "key": "t:refine", "station": "refinery", "level": 1, "timeSeconds": 2,
               "ingredients": [ { "item": "test:ingot", "count": 1 }, { "item": "test:soil", "count": 2 } ], "fuel": [ { "item": "test:peat", "count": 1 } ],
               "result": { "item": "test:fuelcell", "count": 1 } }

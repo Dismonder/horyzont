@@ -99,5 +99,17 @@ internal sealed class CraftingFixture
         return (station.Input, station.Output);
     }
 
+    /// <summary>The i-th cell of a grid far from the cells the other tests use; one block each (the cap tests place hundreds of stations).</summary>
+    public static CellPos GridCell(int index) => new(20 + (index % 32), 20 + ((index / 32) % 32), 20 + (index / 1024));
+
+    /// <summary>Places <paramref name="count"/> stations with time on the grid cells 0..count-1 with one-slot containers.</summary>
+    public void PlaceStations(int count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            Apply(PlaceStation(GridCell(i), inputSlots: 1, outputSlots: 1));
+        }
+    }
+
     public ItemStack Slot(ContainerId container, int slot) => Blocks.Container(container).GetSlot(slot);
 }

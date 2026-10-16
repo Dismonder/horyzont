@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Runtime.InteropServices;
 
 using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Content;
@@ -204,7 +205,7 @@ internal sealed class CraftingRules(WorldState state, GameRules rules, BlockCont
             return RejectReason.TooFarFromStation;
         }
 
-        if (StationLevels.Compute(state, rules, content, target.Construct, target.Cell) < recipe.Level)
+        if (recipe.Level > 1 && StationLevels.Compute(state, rules, content, target.Construct, target.Cell) < recipe.Level)
         {
             return RejectReason.StationRequired;
         }
@@ -243,9 +244,8 @@ internal sealed class CraftingRules(WorldState state, GameRules rules, BlockCont
             return RejectReason.InvalidParameters;
         }
 
+        // The availability is counted on the live slots, so a refusal copies nothing and allocates nothing (review A+B, fix 4). Ingredients are distinct types.
         BuildSources(player, station, bag, hotbar);
-        _components.Clear();
-        var bagIndex = 0;
         for (var i = 0; i < recipe.Ingredients.Count; i++)
         {
             var entry = recipe.Ingredients[i];
@@ -254,27 +254,40 @@ internal sealed class CraftingRules(WorldState state, GameRules rules, BlockCont
                 return RejectReason.InvalidParameters;
             }
 
-            var need = entry.Count * craft.Count;
             var have = 0;
             for (var s = 0; s < _sources.Count; s++)
             {
-                have += ItemPlacement.CountOf(_sources[s].Slots, type);
+                have += ItemPlacement.CountOf(_sources[s].Live.Slots, type);
             }
 
-            if (have < need)
+            if (have < entry.Count * craft.Count)
             {
                 return RejectReason.NotEnoughItems;
             }
+        }
 
+        // The plan consumes copies of the slots: it also decides the room for the result, so nothing touches the live containers.
+        for (var s = 0; s < _sources.Count; s++)
+        {
+            _sources[s] = _sources[s] with { Plan = _sources[s].Live.Slots.ToArray() };
+        }
+
+        _components.Clear();
+        const int bagIndex = 0;
+        for (var i = 0; i < recipe.Ingredients.Count; i++)
+        {
+            var entry = recipe.Ingredients[i];
+            var need = entry.Count * craft.Count;
+            state.ItemTypes.TryGetId(entry.ItemKey, out var type);
             for (var s = 0; s < _sources.Count && need > 0; s++)
             {
-                need = ItemPlacement.Destroy(_sources[s].Id, _sources[s].Slots, type, need, ItemSink.Craft, _components);
+                need = ItemPlacement.Destroy(_sources[s].Live.Id, _sources[s].Plan!, type, need, ItemSink.Craft, _components);
             }
         }
 
         // The room is counted on the copy of the bag after the ingredients were taken (D12); the result goes to the bag only.
         var wanted = recipe.Result.Count * craft.Count;
-        var made = ItemPlacement.CreateInContainer(bag.Id, _sources[bagIndex].Slots, resultType, wanted, resultDef.MaxStack, ItemSource.Craft, _components);
+        var made = ItemPlacement.CreateInContainer(bag.Id, _sources[bagIndex].Plan!, resultType, wanted, resultDef.MaxStack, ItemSource.Craft, _components);
         if (made < wanted)
         {
             return RejectReason.InventoryFull;
@@ -298,8 +311,8 @@ internal sealed class CraftingRules(WorldState state, GameRules rules, BlockCont
     private void BuildSources(PlayerId player, BlockRef? station, Container bag, Container hotbar)
     {
         _sources.Clear();
-        _sources.Add(new Source(bag.Id, bag.Slots.ToArray(), 0f));
-        _sources.Add(new Source(hotbar.Id, hotbar.Slots.ToArray(), 0f));
+        _sources.Add(new Source(bag, null, 0f));
+        _sources.Add(new Source(hotbar, null, 0f));
         var chests = state.Containers.OfKind(ContainerKind.Chest);
         if (chests.Count == 0)
         {
@@ -334,11 +347,12 @@ internal sealed class CraftingRules(WorldState state, GameRules rules, BlockCont
             var meters = Vector3.Distance(centre, chestCentre);
             if (meters <= rules.CraftContainerRangeMeters)
             {
-                _sources.Add(new Source(chest.Id, chest.Slots.ToArray(), meters));
+                _sources.Add(new Source(chest, null, meters));
             }
         }
 
-        _sources.Sort(first, _sources.Count - first, SourceOrder.Instance);
+        // The span sort with a static comparison allocates nothing (List.Sort with an IComparer builds a delegate per call).
+        CollectionsMarshal.AsSpan(_sources)[first..].Sort(static (x, y) => CompareSources(x, y));
     }
 
     private static bool IsEmpty(Container container)
@@ -354,17 +368,12 @@ internal sealed class CraftingRules(WorldState state, GameRules rules, BlockCont
         return true;
     }
 
-    /// <summary>A container the ingredients may come from, with a copy of its slots that the plan consumes.</summary>
-    private readonly record struct Source(ContainerId Id, ItemStack[] Slots, float Meters);
+    /// <summary>A container the ingredients may come from; <paramref name="Plan"/> is the copy of its slots that the plan consumes (made after the availability check).</summary>
+    private readonly record struct Source(Container Live, ItemStack[]? Plan, float Meters);
 
-    private sealed class SourceOrder : IComparer<Source>
+    private static int CompareSources(Source x, Source y)
     {
-        internal static readonly SourceOrder Instance = new();
-
-        public int Compare(Source x, Source y)
-        {
-            var byDistance = x.Meters.CompareTo(y.Meters);
-            return byDistance != 0 ? byDistance : x.Id.Value.CompareTo(y.Id.Value);
-        }
+        var byDistance = x.Meters.CompareTo(y.Meters);
+        return byDistance != 0 ? byDistance : x.Live.Id.Value.CompareTo(y.Live.Id.Value);
     }
 }

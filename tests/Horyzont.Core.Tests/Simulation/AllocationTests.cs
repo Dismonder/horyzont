@@ -4,6 +4,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Simulation;
+using Horyzont.Core.Tests.Crafting;
 using Horyzont.Core.World.Constructs;
 
 namespace Horyzont.Core.Tests.Simulation;
@@ -162,6 +163,47 @@ public sealed class AllocationTests
         }
 
         Assert.Equal(1000, rejected);
+        Assert.Equal(0, allocated);
+    }
+
+    [Fact]
+    public void SubmitCraft_NotEnoughItems_DoesNotAllocate()
+    {
+        // K6-32 review A+B, fix 4: the refusal reads the live slots of the bag, the hotbar and the chests in reach and copies nothing.
+        var f = CraftingWorld.ForCrafting();
+        for (var i = 0; i < 5; i++)
+        {
+            f.SetUpChestWith(new CellPos(i, 1, 4), CraftingWorld.Player1, Horyzont.Core.Items.ContainerAccess.Shared, (CraftingWorld.Soil, 3));
+        }
+
+        f.Stock(CraftingWorld.Bag, 0, CraftingWorld.Stone, 2);
+        f.Discover(CraftingWorld.Player1, CraftingWorld.Stone);
+        var intent = CraftingWorld.Craft("t:hand");
+
+        // The accepted counterpart uses the two stones; the same intent is then refused for a missing ingredient.
+        Assert.True(f.Sim.Sim.Submit(CraftingWorld.Player1, intent).IsAccepted);
+        Assert.Equal(RejectReason.NotEnoughItems, f.Sim.Sim.Submit(CraftingWorld.Player1, intent).Reason);
+        for (var i = 0; i < 100; i++)
+        {
+            f.Sim.Sim.Submit(CraftingWorld.Player1, intent);
+        }
+
+        // Steady state is reached when a round allocates nothing (tier-up of the JIT in the first rounds); a per-call allocation never reaches zero.
+        var allocated = long.MaxValue;
+        var refused = 0;
+        for (var round = 0; round < 60 && allocated != 0; round++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            refused = 0;
+            for (var i = 0; i < 1000; i++)
+            {
+                refused += f.Sim.Sim.Submit(CraftingWorld.Player1, intent).Reason == RejectReason.NotEnoughItems ? 1 : 0;
+            }
+
+            allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+
+        Assert.Equal(1000, refused);
         Assert.Equal(0, allocated);
     }
 

@@ -13,6 +13,9 @@ public sealed class PlayerProgressStore
     private readonly ChangeTracker _tracker;
     private readonly SortedDictionary<PlayerId, PlayerProgress> _byPlayer = new(_byValue);
 
+    // Lookup by key only (never iterated): the lookup in the sorted dictionary allocates, and the crafting resolver reads the record per intent.
+    private readonly Dictionary<PlayerId, PlayerProgress> _lookup = [];
+
     internal PlayerProgressStore(ChangeTracker tracker)
     {
         _tracker = tracker;
@@ -31,7 +34,7 @@ public sealed class PlayerProgressStore
     /// <param name="player">The player.</param>
     /// <param name="progress">The record when found.</param>
     /// <returns>True when the player has a record.</returns>
-    public bool TryGet(PlayerId player, [NotNullWhen(true)] out PlayerProgress? progress) => _byPlayer.TryGetValue(player, out progress);
+    public bool TryGet(PlayerId player, [NotNullWhen(true)] out PlayerProgress? progress) => _lookup.TryGetValue(player, out progress);
 
     /// <summary>Stores or replaces a record and marks it changed; the caller checked the preconditions.</summary>
     /// <returns>The record that was replaced, null when the player had none.</returns>
@@ -40,12 +43,17 @@ public sealed class PlayerProgressStore
         ArgumentNullException.ThrowIfNull(progress);
         var previous = _byPlayer.GetValueOrDefault(progress.Player);
         _byPlayer[progress.Player] = progress;
+        _lookup[progress.Player] = progress;
         _tracker.MarkProgress(progress.Player);
         return previous;
     }
 
     /// <summary>Stores a record read from a checkpoint without marking it changed (world loader); the caller checked the preconditions.</summary>
-    internal void Load(PlayerProgress progress) => _byPlayer.Add(progress.Player, progress);
+    internal void Load(PlayerProgress progress)
+    {
+        _byPlayer.Add(progress.Player, progress);
+        _lookup.Add(progress.Player, progress);
+    }
 
     /// <summary>Removes the record of a player and marks it changed.</summary>
     /// <returns>The record that was removed, null when the player had none (nothing is marked).</returns>
@@ -56,6 +64,7 @@ public sealed class PlayerProgressStore
             return null;
         }
 
+        _lookup.Remove(player);
         _tracker.MarkProgress(player);
         return previous;
     }

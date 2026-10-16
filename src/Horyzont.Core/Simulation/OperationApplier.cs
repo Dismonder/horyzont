@@ -824,6 +824,12 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                     return stationFailure;
                 }
 
+                // The cap keeps the construct's block states message within one reliable message (the validator checks it too, but server operations bypass it).
+                if (existing is null && state.BlockEntities.StationsOf(op.Construct) >= ProtocolConstants.MaxTimedStationsPerConstruct)
+                {
+                    return "too many stations with time in the construct";
+                }
+
                 _stationCells.Add(key);
                 break;
             default:
