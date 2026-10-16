@@ -29,12 +29,25 @@ public sealed class PropProtocolContractTests
     }
 
     [Fact]
+    public void GameRules_PropProbeBudget_IsTwiceTheHitPace()
+    {
+        var rules = new GameRules();
+
+        // A legitimate player needs at most one generator lookup per hit at a new prop, so twice the pace covers a burst after a network
+        // stall and no more (every lookup beyond that is an attacker's cost to the main thread).
+        Assert.Equal(2 * rules.PropHitsPerSecond, rules.PropProbesPerSecond);
+        Assert.Equal(2 * rules.PropHitBurst, rules.PropProbeBurst);
+    }
+
+    [Fact]
     public void GameRules_PropDefaults_FollowD22()
     {
         var rules = new GameRules();
 
         Assert.Equal(4, rules.PropHitsPerSecond);
         Assert.Equal(4, rules.PropHitBurst);
+        Assert.Equal(8, rules.PropProbesPerSecond);
+        Assert.Equal(8, rules.PropProbeBurst);
         Assert.Equal(1800, rules.PropDamageResetTicks);
         Assert.Equal(4096, rules.MaxDamagedProps);
         Assert.Equal(4096, rules.PropAnchorCacheSize);
