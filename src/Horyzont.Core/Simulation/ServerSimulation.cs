@@ -122,6 +122,9 @@ public sealed class ServerSimulation
     /// <summary>Survival content, or null when the simulation runs the K2 rules.</summary>
     public SurvivalContent? Survival { get; }
 
+    /// <summary>The terrain the simulation runs on; for readers on the main thread (the rest conditions of the vitals service).</summary>
+    public ITerrainService Terrain => _terrain;
+
     /// <summary>The vitals rules of the world; the vitals service of the server takes them from here so that both agree (K6-33 core review 1).</summary>
     public VitalsRules VitalsRules { get; }
 
