@@ -8,5 +8,5 @@ namespace Horyzont.Core.Operations;
 public sealed record ItemDiscoverOp(PlayerId Player, ItemTypeId Type) : Operation
 {
     /// <inheritdoc />
-    public override OperationKind Kind => (OperationKind)43; // K6-32 A3: OperationKind.ItemDiscover
+    public override OperationKind Kind => OperationKind.ItemDiscover;
 }

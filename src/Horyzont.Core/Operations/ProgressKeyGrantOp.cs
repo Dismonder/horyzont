@@ -5,5 +5,5 @@ namespace Horyzont.Core.Operations;
 public sealed record ProgressKeyGrantOp(string Key) : Operation
 {
     /// <inheritdoc />
-    public override OperationKind Kind => (OperationKind)45; // K6-32 A3: OperationKind.ProgressKeyGrant
+    public override OperationKind Kind => OperationKind.ProgressKeyGrant;
 }
