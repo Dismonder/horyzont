@@ -54,6 +54,22 @@ public sealed class RespawnWithFoodTests
     }
 
     [Fact]
+    public void ItemDiscover_KeepsFood()
+    {
+        // Guards the trap "new PlayerProgress(...) wipes the other fields" in the applier of the discoveries (K6-32): food and the bed survive a discovery.
+        var f = new FoodWorld();
+        f.Blocks.SetUpBed(Horyzont.Testing.FunctionalBlocks.BedCell, Player1);
+        f.Apply(Set(Player1, Slot(Berries, 100), Slot(Jam, 200)));
+
+        f.Apply(new ItemDiscoverOp(Player1, Stone));
+
+        Assert.True(f.State.Progress.TryGet(Player1, out var progress));
+        Assert.Equal(Slots(Slot(Berries, 100), Slot(Jam, 200)), progress.Food);
+        Assert.NotNull(progress.RespawnBed);
+        Assert.True(progress.DiscoveredItems.Contains(Stone));
+    }
+
+    [Fact]
     public void RespawnSet_KeepsFood()
     {
         var f = new FoodWorld();

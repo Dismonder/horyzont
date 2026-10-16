@@ -22,6 +22,16 @@ public sealed class FoodSlotRulesTests
     private static RejectReason Place(FoodSlots current, ItemTypeId type, ulong now, out FoodSlots next) =>
         FoodSlotRules.TryPlace(current, type, Table, new Tick(now), _rules, TickRate, out next);
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void TryPlace_TickRateNotPositive_Throws(int tickRate)
+    {
+        Assert.Equal(RejectReason.None, FoodSlotRules.TryPlace(FoodSlots.Empty, Berries, Table, new Tick(1000), _rules, TickRate, out _));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => FoodSlotRules.TryPlace(FoodSlots.Empty, Berries, Table, new Tick(1000), _rules, tickRate, out _));
+    }
+
     [Fact]
     public void TryPlace_AllEmpty_FirstSlot()
     {
@@ -43,7 +53,7 @@ public sealed class FoodSlotRulesTests
         // Half of the berries are left: the same food is refused, and a refusal leaves nothing meaningful in next.
         Assert.Equal(FoodAlreadyActive, Place(current, Berries, 18000, out _));
 
-        // A fresh meal of the same food is refused at once, and so is one with 20.01 percent left.
+        // A fresh meal of the same food is refused at once, and so is one with 20.003 percent left (7201 of 36000 ticks).
         Assert.Equal(FoodAlreadyActive, Place(Slots(Slot(Berries, 1000)), Berries, 1000, out _));
         Assert.Equal(FoodAlreadyActive, Place(Slots(Slot(Berries, 0)), Berries, BerriesTicks - 7201, out _));
     }

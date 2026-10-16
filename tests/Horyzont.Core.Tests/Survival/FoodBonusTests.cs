@@ -16,6 +16,18 @@ public sealed class FoodBonusTests
     private static double Strength(ulong eaten, ulong now, ulong durationTicks) =>
         Math.Pow(Math.Clamp(((double)eaten + durationTicks - now) / durationTicks, 0.0, 1.0), 0.3);
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Compute_TickRateNotPositive_Throws(int tickRate)
+    {
+        var table = FoodContent.Table(new FoodWorld().State);
+        var slots = Slots(Slot(Berries, 0));
+        Assert.True(FoodBonus.Compute(slots, table, new Tick(100), TickRate, _rules).Health > 0f);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => FoodBonus.Compute(slots, table, new Tick(100), tickRate, _rules));
+    }
+
     [Fact]
     public void Compute_ThreeFoods_SumWithCurve()
     {

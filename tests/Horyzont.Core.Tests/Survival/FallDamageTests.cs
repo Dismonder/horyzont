@@ -85,6 +85,31 @@ public sealed class FallDamageTests
     }
 
     [Fact]
+    public void TryDetect_NonFiniteVelocity_None()
+    {
+        Assert.True(FallImpact.TryDetect(MovementMode.Falling, new Vector3(0f, -15f, 0f), _up, MovementMode.Walking, out _));
+
+        // Physics can hand over NaN or infinity; no landing is reported and the speed is 0, so no damage and no invalid state follow.
+        foreach (var bad in new[] { float.NaN, float.PositiveInfinity, float.NegativeInfinity })
+        {
+            Assert.False(FallImpact.TryDetect(MovementMode.Falling, new Vector3(bad, -15f, 0f), _up, MovementMode.Walking, out var a));
+            Assert.False(FallImpact.TryDetect(MovementMode.Falling, new Vector3(0f, bad, 0f), _up, MovementMode.Walking, out var b));
+            Assert.False(FallImpact.TryDetect(MovementMode.Falling, new Vector3(0f, -15f, 0f), new Vector3(0f, bad, 0f), MovementMode.Walking, out var c));
+            Assert.Equal(0f, a + b + c);
+        }
+    }
+
+    [Fact]
+    public void Compute_NonFiniteSpeed_Zero()
+    {
+        Assert.Equal(32.0, FallDamage.Compute(15f, _rules), 4);
+
+        Assert.Equal(0f, FallDamage.Compute(float.NaN, _rules));
+        Assert.Equal(0f, FallDamage.Compute(float.PositiveInfinity, _rules));
+        Assert.Equal(0f, FallDamage.Compute(float.NegativeInfinity, _rules));
+    }
+
+    [Fact]
     public void TryDetect_FromFrozenOrDevFlying_None()
     {
         Assert.True(FallImpact.TryDetect(MovementMode.Falling, new Vector3(0f, -20f, 0f), _up, MovementMode.Walking, out _));

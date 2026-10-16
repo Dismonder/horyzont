@@ -8,8 +8,8 @@ public static class FoodCurve
     /// <summary>The fraction of the food time that remains.</summary>
     /// <param name="eaten">The tick the food was eaten at.</param>
     /// <param name="now">The current tick; a tick before <paramref name="eaten"/> gives 1.</param>
-    /// <param name="durationTicks">Ticks the food lasts, at least 1.</param>
-    /// <returns>A value in [0, 1].</returns>
+    /// <param name="durationTicks">Ticks the food lasts; 0 means nothing is left.</param>
+    /// <returns>A value in [0, 1]; 0 for a duration of 0 (no division by zero).</returns>
     public static double Remaining(Tick eaten, Tick now, ulong durationTicks) => throw new NotImplementedException("K6-33 A6");
 
     /// <summary>The strength of the food bonuses for a remaining fraction.</summary>

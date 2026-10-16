@@ -16,6 +16,7 @@ public static class FoodSlotRules
     /// <param name="tickRate">Ticks per second.</param>
     /// <param name="next">The slots after eating when the result is <see cref="RejectReason.None"/>; expired slots other than the one used are emptied.</param>
     /// <returns><see cref="RejectReason.None"/>, or code 49 (food already active) when the same food has more than the repeat fraction left or no slot is free.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="tickRate"/> is not positive.</exception>
     public static RejectReason TryPlace(in FoodSlots current, ItemTypeId type, FoodTable table, Tick now, VitalsRules rules, int tickRate, out FoodSlots next) =>
         throw new NotImplementedException("K6-33 A6");
 }

@@ -27,6 +27,16 @@ public sealed class RestRulesTests
         Assert.Equal(18UL * 60 * TickRate, RestRules.DurationTicks(255, _rules, TickRate));
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-60)]
+    public void DurationTicks_TickRateNotPositive_Throws(int tickRate)
+    {
+        Assert.Equal(8UL * 60 * TickRate, RestRules.DurationTicks(0, _rules, TickRate));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => RestRules.DurationTicks(0, _rules, tickRate));
+    }
+
     [Fact]
     public void DurationTicks_FollowsTheTickRate() =>
         Assert.Equal(8UL * 60 * 20, RestRules.DurationTicks(0, _rules, 20));

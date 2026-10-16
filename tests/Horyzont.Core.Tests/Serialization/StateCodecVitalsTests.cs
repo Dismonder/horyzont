@@ -41,6 +41,17 @@ public sealed class StateCodecVitalsTests
     }
 
     [Fact]
+    public void PlayerBlob_NegativeZero_WrittenAsPositiveZero()
+    {
+        // -0 passes the validity check (it equals 0), but the bytes must be canonical: 00 00 00 00, not 00 00 00 80.
+        var positive = new PlayerVitals(0f, 0f, default, true);
+        var negative = new PlayerVitals(-0f, -0f, default, true);
+        Assert.Equal("02 02 " + Body + " 03 00 00 00 00 00 00 00 00 00", Kit.ToHex(StateCodec.EncodePlayerBlob(_player with { Vitals = positive })));
+
+        Assert.Equal(Kit.ToHex(StateCodec.EncodePlayerBlob(_player with { Vitals = positive })), Kit.ToHex(StateCodec.EncodePlayerBlob(_player with { Vitals = negative })));
+    }
+
+    [Fact]
     public void PlayerBlob_V2_RoundTripWithVitals()
     {
         foreach (var vitals in new[]

@@ -13,7 +13,7 @@ public static class FallImpact
     /// <param name="up">The unit vector pointing up.</param>
     /// <param name="mode">The mode of this tick.</param>
     /// <param name="impactSpeed">The speed against the ground in m/s: the downward part of <paramref name="previousVelocity"/>, never negative.</param>
-    /// <returns>True when the body landed.</returns>
+    /// <returns>True when the body landed; false, with an impact speed of 0, when <paramref name="previousVelocity"/> or <paramref name="up"/> is not finite.</returns>
     public static bool TryDetect(MovementMode previousMode, Vector3 previousVelocity, Vector3 up, MovementMode mode, out float impactSpeed) =>
         throw new NotImplementedException("K6-33 A6");
 }

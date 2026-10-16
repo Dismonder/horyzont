@@ -79,6 +79,19 @@ public sealed class FoodCurveTests
     }
 
     [Fact]
+    public void Remaining_ZeroDuration_Zero()
+    {
+        // The accepted counterpart: one tick of duration is fresh at the moment of eating and gone a tick later.
+        Assert.Equal(1.0, FoodCurve.Remaining(new Tick(100), new Tick(100), 1));
+        Assert.Equal(0.0, FoodCurve.Remaining(new Tick(100), new Tick(101), 1));
+
+        // No duration, no food: nothing is left and nothing is divided by zero, whatever the tick.
+        Assert.Equal(0.0, FoodCurve.Remaining(new Tick(100), new Tick(100), 0));
+        Assert.Equal(0.0, FoodCurve.Remaining(new Tick(100), new Tick(50), 0));
+        Assert.Equal(0.0, FoodCurve.Remaining(new Tick(0), new Tick(0), 0));
+    }
+
+    [Fact]
     public void Remaining_BeforeEaten_One()
     {
         // An old snapshot or a clock that is behind the tick of eating: the food counts as fresh, not as more than fresh.

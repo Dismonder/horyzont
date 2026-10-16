@@ -16,6 +16,7 @@ public readonly record struct FoodBonus(float Health, float Stamina, float Healt
     /// <param name="tickRate">Ticks per second.</param>
     /// <param name="rules">The rules.</param>
     /// <returns>The bonus; empty slots, expired food and types that are not food add nothing.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="tickRate"/> is not positive.</exception>
     public static FoodBonus Compute(in FoodSlots slots, FoodTable table, Tick now, int tickRate, VitalsRules rules) =>
         throw new NotImplementedException("K6-33 A6");
 }

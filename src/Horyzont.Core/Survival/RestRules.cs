@@ -8,5 +8,6 @@ public static class RestRules
     /// <param name="rules">The rules.</param>
     /// <param name="tickRate">Ticks per second.</param>
     /// <returns><c>(RestBaseMinutes + comfort * RestMinutesPerComfort) * 60 * tickRate</c> ticks.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="tickRate"/> is not positive.</exception>
     public static ulong DurationTicks(int comfort, VitalsRules rules, int tickRate) => throw new NotImplementedException("K6-33 A6");
 }
