@@ -18,7 +18,6 @@ public sealed class ProgressReplicationTests
 
     private static CraftingServerRig WithOreInBag() => new(sim =>
     {
-        sim.ApplyServerOperation(WorldFactory.PlayerContainers(new PlayerId(1), 1));
         sim.ApplyServerOperation(new ItemCreateOp(new SlotRef(WorldFactory.BagOf(1), 0), CraftingServerRig.Ore, 1, 500, ItemSource.Admin));
     });
 
@@ -39,9 +38,8 @@ public sealed class ProgressReplicationTests
         Assert.IsType<PlayerProgressState>(messages[^1]);
         Assert.Equal(3, messages.OfType<ContainerState>().Count());
 
-        // The start kit (the tool and three gems) was discovered when it was put into the hotbar; nothing else, and the world has no keys.
-        Assert.True(progress.Discovered.Contains(Tool) && progress.Discovered.Contains(Gem));
-        Assert.Equal(2, progress.Discovered.Count);
+        // The test world gives the players empty containers (no start kit): nothing discovered, and the world has no keys.
+        Assert.Equal(0, progress.Discovered.Count);
         Assert.Empty(progress.WorldProgressKeys);
         Assert.Equal(1, _rig.Progress.StatesSent);
     }
