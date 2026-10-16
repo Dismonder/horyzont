@@ -53,8 +53,12 @@ public sealed class SurvivalHashTests
         Assert.NotEqual(StateHasher.Hash(without.State), StateHasher.Hash(a.State));
         Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(b.State));
 
-        // Clearing the food removes the record and brings the hash back.
+        // Clearing the food removes the record and the food section. The hash covers the last operation id, so the twin is a world that applied two
+        // operations too: a food set that sets nothing, twice (the first of them is the same operation id as the berries above).
         a.Apply(FoodWorld.Set(FoodWorld.Player1));
+        Assert.Equal(0, a.State.Progress.Count);
+        without.Apply(FoodWorld.Set(FoodWorld.Player1));
+        without.Apply(FoodWorld.Set(FoodWorld.Player1));
         Assert.Equal(StateHasher.Hash(without.State), StateHasher.Hash(a.State));
     }
 

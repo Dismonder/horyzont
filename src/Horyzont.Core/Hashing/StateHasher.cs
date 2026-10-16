@@ -6,6 +6,7 @@ using System.Text;
 
 using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Ids;
+using Horyzont.Core.Progress;
 using Horyzont.Core.Space;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
@@ -21,7 +22,8 @@ namespace Horyzont.Core.Hashing;
 /// container counter other than 1, so the hash of a world without items is the same as before K6-29 (D7 of K6-29W). K6-30 (D22) appends
 /// block states (0x42) and respawn points (0x50) to that section, each only when it has entries, and also makes them a reason for the section.
 /// K6-32 (D22) adds the station state to 0x42, and after 0x50 the discoveries (0x44) and the progress keys (0x4B), each only when non-empty; the keys are a
-/// reason for the section too (discoveries live in progress records, which already are). A world without them hashes as before.
+/// reason for the section too (discoveries live in progress records, which already are). A world without them hashes as before. K6-33 (D7) appends the
+/// food slots (0x46) at the very end of the section, only when a player has food; the vitals (health, stamina) are never hashed, online or offline.
 /// </summary>
 public static class StateHasher
 {
@@ -30,6 +32,7 @@ public static class StateHasher
     private const byte ProgressTag = 0x50;
     private const byte DiscoveriesTag = 0x44;
     private const byte ProgressKeysTag = 0x4B;
+    private const byte FoodTag = 0x46;
 
     /// <summary>Hashes a state.</summary>
     /// <param name="state">The state.</param>
@@ -300,6 +303,36 @@ public static class StateHasher
             foreach (var key in state.ProgressKeys.Sorted)
             {
                 Text(hash, key);
+            }
+        }
+
+        // K6-33 (D7): the food slots of the players that have any. 0x46 must stay the last subsection of the section: a later package appends its own after
+        // it, and K6-31 (0x48) stays before it.
+        var eaters = 0;
+        foreach (var (_, progress) in state.Progress.Sorted)
+        {
+            eaters += progress.Food.IsEmpty ? 0 : 1;
+        }
+
+        if (eaters > 0)
+        {
+            Span<byte> foodTag = [FoodTag];
+            hash.Append(foodTag);
+            U32(hash, (uint)eaters);
+            foreach (var (player, progress) in state.Progress.Sorted)
+            {
+                if (progress.Food.IsEmpty)
+                {
+                    continue;
+                }
+
+                U64(hash, player.Value);
+                for (var i = 0; i < FoodSlots.Count; i++)
+                {
+                    var slot = progress.Food[i];
+                    U32(hash, slot.Type.Value);
+                    U64(hash, slot.Eaten.Value);
+                }
             }
         }
     }
