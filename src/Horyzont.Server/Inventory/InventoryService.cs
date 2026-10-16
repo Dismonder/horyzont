@@ -1,3 +1,4 @@
+using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Content;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
@@ -239,6 +240,16 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
         }
 
         _scratch.Clear();
+    }
+
+    /// <summary>
+    /// Adds the stations with time that somebody has open (a subscriber to either of their containers) to <paramref name="stations"/>, once each, ascending
+    /// by block (K6-32 D16c). The list is not cleared.
+    /// </summary>
+    /// <param name="stations">The list to add to.</param>
+    public void CollectObservedStations(List<BlockRef> stations)
+    {
+        throw new NotImplementedException("K6-32 C3");
     }
 
     private static bool HasAccess(Container container, PlayerId player) =>
