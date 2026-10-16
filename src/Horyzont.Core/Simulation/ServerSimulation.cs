@@ -7,6 +7,7 @@ using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Props;
+using Horyzont.Core.Survival;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -79,9 +80,13 @@ public sealed class ServerSimulation
     /// the operation applier never sees it.
     /// </param>
     /// <param name="survival">Survival content, or null for the K2 rules.</param>
+    /// <param name="vitals">
+    /// The vitals rules of the world (K6-33 core review 1): the single source of the food numbers for the resolver of eating and for the
+    /// vitals service of the server, which must be given the same instance. Null means <see cref="VitalsRules.Default"/>.
+    /// </param>
     public ServerSimulation(
         WorldState state, ITerrainService terrain, IJournalSink journal, GameRules rules, ILogger<ServerSimulation> logger,
-        BlockContentTable content, SurvivalContent? survival = null)
+        BlockContentTable content, SurvivalContent? survival = null, VitalsRules? vitals = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(terrain);
@@ -99,7 +104,7 @@ public sealed class ServerSimulation
 
         // The rules of props exist only for content that has props (K6-31 D21): without them digging and hitting behave as in K6-29W and K6-30.
         var propField = survival is { Props.Count: > 0 } ? new PropField(state, terrain, rules) : null;
-        _survival = survival is null ? null : new SurvivalRules(state, terrain, survival, rules, propField);
+        _survival = survival is null ? null : new SurvivalRules(state, terrain, survival, rules, propField, vitals);
         _props = propField is null ? null : new PropRules(state, terrain, survival!, rules, propField);
         _functional = new FunctionalBlockRules(state, rules, content, survival);
         _crafting = new CraftingRules(state, rules, content, survival);
@@ -107,6 +112,7 @@ public sealed class ServerSimulation
         // The settlements and the automatic discoveries are on only when the content has recipes (K6-32 D9b); without them the K6-29W and K6-30 journals stay as they were.
         _settlements = survival is { Recipes.Count: > 0 } ? new StationSettlements(state, rules, survival) : null;
         Survival = survival;
+        VitalsRules = vitals ?? VitalsRules.Default;
         _validator = new IntentValidator(state, terrain, rules, content, _survival, _functional, _props);
     }
 
@@ -115,6 +121,9 @@ public sealed class ServerSimulation
 
     /// <summary>Survival content, or null when the simulation runs the K2 rules.</summary>
     public SurvivalContent? Survival { get; }
+
+    /// <summary>The vitals rules of the world; the vitals service of the server takes them from here so that both agree (K6-33 core review 1).</summary>
+    public VitalsRules VitalsRules { get; }
 
     /// <summary>Game rules.</summary>
     public GameRules Rules { get; }

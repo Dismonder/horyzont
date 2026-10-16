@@ -10,6 +10,7 @@ public sealed class VitalsRulesTests
     public void Defaults_OfK6_33()
     {
         var rules = VitalsRules.Default;
+        Assert.True(rules.MaxComfort <= ProtocolConstants.MaxRestComfort);
 
         // Spec 03: 100 health and 100 stamina, the strength r^0.3, repeating the food at 20 percent, the rest 20 s + 8 min + 1 min per comfort,
         // comfort from the blocks within 10 m, the fall from 11 m/s at 8 points per m/s.

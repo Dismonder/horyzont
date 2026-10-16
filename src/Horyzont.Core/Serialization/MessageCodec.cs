@@ -29,9 +29,6 @@ public static class MessageCodec
     private const int VitalsFlagConditions = 2;
     private const int VitalsFlagRested = 4;
 
-    /// <summary>Highest comfort level of message 44 (the comfort of the rules is capped at 10, K6-33 D14).</summary>
-    private const byte MaxComfortLevel = 10;
-
     /// <summary>Appends the frame of <paramref name="message"/>; throws <see cref="ArgumentException"/> when it exceeds the channel limit.</summary>
     /// <param name="w">Target writer.</param>
     /// <param name="message">Message.</param>
@@ -1066,9 +1063,9 @@ public static class MessageCodec
             throw new ArgumentException($"The rest lasts at most {ProtocolConstants.MaxRestRemainingTicks} ticks, not {m.RestRemainingTicks}.", nameof(m));
         }
 
-        if (m.Comfort > MaxComfortLevel)
+        if (m.Comfort > ProtocolConstants.MaxRestComfort)
         {
-            throw new ArgumentException($"The comfort level is at most {MaxComfortLevel}, not {m.Comfort}.", nameof(m));
+            throw new ArgumentException($"The comfort level is at most {ProtocolConstants.MaxRestComfort}, not {m.Comfort}.", nameof(m));
         }
 
         if (m.Rested != (m.RestRemainingTicks > 0) || (!m.RestConditionsMet && m.RestWarmupTicks > 0))
@@ -1120,9 +1117,9 @@ public static class MessageCodec
         }
 
         byte comfort = r.ReadByte();
-        if (comfort > MaxComfortLevel)
+        if (comfort > ProtocolConstants.MaxRestComfort)
         {
-            throw new ProtocolViolationException($"The comfort level is at most {MaxComfortLevel}, not {comfort}.");
+            throw new ProtocolViolationException($"The comfort level is at most {ProtocolConstants.MaxRestComfort}, not {comfort}.");
         }
 
         bool conditions = (flags & VitalsFlagConditions) != 0;

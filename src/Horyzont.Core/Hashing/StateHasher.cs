@@ -323,8 +323,8 @@ public static class StateHasher
             }
         }
 
-        // K6-33 (D7): the food slots of the players that have any. 0x46 must stay the last subsection of the section: a later package appends its own after
-        // it, and K6-31 (0x48) stays before it.
+        // K6-33 (D7): the food slots of the players that have any. 0x46 stays after 0x48, 0x44 and 0x4B; a later package appends its subsection after
+        // 0x46.
         var eaters = 0;
         foreach (var (_, progress) in state.Progress.Sorted)
         {

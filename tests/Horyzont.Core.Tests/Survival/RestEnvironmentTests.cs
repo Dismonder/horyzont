@@ -62,6 +62,32 @@ public sealed class RestEnvironmentTests
     }
 
     [Fact]
+    public void Evaluate_ConstructExactly16m_Roofed()
+    {
+        // K6-33 core review 3: the limit of the roof ray is inclusive. On the axis of the planet (x = z = 0) the up direction is exactly +Y, so the ray is 16 m long
+        // to the underside of the cell at y = 18 (4018); the cell at y = 19 is 17 m away. Off the axis the ray tilts a hair and the length grows past the height.
+        var w = new FoodWorld();
+        var onAxis = new Vector3(0f, 4002f, 0f);
+        Place(w, new CellPos(0, 19, 0), FunctionalBlocks.StoneType);
+        Assert.False(Evaluate(w, point: onAxis).Roofed);
+
+        Place(w, new CellPos(0, 18, 0), FunctionalBlocks.StoneType);
+
+        Assert.True(Evaluate(w, point: onAxis).Roofed);
+    }
+
+    [Fact]
+    public void Evaluate_NonFinitePoint_NothingAndNoThrow()
+    {
+        // K6-33 core review 4: the same world with a finite point gives the bed's comfort, a point that is not a number gives nothing.
+        var w = new FoodWorld();
+        Assert.True(Evaluate(w).Comfort > 0);
+
+        Assert.Equal(default, Evaluate(w, point: new Vector3(float.NaN, 4002f, 0.5f)));
+        Assert.Equal(default, Evaluate(w, point: new Vector3(1.5f, float.PositiveInfinity, 0.5f)));
+    }
+
+    [Fact]
     public void Evaluate_ConstructBesideTheRay_NotRoofed()
     {
         var w = new FoodWorld();

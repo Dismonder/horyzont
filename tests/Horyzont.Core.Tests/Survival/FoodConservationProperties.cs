@@ -27,6 +27,10 @@ public sealed class FoodConservationProperties
     private const int Sequences = 1000;
     private const int OperationsPerSequence = 40;
     private const ushort FoodLimit = 20;
+    private const int SubmitSequences = 300;
+    private const int EatenThroughSubmit = 300;
+    private const int RefusedThroughSubmit = 200;
+    private const int EmptyThroughSubmit = 1000;
 
     /// <summary>Reject reason 49 of the plan; the enum value arrives in step B2.</summary>
     private const RejectReason FoodAlreadyActive = (RejectReason)49;
@@ -79,6 +83,25 @@ public sealed class FoodConservationProperties
     }
 
     [Fact]
+    public void EatMoveCraft_ThroughSubmit_ConservationAndFoodInvariants()
+    {
+        // K6-33 core review 8: the same invariants with the eating done by Submit(EatIntent) (validator, bucket, resolver, applier) instead of the compound built
+        // from FoodSlotRules; the hash stays unchanged on every refusal.
+        Kit.ForAll(Sequence, sequence => Run(sequence, null, viaSubmit: true), SubmitSequences);
+
+        var coverage = new Coverage();
+        foreach (var sequence in Sequence.Sample(400, 20))
+        {
+            Run(sequence, coverage, viaSubmit: true);
+        }
+
+        Assert.True(coverage.Eaten >= EatenThroughSubmit, $"eaten through Submit {coverage.Eaten} times");
+        Assert.True(coverage.RefusedByRule >= RefusedThroughSubmit, $"refused (49) through Submit {coverage.RefusedByRule} times");
+        Assert.True(coverage.EmptyRefused >= EmptyThroughSubmit, $"refused as empty through Submit {coverage.EmptyRefused} times");
+        Assert.True(coverage.Crafted >= 15, $"crafted {coverage.Crafted} times");
+    }
+
+    [Fact]
     public void Generator_ProducesEatenAndRefusedFood() => AssertGeneratorCoverage();
 
     private static void AssertGeneratorCoverage()
@@ -97,9 +120,9 @@ public sealed class FoodConservationProperties
         Assert.True(coverage.Crafted >= 15, $"crafted {coverage.Crafted} times");
     }
 
-    private static void Run(Step[] sequence, Coverage? coverage)
+    private static void Run(Step[] sequence, Coverage? coverage, bool viaSubmit = false)
     {
-        var f = new FoodWorld();
+        var f = new FoodWorld(survival: viaSubmit);
         var table = FoodContent.Table(f.State);
         var applier = new OperationApplier(f.State, f.Blocks.Sim.Terrain);
         var expected = new long[SurvivalContentFactory.FoodItemKeys.Count + 1];
@@ -109,6 +132,16 @@ public sealed class FoodConservationProperties
             if (step.Action == Action.Advance)
             {
                 now += (ulong)step.Ticks;
+                continue;
+            }
+
+            if (viaSubmit && step.Action is Action.Eat or Action.EatNothing or Action.EatDuplicate)
+            {
+                // A few ticks apart, so that the bucket of the items refills; the tick of the world is the clock of the rule.
+                now += 3;
+                SubmitEat(f, step, now, expected, coverage);
+                Assert.Equal(expected, Totals(f));
+                AssertFoodInvariants(f);
                 continue;
             }
 
@@ -134,6 +167,36 @@ public sealed class FoodConservationProperties
 
             Assert.Equal(expected, Totals(f));
             AssertFoodInvariants(f);
+        }
+    }
+
+    private static void SubmitEat(FoodWorld f, Step step, ulong now, long[] expected, Coverage? coverage)
+    {
+        f.State.SetTick(new Tick(now));
+        var slot = step.Action == Action.Eat ? step.Slot : 39;
+        var stack = f.BagStack(Player1, slot);
+        var hash = StateHasher.Hash(f.State);
+
+        var result = f.Simulation.Submit(Player1, new EatIntent(BagOf(Player1), (ushort)slot));
+
+        if (result.IsAccepted)
+        {
+            Assert.False(stack.IsEmpty);
+            expected[stack.Type.Value]--;
+            coverage?.Accepted(Action.Eat);
+            return;
+        }
+
+        Assert.Equal(hash, StateHasher.Hash(f.State));
+        if (stack.IsEmpty)
+        {
+            Assert.Equal(RejectReason.NotEnoughItems, result.Reason);
+            coverage?.RefuseEmpty();
+        }
+        else
+        {
+            Assert.Equal(FoodAlreadyActive, result.Reason);
+            coverage?.RefuseByRule();
         }
     }
 
@@ -250,7 +313,11 @@ public sealed class FoodConservationProperties
 
         public int Crafted { get; private set; }
 
+        public int EmptyRefused { get; private set; }
+
         public void RefuseByRule() => RefusedByRule++;
+
+        public void RefuseEmpty() => EmptyRefused++;
 
         public void Accepted(Action action)
         {

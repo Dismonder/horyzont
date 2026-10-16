@@ -2,6 +2,8 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Simulation;
+using Horyzont.Core.Survival;
 using Horyzont.Testing;
 
 using static Horyzont.Core.Tests.Survival.FoodWorld;
@@ -183,6 +185,39 @@ public sealed class EatIntentTests
 
         Assert.Equal(Slots(Slot(Berries, now.Value)), w.FoodOf(Player1));
         Assert.Equal(new ItemStack(Berries, 1), w.BagStack(Player1, 0));
+    }
+
+    [Fact]
+    public void Eat_RulesOfTheWorld_RepeatFractionUsed()
+    {
+        // K6-33 core review 1: the repeat fraction is the one of the world, not VitalsRules.Default. With 40 percent left (60 percent of the duration gone)
+        // a world of 0.5 accepts the berries again while the default world (0.2) refuses them.
+        Assert.Equal(0ul, _berryTicks % 5);
+        var elapsed = (int)(_berryTicks * 3 / 5);
+
+        var tuned = new FoodWorld(survival: true, vitals: VitalsRules.Default with { FoodRepeatFraction = 0.5f });
+        tuned.GiveFood(Player1, Berries, 3, bagSlot: 0);
+        tuned.Blocks.Accept(Player1, EatBag(Player1));
+        tuned.AdvanceTicks(elapsed);
+        var now = tuned.Now;
+        tuned.Blocks.Accept(Player1, EatBag(Player1));
+        Assert.Equal(Slots(Slot(Berries, now.Value)), tuned.FoodOf(Player1));
+
+        var standard = Stocked();
+        standard.Blocks.Accept(Player1, EatBag(Player1));
+        standard.AdvanceTicks(elapsed);
+        standard.Blocks.AssertRejected(Player1, EatBag(Player1), FoodAlreadyActive);
+    }
+
+    [Fact]
+    public void ServerSimulation_TickRateZeroWithSurvival_Throws()
+    {
+        // K6-33 core review 9: a broken configuration fails at the start, not at the first meal. Without survival content the rate is not read.
+        var rules = new GameRules { TickRate = 0 };
+        var state = WorldFactory.CreateWithFood(1);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SimFixture(rules, state: state, survival: FoodContent.Create()));
+        Assert.NotNull(new SimFixture(rules, state: WorldFactory.CreateWithFood(1)));
     }
 
     [Fact]

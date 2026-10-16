@@ -21,6 +21,12 @@ public static class ProtocolConstants
     /// </summary>
     public const int MaxRestRemainingTicks = 64_800;
 
+    /// <summary>
+    /// Highest comfort level of the rest in message 44 (K6-33 D22). The rules cap the comfort to <c>VitalsRules.MaxComfort</c>, which must not exceed this,
+    /// and the server clamps to it before sending.
+    /// </summary>
+    public const int MaxRestComfort = 10;
+
     /// <summary>Maximum entries per terrain manifest page (K3-16).</summary>
     public const int MaxTerrainSyncEntries = 1024;
 

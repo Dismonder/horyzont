@@ -3,6 +3,7 @@ using System.Numerics;
 using Horyzont.Core.Crafting;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Protocol;
+using Horyzont.Core.Simulation;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -13,7 +14,8 @@ namespace Horyzont.Core.Survival;
 /// <summary>
 /// The roof, the heat and the comfort around a point (K6-33 D14). All limits are inclusive, like <see cref="StationLevels"/>: a block counts when the
 /// distance of its cell centre to the point is at most the range, and the roof when the vertical ray meets a construct or the terrain at a distance of at
-/// most <see cref="VitalsRules.RestRoofRayMeters"/>. The roof is one vertical ray (the full shelter of 26 rays is K6-34), so a point just beside a
+/// most <see cref="VitalsRules.RestRoofRayMeters"/> along the ray (the length of the ray, not the height: off the axis of the planet the up direction tilts and the
+/// length is a hair more than the height). The roof is one vertical ray (the full shelter of 26 rays is K6-34), so a point just beside a
 /// ceiling is not roofed.
 /// </summary>
 public static class RestEnvironment
@@ -42,6 +44,12 @@ public static class RestEnvironment
         ArgumentNullException.ThrowIfNull(blocks);
         ArgumentNullException.ThrowIfNull(terrain);
         ArgumentNullException.ThrowIfNull(rules);
+
+        // A point that is not a number has no up and no distances; the raycasts are not defined for it (core review 4).
+        if (!Geometry.IsFinite(point))
+        {
+            return default;
+        }
 
         var up = TerrainMath.UpAt(point);
         var roofed = ConstructRaycast.Raycast(state.Constructs, FrameRef.Of(planet), point, up, rules.RestRoofRayMeters, out _)

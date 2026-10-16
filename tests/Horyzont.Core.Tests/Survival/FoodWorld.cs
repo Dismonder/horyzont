@@ -3,6 +3,7 @@ using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Progress;
 using Horyzont.Core.Simulation;
+using Horyzont.Core.Survival;
 using Horyzont.Core.Tests.BlockEntities;
 using Horyzont.Core.Tests.Items;
 using Horyzont.Core.World;
@@ -19,11 +20,12 @@ internal sealed class FoodWorld
     /// <param name="players">Number of players.</param>
     /// <param name="survival">Whether the simulation has the survival content of <see cref="FoodContent"/> (intents are resolved); operations need none.</param>
     /// <param name="secondPlanet">Whether the world has a second planet.</param>
-    public FoodWorld(int players = 1, bool survival = false, bool secondPlanet = false)
+    /// <param name="vitals">The vitals rules of the world, null for the defaults.</param>
+    public FoodWorld(int players = 1, bool survival = false, bool secondPlanet = false, VitalsRules? vitals = null)
     {
         var state = WorldFactory.CreateWithFood(players, secondPlanet);
         Blocks = survival
-            ? new FunctionalBlockFixture(state, FoodContent.Create(), FoodBlocks.ContentFor(state))
+            ? new FunctionalBlockFixture(state, FoodContent.Create(), FoodBlocks.ContentFor(state), vitals)
             : new FunctionalBlockFixture(state);
     }
 

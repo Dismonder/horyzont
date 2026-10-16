@@ -5,6 +5,7 @@ using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Props;
 using Horyzont.Core.Protocol;
+using Horyzont.Core.Survival;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Terrain;
 
@@ -16,7 +17,7 @@ namespace Horyzont.Core.Simulation;
 /// value they depend on. Chests are reachable for item moves (K6-30 D9): a shared one or the player's own, within
 /// <see cref="GameRules.ContainerKeepRangeMeters"/> of the eye. Order of the checks: docs/plans/K6-29W-ekwipunek-i-wydobycie.md, "Walidacja i rozwiązanie intencji przedmiotów".
 /// </summary>
-internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, SurvivalContent content, GameRules rules, PropField? props = null)
+internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, SurvivalContent content, GameRules rules, PropField? props = null, VitalsRules? vitals = null)
 {
     private const int MaterialCount = 256;
 
@@ -26,7 +27,7 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
     private readonly List<Operation> _components = [];
     private readonly YieldLedger _ledger = new();
     private readonly List<PropInstance> _propsInSphere = [];
-    private readonly FoodRules _food = new(state, content, rules);
+    private readonly FoodRules _food = new(state, content, rules, vitals ?? VitalsRules.Default);
 
     /// <summary>
     /// The parameter step of an item intent: zero numbers, slots outside the container, the equipment container and a target equal to the

@@ -36,9 +36,12 @@ internal sealed class FunctionalBlockFixture
     /// <param name="state">The world, e.g. of <see cref="WorldFactory.CreateWithFood"/>.</param>
     /// <param name="survival">Survival content, null for none.</param>
     /// <param name="content">Block content, null for none.</param>
-    public FunctionalBlockFixture(Horyzont.Core.World.WorldState state, SurvivalContent? survival, Horyzont.Core.World.Blocks.BlockContentTable? content)
+    /// <param name="vitals">The vitals rules of the world, null for the defaults.</param>
+    public FunctionalBlockFixture(
+        Horyzont.Core.World.WorldState state, SurvivalContent? survival, Horyzont.Core.World.Blocks.BlockContentTable? content,
+        Horyzont.Core.Survival.VitalsRules? vitals = null)
     {
-        Sim = new SimFixture(state: state, content: content, survival: survival);
+        Sim = new SimFixture(state: state, content: content, survival: survival, vitals: vitals);
     }
 
     private FunctionalBlockFixture(int players, bool withSurvival, ushort chestSlots, bool intents, GameRules? rules)

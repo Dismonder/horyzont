@@ -17,8 +17,10 @@ namespace Horyzont.Core.Simulation;
 /// <param name="state">The world.</param>
 /// <param name="content">The survival content.</param>
 /// <param name="rules">The game rules (ticks per second).</param>
-internal sealed class FoodRules(WorldState state, SurvivalContent content, GameRules rules)
+/// <param name="vitals">The vitals rules of the world: the one source for the repeat fraction and the curve, shared with the vitals service of the server.</param>
+internal sealed class FoodRules(WorldState state, SurvivalContent content, GameRules rules, VitalsRules vitals)
 {
+    private readonly int _tickRate = rules.TickRate > 0 ? rules.TickRate : throw new ArgumentOutOfRangeException(nameof(rules), "The tick rate must be positive.");
     private readonly FoodTable _table = FoodTable.Build(content, state.ItemTypes);
 
     /// <summary>Resolves a validated eat intent.</summary>
@@ -49,7 +51,7 @@ internal sealed class FoodRules(WorldState state, SurvivalContent content, GameR
         }
 
         var current = state.Progress.TryGet(player, out var progress) ? progress.Food : FoodSlots.Empty;
-        var reason = FoodSlotRules.TryPlace(current, stack.Type, _table, state.CurrentTick, VitalsRules.Default, rules.TickRate, out var next);
+        var reason = FoodSlotRules.TryPlace(current, stack.Type, _table, state.CurrentTick, vitals, _tickRate, out var next);
         if (reason != RejectReason.None)
         {
             return reason;
