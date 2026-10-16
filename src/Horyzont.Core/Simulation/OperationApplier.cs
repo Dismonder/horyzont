@@ -33,6 +33,9 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
     private readonly UndoLog _undo = new();
     private readonly List<(ulong Container, ushort Slot)> _touched = [];
     private readonly List<BlockFunctionStateSetOp> _pendingStates = [];
+
+    // Chest states removed by the running operation: the chest container must be gone with them by the end of the operation.
+    private readonly List<BlockRef> _clearedChestStates = [];
     private readonly List<ulong> _pendingConstructs = [];
 
     // The block that the last component of a compound writes: the earlier state components see its cell with this block (D12).
@@ -68,7 +71,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 return ok;
             case var _ when IsComponent(operation):
                 BeginOperation();
-                failure = ApplyComponent(operation) ?? string.Empty;
+                failure = ApplyComponent(operation) ?? CheckClearedChestStates() ?? string.Empty;
                 if (failure.Length != 0)
                 {
                     _undo.Rollback(state);
@@ -126,6 +129,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
     private void EndOperation()
     {
         _pendingStates.Clear();
+        _clearedChestStates.Clear();
         _viewSet = null;
         _viewCreate = null;
     }
@@ -287,6 +291,15 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 componentIndex = i;
                 return false;
             }
+        }
+
+        // A chest state may be removed before its container inside a compound; judged once all components are applied.
+        if (CheckClearedChestStates() is { } inconsistent)
+        {
+            _undo.Rollback(state);
+            failure = inconsistent;
+            componentIndex = otherCount - 1;
+            return false;
         }
 
         var terrainVersions = _noTerrain;
@@ -740,6 +753,21 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         return null;
     }
 
+    /// <summary>A chest container hosted by a block needs the chest state of that block, as the checkpoint requires; judged at the end of an operation.</summary>
+    private string? CheckClearedChestStates()
+    {
+        for (var i = 0; i < _clearedChestStates.Count; i++)
+        {
+            var key = _clearedChestStates[i];
+            if (!state.BlockEntities.TryGet(key, out _) && state.Containers.IsBlockHost(key.Construct, key.Cell))
+            {
+                return "a chest container needs the chest state of its block";
+            }
+        }
+
+        return null;
+    }
+
     private string? ApplyBlockEntitySet(BlockEntitySetOp op)
     {
         var key = new BlockRef(op.Construct, op.Cell);
@@ -755,6 +783,11 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             if (!state.Constructs.TryGet(op.Construct, out var live) || live.GetBlock(op.Cell).TypeId != op.ExpectedType)
             {
                 return "the block differs from the expected type";
+            }
+
+            if (existing.Kind == BlockEntityKind.Chest)
+            {
+                _clearedChestStates.Add(key);
             }
 
             _undo.SetBlockEntity(state, key, null);

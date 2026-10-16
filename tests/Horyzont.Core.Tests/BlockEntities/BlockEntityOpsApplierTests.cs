@@ -129,6 +129,38 @@ public sealed class BlockEntityOpsApplierTests
     }
 
     [Fact]
+    public void BlockEntitySet_ChestStateRemovedAlone_ContainerStays_Fails()
+    {
+        var f = new FunctionalBlockFixture();
+        f.SetUpChest(_chestCell);
+
+        f.AssertFails(ClearState(_chestCell, FunctionalBlocks.ChestType));
+        Assert.True(f.HasState(_chestCell, out _));
+    }
+
+    [Fact]
+    public void Compound_ChestStateRemovedAndContainerRemovedLater_IsApplied()
+    {
+        var f = new FunctionalBlockFixture();
+        var id = f.SetUpChest(_chestCell);
+
+        f.Apply(new CompoundOp([ClearState(_chestCell, FunctionalBlocks.ChestType), new ContainerRemoveOp(id)]));
+
+        Assert.False(f.HasState(_chestCell, out _));
+        Assert.Empty(f.HostedBy(_chestCell));
+    }
+
+    [Fact]
+    public void Compound_ChestStateRemovedContainerStays_Fails()
+    {
+        var f = new FunctionalBlockFixture();
+        var id = f.SetUpChest(_chestCell);
+
+        f.AssertFails(new CompoundOp([ClearState(_chestCell, FunctionalBlocks.ChestType), Stone(id, 1, 1)]));
+        Assert.True(f.HasState(_chestCell, out _));
+    }
+
+    [Fact]
     public void BlockEntitySet_Over4096PerConstruct_Fails()
     {
         var f = new FunctionalBlockFixture();
