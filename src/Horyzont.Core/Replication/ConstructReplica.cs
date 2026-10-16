@@ -107,6 +107,20 @@ public sealed class ConstructReplica
         return true;
     }
 
+    /// <summary>Applies exactly the next version of a function state change (K6-30): bits 25-27 of the block in the cell.</summary>
+    /// <param name="cell">Target cell; must hold a block of <paramref name="expectedType"/>.</param>
+    /// <param name="expectedType">Block type the cell must hold.</param>
+    /// <param name="state">New function state, 0..7.</param>
+    /// <param name="version">Next version.</param>
+    /// <returns>Whether the change was applied; false leaves the copy unchanged.</returns>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Skeleton of K6-30 A6; the behaviour reads the instance.")]
+    public bool TrySetFunctionState(CellPos cell, ushort expectedType, byte state, uint version)
+    {
+        // K6-30 A6: the behaviour.
+        _ = (cell, expectedType, state, version);
+        return false;
+    }
+
     /// <summary>Applies the next reparent counter without changing the block version.</summary>
     /// <param name="parent">New parent.</param>
     /// <param name="parentSeq">Next counter.</param>

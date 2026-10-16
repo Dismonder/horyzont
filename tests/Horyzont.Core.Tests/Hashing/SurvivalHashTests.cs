@@ -3,6 +3,8 @@ using Horyzont.Core.Hashing;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Progress;
+using Horyzont.Core.Tests.BlockEntities;
 using Horyzont.Core.Tests.Items;
 using Horyzont.Core.World;
 using Horyzont.Testing;
@@ -24,6 +26,70 @@ public sealed class SurvivalHashTests
     [Fact]
     public void WorldWithItemsWithoutBlockEntities_HashUnchanged() =>
         Assert.Equal(WorldWithItemsHashBeforeBlockEntities, StateHasher.Hash(WorldWithItems()));
+
+    [Fact]
+    public void BlockEntityChange_ChangesHash()
+    {
+        var a = new FunctionalBlockFixture(players: 2);
+        var b = new FunctionalBlockFixture(players: 2);
+        var c = new FunctionalBlockFixture(players: 2);
+        Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(b.State));
+
+        a.Apply(FunctionalBlockFixture.SetBedState(FunctionalBlocks.BedCell, PlayerId.None));
+        b.Apply(FunctionalBlockFixture.SetBedState(FunctionalBlocks.BedCell, FunctionalBlockFixture.Player2));
+        c.Apply(FunctionalBlockFixture.SetBedState(FunctionalBlocks.BedCell, FunctionalBlockFixture.Player2));
+
+        var hashes = new[] { StateHasher.Hash(a.State), StateHasher.Hash(b.State) };
+        Assert.NotEqual(hashes[0], hashes[1]);
+        Assert.Equal(hashes[1], StateHasher.Hash(c.State));
+        var withoutState = new FunctionalBlockFixture(players: 2);
+        Assert.NotEqual(StateHasher.Hash(withoutState.State), hashes[0]);
+
+        var chestA = new FunctionalBlockFixture();
+        var chestB = new FunctionalBlockFixture();
+        chestA.SetUpChest(FunctionalBlocks.ChestCell);
+        chestB.CreateChestContainer(FunctionalBlocks.ChestCell);
+        Assert.NotEqual(StateHasher.Hash(chestB.State), StateHasher.Hash(chestA.State));
+    }
+
+    [Fact]
+    public void RespawnPointChange_ChangesHash()
+    {
+        var a = new FunctionalBlockFixture();
+        var b = new FunctionalBlockFixture();
+        a.Apply(FunctionalBlockFixture.SetBedState(FunctionalBlocks.BedCell, FunctionalBlockFixture.Player1));
+        b.Apply(FunctionalBlockFixture.SetBedState(FunctionalBlocks.BedCell, FunctionalBlockFixture.Player1));
+        Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(b.State));
+
+        a.Apply(new RespawnPointSetOp(FunctionalBlockFixture.Player1, FunctionalBlockFixture.BedAt(FunctionalBlocks.BedCell)));
+        b.Apply(new RespawnPointSetOp(FunctionalBlockFixture.Player1, new BedRef(FunctionalBlockFixture.ConstructId, FunctionalBlocks.BedCell, FunctionalBlocks.BedType)));
+        var withPoint = StateHasher.Hash(a.State);
+        Assert.Equal(withPoint, StateHasher.Hash(b.State));
+
+        // The same bed state without the respawn point is another world.
+        var other = new FunctionalBlockFixture();
+        other.Apply(FunctionalBlockFixture.SetBedState(FunctionalBlocks.BedCell, FunctionalBlockFixture.Player1));
+        Assert.NotEqual(withPoint, StateHasher.Hash(other.State));
+        Assert.True(a.State.Progress.TryGet(FunctionalBlockFixture.Player1, out var progress));
+        Assert.NotNull(progress.RespawnBed);
+    }
+
+    [Fact]
+    public void FunctionStateChange_ChangesHash()
+    {
+        var a = new FunctionalBlockFixture();
+        var b = new FunctionalBlockFixture();
+        var c = new FunctionalBlockFixture();
+        Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(b.State));
+
+        a.Apply(FunctionalBlockFixture.SetFunctionState(FunctionalBlocks.DoorLowCell, FunctionalBlocks.DoorType, 1));
+        b.Apply(FunctionalBlockFixture.SetFunctionState(FunctionalBlocks.DoorLowCell, FunctionalBlocks.DoorType, 2));
+        c.Apply(FunctionalBlockFixture.SetFunctionState(FunctionalBlocks.DoorLowCell, FunctionalBlocks.DoorType, 1));
+
+        Assert.NotEqual(StateHasher.Hash(a.State), StateHasher.Hash(b.State));
+        Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(c.State));
+        Assert.NotEqual(StateHasher.Hash(a.State), StateHasher.Hash(new FunctionalBlockFixture().State));
+    }
 
     [Fact]
     public void ItemTypesOnly_ChangeHash()

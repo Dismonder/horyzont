@@ -832,6 +832,46 @@ public static class StateCodec
         return result;
     }
 
+    /// <summary>Encodes the state of a functional block as a SQLite blob (kind 21, version 1; K6-30).</summary>
+    /// <param name="record">Record.</param>
+    /// <returns>The blob.</returns>
+    public static byte[] EncodeBlockEntityBlob(BlockEntityRecord record)
+    {
+        // K6-30 A4: BlobKind.BlockEntity = 21.
+        ArgumentNullException.ThrowIfNull(record);
+        throw new NotImplementedException("K6-30 A4");
+    }
+
+    /// <summary>Decodes a functional block state blob (kind 21).</summary>
+    /// <param name="blob">Blob bytes.</param>
+    /// <returns>The record.</returns>
+    public static BlockEntityRecord DecodeBlockEntityBlob(ReadOnlySpan<byte> blob)
+    {
+        // K6-30 A4.
+        _ = blob.Length;
+        throw new NotImplementedException("K6-30 A4");
+    }
+
+    /// <summary>Encodes the progress of a player as a SQLite blob (kind 22, version 1; K6-30).</summary>
+    /// <param name="record">Record.</param>
+    /// <returns>The blob.</returns>
+    public static byte[] EncodePlayerProgressBlob(PlayerProgressRecord record)
+    {
+        // K6-30 A4: BlobKind.PlayerProgress = 22.
+        ArgumentNullException.ThrowIfNull(record);
+        throw new NotImplementedException("K6-30 A4");
+    }
+
+    /// <summary>Decodes a player progress blob (kind 22).</summary>
+    /// <param name="blob">Blob bytes.</param>
+    /// <returns>The record.</returns>
+    public static PlayerProgressRecord DecodePlayerProgressBlob(ReadOnlySpan<byte> blob)
+    {
+        // K6-30 A4.
+        _ = blob.Length;
+        throw new NotImplementedException("K6-30 A4");
+    }
+
     private static void ValidateBlobHeader(ReadOnlySpan<byte> blob, BlobKind expectedKind)
     {
         if (blob.Length < 2)

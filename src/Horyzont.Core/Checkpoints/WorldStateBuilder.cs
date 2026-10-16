@@ -40,6 +40,8 @@ public sealed class WorldStateBuilder
     private ulong _nextPlayerId = 1;
     private ulong _nextMarkerId = 1;
     private ulong _nextContainerId = 1;
+    private readonly List<BlockEntityRecord> _blockEntities = [];
+    private readonly List<PlayerProgressRecord> _progress = [];
     private bool _built;
 
     /// <summary>Starts a world.</summary>
@@ -78,6 +80,24 @@ public sealed class WorldStateBuilder
     {
         ArgumentNullException.ThrowIfNull(container);
         _containers.Add(container);
+    }
+
+    /// <summary>Adds the state of a functional block (K6-30); its block must be added too.</summary>
+    /// <param name="record">The state.</param>
+    public void AddBlockEntity(BlockEntityRecord record)
+    {
+        // K6-30 A4: check against the chunks and restore in Build.
+        ArgumentNullException.ThrowIfNull(record);
+        _blockEntities.Add(record);
+    }
+
+    /// <summary>Adds the progress of a player (K6-30).</summary>
+    /// <param name="record">The progress.</param>
+    public void AddPlayerProgress(PlayerProgressRecord record)
+    {
+        // K6-30 A4: check against the players and restore in Build.
+        ArgumentNullException.ThrowIfNull(record);
+        _progress.Add(record);
     }
 
     /// <summary>Adds a planet.</summary>

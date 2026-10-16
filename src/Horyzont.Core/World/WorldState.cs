@@ -1,9 +1,11 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 
+using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
+using Horyzont.Core.Progress;
 using Horyzont.Core.Space;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -47,6 +49,8 @@ public sealed class WorldState
         Markers = new MarkerStore(_tracker);
         ItemTypes = new ItemTypeRegistry();
         Containers = new ContainerStore(_tracker);
+        BlockEntities = new BlockEntityStore();
+        Progress = new PlayerProgressStore();
     }
 
     /// <summary>World id.</summary>
@@ -111,6 +115,12 @@ public sealed class WorldState
 
     /// <summary>Container ids (<c>next_container_id</c>).</summary>
     public ContainerIdAllocator ContainerIds { get; }
+
+    /// <summary>States of functional blocks (K6-30).</summary>
+    public BlockEntityStore BlockEntities { get; }
+
+    /// <summary>Progress of the players (K6-30; only the respawn point).</summary>
+    public PlayerProgressStore Progress { get; }
 
     /// <summary>True between <see cref="CaptureCheckpoint"/> and its completion or requeue.</summary>
     public bool IsCheckpointInFlight => _inFlight is not null;

@@ -6,4 +6,5 @@ namespace Horyzont.Core.Operations;
 /// <param name="Container">Container.</param>
 /// <param name="Version">Version after the operation (one more than before it, however many components touched it).</param>
 /// <param name="Slots">Changed slot indexes in ascending order; every slot for a container created by the operation.</param>
-public sealed record ContainerChange(ContainerId Container, uint Version, IReadOnlyList<ushort> Slots);
+/// <param name="Removed">True when the operation removed the container (K6-30).</param>
+public sealed record ContainerChange(ContainerId Container, uint Version, IReadOnlyList<ushort> Slots, bool Removed = false);

@@ -1,9 +1,12 @@
+using System.Numerics;
+
 using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.Space;
 using Horyzont.Core.World;
+using Horyzont.Core.World.Constructs;
 
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -46,10 +49,55 @@ public static class WorldFactory
     /// (player n has identity Dev n). Every player got, in one compound operation, a bag (<see cref="BagOf"/>, 40 slots), a hotbar
     /// (<see cref="HotbarOf"/>, 10 slots) and an equipment container (<see cref="EquipmentOf"/>, 7 slots); all are empty.
     /// </summary>
-    public static WorldState CreateWithPlayerContainers(int players = 1)
+    public static WorldState CreateWithPlayerContainers(int players = 1) =>
+        WithPlayers(
+            WorldState.CreateNew(
+                DefaultWorldId, 42, [HomePlanetParams], [StoneBlockKey], ["stone", "dirt", BedrockMaterialKey], SurvivalContentFactory.ItemKeys),
+            players);
+
+    /// <summary>
+    /// <see cref="CreateWithPlayerContainers"/> with the block types of <see cref="FunctionalBlocks.BlockKeys"/> (ids 1..5) and, when
+    /// <paramref name="withConstruct"/>, the construct <see cref="FunctionalBlocks.Construct"/>: a stone floor and plain blocks (no state, no container)
+    /// of a chest, a bed, a lamp and a two-block door at the cells of <see cref="FunctionalBlocks"/>, placed by server operations.
+    /// </summary>
+    public static WorldState CreateWithFunctionalBlocks(int players = 1, bool withConstruct = true)
     {
-        var state = WorldState.CreateNew(
-            DefaultWorldId, 42, [HomePlanetParams], [StoneBlockKey], ["stone", "dirt", BedrockMaterialKey], SurvivalContentFactory.ItemKeys);
+        var state = WithPlayers(
+            WorldState.CreateNew(
+                DefaultWorldId, 42, [HomePlanetParams], FunctionalBlocks.BlockKeys, ["stone", "dirt", BedrockMaterialKey], SurvivalContentFactory.ItemKeys),
+            players);
+        if (!withConstruct)
+        {
+            return state;
+        }
+
+        var sim = new ServerSimulation(state, new FakeTerrainService(), new InMemoryJournal(), new GameRules(), NullLogger<ServerSimulation>.Instance);
+        sim.ApplyServerOperation(new ConstructCreateOp(
+            FunctionalBlocks.Construct, FrameRef.Of(HomePlanet), new Vector3(0, 4000, 0), Quaternion.Identity,
+            FunctionalBlocks.FloorCells[0], BlockState.Create(FunctionalBlocks.StoneType, 0)));
+        foreach (var cell in FunctionalBlocks.FloorCells.Skip(1))
+        {
+            sim.ApplyServerOperation(new BlockSetOp(FunctionalBlocks.Construct, cell, BlockState.Create(FunctionalBlocks.StoneType, 0)));
+        }
+
+        (CellPos Cell, ushort Type)[] blocks =
+        [
+            (FunctionalBlocks.ChestCell, FunctionalBlocks.ChestType),
+            (FunctionalBlocks.BedCell, FunctionalBlocks.BedType),
+            (FunctionalBlocks.LampCell, FunctionalBlocks.LampType),
+            (FunctionalBlocks.DoorLowCell, FunctionalBlocks.DoorType),
+            (FunctionalBlocks.DoorHighCell, FunctionalBlocks.DoorType),
+        ];
+        foreach (var (cell, type) in blocks)
+        {
+            sim.ApplyServerOperation(new BlockSetOp(FunctionalBlocks.Construct, cell, BlockState.Create(type, 0)));
+        }
+
+        return state;
+    }
+
+    private static WorldState WithPlayers(WorldState state, int players)
+    {
         var sim = new ServerSimulation(state, new FakeTerrainService(), new InMemoryJournal(), new GameRules(), NullLogger<ServerSimulation>.Instance);
         for (var n = 1; n <= players; n++)
         {
