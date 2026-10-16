@@ -15,7 +15,7 @@ public sealed class SharedBlockEntitiesTests
     public void TryGet_ReadsTheWorldStateOfTheServer()
     {
         var state = WorldFactory.CreateWithFunctionalBlocks();
-        var view = new SharedBlockEntities(state);
+        var view = new SharedBlockEntities(() => state);
         Assert.False(view.TryGet(FunctionalBlocks.Construct, FunctionalBlocks.BedCell, out _));
 
         var sim = new ServerSimulation(state, new FakeTerrainService(), new InMemoryJournal(), new GameRules(), NullLogger<ServerSimulation>.Instance);

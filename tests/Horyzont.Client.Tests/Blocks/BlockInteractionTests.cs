@@ -330,6 +330,15 @@ public sealed class BlockInteractionTests
     }
 
     [Fact]
+    public void ToolInputFrame_BlockInteract_DefaultsToFalse()
+    {
+        var frame = new ToolInputFrame(false, false, false, false, null, 0, 0, 0, 0, 0);
+
+        Assert.False(frame.BlockInteract);
+        Assert.True((frame with { BlockInteract = true }).BlockInteract);
+    }
+
+    [Fact]
     public void ClearAim_DropsThePrompt()
     {
         var rig = new Rig();

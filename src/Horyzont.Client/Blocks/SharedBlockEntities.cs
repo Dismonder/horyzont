@@ -11,12 +11,12 @@ namespace Horyzont.Client.Blocks;
 /// The block states of a client that shares the world with the server (solo and host): the server sends no construct data to the
 /// local player of a host, so the states are read from the world state itself, which is always current. Main thread only.
 /// </summary>
-/// <param name="world">The world state of the server in this process.</param>
-public sealed class SharedBlockEntities(WorldState world) : IBlockEntityView
+/// <param name="world">The world state of the server in this process; resolved at each lookup, because the world is loaded after the client is composed.</param>
+public sealed class SharedBlockEntities(Func<WorldState> world) : IBlockEntityView
 {
-    private readonly WorldState _world = world ?? throw new ArgumentNullException(nameof(world));
+    private readonly Func<WorldState> _world = world ?? throw new ArgumentNullException(nameof(world));
 
     /// <inheritdoc />
     public bool TryGet(EntityId construct, CellPos cell, [NotNullWhen(true)] out BlockEntityState? state) =>
-        _world.BlockEntities.TryGet(new BlockRef(construct, cell), out state);
+        _world().BlockEntities.TryGet(new BlockRef(construct, cell), out state);
 }
