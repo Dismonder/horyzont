@@ -118,9 +118,15 @@ public sealed class FunctionalBlocksFlowTests
         await using (var first = new FunctionalBlocksRig(dir.Path))
         {
             await first.StartAsync();
-            construct = first.BuildConstruct((FunctionalBlocks.BedCell, FunctionalBlocks.BedType));
+            construct = first.BuildConstruct();
             var alice = await first.JoinAsync(1);
             player = alice.Player;
+
+            // The bed is put up by an intent, so it has its state (a plain bed block has none and cannot be slept in).
+            var placed = await first.SubmitAsync(
+                alice, new PlaceBlockIntent(new ConstructFaceTarget(construct, new CellPos(1, 0, 0), Face.PosY), FunctionalBlocks.BedType, 0));
+            Assert.Equal(RejectReason.None, placed.Reason);
+            Assert.Equal(FunctionalBlocks.BedCell, new CellPos(1, 1, 0));
 
             var slept = await first.SubmitAsync(alice, Interact(construct, FunctionalBlocks.BedCell, BlockInteractAction.Sleep));
 

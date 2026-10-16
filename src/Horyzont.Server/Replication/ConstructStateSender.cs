@@ -81,6 +81,12 @@ public sealed class ConstructStateSender
         _logger = logger;
     }
 
+    /// <summary>
+    /// Raised when the link of a recipient to a construct becomes live: its complete state and the operations that were buffered behind it
+    /// have been sent (K6-30 D15). Not raised when the transfer is replaced by a newer one.
+    /// </summary>
+    public event Action<PlayerId, EntityId>? LinkLive;
+
     /// <summary>Gets the number of completed full-state transfers (all recipients).</summary>
     public long CompletedTransfers { get; private set; }
 
@@ -201,6 +207,27 @@ public sealed class ConstructStateSender
         MessageCodec.Write(_writer, message);
         _budget.TryConsume(player, ReplicationTraffic.Live, _writer.Length);
         _session.SendEncoded(player, message.Type, _writer.WrittenSpan);
+    }
+
+    /// <summary>Sends a live message to every recipient whose link to the construct is live (K6-30 D15).</summary>
+    /// <param name="construct">Construct entity.</param>
+    /// <param name="message">Message.</param>
+    /// <returns>Number of recipients.</returns>
+    public int SendLiveToAll(EntityId construct, Message message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        var sent = 0;
+        for (var i = 0; i < _order.Count; i++)
+        {
+            var player = _order[i];
+            if (IsLive(player, construct))
+            {
+                SendLive(player, message);
+                sent++;
+            }
+        }
+
+        return sent;
     }
 
     /// <summary>Delivers one visible effect of an operation to a recipient, keeping the order after its full state.</summary>
@@ -494,6 +521,7 @@ public sealed class ConstructStateSender
         }
 
         buffered.Clear();
+        LinkLive?.Invoke(player, id);
     }
 
     private static void Release(Recipient recipient, Link link)

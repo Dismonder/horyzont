@@ -607,7 +607,9 @@ public sealed class EntityReplication : IServerTickParticipant, IServerPlayerObs
             return;
         }
 
-        var message = new OperationApplied(applied.Id, applied.Tick, applied.Operation, changes);
+        // K6-30 D14: other clients get the construct part of the operation only (the items and block states of a compound stay at the server).
+        var wire = OperationConstructs.TryGetConstructPart(applied.Operation, out var part) ? part : applied.Operation;
+        var message = new OperationApplied(applied.Id, applied.Tick, wire, changes);
         foreach (var pair in _players)
         {
             var player = pair.Key;
