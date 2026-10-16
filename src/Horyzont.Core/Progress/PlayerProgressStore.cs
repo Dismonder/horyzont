@@ -5,7 +5,7 @@ using Horyzont.Core.Ids;
 
 namespace Horyzont.Core.Progress;
 
-/// <summary>Progress records of the players of a world, iterated by player id. A record exists only for a player with a respawn point (D11).</summary>
+/// <summary>Progress records of the players of a world, iterated by player id. A record exists if and only if at least one field differs from its default (today: a respawn point or a discovery; K6-30 D11, K6-32 D7).</summary>
 public sealed class PlayerProgressStore
 {
     private static readonly Comparer<PlayerId> _byValue = Comparer<PlayerId>.Create(static (a, b) => a.Value.CompareTo(b.Value));

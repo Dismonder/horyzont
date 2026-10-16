@@ -78,6 +78,15 @@ public static class ProtocolConstants
     /// <summary>Most item types in a world (<see cref="Ids.ItemTypeId"/> 1..4096).</summary>
     public const int MaxItemTypes = 4096;
 
+    /// <summary>Most progress keys of a world (K6-32).</summary>
+    public const int MaxProgressKeys = 256;
+
+    /// <summary>Longest set of discovered item types in bytes: type ids are 1 to <see cref="MaxItemTypes"/>, so bit 4096 sits in byte 512 (K6-32).</summary>
+    public const int MaxDiscoveredBytes = (MaxItemTypes / 8) + 1;
+
+    /// <summary>Longest recipe key in UTF-8 bytes (K6-32).</summary>
+    public const int MaxRecipeKeyBytes = MaxRegistryKeyBytes;
+
     /// <summary>Most slots of one container.</summary>
     public const int MaxContainerSlots = 256;
 
