@@ -63,17 +63,21 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         switch (operation)
         {
             case CompoundOp compound:
-                return TryApplyCompound(id, tick, actor, compound, out applied, out failure, out componentIndex);
+                var ok = TryApplyCompound(id, tick, actor, compound, out applied, out failure, out componentIndex);
+                EndOperation();
+                return ok;
             case var _ when IsComponent(operation):
                 BeginOperation();
                 failure = ApplyComponent(operation) ?? string.Empty;
                 if (failure.Length != 0)
                 {
                     _undo.Rollback(state);
+                    EndOperation();
                     return false;
                 }
 
                 applied = Finish(id, tick, actor, operation, _noTerrain, _noConstructs);
+                EndOperation();
                 return true;
             default:
                 if (!CheckPreconditions(operation, out failure))
@@ -115,6 +119,12 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
     private void BeginOperation()
     {
         _undo.Begin(state);
+        EndOperation();
+    }
+
+    /// <summary>Drops the effective view and the pending function states on every exit, so a refused operation leaves nothing for the next one.</summary>
+    private void EndOperation()
+    {
         _pendingStates.Clear();
         _viewSet = null;
         _viewCreate = null;

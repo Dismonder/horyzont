@@ -5,6 +5,7 @@ using Horyzont.Core.Hashing;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Simulation;
 using Horyzont.Core.Tests.BlockEntities;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Testing;
@@ -202,6 +203,37 @@ public sealed class CompoundConstructTests
         Assert.Equal(BlockState.Empty, f.BlockAt(FunctionalBlocks.FreeCell2));
         f.AssertFails(compound);
     }
+
+    [Fact]
+    public void FailedCompound_ThenStandaloneOps_SeeNoStaleView()
+    {
+        var f = new FunctionalBlockFixture();
+        var applier = new OperationApplier(f.State, f.Sim.Terrain);
+        var stone = WorldFactory.Item(SurvivalContentFactory.StoneKey);
+        var emptySlot = new ItemDestroyOp(new SlotRef(Bag, 0), stone, 1, ItemSink.BuildCost);
+        var container = f.State.ContainerIds.PeekNext();
+        var doorState = f.BlockAt(FunctionalBlocks.DoorLowCell);
+
+        // Refused on a component after the effective view and a function state were collected (the rollback path), and refused on the
+        // condition of the last component (the early exit): neither may leave anything to the next operation of the same applier.
+        var afterView = new CompoundOp([emptySlot, PlaceBlock(FunctionalBlocks.FreeCell, FunctionalBlocks.ChestType)]);
+        var afterState = new CompoundOp([SetFunctionState(FunctionalBlocks.DoorLowCell, FunctionalBlocks.DoorType, 1), emptySlot]);
+        var earlyExit = new CompoundOp([ChestContainer(container, ConstructId, FunctionalBlocks.FreeCell), PlaceBlock(_chestCell, FunctionalBlocks.ChestType)]);
+        Assert.False(applier.TryApply(LastOp(f).Next, f.State.CurrentTick, null, afterView, out _, out _, out _));
+        Assert.False(applier.TryApply(LastOp(f).Next, f.State.CurrentTick, null, afterState, out _, out _, out _));
+        Assert.False(applier.TryApply(LastOp(f).Next, f.State.CurrentTick, null, earlyExit, out _, out _, out _));
+
+        // The cell of the refused placement is empty: a container hosted by it, and a state on it, are refused as on a fresh applier.
+        Assert.False(applier.TryApply(LastOp(f).Next, f.State.CurrentTick, null, ChestContainer(container, ConstructId, FunctionalBlocks.FreeCell), out _, out _, out _));
+        Assert.False(applier.TryApply(LastOp(f).Next, f.State.CurrentTick, null, SetChestState(FunctionalBlocks.FreeCell, container), out _, out _, out _));
+
+        // A harmless operation applied next must not carry the function state of the refused compound.
+        Assert.True(applier.TryApply(LastOp(f).Next, f.State.CurrentTick, null, Stone(Bag, 0, 1), out var applied, out _, out _));
+        Assert.Empty(applied!.ConstructChanges);
+        Assert.Equal(doorState, f.BlockAt(FunctionalBlocks.DoorLowCell));
+    }
+
+    private static OpId LastOp(FunctionalBlockFixture f) => f.State.LastOpId;
 
     [Fact]
     public void DoorColumnCompound_TwoCells_OneVersionBump()

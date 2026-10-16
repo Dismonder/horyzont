@@ -16,6 +16,8 @@ public sealed class ContainerStore
     private readonly Dictionary<(EntityId Construct, CellPos Cell, ContainerKind Kind), Container> _byBlock = [];
     private readonly Dictionary<BlockRef, int> _blockHostCount = [];
     private readonly List<Container> _sorted = [];
+    private readonly Dictionary<ContainerKind, List<Container>> _byKind = [];
+    private readonly List<Container> _noContainers = [];
 
     internal ContainerStore(ChangeTracker tracker)
     {
@@ -27,6 +29,11 @@ public sealed class ContainerStore
 
     /// <summary>All containers sorted by id.</summary>
     public IReadOnlyList<Container> All => _sorted;
+
+    /// <summary>Containers of one kind sorted by id: the index that lets a resolver visit the chests without scanning every container of the world.</summary>
+    /// <param name="kind">Container kind.</param>
+    /// <returns>The containers of that kind; empty when there are none.</returns>
+    public IReadOnlyList<Container> OfKind(ContainerKind kind) => _byKind.TryGetValue(kind, out var list) ? list : _noContainers;
 
     /// <summary>Looks up a container.</summary>
     /// <param name="id">Container id.</param>
@@ -85,13 +92,25 @@ public sealed class ContainerStore
             _blockHostCount[new BlockRef(construct, host.Cell)] = _blockHostCount.GetValueOrDefault(new BlockRef(construct, host.Cell)) + 1;
         }
 
-        var index = _sorted.Count;
-        while (index > 0 && _sorted[index - 1].Id.Value > id.Value)
+        InsertSorted(_sorted, container);
+        if (!_byKind.TryGetValue(kind, out var ofKind))
+        {
+            ofKind = [];
+            _byKind.Add(kind, ofKind);
+        }
+
+        InsertSorted(ofKind, container);
+    }
+
+    private static void InsertSorted(List<Container> list, Container container)
+    {
+        var index = list.Count;
+        while (index > 0 && list[index - 1].Id.Value > container.Id.Value)
         {
             index--;
         }
 
-        _sorted.Insert(index, container);
+        list.Insert(index, container);
     }
 
     /// <summary>Removes a container (operation 36 or undo of a refused compound operation) and frees its host index.</summary>
@@ -122,6 +141,7 @@ public sealed class ContainerStore
         }
 
         _sorted.Remove(container);
+        _byKind[container.Kind].Remove(container);
     }
 
     /// <summary>Marks a container changed for the next checkpoint.</summary>

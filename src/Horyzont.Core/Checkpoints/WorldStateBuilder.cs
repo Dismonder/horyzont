@@ -288,6 +288,19 @@ public sealed class WorldStateBuilder
             LoadBlockEntity(state, record);
         }
 
+        // A chest container hosted by a block needs the matching chest state (the other direction is checked in LoadBlockEntity).
+        var chests = state.Containers.OfKind(ContainerKind.Chest);
+        for (var i = 0; i < chests.Count; i++)
+        {
+            var chest = chests[i];
+            if (chest.Host.Kind == ContainerHostKind.ConstructBlock
+                && !(state.BlockEntities.TryGet(new BlockRef(new EntityId(chest.Host.Id), chest.Host.Cell), out var entity)
+                    && entity is ChestBlockState chestState && chestState.Container == chest.Id))
+            {
+                throw new InvalidDataException($"Chest container {chest.Id.Value} has no chest state on its host block.");
+            }
+        }
+
         foreach (var record in _progress)
         {
             LoadProgress(state, record);

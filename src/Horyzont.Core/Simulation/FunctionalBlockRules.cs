@@ -346,12 +346,25 @@ internal sealed class FunctionalBlockRules(WorldState state, GameRules rules, Bl
             return RejectReason.InvalidParameters;
         }
 
-        var chests = new List<ChestCopy>();
-        var all = state.Containers.All;
-        for (var i = 0; i < all.Count; i++)
+        // Nothing to put away: refuse before looking at any chest (no scan, no allocation on this path).
+        var hasItems = false;
+        for (var slot = 0; slot < bag.Size && !hasItems; slot++)
         {
-            var container = all[i];
-            if (container.Kind != ContainerKind.Chest || container.Host.Kind != ContainerHostKind.ConstructBlock
+            hasItems = !bag.GetSlot(slot).IsEmpty;
+        }
+
+        if (!hasItems)
+        {
+            return RejectReason.NotEnoughItems;
+        }
+
+        // Only the chest index is visited, never every container of the world; the list is built once a chest is known to be in reach.
+        var chestIndex = state.Containers.OfKind(ContainerKind.Chest);
+        List<ChestCopy>? chests = null;
+        for (var i = 0; i < chestIndex.Count; i++)
+        {
+            var container = chestIndex[i];
+            if (container.Host.Kind != ContainerHostKind.ConstructBlock
                 || (container.Access != ContainerAccess.Shared && container.Owner != player)
                 || !ContainerReach.TryDistanceFromEye(state, rules, player, new EntityId(container.Host.Id), container.Host.Cell, out var meters)
                 || meters > rules.QuickStackRangeMeters)
@@ -359,7 +372,12 @@ internal sealed class FunctionalBlockRules(WorldState state, GameRules rules, Bl
                 continue;
             }
 
-            chests.Add(new ChestCopy(container.Id, container.Slots.ToArray(), meters));
+            (chests ??= []).Add(new ChestCopy(container.Id, container.Slots.ToArray(), meters));
+        }
+
+        if (chests is null)
+        {
+            return RejectReason.NotEnoughItems;
         }
 
         chests.Sort(static (a, b) =>
@@ -446,6 +464,17 @@ internal sealed class FunctionalBlockRules(WorldState state, GameRules rules, Bl
             || !state.Containers.TryGetOfPlayer(player, ContainerKind.PlayerBag, out var bag))
         {
             return RejectReason.InvalidParameters;
+        }
+
+        var chestHasItems = false;
+        for (var slot = 0; slot < chest.Size && !chestHasItems; slot++)
+        {
+            chestHasItems = !chest.GetSlot(slot).IsEmpty;
+        }
+
+        if (!chestHasItems)
+        {
+            return RejectReason.NotEnoughItems;
         }
 
         var hotbarSlots = hotbar.Slots.ToArray();

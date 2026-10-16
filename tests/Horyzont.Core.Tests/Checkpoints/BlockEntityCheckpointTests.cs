@@ -148,6 +148,18 @@ public sealed class BlockEntityCheckpointTests
     }
 
     [Fact]
+    public void Builder_ChestContainerWithoutState_Throws()
+    {
+        var f = FullWorld(out var checkpoint);
+        Assert.Equal(2, Load(f.State, checkpoint).BlockEntities.Count);
+
+        // The chest container stays, its chest state is dropped: the builder refuses the world.
+        var withoutState = checkpoint.UpsertedBlockEntities.Where(e => e.State is not ChestBlockState);
+
+        Assert.Throws<InvalidDataException>(() => Load(f.State, checkpoint with { UpsertedBlockEntities = [.. withoutState] }));
+    }
+
+    [Fact]
     public void Builder_ProgressWithoutRespawn_Throws()
     {
         var f = FullWorld(out var checkpoint);
