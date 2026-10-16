@@ -12,7 +12,7 @@ namespace Horyzont.Client.Blocks;
 /// A message holds the whole list of one construct and replaces the map of that construct; a new full state of the construct, its
 /// removal and a disconnect clear it. Main thread only.
 /// </summary>
-public sealed class ClientBlockEntities
+public sealed class ClientBlockEntities : IBlockEntityView
 {
     private readonly Dictionary<EntityId, Dictionary<CellPos, BlockEntityState>> _constructs = [];
 
@@ -24,11 +24,7 @@ public sealed class ClientBlockEntities
     /// <returns>The count, 0 for an unknown construct.</returns>
     public int CountOf(EntityId construct) => _constructs.TryGetValue(construct, out var map) ? map.Count : 0;
 
-    /// <summary>Looks up the state of one block.</summary>
-    /// <param name="construct">Construct.</param>
-    /// <param name="cell">Cell of the block.</param>
-    /// <param name="state">The state when the block has one.</param>
-    /// <returns>True when found.</returns>
+    /// <inheritdoc />
     public bool TryGet(EntityId construct, CellPos cell, [NotNullWhen(true)] out BlockEntityState? state)
     {
         if (_constructs.TryGetValue(construct, out var map) && map.TryGetValue(cell, out state))

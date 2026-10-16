@@ -21,7 +21,7 @@ public sealed class BlockInteraction
     private readonly IIntentSender _sender;
     private readonly PendingIntentTracker _pending;
     private readonly BlockContentTable _content;
-    private readonly ClientBlockEntities _entities;
+    private readonly IBlockEntityView _entities;
     private readonly ChestSession _chests;
     private readonly PlayerId _localPlayer;
     private readonly GameRules _rules;
@@ -36,7 +36,7 @@ public sealed class BlockInteraction
     /// <param name="localPlayer">The local player (the owner of a bed is compared with it).</param>
     /// <param name="rules">Game rules (reach).</param>
     public BlockInteraction(
-        IToolWorldView world, IIntentSender sender, PendingIntentTracker pending, BlockContentTable content, ClientBlockEntities entities,
+        IToolWorldView world, IIntentSender sender, PendingIntentTracker pending, BlockContentTable content, IBlockEntityView entities,
         ChestSession chests, PlayerId localPlayer, GameRules rules)
     {
         _world = world ?? throw new ArgumentNullException(nameof(world));
