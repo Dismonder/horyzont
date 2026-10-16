@@ -349,6 +349,7 @@ public sealed class ServerSimulation
             _bucketList[i].Markers.Refill();
             _bucketList[i].Items.Refill();
             _bucketList[i].Props.Refill();
+            _bucketList[i].PropProbes.Refill();
         }
     }
 

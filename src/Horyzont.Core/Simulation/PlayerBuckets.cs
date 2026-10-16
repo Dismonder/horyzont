@@ -17,4 +17,7 @@ internal sealed class PlayerBuckets(GameRules rules)
 
     /// <summary>Prop hits, the wearing ones as well as the last one (K6-31 D22, D24).</summary>
     internal TokenBucket Props { get; } = new(rules.PropHitsPerSecond, rules.PropHitBurst, rules.TickRate);
+
+    /// <summary>Generator lookups of prop hits, refused ones included (a refused hit does not use a hit token).</summary>
+    internal TokenBucket PropProbes { get; } = new(rules.PropProbesPerSecond, rules.PropProbeBurst, rules.TickRate);
 }

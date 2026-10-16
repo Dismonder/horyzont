@@ -81,6 +81,15 @@ public sealed record GameRules
     /// <summary>Prop hits available at once (K6-31 D22).</summary>
     public int PropHitBurst { get; init; } = 4;
 
+    /// <summary>
+    /// Anchor lookups per second that need the generator (a cache miss of a candidate that may be in reach) one player may cause with
+    /// <c>PropHitIntent</c>, refused hits included (K6-31 review fix; a refused hit does not use a hit token).
+    /// </summary>
+    public int PropProbesPerSecond { get; init; } = 16;
+
+    /// <summary>Anchor lookups that need the generator available at once (K6-31 review fix).</summary>
+    public int PropProbeBurst { get; init; } = 16;
+
     /// <summary>Ticks without a hit after which a worn prop has its full hit points again (K6-31 D10).</summary>
     public int PropDamageResetTicks { get; init; } = 1800;
 

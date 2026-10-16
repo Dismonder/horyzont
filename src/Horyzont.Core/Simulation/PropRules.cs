@@ -39,7 +39,7 @@ internal sealed class PropRules(WorldState state, ITerrainService terrain, Survi
     /// and the tool tier, in that order.
     /// </summary>
     internal RejectReason Validate(
-        PlayerId player, PropHitIntent hit, bool hasPlanet, PlanetId playerPlanet, Vector3 eye, out IntentFacts facts)
+        PlayerId player, PropHitIntent hit, bool hasPlanet, PlanetId playerPlanet, Vector3 eye, PlayerBuckets buckets, out IntentFacts facts)
     {
         facts = default;
         if (!state.Planets.TryGet(hit.Planet, out _))
@@ -57,6 +57,26 @@ internal sealed class PropRules(WorldState state, ITerrainService terrain, Survi
         if (hasHotbar && hit.ToolSlot >= hotbar!.Size)
         {
             return RejectReason.InvalidParameters;
+        }
+
+        // A refused hit does not use a hit token, so what it costs is limited here: an identifier whose anchor cannot be in reach is
+        // refused from the hash alone, and a lookup that samples the generator is paid for from its own budget before it happens.
+        var cost = field.EstimateLookup(hit.Planet, hit.Prop, eye, rules.ReachMeters);
+        if (cost == PropLookupCost.TooFar)
+        {
+            // Whether the prop exists is not known without sampling, and a refusal of a prop the height band does not accept is
+            // InvalidParameters, so a far identifier that is not in the cache is refused the same way (a cached one gets its own reason).
+            return state.HarvestedProps.Contains(hit.Planet, hit.Prop) ? RejectReason.NoHit : RejectReason.InvalidParameters;
+        }
+
+        if (cost == PropLookupCost.Sampling)
+        {
+            if (!buckets.PropProbes.HasToken)
+            {
+                return RejectReason.RateLimited;
+            }
+
+            buckets.PropProbes.Consume();
         }
 
         if (!field.TryGetProp(hit.Planet, hit.Prop, out var prop) || !content.TryGetProp(prop.Kind, out var def))

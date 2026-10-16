@@ -6,6 +6,7 @@ using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Props;
+using Horyzont.Core.Simulation;
 using Horyzont.Core.World;
 using Horyzont.Testing;
 
@@ -33,12 +34,14 @@ internal sealed class PropWorldFixture
     /// <param name="state">World; <see cref="WorldFactory.CreateWithProps"/> when null.</param>
     /// <param name="toolKey">Item given to every player in hotbar slot 0; null gives nothing.</param>
     /// <param name="survival">False runs the simulation without survival content, as in K2.</param>
+    /// <param name="rules">Game rules; the defaults when null.</param>
     public PropWorldFixture(
-        int players = 1, SurvivalContent? content = null, WorldState? state = null, string? toolKey = SurvivalContentFactory.ToolKey, bool survival = true)
+        int players = 1, SurvivalContent? content = null, WorldState? state = null, string? toolKey = SurvivalContentFactory.ToolKey, bool survival = true,
+        GameRules? rules = null)
     {
         Content = content ?? SurvivalContentFactory.CreateTestWithProps();
         Terrain = new FakeTerrainService(Surface) { GeneratedSurfaceRadius = Surface };
-        Sim = new SimFixture(terrain: Terrain, state: state ?? WorldFactory.CreateWithProps(players), survival: survival ? Content : null);
+        Sim = new SimFixture(terrain: Terrain, state: state ?? WorldFactory.CreateWithProps(players), survival: survival ? Content : null, rules: rules);
         Field = new PropField(State, Terrain);
         for (var n = 1; n <= players; n++)
         {

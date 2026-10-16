@@ -89,6 +89,45 @@ public sealed class PropField
         return true;
     }
 
+    /// <summary>
+    /// Tells what <see cref="TryGetProp"/> would cost for an identifier a client named, without sampling the generated surface: a cached
+    /// anchor and an identifier without a candidate are <see cref="PropLookupCost.Cheap"/>; a candidate whose line from the centre of the
+    /// planet passes farther from <paramref name="point"/> than <paramref name="reachMeters"/> plus the body of the prop can have no anchor
+    /// (nor trunk, which lies on that line) in reach whatever its height, so it is <see cref="PropLookupCost.TooFar"/>.
+    /// </summary>
+    /// <param name="planet">The planet.</param>
+    /// <param name="id">The prop.</param>
+    /// <param name="point">The point the reach is measured from (the eye), in the planet frame.</param>
+    /// <param name="reachMeters">Reach added to the body of the prop, metres.</param>
+    /// <returns>The cost class.</returns>
+    public PropLookupCost EstimateLookup(PlanetId planet, PropId id, Vector3 point, float reachMeters)
+    {
+        if (_cache.ContainsKey((planet, id)))
+        {
+            return PropLookupCost.Cheap;
+        }
+
+        if (!_state.Planets.TryGet(planet, out var parameters) || !PropLayouts.TryGet(parameters.GeneratorProfile, out var layout)
+            || !CubeSphereGrid.TryGetCellsPerFace(parameters.RadiusMeters, out var cellsPerFace) || !id.IsValid
+            || id.CellU >= cellsPerFace || id.CellV >= cellsPerFace || !layout.TryGetCandidate(parameters.Seed, id, out var candidate))
+        {
+            return PropLookupCost.Cheap;
+        }
+
+        if (!float.IsFinite(reachMeters) || !float.IsFinite(point.X) || !float.IsFinite(point.Y) || !float.IsFinite(point.Z))
+        {
+            return PropLookupCost.Sampling;
+        }
+
+        var direction = CubeSphereGrid.DirectionOfPoint(
+            id.Face, id.CellU + (candidate.OffsetU * OffsetUnit), id.CellV + (candidate.OffsetV * OffsetUnit), cellsPerFace);
+        var perpendicular = point - (direction * Vector3.Dot(point, direction));
+
+        // A margin of centimetres covers the single precision error of the direction (as in RayMissesSphere).
+        var limit = reachMeters + (PropShapesV1.Get(candidate.Kind).RadiusMeters * (candidate.Scale / 1000f)) + 0.01f;
+        return perpendicular.LengthSquared() > limit * limit ? PropLookupCost.TooFar : PropLookupCost.Sampling;
+    }
+
     /// <summary>Appends the props whose anchor lies in a sphere, ascending by <see cref="PropId"/>.</summary>
     /// <param name="planet">The planet.</param>
     /// <param name="center">Centre of the sphere in the planet frame.</param>

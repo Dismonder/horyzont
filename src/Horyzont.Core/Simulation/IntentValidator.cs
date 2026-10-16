@@ -103,7 +103,7 @@ internal sealed class IntentValidator(
             BlockConfigIntent config => ValidateBlockConfig(playerId, config, hasPlanet, playerPlanet, eye, out facts),
 
             // Without the content of props the intent is not valid (K6-31 D21).
-            PropHitIntent hit => props is null ? RejectReason.InvalidParameters : props.Validate(playerId, hit, hasPlanet, playerPlanet, eye, out facts),
+            PropHitIntent hit => props is null ? RejectReason.InvalidParameters : props.Validate(playerId, hit, hasPlanet, playerPlanet, eye, buckets, out facts),
 
             // The content checks of item intents (source content, counts, target room) are part of their resolution.
             ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent => RejectReason.None,
