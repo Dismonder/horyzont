@@ -44,6 +44,12 @@ public sealed class ClientInventory : IClientSessionListener
     /// <summary>Raised once per item type for a delta that changed the number of items of the type held by the player (never for a whole state).</summary>
     public event Action<ItemTypeId, int>? OwnedCountChanged;
 
+    /// <summary>Raised after the whole state of a container was stored (also the containers of chests the player opened, K6-30).</summary>
+    public event Action<ClientContainer>? StateApplied;
+
+    /// <summary>Raised when the server refused or ended the subscription to a container (a locked or distant chest, K6-30 D20).</summary>
+    public event Action<ContainerId, RejectReason>? StateRefused;
+
     /// <summary>Gets the backpack, or null before its state arrived.</summary>
     public ClientContainer? Bag { get; private set; }
 
@@ -58,6 +64,18 @@ public sealed class ClientInventory : IClientSessionListener
     /// <param name="container">The container when its state was received.</param>
     /// <returns>True when found.</returns>
     public bool TryGetContainer(ContainerId id, [NotNullWhen(true)] out ClientContainer? container) => _containers.TryGetValue(id.Value, out container);
+
+    /// <summary>Forgets a container that the player no longer follows (a chest that was closed).</summary>
+    /// <param name="id">The container; the containers of the player are never forgotten.</param>
+    public void Forget(ContainerId id)
+    {
+        if (_containers.TryGetValue(id.Value, out var container) && container.Kind is not (ContainerKind.PlayerBag or ContainerKind.Hotbar or ContainerKind.Equipment))
+        {
+            _containers.Remove(id.Value);
+            _awaitingState.Remove(id.Value);
+            Changed?.Invoke();
+        }
+    }
 
     /// <summary>The content key of an item type id.</summary>
     /// <param name="type">Item type id.</param>
@@ -190,6 +208,8 @@ public sealed class ClientInventory : IClientSessionListener
         if (state.Reason != RejectReason.None)
         {
             _logger.StateRefused(state.Container.Value, state.Reason);
+            Forget(state.Container);
+            StateRefused?.Invoke(state.Container, state.Reason);
             return;
         }
 
@@ -218,6 +238,7 @@ public sealed class ClientInventory : IClientSessionListener
 
         _logger.StateApplied(state.Container.Value, state.Version, state.Size);
         Changed?.Invoke();
+        StateApplied?.Invoke(container);
     }
 
     private void ApplyDelta(ContainerDelta delta)
@@ -262,6 +283,13 @@ public sealed class ClientInventory : IClientSessionListener
 
         container.Version = delta.Version;
         Changed?.Invoke();
+
+        // Only what the player carries counts for the pickup toasts; the items of a chest are not his.
+        if (container.Kind is not (ContainerKind.PlayerBag or ContainerKind.Hotbar or ContainerKind.Equipment))
+        {
+            return;
+        }
+
         foreach (var (type, net) in _net)
         {
             if (net != 0)

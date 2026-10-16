@@ -22,7 +22,7 @@ public sealed class ClientReplication : IClientSessionListener
     {
         ArgumentNullException.ThrowIfNull(send);
         _send = send;
-        BlockEntities = blockEntities; // K6-30 D2: routed below
+        BlockEntities = blockEntities;
         Constructs = constructs;
         Entities = new EntityMirror(time);
         Decoder = new SnapshotDecoder(id => _send(new SnapshotAck(id)));
@@ -60,13 +60,24 @@ public sealed class ClientReplication : IClientSessionListener
             case EntityDespawn despawn:
                 Entities.Apply(message);
                 Constructs?.Remove(despawn.Entity);
+                BlockEntities?.Remove(despawn.Entity);
                 break;
             case ConstructRemoved removed:
                 Entities.Apply(message);
                 Constructs?.Remove(removed.Construct);
+                BlockEntities?.Remove(removed.Construct);
                 break;
             case ConstructState part:
+                if (part.PartIndex == 0)
+                {
+                    // A new full state of a construct starts: its block states follow it (K6-30 D15).
+                    BlockEntities?.Remove(part.Header.Id);
+                }
+
                 Constructs?.Apply(part);
+                break;
+            case BlockEntityStates states:
+                BlockEntities?.Apply(states);
                 break;
             case OperationApplied operation:
                 Entities.Apply(operation);
@@ -81,6 +92,7 @@ public sealed class ClientReplication : IClientSessionListener
         Decoder.OnDisconnected(code);
         Entities.Clear();
         Constructs?.Clear();
+        BlockEntities?.Clear();
     }
 
     private void Request(Core.Ids.EntityId entity) => _send(new ResyncRequest(entity));
