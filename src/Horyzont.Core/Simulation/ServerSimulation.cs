@@ -27,6 +27,7 @@ public sealed class ServerSimulation
     private readonly OperationApplier _applier;
     private readonly IntentValidator _validator;
     private readonly SurvivalRules? _survival;
+    private readonly FunctionalBlockRules _functional;
     private readonly Dictionary<PlayerId, PlayerBuckets> _buckets = [];
     private readonly List<PlayerBuckets> _bucketList = [];
 
@@ -86,9 +87,10 @@ public sealed class ServerSimulation
         _journal = journal;
         _logger = logger;
         _applier = new OperationApplier(state, terrain);
-        _survival = survival is null ? null : new SurvivalRules(state, terrain, survival);
+        _survival = survival is null ? null : new SurvivalRules(state, terrain, survival, rules);
+        _functional = new FunctionalBlockRules(state, rules, content, survival);
         Survival = survival;
-        _validator = new IntentValidator(state, terrain, rules, content, _survival);
+        _validator = new IntentValidator(state, terrain, rules, content, _survival, _functional);
     }
 
     /// <summary>World state.</summary>
@@ -133,12 +135,22 @@ public sealed class ServerSimulation
         }
 
         Operation operation;
-        if (_survival is null)
+        var survivalResolved = false;
+        if (_functional.TryResolve(player, intent, facts, out operation, out reason))
+        {
+            // Functional blocks (K6-30): chests, beds, lamps, doors, quick stack. The operation carries every value from the content.
+            if (reason != RejectReason.None)
+            {
+                return IntentResult.Rejected(reason);
+            }
+        }
+        else if (_survival is null)
         {
             operation = IntentResolver.Resolve(State, player, intent, facts);
         }
         else
         {
+            survivalResolved = true;
             // Survival resolution may still refuse: items missing for a fill, a full target, a changed source (K6-29W).
             reason = _survival.Resolve(player, intent, facts, out operation);
             if (reason != RejectReason.None)
@@ -152,7 +164,11 @@ public sealed class ServerSimulation
             ?? throw new InvalidOperationException($"A validated {operation.Kind} breaks a precondition: {failure}");
 
         // The yield remainder and the fill credit change only after the operation holds (K6-29W D10, D12).
-        _survival?.Commit();
+        if (survivalResolved)
+        {
+            _survival!.Commit();
+        }
+
         IntentValidator.BucketFor(intent, buckets!)!.Consume();
         if (intent is TerrainToolIntent)
         {

@@ -12,9 +12,10 @@ namespace Horyzont.Core.Simulation;
 /// <summary>
 /// Survival rules of the simulation when it has content (K6-29W D8): validation and resolution of item intents, the mining yield and
 /// the fill cost. Reads content and the terrain (validator and resolver only, ZASADY §4); the operations it builds carry every content
-/// value they depend on. Order of the checks: docs/plans/K6-29W-ekwipunek-i-wydobycie.md, "Walidacja i rozwiązanie intencji przedmiotów".
+/// value they depend on. Chests are reachable for item moves (K6-30 D9): a shared one or the player's own, within
+/// <see cref="GameRules.ContainerKeepRangeMeters"/> of the eye. Order of the checks: docs/plans/K6-29W-ekwipunek-i-wydobycie.md, "Walidacja i rozwiązanie intencji przedmiotów".
 /// </summary>
-internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, SurvivalContent content)
+internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, SurvivalContent content, GameRules rules)
 {
     private const int MaterialCount = 256;
 
@@ -26,8 +27,8 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
 
     /// <summary>
     /// The parameter step of an item intent: zero numbers, slots outside the container, the equipment container and a target equal to the
-    /// source give <see cref="RejectReason.InvalidParameters"/>; a container that is not the player's own gives
-    /// <see cref="RejectReason.ContainerLocked"/>.
+    /// source give <see cref="RejectReason.InvalidParameters"/>; a container that is neither the player's own nor a chest the player may use
+    /// gives <see cref="RejectReason.ContainerLocked"/>, a chest beyond the keep range <see cref="RejectReason.OutOfReach"/>.
     /// </summary>
     internal RejectReason CheckItemParameters(PlayerId player, Intent intent)
     {
@@ -39,7 +40,7 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
                     return RejectReason.InvalidParameters;
                 }
 
-                var source = CheckSlot(player, move.From, out _);
+                var source = CheckSlot(player, move.From, allowChests: true, out _);
                 if (source != RejectReason.None)
                 {
                     return source;
@@ -52,10 +53,10 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
                         return RejectReason.InvalidParameters;
                     }
 
-                    return CheckContainer(player, move.To.Container, out _);
+                    return CheckContainer(player, move.To.Container, allowChests: true, out _);
                 }
 
-                var target = CheckSlot(player, move.To.SlotRef, out _);
+                var target = CheckSlot(player, move.To.SlotRef, allowChests: true, out _);
                 if (target != RejectReason.None)
                 {
                     return target;
@@ -64,7 +65,24 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
                 return move.To.SlotRef == move.From ? RejectReason.InvalidParameters : RejectReason.None;
 
             case ItemDropIntent drop:
-                return drop.Count == 0 ? RejectReason.InvalidParameters : CheckSlot(player, drop.Slot, out _);
+                return drop.Count == 0 ? RejectReason.InvalidParameters : CheckSlot(player, drop.Slot, allowChests: false, out _);
+
+            case QuickStackIntent:
+                return RejectReason.None;
+
+            case TakeAllIntent takeAll:
+                if (!state.Containers.TryGet(takeAll.Container, out var chest))
+                {
+                    return RejectReason.ContainerLocked;
+                }
+
+                if (chest.Kind != ContainerKind.Chest || chest.Host.Kind != ContainerHostKind.ConstructBlock)
+                {
+                    // The own bag and hotbar are not something to take all from; the containers of others are locked.
+                    return chest.Owner == player && chest.Host.Kind == ContainerHostKind.Player ? RejectReason.InvalidParameters : RejectReason.ContainerLocked;
+                }
+
+                return CheckChest(player, chest);
 
             default:
                 return RejectReason.InvalidParameters;
@@ -275,9 +293,9 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
         return RejectReason.None;
     }
 
-    private RejectReason CheckSlot(PlayerId player, SlotRef slot, out Container? container)
+    private RejectReason CheckSlot(PlayerId player, SlotRef slot, bool allowChests, out Container? container)
     {
-        var reason = CheckContainer(player, slot.Container, out container);
+        var reason = CheckContainer(player, slot.Container, allowChests, out container);
         if (reason != RejectReason.None)
         {
             return reason;
@@ -286,16 +304,42 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
         return slot.Slot < container!.Size ? RejectReason.None : RejectReason.InvalidParameters;
     }
 
-    /// <summary>Only the player's own bag and hotbar; the equipment container waits for K6-33/K6-34 (D6).</summary>
-    private RejectReason CheckContainer(PlayerId player, ContainerId id, out Container? container)
+    /// <summary>
+    /// The player's own bag and hotbar and, when <paramref name="allowChests"/>, a chest block's container the player may use (K6-30 D9);
+    /// the equipment container waits for K6-33/K6-34 (D6).
+    /// </summary>
+    private RejectReason CheckContainer(PlayerId player, ContainerId id, bool allowChests, out Container? container)
     {
-        if (!state.Containers.TryGet(id, out container) || container.Owner != player || container.Host.Kind != ContainerHostKind.Player
-            || container.Host.PlayerId != player)
+        if (!state.Containers.TryGet(id, out container))
+        {
+            return RejectReason.ContainerLocked;
+        }
+
+        if (container.Kind == ContainerKind.Chest && container.Host.Kind == ContainerHostKind.ConstructBlock)
+        {
+            return allowChests ? CheckChest(player, container) : RejectReason.ContainerLocked;
+        }
+
+        if (container.Owner != player || container.Host.Kind != ContainerHostKind.Player || container.Host.PlayerId != player)
         {
             return RejectReason.ContainerLocked;
         }
 
         return container.Kind is ContainerKind.PlayerBag or ContainerKind.Hotbar ? RejectReason.None : RejectReason.InvalidParameters;
+    }
+
+    /// <summary>A shared chest or the player's own, with the eye within <see cref="GameRules.ContainerKeepRangeMeters"/> of its block.</summary>
+    private RejectReason CheckChest(PlayerId player, Container chest)
+    {
+        if (chest.Access != ContainerAccess.Shared && chest.Owner != player)
+        {
+            return RejectReason.ContainerLocked;
+        }
+
+        return ContainerReach.TryDistanceFromEye(state, rules, player, new EntityId(chest.Host.Id), chest.Host.Cell, out var meters)
+            && meters <= rules.ContainerKeepRangeMeters
+            ? RejectReason.None
+            : RejectReason.OutOfReach;
     }
 
     private void GetContainer(ContainerId id, out Container container)

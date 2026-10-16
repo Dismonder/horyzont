@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 
+using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
 using Horyzont.Core.World.Constructs;
@@ -13,7 +14,7 @@ public sealed class ContainerStore
     private readonly Dictionary<ContainerId, Container> _byId = [];
     private readonly Dictionary<(PlayerId Player, ContainerKind Kind), Container> _byPlayer = [];
     private readonly Dictionary<(EntityId Construct, CellPos Cell, ContainerKind Kind), Container> _byBlock = [];
-    private readonly Dictionary<(EntityId Construct, CellPos Cell), int> _blockHostCount = [];
+    private readonly Dictionary<BlockRef, int> _blockHostCount = [];
     private readonly List<Container> _sorted = [];
 
     internal ContainerStore(ChangeTracker tracker)
@@ -54,7 +55,7 @@ public sealed class ContainerStore
     /// <param name="construct">The construct.</param>
     /// <param name="cell">Cell of the block.</param>
     /// <returns>Whether a container is hosted.</returns>
-    public bool IsBlockHost(EntityId construct, CellPos cell) => _blockHostCount.ContainsKey((construct, cell));
+    public bool IsBlockHost(EntityId construct, CellPos cell) => _blockHostCount.ContainsKey(new BlockRef(construct, cell));
 
     /// <summary>Adds a container (operation or load); the caller checked that the id and the player × kind pair are free.</summary>
     internal Container Add(ContainerId id, ContainerKind kind, ContainerHost host, PlayerId owner, ContainerAccess access, ushort size, uint version)
@@ -81,7 +82,7 @@ public sealed class ContainerStore
         {
             var construct = new EntityId(host.Id);
             _byBlock.Add((construct, host.Cell, kind), container);
-            _blockHostCount[(construct, host.Cell)] = _blockHostCount.GetValueOrDefault((construct, host.Cell)) + 1;
+            _blockHostCount[new BlockRef(construct, host.Cell)] = _blockHostCount.GetValueOrDefault(new BlockRef(construct, host.Cell)) + 1;
         }
 
         var index = _sorted.Count;
@@ -109,14 +110,14 @@ public sealed class ContainerStore
         {
             var construct = new EntityId(container.Host.Id);
             _byBlock.Remove((construct, container.Host.Cell, container.Kind));
-            var left = _blockHostCount[(construct, container.Host.Cell)] - 1;
+            var left = _blockHostCount[new BlockRef(construct, container.Host.Cell)] - 1;
             if (left == 0)
             {
-                _blockHostCount.Remove((construct, container.Host.Cell));
+                _blockHostCount.Remove(new BlockRef(construct, container.Host.Cell));
             }
             else
             {
-                _blockHostCount[(construct, container.Host.Cell)] = left;
+                _blockHostCount[new BlockRef(construct, container.Host.Cell)] = left;
             }
         }
 

@@ -35,7 +35,17 @@ public sealed class BlockEntityStore
     /// <param name="key">Construct and cell.</param>
     /// <param name="state">The state when found.</param>
     /// <returns>True when the block has a state.</returns>
-    public bool TryGet(BlockRef key, [NotNullWhen(true)] out BlockEntityState? state) => _states.TryGetValue(key, out state);
+    public bool TryGet(BlockRef key, [NotNullWhen(true)] out BlockEntityState? state)
+    {
+        // The lookup in the sorted dictionary allocates; most constructs have no states, so they skip it (the intent validators ask per intent).
+        if (!_perConstruct.ContainsKey(key.Construct))
+        {
+            state = null;
+            return false;
+        }
+
+        return _states.TryGetValue(key, out state);
+    }
 
     /// <summary>Stores or replaces a state and marks it changed; the caller checked the preconditions.</summary>
     /// <returns>The state that was replaced, null when the block had none.</returns>
