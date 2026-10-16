@@ -366,7 +366,7 @@ Każdy krok kończy się zielonym budowaniem i testami; commity w formacie Conve
 - [x] C1 (testy napisane, czerwone; patrz „Etap C, krok C1" niżej). Testy z tabeli etapu C. Commit `test: add harvested prop persistence, regrowth and replication tests`.
 - [x] C2 (patrz „Etap C, krok C2" niżej). Persistence: `WorldLoader`, `PersistenceWriter`, `WorldCreator`; fikstura `world-v3-props.db` (`FixtureGenerator.Generate_WorldV3Props`, `Manual`). Commit `feat(persistence): store harvested props`.
 - [x] C3 (patrz „Etap C, krok C3" niżej). `PropRegrowth` (D14) jako uczestnik ticku; rejestracja w serwerze. Commit `feat(server): regrow flora as server operations`.
-- [ ] C4. `PropInterest`, `PropReplicator` (D17); przegląd grepem `PropHarvestOp|PropRegrowOp` — każdy konsument przez `OperationProps`; sprawdzenie, że `EntityReplication` nie wysyła złożonej z samych przedmiotów i obiektów. Commit `feat(server): replicate harvested props by region`.
+- [x] C4. `PropInterest`, `PropReplicator` (D17); przegląd grepem `PropHarvestOp|PropRegrowOp` — każdy konsument przez `OperationProps`; sprawdzenie, że `EntityReplication` nie wysyła złożonej z samych przedmiotów i obiektów. Commit `feat(server): replicate harvested props by region`.
 - [ ] C5. Gra: `VoxelTerrainService.TrySampleGeneratedSurface` (próbnik planety leniwie, wątek główny, te same kroki co `PlanetSurfaceSampler.SurfaceRadius(direction)`), wczytanie `props.json`, `GameComposition.Props.cs` (część serwerowa); gdUnit `GeneratedSurfaceTests`, `PropFieldDigestTests` (stała zapisana teraz). Commit `feat(game): sample the generator surface for props on the server`.
 - [ ] C6. Sprawdzenie (z `dotnet test game` i `smoke` — reguła wspólnego runnera: przed przebiegiem brak procesów Godota i potoku gdUnit).
 
@@ -764,3 +764,11 @@ Poprawki 1–2 nie zmieniają kontraktów (skrót układu, formaty i wyniki wali
 **Sprawdzenie mutacją (C3).** Kopia pliku przywracana po każdej: warunek bloku z wersją usunięty -> `Regrow_EditedAnchorBlock_Never`; sprawdzenie gracza -> `Regrow_PlayerWithin20m_Waits`; sprawdzenie budowli -> `Regrow_ConstructWithin20m_Waits`; warunek czasu -> `Regrow_BeforeTime_Nothing`, `Regrow_CursorWraps_AllVisited`; partia 64 -> `Regrow_ManyDue_BatchedMax64`; partia skanu 10 zamiast 256 -> `Regrow_ManyDue_BatchedMax64`, `Regrow_CursorWraps_AllVisited` (wszystkie czerwone). **Słabe punkty:** tryb tylko do odczytu pilnuje jeden test (`Regrow_NotWhileReadOnly`), a zawinięcie kursora w obrębie jednego skanu (partia zaczynająca się w środku) pokrywa tylko pośrednio `Regrow_CursorWraps_AllVisited` (600 wpisów, 3 skany).
 
 **Wynik.** `Server.Tests.Props.PropRegrowthTests` 11/11 zielone. Pełny przebieg w opisie kroku C4.
+
+### Etap C, krok C4
+
+**Zrobione.** `PropInterest.CollectRegions` (siatka próbek na płaszczyźnie stycznej, odfiltrowana po odległości środka regionu) i `DistanceToRegion`; `PropReplicator` (wejście 512 m, wyjście 576 m, skan co 30 ticków i przy nowym graczu, do 256 regionów na gracza na skan, komunikaty po 64 regiony / 4096 wpisów; zmiany regionu po każdej operacji przez `OperationProps.CollectChanges`; lokalny gracz hosta nic nie dostaje).
+
+**Przegląd konsumentów.** Grep `PropHarvestOp|PropRegrowOp`: operacje 47/48 rozpoznają po typie tylko ich aplikator, `OperationProps` i testy; każdy konsument złożonej idzie przez `OperationProps.CollectChanges`. `OperationConstructs.TryGetConstructPart` zwraca fałsz dla złożonej z samych przedmiotów, a `EntityReplication` wraca wcześnie przy pustych `ConstructChanges`: `PropEntityReplicationTests` potwierdza, że klient nie dostaje `OperationApplied` (obok bliźniaka z blokiem, który dostaje).
+
+**Uwaga.** Znany niestabilny `AllocationTests.SubmitPlaceOnFaceOverlappingOtherConstruct_Rejected_DoesNotAllocate` bywa czerwony w pełnym przebiegu Core.Tests, osobno zielony.

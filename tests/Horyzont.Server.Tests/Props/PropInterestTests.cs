@@ -53,7 +53,8 @@ public sealed class PropInterestTests
         interest.CollectRegions(Planet, feet, 512f, regions);
 
         var expected = BruteForce(feet, 512f);
-        Assert.InRange(expected.Count, 100, 256);
+        // Near the corner of a face the regions are smaller, so more of them fit in 512 m (the replicator sends the surplus with the next scan).
+        Assert.InRange(expected.Count, 100, 300);
         Assert.Equal(expected, regions);
     }
 
@@ -91,20 +92,23 @@ public sealed class PropInterestTests
     public void Regions_ListIsClearedFirst_NoGrowthInSteadyState()
     {
         var feet = new Vector3(0f, 4005f, 0f);
+        var planet = Planet;
         var interest = new PropInterest();
         var regions = new List<PropRegionKey>();
-        interest.CollectRegions(Planet, feet, 512f, regions);
+        interest.CollectRegions(planet, feet, 512f, regions);
         var first = regions.ToArray();
-        interest.CollectRegions(Planet, feet, 512f, regions);
+        interest.CollectRegions(planet, feet, 512f, regions);
 
         var before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 20; i++)
         {
-            interest.CollectRegions(Planet, feet, 512f, regions);
+            interest.CollectRegions(planet, feet, 512f, regions);
         }
 
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
         Assert.Equal(first, regions);
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, allocated);
     }
 
     [Fact]

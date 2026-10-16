@@ -288,7 +288,7 @@ public sealed class PropReplicatorTests
         f.Harvest(f.FindProp(PropKindV1.Pine).Id);
         rig.Run(120);
         var sent = rig.Sent.Count;
-        Assert.True(sent > 100, "the first states must have been sent before the measured run.");
+        Assert.True(rig.RegionsFor(_alice).Count > 100 && rig.RegionsFor(_bob).Count > 100, "the first states must have been sent before the measured run.");
 
         // Warm-up is over: 300 ticks (ten scans of two players) in which nothing changes allocate nothing.
         var allocated = 0L;
