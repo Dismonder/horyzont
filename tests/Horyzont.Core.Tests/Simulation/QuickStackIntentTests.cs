@@ -171,4 +171,62 @@ public sealed class QuickStackIntentTests
             return Flatten(f.Accept(Player1, new QuickStackIntent()).Operation);
         }
     }
+
+    [Fact]
+    public void QuickStack_ChestAtRangeBoundary_IncludedJustBeyondIgnored()
+    {
+        var f = Fixture();
+        var chest = f.SetUpChestAt(_nearChest, Player1);
+        f.Give(chest, 0, 1);
+        f.Give(Bag, 0, 5);
+
+        ReachPlacement.MoveEyeToDistance(f, Player1, _nearChest, 10.01f);
+        f.AssertRejected(Player1, new QuickStackIntent(), RejectReason.NotEnoughItems);
+
+        ReachPlacement.MoveEyeToDistance(f, Player1, _nearChest, 9.99f);
+        f.Accept(Player1, new QuickStackIntent());
+
+        Assert.Equal(new ItemStack(_stone, 6), Slot(f, chest, 0));
+        Assert.True(Slot(f, Bag, 0).IsEmpty);
+    }
+
+    [Fact]
+    public void QuickStack_EqualDistance_LowerContainerIdFirst()
+    {
+        var f = Fixture();
+
+        // The chests at x = +0.5 and x = -0.5 are exactly as far from a player at x = 0 (up is +Y there), so the distance ties. The
+        // chest of the lower id sits in the cell that sorts later, so neither the cell order nor the creation of the second can win it.
+        var lowerId = f.SetUpChestAt(_nearChest, Player1);
+        var higherId = f.SetUpChestAt(new CellPos(-1, 1, 0), Player1);
+        Assert.True(lowerId.Value < higherId.Value);
+        f.Give(lowerId, 0, 1);
+        f.Give(higherId, 0, 1);
+        f.Give(Bag, 0, 5);
+        f.Move(Player1, new Vector3(0f, 4001f, 3f));
+        Assert.Equal(0f, f.Sim.Eye(Player1).X);
+
+        f.Accept(Player1, new QuickStackIntent());
+
+        Assert.Equal(new ItemStack(_stone, 6), Slot(f, lowerId, 0));
+        Assert.Equal(new ItemStack(_stone, 1), Slot(f, higherId, 0));
+    }
+
+    [Fact]
+    public void QuickStack_WithoutSurvivalContent_InvalidParameters()
+    {
+        // Control: the same setup with survival content accepts the intent.
+        var with = Fixture();
+        var chest = with.SetUpChestAt(_nearChest, Player1);
+        with.Give(chest, 0, 1);
+        with.Give(Bag, 0, 5);
+        with.Accept(Player1, new QuickStackIntent());
+
+        var without = ForIntents(1, withSurvival: false);
+        var other = without.SetUpChestAt(_nearChest, Player1);
+        without.Give(other, 0, 1);
+        without.Give(Bag, 0, 5);
+
+        without.AssertRejected(Player1, new QuickStackIntent(), RejectReason.InvalidParameters);
+    }
 }

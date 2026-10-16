@@ -218,6 +218,21 @@ public sealed class ChestIntentTests
     }
 
     [Fact]
+    public void MoveToChest_AtKeepRange_Accepted_JustBeyond_OutOfReach()
+    {
+        var f = Fixture();
+        var chest = f.SetUpChestAt(FunctionalBlocks.ChestCell, Player1);
+        f.Give(Bag, 0, 10);
+
+        ReachPlacement.MoveEyeToDistance(f, Player1, FunctionalBlocks.ChestCell, 7.99f);
+        f.Accept(Player1, Move(Bag, 0, chest, 0, 5, 10));
+
+        ReachPlacement.MoveEyeToDistance(f, Player1, FunctionalBlocks.ChestCell, 8.01f);
+        f.AssertRejected(Player1, Move(Bag, 0, chest, 0, 5, 5), RejectReason.OutOfReach);
+        Assert.Equal(new ItemStack(_stone, 5), f.Container(chest).GetSlot(0));
+    }
+
+    [Fact]
     public void MoveToPrivateChestOfOther_ContainerLocked()
     {
         var f = Fixture(players: 2);

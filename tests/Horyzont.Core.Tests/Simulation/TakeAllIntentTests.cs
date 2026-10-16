@@ -100,4 +100,20 @@ public sealed class TakeAllIntentTests
         f.AssertRejected(Player1, new TakeAllIntent(privateChest), RejectReason.ContainerLocked);
         Assert.Equal(new ItemStack(_stone, 4), Slot(f, privateChest, 0));
     }
+
+    [Fact]
+    public void TakeAll_WithoutSurvivalContent_InvalidParameters()
+    {
+        // Control: the same setup with survival content accepts the intent.
+        var with = Fixture();
+        var chest = with.SetUpChestAt(FunctionalBlocks.ChestCell, Player1);
+        with.Give(chest, 0, 3);
+        with.Accept(Player1, new TakeAllIntent(chest));
+
+        var without = ForIntents(1, withSurvival: false);
+        var other = without.SetUpChestAt(FunctionalBlocks.ChestCell, Player1);
+        without.Give(other, 0, 3);
+
+        without.AssertRejected(Player1, new TakeAllIntent(other), RejectReason.InvalidParameters);
+    }
 }

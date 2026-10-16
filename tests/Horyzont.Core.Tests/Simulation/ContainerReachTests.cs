@@ -1,8 +1,10 @@
 using System.Numerics;
 
 using Horyzont.Core.Ids;
+using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Simulation;
+using Horyzont.Core.Tests.BlockEntities;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Testing;
 
@@ -57,5 +59,25 @@ public sealed class ContainerReachTests
 
         Assert.False(ContainerReach.TryDistanceFromEye(f.State, f.Sim.Rules, new PlayerId(99), ConstructId, FunctionalBlocks.ChestCell, out _));
         Assert.False(ContainerReach.TryDistanceFromEye(f.State, f.Sim.Rules, Player1, new EntityId(999), FunctionalBlocks.ChestCell, out _));
+    }
+
+    [Fact]
+    public void TryDistanceFromEye_MatchesValidatorEye()
+    {
+        // The validator accepts a cell within ReachMeters plus the slack of one cell half-diagonal (0.87 m); the same eye and centre have
+        // to decide here. Straddle that line: the cell is removable just inside, refused just outside, and ContainerReach agrees.
+        var f = ForIntents();
+        var boundary = f.Sim.Rules.ReachMeters + 0.87f;
+        var remove = new RemoveBlockIntent(ConstructId, FunctionalBlocks.BedCell);
+
+        ReachPlacement.MoveEyeToDistance(f, Player1, FunctionalBlocks.BedCell, boundary + 0.02f);
+        Assert.True(ContainerReach.TryDistanceFromEye(f.State, f.Sim.Rules, Player1, ConstructId, FunctionalBlocks.BedCell, out var outside));
+        Assert.True(outside > boundary);
+        f.AssertRejected(Player1, remove, RejectReason.OutOfReach);
+
+        ReachPlacement.MoveEyeToDistance(f, Player1, FunctionalBlocks.BedCell, boundary - 0.02f);
+        Assert.True(ContainerReach.TryDistanceFromEye(f.State, f.Sim.Rules, Player1, ConstructId, FunctionalBlocks.BedCell, out var inside));
+        Assert.True(inside <= boundary);
+        Assert.NotEqual(RejectReason.OutOfReach, f.SubmitAs(Player1, remove).Reason);
     }
 }

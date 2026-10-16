@@ -140,13 +140,28 @@ public sealed class BlockTypeCatalogTests
     {
         var catalog = BlockTypeCatalog.Parse(File.ReadAllBytes(Path.Combine(RepoRoot(), "game", "content", "blocks", "blocks.json")), new FakeResolver());
 
-        Assert.Equal(new BlockTypeDef("core:chest_wood", BlockShape.Cube, MaterialId(catalog, "wood"), true, 80f, BlockFunction.CreateChest(20)), Shipped(catalog, "core:chest_wood").Def);
-        Assert.Equal(new BlockTypeDef("core:chest_metal", BlockShape.Cube, MaterialId(catalog, "metal"), true, 200f, BlockFunction.CreateChest(40)), Shipped(catalog, "core:chest_metal").Def);
-        Assert.Equal(new BlockTypeDef("core:bed", BlockShape.Mesh, MaterialId(catalog, "ship_fabric"), true, 120f, BlockFunction.Bed), Shipped(catalog, "core:bed").Def);
-        Assert.Equal(new BlockTypeDef("core:lamp", BlockShape.Cube, MaterialId(catalog, "lamp"), true, 20f, BlockFunction.Light), Shipped(catalog, "core:lamp").Def);
-        Assert.Equal(new BlockLightDef(8f, 0xFFD9A0FFu, 1.5f), Shipped(catalog, "core:lamp").Light);
-        Assert.Equal(new BlockTypeDef("core:wood_door", BlockShape.Cube, MaterialId(catalog, "wood"), true, 100f, BlockFunction.Door), Shipped(catalog, "core:wood_door").Def);
-        Assert.Equal(0xF2E3B3FFu, catalog.Materials.Single(m => m.Key == "lamp").ColorRgba8);
+        // The tuning numbers (masses, slots, light) are data; the test pins only the shape of the content (K6-30 DECISION-11).
+        var woodChest = Shipped(catalog, "core:chest_wood").Def;
+        var metalChest = Shipped(catalog, "core:chest_metal").Def;
+        var bed = Shipped(catalog, "core:bed").Def;
+        var lamp = Shipped(catalog, "core:lamp");
+        var door = Shipped(catalog, "core:wood_door").Def;
+
+        Assert.Equal(BlockFunctionKind.Chest, woodChest.Function.Kind);
+        Assert.Equal(BlockFunctionKind.Chest, metalChest.Function.Kind);
+        Assert.InRange(woodChest.Function.ContainerSlots, 1, 256);
+        Assert.InRange(metalChest.Function.ContainerSlots, 1, 256);
+        Assert.True(metalChest.Function.ContainerSlots > woodChest.Function.ContainerSlots);
+        Assert.Equal(BlockFunctionKind.Bed, bed.Function.Kind);
+        Assert.Equal(BlockShape.Mesh, bed.Shape);
+        Assert.Equal(BlockFunctionKind.Light, lamp.Def.Function.Kind);
+        Assert.Equal(BlockFunctionKind.Door, door.Function.Kind);
+
+        Assert.All([woodChest, metalChest, bed, lamp.Def, door], def => Assert.True(def.MassKg > 0f && float.IsFinite(def.MassKg)));
+        Assert.NotNull(lamp.Light);
+        Assert.True(lamp.Light.RangeMeters > 0f && float.IsFinite(lamp.Light.RangeMeters));
+        Assert.True(lamp.Light.Energy > 0f && float.IsFinite(lamp.Light.Energy));
+        Assert.Contains(catalog.Materials, m => m.Key == "lamp");
         Assert.All(["core:chest_wood", "core:chest_metal", "core:bed", "core:wood_door"], key => Assert.Null(Shipped(catalog, key).Light));
 
         // Every new type has a translation row.

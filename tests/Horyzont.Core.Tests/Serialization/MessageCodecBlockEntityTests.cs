@@ -71,7 +71,10 @@ public sealed class MessageCodecBlockEntityTests
     {
         static BlockEntityStates Many(int count) => new(
             new EntityId(1),
-            [.. Enumerable.Range(0, count).Select(i => new BlockEntityEntry(new CellPos(i % 64, (i / 64) % 64, i / 4096), new BedBlockState(PlayerId.None)))]);
+            [.. Enumerable.Range(0, count)
+                .Select(i => new CellPos(i % 64, (i / 64) % 64, i / 4096))
+                .OrderBy(cell => new BlockRef(new EntityId(1), cell))
+                .Select(cell => new BlockEntityEntry(cell, new BedBlockState(PlayerId.None)))]);
 
         var full = Many(ProtocolConstants.MaxBlockEntitiesPerConstruct);
         DeepAssert.Equal(full, MessageCodec.Read(Kit.Encode(full)));
@@ -94,6 +97,47 @@ public sealed class MessageCodecBlockEntityTests
         Kit.AssertMessageViolation("2E 02 05 00");
         Kit.AssertMessageViolation("2E 01 05 01 02 01 00 01");
         Kit.AssertMessageViolation("2E 01 05 00 00");
+    }
+
+    [Fact]
+    public void Write_UnsortedOrDuplicateEntries_Throws()
+    {
+        var first = new BlockEntityEntry(default, new BedBlockState(PlayerId.None));
+        var second = new BlockEntityEntry(_cell, new BedBlockState(PlayerId.None));
+
+        // Control: the entries in strictly ascending order (chunk, then index in the chunk) are written.
+        DeepAssert.Equal(new BlockEntityStates(new EntityId(5), [second, first]), MessageCodec.Read(Kit.Encode(new BlockEntityStates(new EntityId(5), [second, first]))));
+
+        Assert.Throws<ArgumentException>(() => Kit.Encode(new BlockEntityStates(new EntityId(5), [first, second])));
+        Assert.Throws<ArgumentException>(() => Kit.Encode(new BlockEntityStates(new EntityId(5), [first, first])));
+    }
+
+    [Fact]
+    public void Read_UnsortedOrDuplicateEntries_Throws()
+    {
+        // Control: (1,-1,0) is in chunk (0,-1,0), which precedes (0,0,0) in chunk (0,0,0).
+        DeepAssert.Equal(
+            new BlockEntityStates(
+                new EntityId(5),
+                [new BlockEntityEntry(_cell, new BedBlockState(PlayerId.None)), new BlockEntityEntry(default, new BedBlockState(PlayerId.None))]),
+            MessageCodec.Read(Kit.Hex("2E 01 05 02 02 01 00 02 00 00 00 00 02 00")));
+
+        Kit.AssertMessageViolation("2E 01 05 02 00 00 00 02 00 02 01 00 02 00");
+        Kit.AssertMessageViolation("2E 01 05 02 00 00 00 02 00 00 00 00 02 00");
+        Kit.AssertMessageViolation("2E 01 05 02 02 01 00 02 00 02 01 00 02 01");
+    }
+
+    [Fact]
+    public void Read_ReservedOrEmptyKind_Throws()
+    {
+        // Control: kinds 1 and 2 are accepted.
+        DeepAssert.Equal(Chest(), MessageCodec.Read(Kit.Hex("2E 01 05 01 02 01 00 01 07")));
+
+        // Kind 0 is an empty state (not an entry), 3..7 are reserved for later packages, 8 and 255 are unknown.
+        foreach (var kind in new[] { "00", "03", "04", "05", "06", "07", "08", "FF" })
+        {
+            Kit.AssertMessageViolation($"2E 01 05 01 02 01 00 {kind} 07");
+        }
     }
 
     [Fact]
