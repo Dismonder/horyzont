@@ -26,11 +26,6 @@ internal sealed class FunctionalBlockRules(WorldState state, GameRules rules, Bl
 
     private readonly List<Operation> _components = [];
 
-    /// <summary>
-    /// True when the last <see cref="TryResolve"/> refused only after it began to scan the chest index of the world (the costly part of a quick stack): the
-    /// caller then charges the rate limit of item intents for the refusal, so a client cannot repeat it faster than accepted intents.
-    /// </summary>
-    internal bool RefusalCostsToken { get; private set; }
     private readonly List<CellPos> _column = [];
 
     /// <summary>
@@ -41,12 +36,13 @@ internal sealed class FunctionalBlockRules(WorldState state, GameRules rules, Bl
     /// <param name="facts">Facts of the validator.</param>
     /// <param name="operation">The operation when <paramref name="reason"/> is <see cref="RejectReason.None"/>.</param>
     /// <param name="reason">The refusal, or none.</param>
+    /// <param name="refusalCostsToken">Whether this resolution scanned chests and its refusal costs a token.</param>
     /// <returns>False when the intent is not a functional block intent (the caller resolves it otherwise).</returns>
-    internal bool TryResolve(PlayerId player, Intent intent, IntentFacts facts, out Operation operation, out RejectReason reason)
+    internal bool TryResolve(PlayerId player, Intent intent, IntentFacts facts, out Operation operation, out RejectReason reason, out bool refusalCostsToken)
     {
         operation = null!;
         reason = RejectReason.None;
-        RefusalCostsToken = false;
+        refusalCostsToken = false;
         switch (intent)
         {
             case PlaceBlockIntent place:
@@ -77,7 +73,7 @@ internal sealed class FunctionalBlockRules(WorldState state, GameRules rules, Bl
                 return true;
 
             case QuickStackIntent:
-                reason = ResolveQuickStack(player, out operation);
+                reason = ResolveQuickStack(player, out operation, out refusalCostsToken);
                 return true;
 
             case TakeAllIntent takeAll:
@@ -345,9 +341,10 @@ internal sealed class FunctionalBlockRules(WorldState state, GameRules rules, Bl
     /// Quick stack (D16): items of the own bag go to the chests in reach that already hold the type, nearest chest first (ties: lower
     /// container id): first the stacks of the type of all of them, then their empty slots.
     /// </summary>
-    private RejectReason ResolveQuickStack(PlayerId player, out Operation operation)
+    private RejectReason ResolveQuickStack(PlayerId player, out Operation operation, out bool refusalCostsToken)
     {
         operation = null!;
+        refusalCostsToken = false;
         if (survival is null || !state.Containers.TryGetOfPlayer(player, ContainerKind.PlayerBag, out var bag))
         {
             return RejectReason.InvalidParameters;
@@ -373,7 +370,7 @@ internal sealed class FunctionalBlockRules(WorldState state, GameRules rules, Bl
         }
 
         // From here on the chest index of the world is scanned (linear in the chests of the world): whatever is refused has cost something.
-        RefusalCostsToken = true;
+        refusalCostsToken = true;
         var chestIndex = state.Containers.OfKind(ContainerKind.Chest);
         List<ChestCopy>? chests = null;
         for (var i = 0; i < chestIndex.Count; i++)

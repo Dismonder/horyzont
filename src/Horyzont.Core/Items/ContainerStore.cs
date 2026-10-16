@@ -18,6 +18,7 @@ public sealed class ContainerStore
     private readonly List<Container> _sorted = [];
     private readonly Dictionary<ContainerKind, List<Container>> _byKind = [];
     private readonly List<Container> _noContainers = [];
+    private readonly Dictionary<EntityId, Dictionary<ChunkPos, List<Container>>> _chestsByConstruct = [];
 
     internal ContainerStore(ChangeTracker tracker)
     {
@@ -34,6 +35,13 @@ public sealed class ContainerStore
     /// <param name="kind">Container kind.</param>
     /// <returns>The containers of that kind; empty when there are none.</returns>
     public IReadOnlyList<Container> OfKind(ContainerKind kind) => _byKind.TryGetValue(kind, out var list) ? list : _noContainers;
+
+    /// <summary>Whether the construct hosts any chests, without visiting its containers.</summary>
+    internal bool HasChests(EntityId construct) => _chestsByConstruct.ContainsKey(construct);
+
+    /// <summary>Chests in one local chunk; movement of the construct does not invalidate this index.</summary>
+    internal IReadOnlyList<Container> ChestsInChunk(EntityId construct, ChunkPos chunk) =>
+        _chestsByConstruct.TryGetValue(construct, out var chunks) && chunks.TryGetValue(chunk, out var chests) ? chests : _noContainers;
 
     /// <summary>Looks up a container.</summary>
     /// <param name="id">Container id.</param>
@@ -89,6 +97,23 @@ public sealed class ContainerStore
         {
             var construct = new EntityId(host.Id);
             _byBlock.Add((construct, host.Cell, kind), container);
+            if (kind == ContainerKind.Chest)
+            {
+                if (!_chestsByConstruct.TryGetValue(construct, out var chunks))
+                {
+                    chunks = [];
+                    _chestsByConstruct.Add(construct, chunks);
+                }
+
+                if (!chunks.TryGetValue(host.Cell.Chunk, out var chests))
+                {
+                    chests = [];
+                    chunks.Add(host.Cell.Chunk, chests);
+                }
+
+                InsertSorted(chests, container);
+            }
+
             _blockHostCount[new BlockRef(construct, host.Cell)] = _blockHostCount.GetValueOrDefault(new BlockRef(construct, host.Cell)) + 1;
         }
 
@@ -129,6 +154,21 @@ public sealed class ContainerStore
         {
             var construct = new EntityId(container.Host.Id);
             _byBlock.Remove((construct, container.Host.Cell, container.Kind));
+            if (container.Kind == ContainerKind.Chest)
+            {
+                var chunks = _chestsByConstruct[construct];
+                var chests = chunks[container.Host.Cell.Chunk];
+                chests.Remove(container);
+                if (chests.Count == 0)
+                {
+                    chunks.Remove(container.Host.Cell.Chunk);
+                    if (chunks.Count == 0)
+                    {
+                        _chestsByConstruct.Remove(construct);
+                    }
+                }
+            }
+
             var left = _blockHostCount[new BlockRef(construct, container.Host.Cell)] - 1;
             if (left == 0)
             {

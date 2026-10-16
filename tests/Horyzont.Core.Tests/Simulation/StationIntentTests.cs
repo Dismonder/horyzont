@@ -200,6 +200,32 @@ public sealed class StationIntentTests
     }
 
     [Fact]
+    public void MoveFromOutput_OtherTypeInTarget_RefusedWithoutChanges()
+    {
+        var f = Fixture();
+        var (_, output) = f.SetUpTimedStation(FurnaceCell);
+        f.Stock(output, 0, Ingot, 2);
+        f.Stock(Bag, 0, Stone, 3);
+
+        f.AssertRejected(Player1, Move(output, 0, Bag, 0, 2, Ingot, 2), RejectReason.InvalidParameters);
+    }
+
+    [Fact]
+    public void MoveFromOutput_EmptySlotThenMatchingStack_Accepted()
+    {
+        var f = Fixture();
+        var (_, output) = f.SetUpTimedStation(FurnaceCell);
+        f.Stock(output, 0, Ingot, 3);
+        f.Stock(Bag, 0, Ingot, 4);
+
+        f.Accept(Player1, Move(output, 0, Bag, 1, 1, Ingot, 3));
+        f.Accept(Player1, Move(output, 0, Bag, 0, 1, Ingot, 2));
+        Assert.Equal(5, f.Container(Bag).GetSlot(0).Count);
+        Assert.Equal(1, f.Container(Bag).GetSlot(1).Count);
+        Assert.Equal(1, f.Container(output).GetSlot(0).Count);
+    }
+
+    [Fact]
     public void MoveIntoOutput_InvalidParameters()
     {
         var f = Fixture();

@@ -171,7 +171,8 @@ public sealed class AllocationTests
     public void SubmitCraft_NotEnoughItems_DoesNotAllocate()
     {
         // K6-32 review A+B, fix 4: the refusal reads the live slots of the bag, the hotbar and the chests in reach and copies nothing.
-        var f = CraftingWorld.ForCrafting();
+        // Keep the item budget out of the measurement: every spatial search now consumes a token.
+        var f = CraftingWorld.ForCrafting(rules: new GameRules { ItemIntentBurst = 1_000_000 });
         for (var i = 0; i < 5; i++)
         {
             f.SetUpChestWith(new CellPos(i, 1, 4), CraftingWorld.Player1, Horyzont.Core.Items.ContainerAccess.Shared, (CraftingWorld.Soil, 3));
