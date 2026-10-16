@@ -121,6 +121,18 @@ public sealed class ConstructReplica
         return false;
     }
 
+    /// <summary>Applies the function state changes of one operation (a door column, K6-30) as exactly the next version, all or nothing.</summary>
+    /// <param name="ops">The changes; every one targets this construct.</param>
+    /// <param name="version">Next version, shared by all changes.</param>
+    /// <returns>Whether every change was applied; false leaves the copy unchanged.</returns>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Skeleton of K6-30 A6; the behaviour reads the instance.")]
+    public bool TrySetFunctionStates(IReadOnlyList<Operations.BlockFunctionStateSetOp> ops, uint version)
+    {
+        // K6-30 A6: the behaviour.
+        _ = (ops, version);
+        return false;
+    }
+
     /// <summary>Applies the next reparent counter without changing the block version.</summary>
     /// <param name="parent">New parent.</param>
     /// <param name="parentSeq">Next counter.</param>

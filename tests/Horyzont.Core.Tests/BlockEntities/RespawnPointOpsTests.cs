@@ -39,6 +39,17 @@ public sealed class RespawnPointOpsTests
     }
 
     [Fact]
+    public void RespawnPointSet_WrongExpectedType_Fails()
+    {
+        var f = new FunctionalBlockFixture();
+        f.Apply(SetBedState(FunctionalBlocks.BedCell, Player1));
+
+        // The cell holds a bed with a state, but the reference expects a door there.
+        f.AssertFails(new RespawnPointSetOp(Player1, new BedRef(ConstructId, FunctionalBlocks.BedCell, FunctionalBlocks.DoorType)));
+        Assert.Equal(0, f.State.Progress.Count);
+    }
+
+    [Fact]
     public void RespawnPointSet_None_ClearsPoint()
     {
         var f = new FunctionalBlockFixture();

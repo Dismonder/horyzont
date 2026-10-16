@@ -93,6 +93,19 @@ public sealed class BlockEntityOpsApplierTests
     }
 
     [Fact]
+    public void BlockEntitySet_BedWithUnknownOwner_Fails()
+    {
+        var f = new FunctionalBlockFixture();
+
+        f.AssertFails(SetBedState(_bedCell, new PlayerId(99)));
+        Assert.Equal(0, f.State.BlockEntities.Count);
+
+        // No owner is a valid, free bed.
+        f.Apply(SetBedState(_bedCell, PlayerId.None));
+        Assert.Equal(1, f.State.BlockEntities.Count);
+    }
+
+    [Fact]
     public void BlockEntitySet_EmptyStateWithoutEntity_Fails()
     {
         var f = new FunctionalBlockFixture();

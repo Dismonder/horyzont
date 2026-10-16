@@ -42,6 +42,19 @@ public sealed class FunctionStateOpsTests
     }
 
     [Fact]
+    public void FunctionStateSet_StateAbove7_Fails()
+    {
+        var f = new FunctionalBlockFixture();
+        var version = f.ConstructVersion;
+
+        // Built directly: the codec refuses 8, so only the applier stands between this record and the block bits.
+        f.AssertFails(new BlockFunctionStateSetOp(ConstructId, FunctionalBlocks.DoorLowCell, FunctionalBlocks.DoorType, 8));
+        f.AssertFails(new BlockFunctionStateSetOp(ConstructId, FunctionalBlocks.DoorLowCell, FunctionalBlocks.DoorType, 255));
+        Assert.Equal(version, f.ConstructVersion);
+        Assert.Equal(0, f.BlockAt(FunctionalBlocks.DoorLowCell).FunctionState);
+    }
+
+    [Fact]
     public void FunctionStateSet_UnknownConstruct_Fails()
     {
         var f = new FunctionalBlockFixture();

@@ -129,6 +129,44 @@ public sealed class BlockEntityCheckpointTests
     }
 
     [Fact]
+    public void Builder_ChestStateWithoutContainer_Throws()
+    {
+        var f = FullWorld(out var checkpoint);
+        Assert.Equal(2, Load(f.State, checkpoint).BlockEntities.Count);
+
+        var chest = checkpoint.UpsertedContainers.Single(c => c.Host.Kind == ContainerHostKind.ConstructBlock);
+        var withoutChest = checkpoint.UpsertedContainers.Where(c => c.Id != chest.Id);
+        var otherKind = checkpoint.UpsertedBlockEntities
+            .Select(e => e.State is ChestBlockState ? e with { State = new ChestBlockState(Bag) } : e);
+        var missing = checkpoint.UpsertedBlockEntities
+            .Select(e => e.State is ChestBlockState ? e with { State = new ChestBlockState(new ContainerId(9999)) } : e);
+
+        // The container is gone, the state names a container of the player (other kind and host) and one that never existed.
+        Assert.Throws<InvalidDataException>(() => Load(f.State, checkpoint with { UpsertedContainers = [.. withoutChest] }));
+        Assert.Throws<InvalidDataException>(() => Load(f.State, checkpoint with { UpsertedBlockEntities = [.. otherKind] }));
+        Assert.Throws<InvalidDataException>(() => Load(f.State, checkpoint with { UpsertedBlockEntities = [.. missing] }));
+    }
+
+    [Fact]
+    public void Builder_ProgressWithoutRespawn_Throws()
+    {
+        var f = FullWorld(out var checkpoint);
+        Assert.Equal(1, Load(f.State, checkpoint).Progress.Count);
+
+        // A record without a respawn point does not exist (D11).
+        Assert.Throws<InvalidDataException>(() => Load(f.State, checkpoint with { UpsertedProgress = [new PlayerProgressRecord(Player1, null)] }));
+    }
+
+    [Fact]
+    public void Builder_ProgressOfUnknownPlayer_Throws()
+    {
+        var f = FullWorld(out var checkpoint);
+        var stranger = new PlayerProgressRecord(new PlayerId(99), BedAt(FunctionalBlocks.BedCell));
+
+        Assert.Throws<InvalidDataException>(() => Load(f.State, checkpoint with { UpsertedProgress = [.. checkpoint.UpsertedProgress, stranger] }));
+    }
+
+    [Fact]
     public void CheckpointPlusJournal_SameHash()
     {
         var f = new FunctionalBlockFixture(players: 2);

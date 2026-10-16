@@ -221,6 +221,58 @@ public sealed class CompoundConstructTests
         Assert.Equal(1, f.BlockAt(FunctionalBlocks.DoorHighCell).FunctionState);
     }
 
+    [Fact]
+    public void PlaceBedWithOwnerAndRespawn_OneCompound_UsesEffectiveView()
+    {
+        var f = new FunctionalBlockFixture();
+        var cell = FunctionalBlocks.FreeCell;
+        var version = f.ConstructVersion;
+
+        // The bed block is the last component, yet operations 40 and 44 see it in the cell (D12, effective view).
+        var applied = f.Apply(new CompoundOp(
+        [
+            SetBedState(cell, Player1),
+            new RespawnPointSetOp(Player1, BedAt(cell)),
+            PlaceBlock(cell, FunctionalBlocks.BedType),
+        ]));
+
+        Assert.Equal(FunctionalBlocks.BedType, f.BlockAt(cell).TypeId);
+        Assert.True(f.HasState(cell, out var state));
+        Assert.Equal(new BedBlockState(Player1), state);
+        Assert.True(f.State.Progress.TryGet(Player1, out var progress));
+        Assert.Equal(BedAt(cell), progress.RespawnBed);
+        Assert.Equal(version + 1, f.ConstructVersion);
+        Assert.Equal(new ConstructChange(ConstructId, version + 1, false), Assert.Single(applied.ConstructChanges));
+    }
+
+    [Fact]
+    public void FunctionStatesOnTwoConstructs_OneChangePerConstruct()
+    {
+        var f = new FunctionalBlockFixture();
+        var second = f.State.EntityIds.PeekNext();
+        f.Apply(new ConstructCreateOp(
+            second, FrameRef.Of(WorldFactory.HomePlanet), new Vector3(0, 4000, 0), Quaternion.Identity, default,
+            BlockState.Create(FunctionalBlocks.DoorType, 0)));
+        var firstVersion = f.ConstructVersion;
+        Assert.True(f.State.Constructs.TryGet(second, out var created));
+        var secondVersion = created.Version;
+
+        var applied = f.Apply(new CompoundOp(
+        [
+            SetFunctionState(FunctionalBlocks.DoorLowCell, FunctionalBlocks.DoorType, 1),
+            new BlockFunctionStateSetOp(second, default, FunctionalBlocks.DoorType, 1),
+            SetFunctionState(FunctionalBlocks.DoorHighCell, FunctionalBlocks.DoorType, 1),
+        ]));
+
+        Assert.Equal(2, applied.ConstructChanges.Count);
+        Assert.Contains(new ConstructChange(ConstructId, firstVersion + 1, false), applied.ConstructChanges);
+        Assert.Contains(new ConstructChange(second, secondVersion + 1, false), applied.ConstructChanges);
+        Assert.Equal(firstVersion + 1, f.ConstructVersion);
+        Assert.True(f.State.Constructs.TryGet(second, out var after));
+        Assert.Equal(secondVersion + 1, after.Version);
+        Assert.Equal(1, after.GetBlock(default).FunctionState);
+    }
+
     /// <summary>The compound of the plan (D8) for a chest placed on a face of the fixture construct: container, state, block last.</summary>
     internal static CompoundOp PlaceChestCompound(ContainerId container, CellPos cell, ushort size = 8) => new(
     [
