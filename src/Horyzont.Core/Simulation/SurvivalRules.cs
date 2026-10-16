@@ -18,7 +18,7 @@ namespace Horyzont.Core.Simulation;
 /// <see cref="GameRules.ContainerKeepRangeMeters"/> of the eye. Order of the checks: docs/plans/K6-29W-ekwipunek-i-wydobycie.md, "Walidacja i rozwiązanie intencji przedmiotów".
 /// </summary>
 internal sealed class SurvivalRules(
-    WorldState state, ITerrainService terrain, SurvivalContent content, GameRules rules, PropField? props = null, VitalsRules? vitals = null, HazardRules? hazards = null)
+    WorldState state, ITerrainService terrain, SurvivalContent content, GameRules rules, PropField? props, VitalsRules vitals, HazardRules hazards)
 {
     private const int MaterialCount = 256;
 
@@ -28,8 +28,8 @@ internal sealed class SurvivalRules(
     private readonly List<Operation> _components = [];
     private readonly YieldLedger _ledger = new();
     private readonly List<PropInstance> _propsInSphere = [];
-    private readonly FoodRules _food = new(state, content, rules, vitals ?? VitalsRules.Default);
-    private readonly SuitRules? _suit = content.HasHazards ? new SuitRules(state, content, hazards ?? HazardRules.Default) : null;
+    private readonly FoodRules _food = new(state, content, rules, vitals ?? throw new ArgumentNullException(nameof(vitals)));
+    private readonly SuitRules? _suit = content.HasHazards ? new SuitRules(state, content, hazards ?? throw new ArgumentNullException(nameof(hazards))) : null;
 
     /// <summary>
     /// The parameter step of an item intent: zero numbers, slots outside the container, the equipment container and a target equal to the
@@ -220,7 +220,7 @@ internal sealed class SurvivalRules(
         return RejectReason.None;
     }
 
-    /// <summary>A move to "any slot" of the own equipment: one item into the first empty slot of the layout that accepts it (D13); none gives <see cref="RejectReason.InventoryFull"/>.</summary>
+    /// <summary>A move to "any slot" of the own equipment: one item into the first empty slot of the layout that accepts it (D13); all such slots taken give <see cref="RejectReason.InventoryFull"/>, no slot that accepts it <see cref="RejectReason.InvalidParameters"/>.</summary>
     private static RejectReason ResolveMoveIntoEquipment(ItemMoveIntent move, ItemDef def, Container equipment, out Operation operation)
     {
         operation = null!;
@@ -229,16 +229,24 @@ internal sealed class SurvivalRules(
             return RejectReason.InvalidParameters;
         }
 
+        var fits = false;
         for (var i = 0; i < equipment.Size; i++)
         {
-            if (equipment.GetSlot(i).IsEmpty && EquipmentLayout.Accepts(i, def.EquipmentSlot))
+            if (!EquipmentLayout.Accepts(i, def.EquipmentSlot))
+            {
+                continue;
+            }
+
+            fits = true;
+            if (equipment.GetSlot(i).IsEmpty)
             {
                 operation = new ItemTransferOp(move.From, new SlotRef(equipment.Id, (ushort)i), move.ExpectedType, 1, 1);
                 return RejectReason.None;
             }
         }
 
-        return RejectReason.InventoryFull;
+        // An item that no slot of the layout takes is not "full" but "does not fit" (review B5, P3-4).
+        return fits ? RejectReason.InventoryFull : RejectReason.InvalidParameters;
     }
 
     private RejectReason ResolveDrop(ItemDropIntent drop, out Operation operation)

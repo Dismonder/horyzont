@@ -142,6 +142,16 @@ public sealed class EquipmentMoveTests
     }
 
     [Fact]
+    public void AnyInEquipment_ItemNoSlotTakes_InvalidParameters()
+    {
+        var w = new HazardWorld(survival: true);
+        w.Give(Player1, Stone, 1, bagSlot: 0);
+
+        // A stone fits no slot of the layout: the answer is "does not fit", not "full" (review B5, P3-4); the empty slots of the layout do not change it.
+        w.Blocks.AssertRejected(Player1, MoveAny(BagSlot(Player1, 0), EquipmentOf(Player1), Stone), RejectReason.InvalidParameters);
+    }
+
+    [Fact]
     public void AnyInFromChest_NeverFillsEquipment()
     {
         var w = new HazardWorld(survival: true);

@@ -113,7 +113,8 @@ public sealed class ServerSimulation
         var propField = survival is { Props.Count: > 0 } ? new PropField(state, terrain, rules) : null;
         HazardRules = hazards ?? HazardRules.Default;
         HazardRules.Validate();
-        _survival = survival is null ? null : new SurvivalRules(state, terrain, survival, rules, propField, vitals, HazardRules);
+        VitalsRules = vitals ?? VitalsRules.Default;
+        _survival = survival is null ? null : new SurvivalRules(state, terrain, survival, rules, propField, VitalsRules, HazardRules);
         _props = propField is null ? null : new PropRules(state, terrain, survival!, rules, propField);
         _functional = new FunctionalBlockRules(state, rules, content, survival);
         _crafting = new CraftingRules(state, rules, content, survival);
@@ -122,7 +123,6 @@ public sealed class ServerSimulation
         // The settlements and the automatic discoveries are on only when the content has recipes (K6-32 D9b); without them the K6-29W and K6-30 journals stay as they were.
         _settlements = survival is { Recipes.Count: > 0 } ? new StationSettlements(state, rules, survival) : null;
         Survival = survival;
-        VitalsRules = vitals ?? VitalsRules.Default;
 
         // The generators are settled whenever the content has hazards, with or without recipes (review B1b, P3-7): their burning is a function of ticks and does not need the crafting content.
         _hazardContent = survival?.Hazards;
