@@ -8,7 +8,7 @@ namespace Horyzont.Core.Tests.Simulation;
 /// <summary>The refusal path of <see cref="PropHitIntent"/> does not allocate (ZASADY section 6; K6-31 D24).</summary>
 public sealed class PropHitAllocationTests
 {
-    private const int Repeats = 500;
+    private const int Repeats = 2000;
     private const ushort Hand = 9;
 
     [Fact]
@@ -42,32 +42,27 @@ public sealed class PropHitAllocationTests
             Assert.Equal(reason, f.Submit(intent, player).Reason);
         }
 
-        // Warm-up so the JIT and the first lookups of the prop cache do not count, then the measured run. Every submit waits for a token of its
-        // bucket (outside the measurement), so each one reaches its own refusal instead of RateLimited.
+        // Warm-up so the JIT and the first lookups of the prop cache do not count, then the measured run. A refusal does not use a token of
+        // the bucket, so the same refusals can repeat without waiting; each call is checked against its own reason.
         Run(f, refused);
-        var allocated = Run(f, refused);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        Run(f, refused);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         Assert.Equal(0, allocated);
     }
 
-    private static long Run(PropWorldFixture f, (PropHitIntent Intent, RejectReason Reason, int Player)[] refused)
+    private static void Run(PropWorldFixture f, (PropHitIntent Intent, RejectReason Reason, int Player)[] refused)
     {
-        long allocated = 0;
         for (var i = 0; i < Repeats; i++)
         {
             foreach (var (intent, reason, player) in refused)
             {
-                f.Sim.Ticks(15);
-                var before = GC.GetAllocatedBytesForCurrentThread();
-                var result = f.Submit(intent, player);
-                allocated += GC.GetAllocatedBytesForCurrentThread() - before;
-                if (result.Reason != reason)
+                if (f.Submit(intent, player).Reason != reason)
                 {
-                    throw new InvalidOperationException($"Expected {reason}, got {result.Reason}.");
+                    throw new InvalidOperationException($"Expected {reason}.");
                 }
             }
         }
-
-        return allocated;
     }
 }
