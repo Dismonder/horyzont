@@ -16,9 +16,15 @@ namespace Horyzont.Core.Tests.Survival;
 /// </summary>
 internal sealed class FoodWorld
 {
-    public FoodWorld(int players = 1)
+    /// <param name="players">Number of players.</param>
+    /// <param name="survival">Whether the simulation has the survival content of <see cref="FoodContent"/> (intents are resolved); operations need none.</param>
+    /// <param name="secondPlanet">Whether the world has a second planet.</param>
+    public FoodWorld(int players = 1, bool survival = false, bool secondPlanet = false)
     {
-        Blocks = new FunctionalBlockFixture(WorldFactory.CreateWithFood(players));
+        var state = WorldFactory.CreateWithFood(players, secondPlanet);
+        Blocks = survival
+            ? new FunctionalBlockFixture(state, FoodContent.Create(), FoodBlocks.ContentFor(state))
+            : new FunctionalBlockFixture(state);
     }
 
     public static PlayerId Player1 => FunctionalBlockFixture.Player1;

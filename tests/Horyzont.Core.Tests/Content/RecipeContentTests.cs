@@ -318,8 +318,8 @@ public sealed class RecipeContentTests
     {
         var content = ContentLoader.LoadDirectory(Path.Combine(RepoRoot(), "game", "content"));
 
-        // The kitchen and the fabricator have no recipes in the game yet (D24).
-        Assert.DoesNotContain(content.Recipes, r => r.Station is StationKind.Kitchen or StationKind.Fabricator);
+        // The fabricator has no recipes in the game yet (D24); the meals of the kitchen are K6-33 (D9, see FoodContentTests).
+        Assert.DoesNotContain(content.Recipes, r => r.Station is StationKind.Fabricator);
         Assert.True(content.Items.TryGet("core:multitool_t2", out var tier2));
         Assert.Equal(2, tier2.ToolTier);
         foreach (var key in new[] { "core:peat", "core:stone_brick", "core:iron_ingot", "core:glass", "core:fuel_cell" })

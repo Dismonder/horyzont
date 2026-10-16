@@ -1,6 +1,7 @@
 using System.Numerics;
 
 using Horyzont.Core.BlockEntities;
+using Horyzont.Core.Content;
 using Horyzont.Core.Hashing;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
@@ -29,6 +30,15 @@ internal sealed class FunctionalBlockFixture
     public FunctionalBlockFixture(Horyzont.Core.World.WorldState state)
     {
         Sim = new SimFixture(state: state);
+    }
+
+    /// <summary>A fixture whose simulation has the given survival content and block content (K6-33 intent tests).</summary>
+    /// <param name="state">The world, e.g. of <see cref="WorldFactory.CreateWithFood"/>.</param>
+    /// <param name="survival">Survival content, null for none.</param>
+    /// <param name="content">Block content, null for none.</param>
+    public FunctionalBlockFixture(Horyzont.Core.World.WorldState state, SurvivalContent? survival, Horyzont.Core.World.Blocks.BlockContentTable? content)
+    {
+        Sim = new SimFixture(state: state, content: content, survival: survival);
     }
 
     private FunctionalBlockFixture(int players, bool withSurvival, ushort chestSlots, bool intents, GameRules? rules)

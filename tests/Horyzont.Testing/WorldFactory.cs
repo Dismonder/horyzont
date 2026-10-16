@@ -152,10 +152,13 @@ public static class WorldFactory
 
     /// <summary>
     /// <see cref="CreateWithFunctionalBlocks"/> with the item types of <see cref="SurvivalContentFactory.FoodItemKeys"/> (K6-33): the four test types of
-    /// the other worlds and four food types (ids 5..8), the construct with a bed, and the bag, hotbar and equipment of every player.
+    /// the other worlds and four food types (ids 5..8), the construct with a bed, the block types of <see cref="FoodBlocks"/> (a campfire as id 6) and the bag, hotbar and equipment of every player.
+    /// With <paramref name="secondPlanet"/> the world has <see cref="SecondPlanet"/> too.
     /// </summary>
-    public static WorldState CreateWithFood(int players = 1) =>
-        CreateBlockWorld(players, true, FunctionalBlocks.BlockKeys, SurvivalContentFactory.FoodItemKeys, [HomePlanetParams]);
+    public static WorldState CreateWithFood(int players = 1, bool secondPlanet = false) =>
+        CreateBlockWorld(
+            players, true, FoodBlocks.BlockKeys, SurvivalContentFactory.FoodItemKeys,
+            secondPlanet ? [HomePlanetParams, SecondPlanetParams] : [HomePlanetParams]);
 
     private static WorldState WithPlayers(WorldState state, int players)
     {

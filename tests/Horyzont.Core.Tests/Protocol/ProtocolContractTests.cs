@@ -96,7 +96,7 @@ public sealed class ProtocolContractTests
     }
 
     /// <summary>
-    /// K2-10 adds reject reason 21 (and raised the protocol version from 1 to 2; K2-11 raises it to 3, K6-29W to 14, K6-30 to 15, K6-31 to 16, K6-32 to 17, see <see cref="ProtocolVersion_MatchesDocumentedMergeValue"/>).
+    /// K2-10 adds reject reason 21 (and raised the protocol version from 1 to 2; K2-11 raises it to 3, K6-29W to 14, K6-30 to 15, K6-31 to 16, K6-32 to 17, K6-33 to 18, see <see cref="ProtocolVersion_MatchesDocumentedMergeValue"/>).
     /// </summary>
     [Fact]
     public void RejectReason_ServerReadOnly_RoundTrips()
@@ -152,19 +152,20 @@ public sealed class ProtocolContractTests
     /// K6-30 adds operations 36, 37, 40, 44, 49, intents 22, 23, 28, 29, reject reasons 54 and 57, message 46 and blobs 21, 22 after K6-29W (main 14): 15.
     /// K6-31 adds operations 47, 48, intent 27, reject reason 53 and message 45 after K6-30 (main 15): 16.
     /// K6-32 adds operations 43, 45, station state 3, intent 24, reject reasons 44 to 46, message 48, blob 22 version 2 and blob 25 after K6-31 (main 16): 17.
+    /// K6-33 adds operation 41, intent 25, reject reason 49, message 44, the food tail of message 48, blob 22 version 3 and blob 2 version 2 after K6-32 (main 17): 18.
     /// A rebase onto a newer main updates this value, the constant and the package plan together.
     /// </summary>
     [Fact]
     public void ProtocolVersion_MatchesDocumentedMergeValue()
     {
-        Assert.Equal(17, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(18, ProtocolConstants.ProtocolVersion);
         Assert.Equal(0x3F, ProtocolConstants.InputButtonsMask);
     }
 
     [Fact]
     public void Constants_GoldenValues()
     {
-        Assert.Equal(17, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(18, ProtocolConstants.ProtocolVersion);
         Assert.Equal(262144, ProtocolConstants.MaxReliableMessageBytes);
         Assert.Equal(1150, ProtocolConstants.MaxUnreliableMessageBytes);
         Assert.Equal(32, ProtocolConstants.MaxDisplayNameBytes);
