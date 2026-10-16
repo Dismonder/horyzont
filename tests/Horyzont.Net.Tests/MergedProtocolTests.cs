@@ -64,12 +64,14 @@ public sealed class MergedProtocolTests
         Assert.Equal(enumIds, messages.Select(message => (int)message.Type).Order());
         foreach (var message in messages)
         {
-            Assert.Equal(message.GetType().Name, message.Type.ToString());
+            // PlayerVitalsMessage avoids the world type PlayerVitals; its enum member is PlayerVitals (K6-33).
+            Assert.Equal(message.GetType().Name.Replace("PlayerVitalsMessage", "PlayerVitals", StringComparison.Ordinal), message.Type.ToString());
         }
         Assert.Equal(31, (int)MessageType.ShipStatus);
         Assert.Equal(32, (int)MessageType.StarSystemState);
         Assert.Equal(33, (int)MessageType.MarkersState);
         Assert.Equal(40, (int)MessageType.ContainerState);
+        Assert.Equal(44, (int)MessageType.PlayerVitals);
         Assert.Equal(45, (int)MessageType.PropStates);
         Assert.Equal(46, (int)MessageType.BlockEntityStates);
         Assert.Equal(48, (int)MessageType.PlayerProgressState);

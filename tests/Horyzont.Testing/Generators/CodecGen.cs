@@ -522,7 +522,14 @@ public static class CodecGen
         BlockInteractIntent.Select(i => (Intent)i),
         BlockConfigIntent.Select(i => (Intent)i),
         CraftIntent.Select(i => (Intent)i),
-        PropHitIntent.Select(i => (Intent)i));
+        PropHitIntent.Select(i => (Intent)i),
+        EatIntent.Select(i => (Intent)i));
+
+    /// <summary>Eat intents (K6-33): any container and slot of 0 to 65535 (the codec checks the shape only).</summary>
+    public static Gen<EatIntent> EatIntent { get; } =
+        from container in ContainerId
+        from slot in VarU16
+        select new EatIntent(container, slot);
 
     /// <summary>Craft intents: a recipe key, 1 to 65535 pieces, a station block or none (K6-32).</summary>
     public static Gen<CraftIntent> CraftIntent { get; } =
@@ -539,9 +546,36 @@ public static class CodecGen
         from types in Gen.Choose(1, ProtocolConstants.MaxItemTypes).ArrayOf(typeCount)
         from keyCount in Gen.Choose(0, 5)
         from keys in RegistryKey.ArrayOf(keyCount)
+        from food in FoodSlots
         select new PlayerProgressState(
             types.Aggregate(Horyzont.Core.Progress.ItemTypeBitSet.Empty, (set, type) => set.With(new ItemTypeId((ushort)type))),
-            keys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(), Horyzont.Core.Progress.FoodSlots.Empty);
+            keys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
+            food);
+
+    private static Gen<float> VitalValue { get; } = Gen.Frequency(
+        (3, Gen.Choose(0, 10_000).Select(v => (float)v)),
+        (3, Gen.Choose(0, 20_000).Select(v => v / 2f)),
+        (1, Gen.Elements(0f, 1f, ProtocolConstants.MaxVitalValue)));
+
+    /// <summary>
+    /// Player vitals messages (K6-33 D22): values of 0 to the largest vital value, any flags, a warm-up only while the conditions hold and the rested flag
+    /// exactly with ticks remaining.
+    /// </summary>
+    public static Gen<PlayerVitalsMessage> PlayerVitalsMessage { get; } =
+        from health in VitalValue
+        from healthMax in VitalValue
+        from stamina in VitalValue
+        from staminaMax in VitalValue
+        from exhausted in Gen.Elements(false, true)
+        from conditions in Gen.Elements(false, true)
+        from warmup in Gen.Choose(0, ProtocolConstants.MaxRestWarmupTicks)
+        from remaining in Gen.Frequency(
+            (1, Gen.Constant(0)),
+            (1, Gen.Choose(1, ProtocolConstants.MaxRestRemainingTicks)),
+            (1, Gen.Elements(1, ProtocolConstants.MaxRestRemainingTicks)))
+        from comfort in Gen.Choose(0, 10)
+        select new PlayerVitalsMessage(
+            health, healthMax, stamina, staminaMax, exhausted, conditions, remaining > 0, (ushort)(conditions ? warmup : 0), (uint)remaining, (byte)comfort);
 
     /// <summary>Prop hit intents (K6-31): any planet and prop, a hotbar slot of 0 to 255.</summary>
     public static Gen<PropHitIntent> PropHitIntent { get; } =
@@ -884,6 +918,7 @@ public static class CodecGen
         BlockEntityStatesMessage.Select(m => (Message)m),
         PropStatesMessage.Select(m => (Message)m),
         PlayerProgressStateMessage.Select(m => (Message)m),
+        PlayerVitalsMessage.Select(m => (Message)m),
         ListUpTo(RegistryEntry(ProtocolConstants.MaxItemTypes), ProtocolConstants.MaxItemTypes, 12).Select(e => (Message)new ItemRegistry(e)));
 
     /// <summary>Ship status messages (K5-26): any ship and tick, non-negative finite values, any flags, a defined launch block.</summary>

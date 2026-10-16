@@ -5,11 +5,11 @@ namespace Horyzont.Net.Tests;
 
 /// <summary>
 /// Routing of <c>PlayerVitals</c> (message 44, K6-33 D22): the server sends it to its owner in the state <see cref="ClientState.InGame"/> only; a client
-/// never sends it. It is unreliable. The enum member arrives with step B2, so the type is the number 44.
+/// never sends it. It is unreliable.
 /// </summary>
 public sealed class PlayerVitalsRouterTests
 {
-    private const MessageType VitalsType = (MessageType)44;
+    private const MessageType VitalsType = MessageType.PlayerVitals;
 
     [Fact]
     public void PlayerVitals_InGame_ServerToClientAllowed()

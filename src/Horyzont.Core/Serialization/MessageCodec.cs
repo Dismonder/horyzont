@@ -24,6 +24,14 @@ public static class MessageCodec
 {
     private const byte CurrentFormatVersion = 1;
 
+    /// <summary>Flag bits of message 44 (K6-33 D22): exhausted, the conditions of rest hold, rested.</summary>
+    private const int VitalsFlagExhausted = 1;
+    private const int VitalsFlagConditions = 2;
+    private const int VitalsFlagRested = 4;
+
+    /// <summary>Highest comfort level of message 44 (the comfort of the rules is capped at 10, K6-33 D14).</summary>
+    private const byte MaxComfortLevel = 10;
+
     /// <summary>Appends the frame of <paramref name="message"/>; throws <see cref="ArgumentException"/> when it exceeds the channel limit.</summary>
     /// <param name="w">Target writer.</param>
     /// <param name="message">Message.</param>
@@ -398,6 +406,10 @@ public static class MessageCodec
 
             case ShipStatus shipStatus:
                 WriteShipStatus(w, shipStatus);
+                break;
+
+            case PlayerVitalsMessage vitals:
+                WritePlayerVitals(w, vitals);
                 break;
 
             case MarkersState markers:
@@ -848,6 +860,9 @@ public static class MessageCodec
             case MessageType.ShipStatus:
                 return ReadShipStatus(ref r);
 
+            case MessageType.PlayerVitals:
+                return ReadPlayerVitals(ref r);
+
             case MessageType.MarkersState:
                 int markerCount = r.ReadCount(ProtocolConstants.MaxMarkersInState);
                 var markerList = new MarkerRecord[markerCount];
@@ -996,6 +1011,9 @@ public static class MessageCodec
 
             w.WriteString(key, ProtocolConstants.MaxRegistryKeyBytes);
         }
+
+        // The tail appended by K6-33 (D6): the three food slots.
+        CoreCodecPrimitives.WriteFoodSlots(w, state.Food);
     }
 
     private static PlayerProgressState ReadPlayerProgressState(ref ByteReader r)
@@ -1028,7 +1046,104 @@ public static class MessageCodec
             keys[i] = key;
         }
 
-        return new PlayerProgressState(discovered, keys);
+        // The repeated types of the food are not checked here: the server sends what the builder of blob 22 accepted, and the client applies it as it is.
+        return new PlayerProgressState(discovered, keys, CoreCodecPrimitives.ReadFoodSlots(ref r));
+    }
+
+    private static void WritePlayerVitals(ByteWriter w, PlayerVitalsMessage m)
+    {
+        CheckVital(m.Health, nameof(m));
+        CheckVital(m.HealthMax, nameof(m));
+        CheckVital(m.Stamina, nameof(m));
+        CheckVital(m.StaminaMax, nameof(m));
+        if (m.RestWarmupTicks > ProtocolConstants.MaxRestWarmupTicks)
+        {
+            throw new ArgumentException($"The warm-up of the rest is at most {ProtocolConstants.MaxRestWarmupTicks} ticks, not {m.RestWarmupTicks}.", nameof(m));
+        }
+
+        if (m.RestRemainingTicks > ProtocolConstants.MaxRestRemainingTicks)
+        {
+            throw new ArgumentException($"The rest lasts at most {ProtocolConstants.MaxRestRemainingTicks} ticks, not {m.RestRemainingTicks}.", nameof(m));
+        }
+
+        if (m.Comfort > MaxComfortLevel)
+        {
+            throw new ArgumentException($"The comfort level is at most {MaxComfortLevel}, not {m.Comfort}.", nameof(m));
+        }
+
+        if (m.Rested != (m.RestRemainingTicks > 0) || (!m.RestConditionsMet && m.RestWarmupTicks > 0))
+        {
+            throw new ArgumentException("The rest fields contradict each other: rested exactly with ticks remaining, a warm-up only while the conditions hold.", nameof(m));
+        }
+
+        // -0 equals 0 and passes the check; the bytes of the value stay canonical.
+        w.WriteSingle(m.Health == 0f ? 0f : m.Health);
+        w.WriteSingle(m.HealthMax == 0f ? 0f : m.HealthMax);
+        w.WriteSingle(m.Stamina == 0f ? 0f : m.Stamina);
+        w.WriteSingle(m.StaminaMax == 0f ? 0f : m.StaminaMax);
+        w.WriteByte((byte)((m.Exhausted ? VitalsFlagExhausted : 0) | (m.RestConditionsMet ? VitalsFlagConditions : 0) | (m.Rested ? VitalsFlagRested : 0)));
+        w.WriteUInt16(m.RestWarmupTicks);
+        w.WriteVarUInt(m.RestRemainingTicks);
+        w.WriteByte(m.Comfort);
+    }
+
+    private static void CheckVital(float value, string parameter)
+    {
+        if (!float.IsFinite(value) || value < 0f || value > ProtocolConstants.MaxVitalValue)
+        {
+            throw new ArgumentException($"A vital value is finite and within 0 to {ProtocolConstants.MaxVitalValue}, not {value}.", parameter);
+        }
+    }
+
+    private static PlayerVitalsMessage ReadPlayerVitals(ref ByteReader r)
+    {
+        var health = ReadVital(ref r);
+        var healthMax = ReadVital(ref r);
+        var stamina = ReadVital(ref r);
+        var staminaMax = ReadVital(ref r);
+        byte flags = r.ReadByte();
+        if ((flags & ~(VitalsFlagExhausted | VitalsFlagConditions | VitalsFlagRested)) != 0)
+        {
+            throw new ProtocolViolationException($"Unknown player vitals flags {flags}.");
+        }
+
+        ushort warmup = r.ReadUInt16();
+        if (warmup > ProtocolConstants.MaxRestWarmupTicks)
+        {
+            throw new ProtocolViolationException($"The warm-up of the rest is at most {ProtocolConstants.MaxRestWarmupTicks} ticks, not {warmup}.");
+        }
+
+        ulong remaining = r.ReadVarUInt();
+        if (remaining > ProtocolConstants.MaxRestRemainingTicks)
+        {
+            throw new ProtocolViolationException($"The rest lasts at most {ProtocolConstants.MaxRestRemainingTicks} ticks, not {remaining}.");
+        }
+
+        byte comfort = r.ReadByte();
+        if (comfort > MaxComfortLevel)
+        {
+            throw new ProtocolViolationException($"The comfort level is at most {MaxComfortLevel}, not {comfort}.");
+        }
+
+        bool conditions = (flags & VitalsFlagConditions) != 0;
+        bool rested = (flags & VitalsFlagRested) != 0;
+        if (rested != (remaining > 0) || (!conditions && warmup > 0))
+        {
+            throw new ProtocolViolationException("The rest fields contradict each other: rested exactly with ticks remaining, a warm-up only while the conditions hold.");
+        }
+
+        return new PlayerVitalsMessage(health, healthMax, stamina, staminaMax, (flags & VitalsFlagExhausted) != 0, conditions, rested, warmup, (uint)remaining, comfort);
+    }
+
+    private static float ReadVital(ref ByteReader r)
+    {
+        float value = r.ReadSingle();
+        if (value < 0f || value > ProtocolConstants.MaxVitalValue)
+        {
+            throw new ProtocolViolationException($"A vital value is within 0 to {ProtocolConstants.MaxVitalValue}, not {value}.");
+        }
+
+        return value;
     }
 
     private static void WriteBlockEntityStates(ByteWriter w, BlockEntityStates states)

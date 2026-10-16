@@ -8,7 +8,6 @@ namespace Horyzont.Core.Survival;
 public static class FoodSlotRules
 {
     /// <summary>Reject reason 49 of the plan; the enum member arrives in step B2.</summary>
-    private const RejectReason FoodAlreadyActive = (RejectReason)49;
 
     /// <summary>Places food in the slots.</summary>
     /// <param name="current">The current slots.</param>
@@ -55,7 +54,7 @@ public static class FoodSlotRules
             {
                 if (remaining > rules.FoodRepeatFraction)
                 {
-                    return FoodAlreadyActive;
+                    return RejectReason.FoodAlreadyActive;
                 }
 
                 target = i;
@@ -69,7 +68,7 @@ public static class FoodSlotRules
 
         if (target < 0)
         {
-            return FoodAlreadyActive;
+            return RejectReason.FoodAlreadyActive;
         }
 
         // The new food takes its slot; the other slots that are gone become empty, the active ones keep their index and tick.

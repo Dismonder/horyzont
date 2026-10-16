@@ -28,7 +28,7 @@ internal static class MessageRouter
     {
         1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or 10
             or 11 or 12 or 13 or 14 or 15 or 16 or 17 or 18 or 19 or 20 or 21 or 22 or 23 or 24 or 25 or 31 or 32 or 33
-            or 40 or 41 or 42 or 43 or 45 or 46 or 48 or 49 => true,
+            or 40 or 41 or 42 or 43 or 44 or 45 or 46 or 48 or 49 => true,
         _ => false,
     };
 
@@ -47,7 +47,8 @@ internal static class MessageRouter
     public static bool IsAllowedFromServer(ClientState state, MessageType type) => state switch
     {
         ClientState.AwaitingServerHello => type is MessageType.ServerHello or MessageType.HandshakeReject or MessageType.JoinUnavailable or MessageType.Disconnect,
-        ClientState.Loading or ClientState.InGame => type == MessageType.Disconnect || IsGameMessageFromServer(type),
+        ClientState.Loading => type == MessageType.Disconnect || (IsGameMessageFromServer(type) && type != MessageType.PlayerVitals),
+        ClientState.InGame => type == MessageType.Disconnect || IsGameMessageFromServer(type),
         _ => false,
     };
 
@@ -56,7 +57,7 @@ internal static class MessageRouter
         or MessageType.ConstructRemoved or MessageType.OperationApplied or MessageType.IntentReply or MessageType.Snapshot
         or MessageType.EntitySpawn or MessageType.EntityDespawn or MessageType.Pong or MessageType.ServerStatus or MessageType.StarSystemState
         or MessageType.ShipStatus or MessageType.MarkersState or MessageType.ContainerState or MessageType.ContainerDelta or MessageType.BlockEntityStates or MessageType.PropStates or MessageType.ItemRegistry
-        or MessageType.PlayerProgressState;
+        or MessageType.PlayerProgressState or MessageType.PlayerVitals;
 
     /// <summary>Client-to-server types the game sends itself through <see cref="ClientSession.Send"/>.</summary>
     public static bool IsGameMessageFromClient(MessageType type) =>

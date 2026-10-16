@@ -45,7 +45,7 @@ public sealed class ProtocolContractTests
             (RejectReason.NoLineOfSight, 19), (RejectReason.WrongPlanet, 20), (RejectReason.ServerReadOnly, 21),
             (RejectReason.NoCockpit, 30), (RejectReason.ShipAnchored, 31), (RejectReason.NoEngine, 37), (RejectReason.MarkerLimit, 36), (RejectReason.ShipNotParked, 39),
             (RejectReason.InventoryFull, 40), (RejectReason.NotEnoughItems, 41), (RejectReason.ContainerChanged, 42), (RejectReason.ContainerLocked, 43),
-            (RejectReason.StationRequired, 44), (RejectReason.RecipeLocked, 45), (RejectReason.TooFarFromStation, 46),
+            (RejectReason.StationRequired, 44), (RejectReason.RecipeLocked, 45), (RejectReason.TooFarFromStation, 46), (RejectReason.FoodAlreadyActive, 49),
             (RejectReason.ToolTierTooLow, 53), (RejectReason.NotOwner, 54), (RejectReason.ContainerNotEmpty, 57));
         AssertValues((MessageType.ClientHello, 1), (MessageType.ServerHello, 2), (MessageType.HandshakeReject, 3), (MessageType.ClientReady, 4),
             (MessageType.TerrainCacheReport, 5), (MessageType.TerrainBlockData, 6), (MessageType.TerrainChecksums, 7), (MessageType.ConstructState, 8),
@@ -55,7 +55,7 @@ public sealed class ProtocolContractTests
             (MessageType.ShipStatus, 31), (MessageType.StarSystemState, 32),
             (MessageType.MarkersState, 33),
             (MessageType.ContainerState, 40), (MessageType.ContainerDelta, 41), (MessageType.ContainerSubscribe, 42),
-            (MessageType.ContainerUnsubscribe, 43), (MessageType.PropStates, 45), (MessageType.BlockEntityStates, 46), (MessageType.PlayerProgressState, 48), (MessageType.ItemRegistry, 49));
+            (MessageType.ContainerUnsubscribe, 43), (MessageType.PlayerVitals, 44), (MessageType.PropStates, 45), (MessageType.BlockEntityStates, 46), (MessageType.PlayerProgressState, 48), (MessageType.ItemRegistry, 49));
         AssertValues((StationKind.Hands, 0), (StationKind.Workbench, 1), (StationKind.Furnace, 2), (StationKind.Refinery, 3), (StationKind.Kitchen, 4),
             (StationKind.Fabricator, 5));
         AssertValues((DeliveryChannel.ReliableOrdered, 0), (DeliveryChannel.Unreliable, 1));
@@ -190,7 +190,7 @@ public sealed class ProtocolContractTests
     [Fact]
     public void MessageChannels_MapsEveryType()
     {
-        var unreliable = new[] { MessageType.InputBatch, MessageType.Snapshot, MessageType.SnapshotAck, MessageType.Ping, MessageType.Pong, MessageType.ShipStatus };
+        var unreliable = new[] { MessageType.InputBatch, MessageType.Snapshot, MessageType.SnapshotAck, MessageType.Ping, MessageType.Pong, MessageType.ShipStatus, MessageType.PlayerVitals };
         foreach (var type in Enum.GetValues<MessageType>())
         {
             var expected = unreliable.Contains(type) ? DeliveryChannel.Unreliable : DeliveryChannel.ReliableOrdered;
@@ -245,21 +245,25 @@ public sealed class ProtocolContractTests
             new PropStates(new PlanetId(1), []),
             new BlockEntityStates(new EntityId(1), []),
             new PlayerProgressState(Horyzont.Core.Progress.ItemTypeBitSet.Empty, [], Horyzont.Core.Progress.FoodSlots.Empty),
+            new PlayerVitalsMessage(100f, 100f, 100f, 100f, false, false, false, 0, 0, 0),
             new ItemRegistry([]),
         ];
 
         foreach (var message in messages)
         {
-            Assert.Equal(Enum.Parse<MessageType>(message.GetType().Name), message.Type);
+            Assert.Equal(Enum.Parse<MessageType>(EnumNameOf(message.GetType())), message.Type);
         }
 
         var recordNames = typeof(Message).Assembly.GetTypes()
             .Where(t => t.IsSubclassOf(typeof(Message)) && !t.IsAbstract)
-            .Select(t => t.Name)
+            .Select(EnumNameOf)
             .Order(StringComparer.Ordinal);
         Assert.Equal(Enum.GetNames<MessageType>().Order(StringComparer.Ordinal), recordNames);
         Assert.Equal(Enum.GetValues<MessageType>().Order(), messages.Select(m => m.Type).Order());
     }
+
+    /// <summary>The name of the enum member of a message record: the type name, except <c>PlayerVitalsMessage</c> (K6-33), which avoids the world type <c>PlayerVitals</c>.</summary>
+    private static string EnumNameOf(Type record) => record.Name == "PlayerVitalsMessage" ? "PlayerVitals" : record.Name;
 
     [Fact]
     public void Operations_EachRecordReturnsItsKind_AndEveryKindHasARecord()

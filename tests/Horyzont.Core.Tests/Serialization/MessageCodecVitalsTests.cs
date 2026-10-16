@@ -7,12 +7,11 @@ namespace Horyzont.Core.Tests.Serialization;
 /// <summary>
 /// Message 44 (<see cref="PlayerVitalsMessage"/>), format 1 (K6-33 D22): four little-endian <c>f32</c> (health, health maximum, stamina, stamina maximum;
 /// finite, 0 to 10 000), a flag byte (bit 0 exhausted, bit 1 the conditions of rest hold, bit 2 rested), a little-endian <c>u16</c> warm-up progress
-/// (0 to 1200), a varuint of the remaining ticks of the rest (0 to 64 800) and a comfort byte (0 to 10). Unreliable, server to the owner. The enum member
-/// does not exist before step B2, so the type is the number 44. Every refusal test first decodes or encodes the valid twin.
+/// (0 to 1200), a varuint of the remaining ticks of the rest (0 to 64 800) and a comfort byte (0 to 10). Unreliable, server to the owner. Every refusal test first decodes or encodes the valid twin.
 /// </summary>
 public sealed class MessageCodecVitalsTests
 {
-    private const MessageType VitalsType = (MessageType)44;
+    private const MessageType VitalsType = MessageType.PlayerVitals;
 
     /// <summary>Health 80 of 120, stamina 55.5 of 100, the conditions hold, warm-up 600, nothing remaining, comfort 3.</summary>
     private const string Valid = "2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 02 58 02 00 03";

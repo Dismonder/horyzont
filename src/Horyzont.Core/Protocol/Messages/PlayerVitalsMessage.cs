@@ -4,8 +4,8 @@ namespace Horyzont.Core.Protocol.Messages;
 /// The health and stamina of the receiving player and the state of the rest (message 44, K6-33 D22); unreliable, server to the owner only, about 10 times a
 /// second. Format 1: four <c>f32</c> (health, health maximum, stamina, stamina maximum; finite, 0 to <c>ProtocolConstants.MaxVitalValue</c>), a flag byte
 /// (bit 0 exhausted, bit 1 the conditions of rest hold, bit 2 rested; other bits are an error), a <c>u16</c> progress of the warm-up in ticks (0 to 1200),
-/// a varuint of the remaining ticks of the rest (0 to 64 800) and a comfort byte (0 to 10). The type is the number 44 until step B2 (the enum member
-/// arrives with the codec), and the codec with step B2 too.
+/// a varuint of the remaining ticks of the rest (0 to 64 800) and a comfort byte (0 to 10). Two invariants hold in both directions: <c>Rested</c> is true exactly when <c>RestRemainingTicks</c> is above 0, and a
+/// warm-up above 0 needs <c>RestConditionsMet</c> (the warm-up counts only while the conditions hold without a break).
 /// </summary>
 /// <param name="Health">Current health.</param>
 /// <param name="HealthMax">Maximum health.</param>
@@ -30,5 +30,5 @@ public sealed record PlayerVitalsMessage(
     byte Comfort) : Message
 {
     /// <inheritdoc />
-    public override MessageType Type => (MessageType)44;
+    public override MessageType Type => MessageType.PlayerVitals;
 }

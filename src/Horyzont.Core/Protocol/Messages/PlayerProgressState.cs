@@ -10,8 +10,8 @@ namespace Horyzont.Core.Protocol.Messages;
 /// </summary>
 /// <param name="Discovered">Item types the player discovered.</param>
 /// <param name="WorldProgressKeys">Progress keys of the world, ascending by <see cref="string.CompareOrdinal(string, string)"/>, at most <c>ProtocolConstants.MaxProgressKeys</c>.</param>
-/// <param name="Food">The three food slots of the player (K6-33); the default is three empty slots. The codec writes the tail with step B2.</param>
-public sealed record PlayerProgressState(ItemTypeBitSet Discovered, IReadOnlyList<string> WorldProgressKeys, FoodSlots Food = default) : Message
+/// <param name="Food">The three food slots of the player (K6-33); required: a state without food cannot be sent by accident, use <see cref="FoodSlots.Empty"/>.</param>
+public sealed record PlayerProgressState(ItemTypeBitSet Discovered, IReadOnlyList<string> WorldProgressKeys, FoodSlots Food) : Message
 {
     /// <inheritdoc />
     public override MessageType Type => MessageType.PlayerProgressState;
