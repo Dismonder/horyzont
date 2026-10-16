@@ -44,6 +44,9 @@ public sealed class CraftingConservationProperties
         FillBag,
         FillChest,
         BagToInput,
+
+        /// <summary>Puts a wsad for the recipe (stone and soil as fuel) straight into the input slots 0 and 1, so that stations get to settle pieces.</summary>
+        LoadInput,
         OutputToBag,
         CraftFromChests,
         SelectRecipe,
@@ -59,10 +62,11 @@ public sealed class CraftingConservationProperties
             (3, Gen.Constant(Action.PlaceStation)),
             (2, Gen.Constant(Action.RemoveStation)),
             (4, Gen.Constant(Action.FillBag)),
-            (3, Gen.Constant(Action.FillChest)),
+            (5, Gen.Constant(Action.FillChest)),
             (4, Gen.Constant(Action.BagToInput)),
+            (5, Gen.Constant(Action.LoadInput)),
             (3, Gen.Constant(Action.OutputToBag)),
-            (4, Gen.Constant(Action.CraftFromChests)),
+            (6, Gen.Constant(Action.CraftFromChests)),
             (3, Gen.Constant(Action.SelectRecipe)),
             (5, Gen.Constant(Action.Settle)),
             (3, Gen.Constant(Action.Advance)),
@@ -163,7 +167,13 @@ public sealed class CraftingConservationProperties
             case Action.FillChest:
                 return new ItemCreateOp(new SlotRef(chests[step.Chest], (ushort)step.Slot), CraftingFixture.Stone, (ushort)(step.Count * 3), 500, ItemSource.Harvest);
             case Action.BagToInput:
-                return new ItemTransferOp(new SlotRef(Bag, (ushort)step.Slot), new SlotRef(input, (ushort)step.Slot), item, (ushort)step.Count, 500);
+                return new ItemTransferOp(new SlotRef(Bag, (ushort)step.Slot), new SlotRef(input, (ushort)(2 + (step.Slot % 2))), item, (ushort)step.Count, 500);
+            case Action.LoadInput:
+                return new CompoundOp(
+                [
+                    new ItemCreateOp(new SlotRef(input, 0), CraftingFixture.Stone, (ushort)(step.Count * 2), 500, ItemSource.Admin),
+                    new ItemCreateOp(new SlotRef(input, 1), CraftingFixture.Soil, (ushort)step.Count, 500, ItemSource.Admin),
+                ]);
             case Action.OutputToBag:
                 return new ItemTransferOp(new SlotRef(output, (ushort)(step.Slot % 2)), new SlotRef(Bag, (ushort)(10 + step.Slot)), CraftingFixture.Gem, (ushort)step.Count, GemLimit);
             case Action.CraftFromChests:
@@ -179,16 +189,19 @@ public sealed class CraftingConservationProperties
         }
     }
 
-    /// <summary>Three variants (by <see cref="Step.Broken"/>): remove one container of a live station, clear its state keeping the containers, create a station container without a state.</summary>
+    /// <summary>
+    /// Four variants (by <see cref="Step.Slot"/>): remove one container of a live station, clear its state keeping the containers, create a station container
+    /// without a state, point the state at the input of the other station.
+    /// </summary>
     private static Operation BreakStation(CraftingFixture f, CellPos cell, bool hasStation, ContainerId input, ContainerId output, Step step)
     {
-        switch (step.Broken % 3)
+        switch (step.Slot % 4)
         {
             case 0:
                 return new ContainerRemoveOp(step.Soil ? output : input);
             case 1:
                 return ClearState(cell, CraftingFixture.StationBlockType);
-            default:
+            case 2:
                 var id = f.State.ContainerIds.PeekNext();
                 return hasStation
                     ? CraftingFixture.StationContainer(id, ContainerKind.StationInput, cell)
@@ -197,6 +210,9 @@ public sealed class CraftingConservationProperties
                         CraftingFixture.StationContainer(id, ContainerKind.StationInput, cell),
                         CraftingFixture.StationContainer(new ContainerId(id.Value + 1), ContainerKind.StationOutput, cell),
                     ]);
+            default:
+                var other = TryStation(f, _stationCells[1 - step.Station], out var otherStation) ? otherStation!.Input : new ContainerId(9999);
+                return CraftingFixture.StationState(cell, other, output, Recipe);
         }
     }
 
