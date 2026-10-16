@@ -97,6 +97,15 @@ public enum RejectReason : byte
     /// <summary>The container is not accessible to the player (K6-29).</summary>
     ContainerLocked = 43,
 
+    /// <summary>The recipe needs a station the intent does not name, a station of another kind or a higher level of the workbench (K6-32).</summary>
+    StationRequired = 44,
+
+    /// <summary>The recipe is not visible to the player: no ingredient discovered or the progress key missing in the world (K6-32).</summary>
+    RecipeLocked = 45,
+
+    /// <summary>The eye of the player is farther than the use range from the station, or the station is on another planet (K6-32).</summary>
+    TooFarFromStation = 46,
+
     /// <summary>The block or its container belongs to another player: a private chest, the bed of another player (K6-30).</summary>
     NotOwner = 54,
 

@@ -68,7 +68,7 @@ public sealed class MessageCodecStationTests
         Assert.Equal(ProtocolConstants.MaxTimedStationsPerConstruct, limit);
         Assert.Equal(512, limit);
 
-        var message = Many(limit, ProtocolConstants.MaxBlockEntitiesPerConstruct - limit);
+        var message = MaxMessages.BlockEntityStatesOf(limit, ProtocolConstants.MaxBlockEntitiesPerConstruct - limit);
         var frame = Kit.Encode(message);
 
         Assert.Equal(113_678, frame.Length);
@@ -80,26 +80,6 @@ public sealed class MessageCodecStationTests
     public void ConstructWithEveryEntryAStation_ExceedsTheReliableMessage()
     {
         // The reason for the limit: without it 4096 stations would not fit, and the server could not send the construct.
-        Assert.Throws<ArgumentException>(() => Kit.Encode(Many(ProtocolConstants.MaxBlockEntitiesPerConstruct, 0)));
-    }
-
-    private static BlockEntityStates Many(int stations, int chests)
-    {
-        var construct = new EntityId(ulong.MaxValue);
-        var cells = Enumerable.Range(0, stations + chests)
-            .Select(i => new CellPos(-2048 + (i % 64), -2048 + ((i / 64) % 64), -2048 + (i / 4096)))
-            .OrderBy(cell => new BlockRef(construct, cell))
-            .ToArray();
-        var recipe = new string('r', 64);
-        var entries = new List<BlockEntityEntry>(cells.Length);
-        for (var i = 0; i < cells.Length; i++)
-        {
-            BlockEntityState state = i < stations
-                ? new StationBlockState(new ContainerId(ulong.MaxValue - 1), new ContainerId(ulong.MaxValue), recipe, new Tick(ulong.MaxValue))
-                : new ChestBlockState(new ContainerId(ulong.MaxValue));
-            entries.Add(new BlockEntityEntry(cells[i], state));
-        }
-
-        return new BlockEntityStates(construct, entries);
+        Assert.Throws<ArgumentException>(() => Kit.Encode(MaxMessages.BlockEntityStatesOf(ProtocolConstants.MaxBlockEntitiesPerConstruct, 0)));
     }
 }
