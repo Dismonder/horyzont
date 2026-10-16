@@ -24,6 +24,13 @@ public sealed class SurvivalHashTests
     /// <summary>Hash of <see cref="WorldWithBlockEntities"/> recorded at commit 06814a8 (start of K6-32, before discoveries, progress keys and stations).</summary>
     private const ulong WorldWithBlockEntitiesHashBeforeCrafting = 256735958396369194UL;
 
+    /// <summary>Hash of <see cref="WorldWithCrafting"/> recorded at commit ffd89bb (start of K6-33, before the food slots and the vitals).</summary>
+    private const ulong WorldWithCraftingHashBeforeFood = 2493131761482920173UL;
+
+    [Fact]
+    public void WorldWithCraftingWithoutFood_HashUnchanged() =>
+        Assert.Equal(WorldWithCraftingHashBeforeFood, StateHasher.Hash(WorldWithCrafting()));
+
     [Fact]
     public void WorldWithoutItems_HashUnchanged() => Assert.Equal(DefaultWorldHashBeforeItems, StateHasher.Hash(WorldFactory.CreateDefault()));
 
@@ -281,6 +288,20 @@ public sealed class SurvivalHashTests
         var chest = f.SetUpChest(FunctionalBlocks.ChestCell);
         f.Give(chest, 1, 7);
         f.SetUpBed(FunctionalBlocks.BedCell, FunctionalBlockFixture.Player1);
+        return f.State;
+    }
+
+    /// <summary>
+    /// The K6-32 world of the crafting tests: the K6-30 bed with the respawn point of player 1, a station in work, a discovery of player 2 and a
+    /// progress key. No food, no vitals.
+    /// </summary>
+    private static WorldState WorldWithCrafting()
+    {
+        var f = new CraftingFixture(players: 2);
+        f.Blocks.SetUpBed(FunctionalBlocks.BedCell, FunctionalBlockFixture.Player1);
+        f.SetUpStation(CraftingFixture.StationCell, "t:a", new Tick(100));
+        f.Apply(CraftingFixture.Discover(CraftingFixture.Player2, CraftingFixture.Gem));
+        f.Apply(CraftingFixture.Grant("test:boss"));
         return f.State;
     }
 
