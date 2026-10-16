@@ -20,6 +20,7 @@ internal sealed class UndoLog
     private readonly List<ConfigureRecord> _configured = [];
     private readonly List<BlockEntityRecordUndo> _entities = [];
     private readonly List<ProgressRecordUndo> _progress = [];
+    private readonly List<PropRecordUndo> _props = [];
     private readonly List<string> _keys = [];
     private readonly List<Step> _steps = [];
     private ulong _nextContainerId;
@@ -40,6 +41,7 @@ internal sealed class UndoLog
         _configured.Clear();
         _entities.Clear();
         _progress.Clear();
+        _props.Clear();
         _keys.Clear();
         _steps.Clear();
         _nextContainerId = state.ContainerIds.NextValue;
@@ -92,6 +94,22 @@ internal sealed class UndoLog
         _progress.Add(new ProgressRecordUndo(player, previous));
     }
 
+    /// <summary>Adds a prop to the harvested set, remembering that it was not there.</summary>
+    internal void SetHarvested(WorldState state, PlanetId planet, PropId prop, Tick tick)
+    {
+        state.HarvestedProps.Add(planet, prop, tick);
+        _steps.Add(new Step(StepKind.Prop, _props.Count));
+        _props.Add(new PropRecordUndo(planet, prop, null));
+    }
+
+    /// <summary>Removes a prop from the harvested set, remembering its tick; the caller checked that it is in the set.</summary>
+    internal void SetRegrown(WorldState state, PlanetId planet, PropId prop)
+    {
+        state.HarvestedProps.Remove(planet, prop, out var previous);
+        _steps.Add(new Step(StepKind.Prop, _props.Count));
+        _props.Add(new PropRecordUndo(planet, prop, previous));
+    }
+
     /// <summary>Adds a progress key of the world, remembering it so that the rollback removes it (the caller checked that it is new).</summary>
     internal void AddProgressKey(WorldState state, string key)
     {
@@ -137,6 +155,18 @@ internal sealed class UndoLog
                     }
 
                     break;
+                case StepKind.Prop:
+                    var prop = _props[step.Index];
+                    if (prop.PreviousTick is { } previousTick)
+                    {
+                        state.HarvestedProps.Add(prop.Planet, prop.Prop, previousTick);
+                    }
+                    else
+                    {
+                        state.HarvestedProps.Remove(prop.Planet, prop.Prop, out _);
+                    }
+
+                    break;
                 case StepKind.ProgressKey:
                     state.ProgressKeys.Remove(_keys[step.Index]);
                     break;
@@ -162,6 +192,7 @@ internal sealed class UndoLog
         _configured.Clear();
         _entities.Clear();
         _progress.Clear();
+        _props.Clear();
         _keys.Clear();
         _steps.Clear();
     }
@@ -174,6 +205,7 @@ internal sealed class UndoLog
         Remove,
         BlockEntity,
         Progress,
+        Prop,
         ProgressKey,
     }
 
@@ -186,4 +218,6 @@ internal sealed class UndoLog
     private readonly record struct BlockEntityRecordUndo(BlockRef Key, BlockEntityState? Previous);
 
     private readonly record struct ProgressRecordUndo(PlayerId Player, PlayerProgress? Previous);
+
+    private readonly record struct PropRecordUndo(PlanetId Planet, PropId Prop, Tick? PreviousTick);
 }

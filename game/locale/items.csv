@@ -5,6 +5,9 @@ ITEM_CORE_STONE,Stone,Kamień
 ITEM_CORE_SOIL,Soil,Ziemia
 ITEM_CORE_SAND,Sand,Piasek
 ITEM_CORE_ORE,Ore,Ruda
+ITEM_CORE_WOOD,Wood,Drewno
+ITEM_CORE_FIBER,Fiber,Włókno
+ITEM_CORE_CRYSTAL,Crystal,Kryształ
 ITEM_CORE_PEAT,Peat,Torf
 ITEM_CORE_STONE_BRICK,Stone brick,Cegła kamienna
 ITEM_CORE_IRON_INGOT,Iron ingot,Sztabka żelaza
@@ -48,3 +51,20 @@ INV_ACCESS_TO_SHARED,Make shared,Zrób wspólną
 INV_TAKE_ALL,Take all,Weź wszystko
 INV_QUICK_STACK,Put matching,Odłóż pasujące
 INV_QUICK_STACK_NEARBY,Put matching into nearby chests,Odłóż pasujące do skrzyń w pobliżu
+CRAFT_TITLE_HANDS,Crafting (hands),Rzemiosło (ręce)
+CRAFT_TITLE_WORKBENCH,Workbench,Warsztat
+CRAFT_TITLE_KITCHEN,Kitchen,Kuchnia
+CRAFT_TITLE_FABRICATOR,Fabricator,Fabrykator
+CRAFT_TITLE_FURNACE,Furnace,Piec
+CRAFT_TITLE_REFINERY,Refinery,Rafineria
+CRAFT_MAKE,Make,Zrób
+CRAFT_NONE,No known recipes yet - gather more materials,Brak znanych receptur - zbierz więcej materiałów
+CRAFT_LOCKED,Unknown recipe,Receptura nieznana
+CRAFT_LEVEL,Needs level {0},Wymaga poziomu {0}
+CRAFT_NEARBY,+ chests nearby,+ skrzynie w pobliżu
+CRAFT_SELECT,Choose,Wybierz
+CRAFT_ACTIVE,Making: {0},Produkcja: {0}
+CRAFT_NO_RECIPE,No recipe chosen,Nie wybrano receptury
+CRAFT_INPUT,Input,Wsad
+CRAFT_OUTPUT,Output,Wynik
+CRAFT_FUEL,Fuel,Paliwo

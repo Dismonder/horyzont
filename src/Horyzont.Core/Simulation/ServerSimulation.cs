@@ -6,6 +6,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Props;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -29,6 +30,7 @@ public sealed class ServerSimulation
     private readonly OperationApplier _applier;
     private readonly IntentValidator _validator;
     private readonly SurvivalRules? _survival;
+    private readonly PropRules? _props;
     private readonly FunctionalBlockRules _functional;
     private readonly CraftingRules _crafting;
     private readonly StationSettlements? _settlements;
@@ -94,14 +96,18 @@ public sealed class ServerSimulation
         _journal = journal;
         _logger = logger;
         _applier = new OperationApplier(state, terrain);
-        _survival = survival is null ? null : new SurvivalRules(state, terrain, survival, rules);
+
+        // The rules of props exist only for content that has props (K6-31 D21): without them digging and hitting behave as in K6-29W and K6-30.
+        var propField = survival is { Props.Count: > 0 } ? new PropField(state, terrain, rules) : null;
+        _survival = survival is null ? null : new SurvivalRules(state, terrain, survival, rules, propField);
+        _props = propField is null ? null : new PropRules(state, terrain, survival!, rules, propField);
         _functional = new FunctionalBlockRules(state, rules, content, survival);
         _crafting = new CraftingRules(state, rules, content, survival);
 
         // The settlements and the automatic discoveries are on only when the content has recipes (K6-32 D9b); without them the K6-29W and K6-30 journals stay as they were.
         _settlements = survival is { Recipes.Count: > 0 } ? new StationSettlements(state, rules, survival) : null;
         Survival = survival;
-        _validator = new IntentValidator(state, terrain, rules, content, _survival, _functional);
+        _validator = new IntentValidator(state, terrain, rules, content, _survival, _functional, _props);
     }
 
     /// <summary>World state.</summary>
@@ -154,7 +160,26 @@ public sealed class ServerSimulation
 
         Operation operation;
         var survivalResolved = false;
-        if (_crafting.TryResolve(player, intent, facts, out operation, out reason) || _functional.TryResolve(player, intent, facts, out operation, out reason))
+        var propResolved = false;
+        if (intent is PropHitIntent propHit)
+        {
+            // A hit that only wears the prop changes no world state: accepted without an operation (K6-31 D10).
+            reason = _props!.Resolve(player, propHit, out var harvest);
+            if (reason != RejectReason.None)
+            {
+                return IntentResult.Rejected(reason);
+            }
+
+            if (harvest is null)
+            {
+                IntentValidator.BucketFor(intent, buckets!)!.Consume();
+                return IntentResult.AcceptedWithoutOperation();
+            }
+
+            operation = harvest;
+            propResolved = true;
+        }
+        else if (_crafting.TryResolve(player, intent, facts, out operation, out reason) || _functional.TryResolve(player, intent, facts, out operation, out reason))
         {
             // Crafting and stations (K6-32), functional blocks (K6-30): chests, beds, lamps, doors, quick stack. The operation carries every value from the content.
             if (reason != RejectReason.None)
@@ -191,6 +216,11 @@ public sealed class ServerSimulation
         if (survivalResolved)
         {
             _survival!.Commit();
+        }
+
+        if (propResolved)
+        {
+            _props!.Commit();
         }
 
         IntentValidator.BucketFor(intent, buckets!)!.Consume();
@@ -392,6 +422,8 @@ public sealed class ServerSimulation
             _bucketList[i].Blocks.Refill();
             _bucketList[i].Markers.Refill();
             _bucketList[i].Items.Refill();
+            _bucketList[i].Props.Refill();
+            _bucketList[i].PropProbes.Refill();
         }
     }
 

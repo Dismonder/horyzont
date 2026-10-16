@@ -27,7 +27,7 @@ public static class WorldCreator
         ArgumentNullException.ThrowIfNull(time);
         if (world.LastOpId != OpId.None || world.Constructs.Count != 0 || world.Players.Count != 0
             || world.TerrainVersions.Count != 0 || world.Containers.Count != 0 || world.ContainerIds.NextValue != 1
-            || world.BlockEntities.Count != 0 || world.Progress.Count != 0 || world.ProgressKeys.Count != 0)
+            || world.BlockEntities.Count != 0 || world.Progress.Count != 0 || world.HarvestedProps.Count != 0 || world.ProgressKeys.Count != 0)
         {
             throw new ArgumentException("Only a world fresh from WorldState.CreateNew can be created.", nameof(world));
         }

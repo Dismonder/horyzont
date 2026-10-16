@@ -100,6 +100,9 @@ public enum MessageType : byte
     /// <summary>Client → server, reliable: unsubscribe from a container (K6-29).</summary>
     ContainerUnsubscribe = 43,
 
+    /// <summary>Server → client, reliable ordered: the full set of harvested props of some regions of a planet (K6-31).</summary>
+    PropStates = 45,
+
     /// <summary>Server → client, reliable ordered: the full list of functional block states of one construct (K6-30).</summary>
     BlockEntityStates = 46,
 

@@ -7,6 +7,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Progress;
+using Horyzont.Core.Props;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Serialization;
 using Horyzont.Core.World;
@@ -50,7 +51,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
 
     /// <summary>
     /// Applies an operation when its preconditions hold and sets <see cref="WorldState.LastOpId"/>; otherwise changes nothing. Item and state
-    /// operations (31-37, 40, 44, 49) and the components of a <see cref="CompoundOp"/> are applied on the live state with an
+    /// operations (31-37, 40, 43-45, 47-49) and the components of a <see cref="CompoundOp"/> are applied on the live state with an
     /// <see cref="UndoLog"/>; a refused component rolls everything back. The last component of a compound, a terrain edit or an edit of a
     /// construct, is checked and applied last (D12 of K6-30). Every container changed by the operation gets its version raised by one at
     /// the end, and so does every construct whose function states changed.
@@ -123,7 +124,8 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
     /// <summary>Item and state operations: applied with the undo log, alone or as a component of a compound.</summary>
     private static bool IsComponent(Operation operation) =>
         operation is ItemTransferOp or ItemSwapOp or ItemCreateOp or ItemDestroyOp or ContainerCreateOp or ContainerRemoveOp
-            or ContainerConfigureOp or BlockEntitySetOp or RespawnPointSetOp or BlockFunctionStateSetOp or ItemDiscoverOp or ProgressKeyGrantOp or FoodSetOp;
+            or ContainerConfigureOp or BlockEntitySetOp or RespawnPointSetOp or BlockFunctionStateSetOp or ItemDiscoverOp or ProgressKeyGrantOp
+            or PropHarvestOp or PropRegrowOp or FoodSetOp;
 
     private void BeginOperation()
     {
@@ -526,6 +528,8 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         RespawnPointSetOp op => ApplyRespawnPointSet(op),
         FoodSetOp op => ApplyFoodSet(op),
         BlockFunctionStateSetOp op => ApplyFunctionState(op),
+        PropHarvestOp op => ApplyPropHarvest(op),
+        PropRegrowOp op => ApplyPropRegrow(op),
         _ => $"{operation.Kind} is not an item or state operation",
     };
 
@@ -1086,6 +1090,46 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             }
         }
 
+        return null;
+    }
+
+    private string? ApplyPropHarvest(PropHarvestOp op)
+    {
+        // The state only: whether the generator has such a prop is the business of the validator (ZASADY 4). The identifier must be one that the
+        // world loader accepts too, otherwise a journaled operation would stop the world from loading (A1 review).
+        if (!state.Planets.TryGet(op.Planet, out var planet))
+        {
+            return "planet unknown";
+        }
+
+        if (!op.Prop.IsValid || !CubeSphereGrid.TryGetCellsPerFace(planet.RadiusMeters, out var cellsPerFace)
+            || op.Prop.CellU >= cellsPerFace || op.Prop.CellV >= cellsPerFace)
+        {
+            return "the prop identifier is outside the grid of the planet";
+        }
+
+        if (state.HarvestedProps.Contains(op.Planet, op.Prop))
+        {
+            return "prop already harvested";
+        }
+
+        _undo.SetHarvested(state, op.Planet, op.Prop, op.Tick);
+        return null;
+    }
+
+    private string? ApplyPropRegrow(PropRegrowOp op)
+    {
+        if (!state.Planets.TryGet(op.Planet, out _))
+        {
+            return "planet unknown";
+        }
+
+        if (!state.HarvestedProps.Contains(op.Planet, op.Prop))
+        {
+            return "prop is not harvested";
+        }
+
+        _undo.SetRegrown(state, op.Planet, op.Prop);
         return null;
     }
 

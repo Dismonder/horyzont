@@ -36,7 +36,7 @@ public sealed class ProtocolContractTests
             (OperationKind.Compound, 30), (OperationKind.ItemTransfer, 31), (OperationKind.ItemSwap, 32), (OperationKind.ItemCreate, 33),
             (OperationKind.ItemDestroy, 34), (OperationKind.ContainerCreate, 35),
             (OperationKind.ContainerRemove, 36), (OperationKind.ContainerConfigure, 37), (OperationKind.BlockEntitySet, 40), (OperationKind.FoodSet, 41), (OperationKind.ItemDiscover, 43), (OperationKind.RespawnPointSet, 44), (OperationKind.ProgressKeyGrant, 45),
-            (OperationKind.BlockFunctionStateSet, 49));
+            (OperationKind.PropRegrow, 47), (OperationKind.PropHarvest, 48), (OperationKind.BlockFunctionStateSet, 49));
         AssertValues((RejectReason.None, 0), (RejectReason.UnknownPlayer, 1), (RejectReason.PlayerOffline, 2), (RejectReason.RateLimited, 3),
             (RejectReason.InvalidParameters, 4), (RejectReason.RayOriginMismatch, 5), (RejectReason.NoHit, 6), (RejectReason.OutOfReach, 7),
             (RejectReason.AreaNotLoaded, 8), (RejectReason.BelowCore, 9), (RejectReason.OutsideAtmosphere, 10), (RejectReason.UnknownPlanet, 11),
@@ -46,7 +46,7 @@ public sealed class ProtocolContractTests
             (RejectReason.NoCockpit, 30), (RejectReason.ShipAnchored, 31), (RejectReason.NoEngine, 37), (RejectReason.MarkerLimit, 36), (RejectReason.ShipNotParked, 39),
             (RejectReason.InventoryFull, 40), (RejectReason.NotEnoughItems, 41), (RejectReason.ContainerChanged, 42), (RejectReason.ContainerLocked, 43),
             (RejectReason.StationRequired, 44), (RejectReason.RecipeLocked, 45), (RejectReason.TooFarFromStation, 46),
-            (RejectReason.NotOwner, 54), (RejectReason.ContainerNotEmpty, 57));
+            (RejectReason.ToolTierTooLow, 53), (RejectReason.NotOwner, 54), (RejectReason.ContainerNotEmpty, 57));
         AssertValues((MessageType.ClientHello, 1), (MessageType.ServerHello, 2), (MessageType.HandshakeReject, 3), (MessageType.ClientReady, 4),
             (MessageType.TerrainCacheReport, 5), (MessageType.TerrainBlockData, 6), (MessageType.TerrainChecksums, 7), (MessageType.ConstructState, 8),
             (MessageType.ConstructRemoved, 9), (MessageType.OperationApplied, 10), (MessageType.IntentSubmit, 11), (MessageType.IntentReply, 12),
@@ -55,7 +55,7 @@ public sealed class ProtocolContractTests
             (MessageType.ShipStatus, 31), (MessageType.StarSystemState, 32),
             (MessageType.MarkersState, 33),
             (MessageType.ContainerState, 40), (MessageType.ContainerDelta, 41), (MessageType.ContainerSubscribe, 42),
-            (MessageType.ContainerUnsubscribe, 43), (MessageType.BlockEntityStates, 46), (MessageType.PlayerProgressState, 48), (MessageType.ItemRegistry, 49));
+            (MessageType.ContainerUnsubscribe, 43), (MessageType.PropStates, 45), (MessageType.BlockEntityStates, 46), (MessageType.PlayerProgressState, 48), (MessageType.ItemRegistry, 49));
         AssertValues((StationKind.Hands, 0), (StationKind.Workbench, 1), (StationKind.Furnace, 2), (StationKind.Refinery, 3), (StationKind.Kitchen, 4),
             (StationKind.Fabricator, 5));
         AssertValues((DeliveryChannel.ReliableOrdered, 0), (DeliveryChannel.Unreliable, 1));
@@ -96,7 +96,7 @@ public sealed class ProtocolContractTests
     }
 
     /// <summary>
-    /// K2-10 adds reject reason 21 (and raised the protocol version from 1 to 2; K2-11 raises it to 3, K6-29W to 14, K6-30 to 15, K6-32 to 16, see <see cref="ProtocolVersion_MatchesDocumentedMergeValue"/>).
+    /// K2-10 adds reject reason 21 (and raised the protocol version from 1 to 2; K2-11 raises it to 3, K6-29W to 14, K6-30 to 15, K6-31 to 16, K6-32 to 17, see <see cref="ProtocolVersion_MatchesDocumentedMergeValue"/>).
     /// </summary>
     [Fact]
     public void RejectReason_ServerReadOnly_RoundTrips()
@@ -150,19 +150,21 @@ public sealed class ProtocolContractTests
     /// K5-26 adds ShipStatus (31) and the seat in a player's EntitySpawn.KindData after K5-27 (main 12): 13.
     /// K6-29W adds items (intents 20-21, reject reasons 40-43, messages 40-43 and 49) after K5-26 (main 13): 14.
     /// K6-30 adds operations 36, 37, 40, 44, 49, intents 22, 23, 28, 29, reject reasons 54 and 57, message 46 and blobs 21, 22 after K6-29W (main 14): 15.
+    /// K6-31 adds operations 47, 48, intent 27, reject reason 53 and message 45 after K6-30 (main 15): 16.
+    /// K6-32 adds operations 43, 45, station state 3, intent 24, reject reasons 44 to 46, message 48, blob 22 version 2 and blob 25 after K6-31 (main 16): 17.
     /// A rebase onto a newer main updates this value, the constant and the package plan together.
     /// </summary>
     [Fact]
     public void ProtocolVersion_MatchesDocumentedMergeValue()
     {
-        Assert.Equal(16, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(17, ProtocolConstants.ProtocolVersion);
         Assert.Equal(0x3F, ProtocolConstants.InputButtonsMask);
     }
 
     [Fact]
     public void Constants_GoldenValues()
     {
-        Assert.Equal(16, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(17, ProtocolConstants.ProtocolVersion);
         Assert.Equal(262144, ProtocolConstants.MaxReliableMessageBytes);
         Assert.Equal(1150, ProtocolConstants.MaxUnreliableMessageBytes);
         Assert.Equal(32, ProtocolConstants.MaxDisplayNameBytes);
@@ -180,6 +182,8 @@ public sealed class ProtocolContractTests
         Assert.Equal(256, ProtocolConstants.MaxProgressKeys);
         Assert.Equal(513, ProtocolConstants.MaxDiscoveredBytes);
         Assert.Equal(32, ProtocolConstants.MaxTeleportNameBytes);
+        Assert.Equal(64, ProtocolConstants.MaxPropRegionsPerMessage);
+        Assert.Equal(4096, ProtocolConstants.MaxPropEntriesPerMessage);
     }
 
     [Fact]
@@ -237,6 +241,7 @@ public sealed class ProtocolContractTests
             new ContainerDelta(new ContainerId(1), 1, []),
             new ContainerSubscribe(new ContainerId(1)),
             new ContainerUnsubscribe(new ContainerId(1)),
+            new PropStates(new PlanetId(1), []),
             new BlockEntityStates(new EntityId(1), []),
             new PlayerProgressState(Horyzont.Core.Progress.ItemTypeBitSet.Empty, []),
             new ItemRegistry([]),

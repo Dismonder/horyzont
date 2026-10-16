@@ -23,6 +23,7 @@ internal sealed class ChangeTracker
 
     internal HashSet<PlayerId> Progress { get; } = [];
 
+    internal HashSet<HarvestedPropKey> HarvestedProps { get; } = [];
     /// <summary>Gets a value indicating whether the progress keys of the world changed (K6-32).</summary>
     internal bool ProgressKeys { get; private set; }
 
@@ -42,6 +43,7 @@ internal sealed class ChangeTracker
 
     internal void MarkProgress(PlayerId id) => Progress.Add(id);
 
+    internal void MarkHarvestedProp(HarvestedPropKey key) => HarvestedProps.Add(key);
     internal void MarkProgressKeys() => ProgressKeys = true;
 
     internal void Clear()
@@ -55,6 +57,7 @@ internal sealed class ChangeTracker
         Containers.Clear();
         BlockEntities.Clear();
         Progress.Clear();
+        HarvestedProps.Clear();
         ProgressKeys = false;
     }
 }

@@ -171,6 +171,7 @@ public static class WorldLoader
             ReadContainers(connection, builder);
             ReadBlockEntities(connection, builder);
             ReadPlayerProgress(connection, builder);
+            ReadHarvestedProps(connection, builder);
 
             // K6-32: the progress keys of the world; worlds saved before have no row and no keys.
             if (meta.TryGetValue(Sql.MetaProgressKeys, out var keys))
@@ -432,6 +433,18 @@ public static class WorldLoader
             }
 
             builder.AddPlayerProgress(record);
+        }
+    }
+
+    private static void ReadHarvestedProps(SqliteConnection connection, WorldStateBuilder builder)
+    {
+        using var command = Sql.Command(connection, null, "SELECT planet_id, prop_id, tick FROM harvested_props ORDER BY planet_id, prop_id;");
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            // The tick is a ulong stored bit for bit in the signed INTEGER; the planet, the reserved bits and the grid are checked by the builder.
+            builder.AddHarvestedProp(new HarvestedPropRecord(
+                new PlanetId(Sql.FromDb(reader.GetInt64(0))), new PropId(Sql.FromDb(reader.GetInt64(1))), new Tick(Sql.FromDb(reader.GetInt64(2)))));
         }
     }
 

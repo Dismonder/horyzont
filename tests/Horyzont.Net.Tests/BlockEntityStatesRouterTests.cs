@@ -46,8 +46,8 @@ public sealed class BlockEntityStatesRouterTests
         Assert.Equal(BlockEntityStatesType, type);
         Assert.Equal(DeliveryChannel.ReliableOrdered, MessageChannels.For(BlockEntityStatesType));
 
-        // Its neighbours in the survival range stay unassigned (44, 45 and 47 belong to later packages; 48 is the player progress state of K6-32).
-        foreach (byte neighbour in new byte[] { 44, 45, 47 })
+        // Its neighbours in the survival range stay unassigned (44 and 47 belong to later packages; 45 is PropStates of K6-31, 48 the player progress state of K6-32).
+        foreach (byte neighbour in new byte[] { 44, 47 })
         {
             Assert.False(MessageRouter.TryGetType([neighbour], out _));
         }

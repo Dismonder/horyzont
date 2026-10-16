@@ -14,4 +14,10 @@ internal sealed class PlayerBuckets(GameRules rules)
     internal TokenBucket Markers { get; } = new(rules.MarkerIntentsPerSecond, rules.MarkerIntentBurst, rules.TickRate);
     /// <summary>Item intents (move, drop), K6-29W D19.</summary>
     internal TokenBucket Items { get; } = new(rules.ItemIntentsPerSecond, rules.ItemIntentBurst, rules.TickRate);
+
+    /// <summary>Prop hits, the wearing ones as well as the last one (K6-31 D22, D24).</summary>
+    internal TokenBucket Props { get; } = new(rules.PropHitsPerSecond, rules.PropHitBurst, rules.TickRate);
+
+    /// <summary>Generator lookups of prop hits, refused ones included (a refused hit does not use a hit token).</summary>
+    internal TokenBucket PropProbes { get; } = new(rules.PropProbesPerSecond, rules.PropProbeBurst, rules.TickRate);
 }

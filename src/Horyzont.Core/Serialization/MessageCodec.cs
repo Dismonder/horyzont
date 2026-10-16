@@ -514,6 +514,10 @@ public static class MessageCodec
                 WriteBlockEntityStates(w, bes);
                 break;
 
+            case PropStates ps:
+                WritePropStates(w, ps);
+                break;
+
             case PlayerProgressState progress:
                 WritePlayerProgressState(w, progress);
                 break;
@@ -939,6 +943,9 @@ public static class MessageCodec
             case MessageType.BlockEntityStates:
                 return ReadBlockEntityStates(ref r);
 
+            case MessageType.PropStates:
+                return ReadPropStates(ref r);
+
             case MessageType.PlayerProgressState:
                 return ReadPlayerProgressState(ref r);
 
@@ -1077,6 +1084,134 @@ public static class MessageCodec
         }
 
         return new BlockEntityStates(construct, entries);
+    }
+
+    /// <summary>Most prop identifiers a region of 8 x 8 cells and 4 slots can hold (K6-31 D4).</summary>
+    private const int MaxPropsPerRegion = 256;
+
+    private static void WritePropStates(ByteWriter w, PropStates states)
+    {
+        ArgumentNullException.ThrowIfNull(states.Regions);
+        if (states.Regions.Count is < 1 or > ProtocolConstants.MaxPropRegionsPerMessage)
+        {
+            throw new ArgumentException(
+                $"PropStates regions count {states.Regions.Count} is outside 1..{ProtocolConstants.MaxPropRegionsPerMessage}.", nameof(states));
+        }
+
+        w.WriteVarUInt(states.Planet.Value);
+        w.WriteVarUInt((ulong)states.Regions.Count);
+        long total = 0;
+        PropRegionKey previousRegion = default;
+        for (int i = 0; i < states.Regions.Count; i++)
+        {
+            var region = states.Regions[i];
+            ArgumentNullException.ThrowIfNull(region.Props);
+            if (!region.Region.IsValid)
+            {
+                throw new ArgumentException($"Invalid PropStates region key {region.Region.Value}.", nameof(states));
+            }
+
+            if (i > 0 && region.Region.Value <= previousRegion.Value)
+            {
+                throw new ArgumentException("PropStates regions must be strictly ascending.", nameof(states));
+            }
+
+            if (region.Props.Count > MaxPropsPerRegion)
+            {
+                throw new ArgumentException($"PropStates region entries count {region.Props.Count} exceeds {MaxPropsPerRegion}.", nameof(states));
+            }
+
+            total += region.Props.Count;
+            if (total > ProtocolConstants.MaxPropEntriesPerMessage)
+            {
+                throw new ArgumentException($"PropStates entries count exceeds limit {ProtocolConstants.MaxPropEntriesPerMessage}.", nameof(states));
+            }
+
+            previousRegion = region.Region;
+            w.WriteVarUInt(region.Region.Value);
+            w.WriteVarUInt((ulong)region.Props.Count);
+            PropId previous = default;
+            for (int j = 0; j < region.Props.Count; j++)
+            {
+                var entry = region.Props[j];
+                if (entry.Prop.Region != region.Region)
+                {
+                    throw new ArgumentException("PropStates entries must belong to their region.", nameof(states));
+                }
+
+                if (j > 0 && entry.Prop.Value <= previous.Value)
+                {
+                    throw new ArgumentException("PropStates entries must be strictly ascending.", nameof(states));
+                }
+
+                previous = entry.Prop;
+                CoreCodecPrimitives.WritePropId(w, entry.Prop);
+                w.WriteVarUInt(entry.Tick.Value);
+            }
+        }
+    }
+
+    private static PropStates ReadPropStates(ref ByteReader r)
+    {
+        var planet = new PlanetId(r.ReadVarUInt());
+        ulong regionCount = r.ReadVarUInt();
+        if (regionCount is < 1 or > ProtocolConstants.MaxPropRegionsPerMessage)
+        {
+            throw new ProtocolViolationException($"PropStates regions count {regionCount} is outside 1..{ProtocolConstants.MaxPropRegionsPerMessage}.");
+        }
+
+        var regions = new PropRegionState[(int)regionCount];
+        long total = 0;
+        PropRegionKey previousRegion = default;
+        for (int i = 0; i < regions.Length; i++)
+        {
+            var key = new PropRegionKey(r.ReadVarUInt());
+            if (!key.IsValid)
+            {
+                throw new ProtocolViolationException($"Invalid PropStates region key {key.Value}.");
+            }
+
+            if (i > 0 && key.Value <= previousRegion.Value)
+            {
+                throw new ProtocolViolationException("PropStates regions are not strictly ascending.");
+            }
+
+            ulong count = r.ReadVarUInt();
+            if (count > MaxPropsPerRegion)
+            {
+                throw new ProtocolViolationException($"PropStates region entries count {count} exceeds {MaxPropsPerRegion}.");
+            }
+
+            total += (long)count;
+            if (total > ProtocolConstants.MaxPropEntriesPerMessage)
+            {
+                throw new ProtocolViolationException($"PropStates entries count exceeds limit {ProtocolConstants.MaxPropEntriesPerMessage}.");
+            }
+
+            previousRegion = key;
+            var entries = new HarvestedPropEntry[(int)count];
+            PropId previous = default;
+            for (int j = 0; j < entries.Length; j++)
+            {
+                var prop = CoreCodecPrimitives.ReadPropId(ref r);
+                if (prop.Region != key)
+                {
+                    throw new ProtocolViolationException("PropStates entry outside its region.");
+                }
+
+                if (j > 0 && prop.Value <= previous.Value)
+                {
+                    throw new ProtocolViolationException("PropStates entries are not strictly ascending.");
+                }
+
+                previous = prop;
+                entries[j] = new HarvestedPropEntry(prop, new Tick(r.ReadVarUInt()));
+            }
+
+            regions[i] = new PropRegionState(key, entries);
+        }
+
+        return new PropStates(planet, regions);
     }
 
     /// <summary>Length of a whole <see cref="ShipStatus"/> frame: type, format version and 30 payload bytes.</summary>

@@ -25,6 +25,7 @@ public sealed class ClientInventory : IClientSessionListener
     private readonly Dictionary<ulong, ClientContainer> _containers = [];
     private readonly HashSet<ulong> _awaitingState = [];
     private readonly Dictionary<ushort, string> _keys = [];
+    private readonly Dictionary<string, ushort> _ids = new(StringComparer.Ordinal);
     private readonly List<KeyValuePair<ItemTypeId, int>> _net = [];
 
     /// <summary>Initializes a new instance of the <see cref="ClientInventory"/> class.</summary>
@@ -99,14 +100,12 @@ public sealed class ClientInventory : IClientSessionListener
     public bool TryGetTypeId(string key, out ItemTypeId type)
     {
         ArgumentNullException.ThrowIfNull(key);
-        foreach (var (id, itemKey) in _keys)
+        if (_ids.TryGetValue(key, out var id))
         {
-            if (string.Equals(itemKey, key, StringComparison.Ordinal))
-            {
-                type = new ItemTypeId(id);
-                return true;
-            }
+            type = new ItemTypeId(id);
+            return true;
         }
+
         type = default;
         return false;
     }
@@ -154,10 +153,12 @@ public sealed class ClientInventory : IClientSessionListener
         {
             case ItemRegistry registry:
                 _keys.Clear();
+                _ids.Clear();
                 ushort max = 0;
                 foreach (var entry in registry.Entries)
                 {
                     _keys[entry.Id] = entry.Key;
+                    _ids[entry.Key] = entry.Id;
                     max = Math.Max(max, entry.Id);
                 }
 
@@ -178,6 +179,7 @@ public sealed class ClientInventory : IClientSessionListener
         _containers.Clear();
         _awaitingState.Clear();
         _keys.Clear();
+        _ids.Clear();
         Bag = null;
         Hotbar = null;
         Equipment = null;

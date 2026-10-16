@@ -106,6 +106,7 @@ public sealed partial class VoxelServerTerrainFactory : IServerTerrainFactory
             {
                 Created = PlanetCreated,
             };
+            service.GeneratedSurfaces = planets.GetSampler;
             planets.ActivateHome();
 
             // After a restart the mipmaps above every edited block are checked against their fingerprint and rebuilt where they differ.

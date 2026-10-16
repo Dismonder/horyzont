@@ -44,7 +44,7 @@ internal static class FoodContent
             FoodItem(SurvivalContentFactory.BrothKey, Broth),
             FoodItem(SurvivalContentFactory.BreadKey, Bread),
         ];
-        return new SurvivalContent(new ItemCatalog(items), [.. basic.Yields], basic.StartKit);
+        return new SurvivalContent(new ItemCatalog(items), [.. basic.Yields], basic.StartKit, [.. basic.Props], [.. basic.Recipes]);
     }
 
     /// <summary>The food table of <see cref="Create"/> for the item types of a world.</summary>

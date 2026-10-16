@@ -16,14 +16,19 @@ public sealed class IntentPacer
     /// <summary>Ticks between repeats of a held block action (4 per second).</summary>
     public const int BlockRepeatTicks = 15;
 
+    /// <summary>Ticks between repeats of a held prop hit (4 per second, the rate of the server).</summary>
+    public const int PropRepeatTicks = 15;
+
     private const int MaxCatchUpTicks = 1200;
 
     private readonly TokenBucket _terrain;
     private readonly TokenBucket _blocks;
+    private readonly TokenBucket _props;
     private readonly SlidingWindowLimiter _window;
     private long _lastTick;
     private long _lastTerrainSend = long.MinValue / 2;
     private long _lastBlockSend = long.MinValue / 2;
+    private long _lastPropSend = long.MinValue / 2;
     private bool _started;
 
     /// <summary>Initializes a new instance of the <see cref="IntentPacer"/> class.</summary>
@@ -33,6 +38,7 @@ public sealed class IntentPacer
         ArgumentNullException.ThrowIfNull(rules);
         _terrain = new TokenBucket(rules.TerrainEditsPerSecond, rules.TerrainEditBurst, rules.TickRate);
         _blocks = new TokenBucket(rules.BlockEditsPerSecond, rules.BlockEditBurst, rules.TickRate);
+        _props = new TokenBucket(rules.PropHitsPerSecond, rules.PropHitBurst, rules.TickRate);
         _window = new SlidingWindowLimiter(Math.Max(1, rules.TerrainEditsPerSecond), rules.TickRate);
     }
 
@@ -45,14 +51,29 @@ public sealed class IntentPacer
     {
         Advance(clientTick);
         var terrain = paceClass == PaceClass.Terrain;
-        var last = terrain ? _lastTerrainSend : _lastBlockSend;
-        var interval = terrain ? TerrainRepeatTicks : BlockRepeatTicks;
+        var last = paceClass switch
+        {
+            PaceClass.Terrain => _lastTerrainSend,
+            PaceClass.Prop => _lastPropSend,
+            _ => _lastBlockSend,
+        };
+        var interval = paceClass switch
+        {
+            PaceClass.Terrain => TerrainRepeatTicks,
+            PaceClass.Prop => PropRepeatTicks,
+            _ => BlockRepeatTicks,
+        };
         if (repeat && clientTick - last < interval)
         {
             return false;
         }
 
-        var bucket = terrain ? _terrain : _blocks;
+        var bucket = paceClass switch
+        {
+            PaceClass.Terrain => _terrain,
+            PaceClass.Prop => _props,
+            _ => _blocks,
+        };
         if (!bucket.HasToken || (terrain && !_window.CanAccept((ulong)clientTick)))
         {
             return false;
@@ -63,6 +84,10 @@ public sealed class IntentPacer
         {
             _window.Record((ulong)clientTick);
             _lastTerrainSend = clientTick;
+        }
+        else if (paceClass == PaceClass.Prop)
+        {
+            _lastPropSend = clientTick;
         }
         else
         {
@@ -81,6 +106,7 @@ public sealed class IntentPacer
             {
                 _terrain.Refill();
                 _blocks.Refill();
+                _props.Refill();
             }
         }
 

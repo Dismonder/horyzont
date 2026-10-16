@@ -1,0 +1,13 @@
+{
+  "formatVersion": 1,
+  "props": [
+    { "key": "core:pine", "hitPoints": 6, "toolTier": 1, "regrowSeconds": 1200, "yield": [ { "item": "core:wood", "count": 4 } ] },
+    { "key": "core:pine_tall", "hitPoints": 8, "toolTier": 1, "regrowSeconds": 1800, "yield": [ { "item": "core:wood", "count": 6 } ] },
+    { "key": "core:broadleaf", "hitPoints": 6, "toolTier": 1, "regrowSeconds": 1200, "yield": [ { "item": "core:wood", "count": 4 } ] },
+    { "key": "core:broadleaf_autumn", "hitPoints": 6, "toolTier": 1, "regrowSeconds": 1200, "yield": [ { "item": "core:wood", "count": 4 } ] },
+    { "key": "core:bush", "hitPoints": 1, "toolTier": 0, "regrowSeconds": 300, "yield": [ { "item": "core:fiber", "count": 2 } ] },
+    { "key": "core:rock", "hitPoints": 3, "toolTier": 0, "regrowSeconds": 0, "yield": [ { "item": "core:stone", "count": 2 } ] },
+    { "key": "core:boulder", "hitPoints": 10, "toolTier": 1, "regrowSeconds": 0, "yield": [ { "item": "core:stone", "count": 10 } ] },
+    { "key": "core:crystals", "hitPoints": 6, "toolTier": 1, "regrowSeconds": 0, "yield": [ { "item": "core:crystal", "count": 3 } ] }
+  ]
+}

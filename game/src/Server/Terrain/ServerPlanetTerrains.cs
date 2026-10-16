@@ -209,6 +209,11 @@ public sealed partial class ServerPlanetTerrains : IServerTickParticipant, IPlan
         return _service.GetReadiness(planet, ground, TerrainGround.Core(radius), clear);
     }
 
+    /// <summary>The surface sampler of a planet (K6-31 D6): built with the generator of the body, so it exists also while the planet has no active terrain.</summary>
+    /// <param name="planet">The planet.</param>
+    /// <returns>The sampler; null for an unknown planet.</returns>
+    public PlanetSurfaceSampler? GetSampler(PlanetId planet) => _bodies.TryGetValue(planet.Value, out var body) ? body.Sampler : null;
+
     /// <summary>Radius of the generated ground of a planet along a direction (cached per direction, <see cref="DirectionRadiusCache"/>; main thread).</summary>
     /// <param name="planet">The planet.</param>
     /// <param name="direction">The direction in the planet frame.</param>

@@ -130,6 +130,30 @@ public sealed class FixtureGenerator
     }
 
     /// <summary>
+    /// Writes <c>Fixtures/world-v3-props.db</c> (schema version 3, K6-31 D23): a planet with the prop layout; a tree, a rock and a bush
+    /// harvested in the checkpoint; a tree of another face harvested and the first tree regrown in the journal tail. Same rules as
+    /// <see cref="Generate_WorldV1"/>.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "Manual")]
+    public async Task Generate_WorldV3Props()
+    {
+        var target = Path.Combine(RepoRoot(), "tests", "Horyzont.Persistence.Tests", "Fixtures", MigrationTests.FixtureV3PropsName);
+        Assert.False(File.Exists(target), $"{target} exists; delete it first if it really must be regenerated.");
+        using var dir = new TempDirectory();
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 16, 14, 0, 0, TimeSpan.Zero));
+        await using (var h = WorldHarness.CreateNew(dir.WorldPath, world: PropWorldScript.NewWorld(), time: time))
+        {
+            await PropWorldScript.BuildAsync(h);
+        }
+
+        dir.ReleasePools();
+        RawDb.Execute(dir.WorldPath, "PRAGMA journal_mode = DELETE;");
+        Assert.False(File.Exists(dir.WorldPath + "-wal"));
+        File.Copy(dir.WorldPath, target);
+    }
+
+    /// <summary>
     /// Writes <c>Fixtures/world-v3-crafting.db</c> (schema version 3, K6-32 D25): two players (Alice with a respawn point and discoveries, Bob with
     /// discoveries only), two chests, a furnace smelting with its input and the progress key <c>test:boss_2</c> in the checkpoint; the progress key
     /// <c>test:boss</c>, a discovery, the settlement of one piece of the furnace and a craft from two chests in the journal tail. Same rules as
