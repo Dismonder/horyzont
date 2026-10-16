@@ -32,6 +32,15 @@ public sealed class VitalsStepTests
     }
 
     [Fact]
+    public void Advance_KeepsSuit()
+    {
+        var suit = new SuitResources(10f, 20f, 30f, 40f, 50f);
+        var result = Step(new PlayerVitals(50f, 70f, new Tick(2000), false, suit), _idle);
+
+        Assert.Equal(suit, result.Vitals.Suit);
+    }
+
+    [Fact]
     public void Regen_BaseHealthRate()
     {
         // 0.5 per second for one second.

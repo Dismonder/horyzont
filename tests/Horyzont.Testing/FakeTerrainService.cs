@@ -199,7 +199,15 @@ public sealed class FakeTerrainService(float surfaceRadius = 4000f, float voxelS
                 var wall = origin + (direction * exit);
                 if (wall.LengthSquared() > r * r)
                 {
-                    return false;
+                    const float epsilon = 0.001f;
+                    var remaining = maxDistance - exit - epsilon;
+                    if (remaining < 0f || !Raycast(planet, wall + (direction * epsilon), direction, remaining, out var outside))
+                    {
+                        return false;
+                    }
+
+                    hit = outside with { Distance = outside.Distance + exit + epsilon };
+                    return true;
                 }
 
                 hit = new TerrainHit(wall, Vector3.Normalize(cave.Center - wall), exit);

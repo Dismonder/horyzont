@@ -161,9 +161,53 @@ public sealed class SuitRefillOpsTests
         var f = new HazardWorld();
         var destroy = new ItemDestroyOp(BagSlot(Player1, 0), Stone, 1, ItemSink.Admin);
 
+        var g = new HazardWorld();
+        g.Give(Player1, Stone);
+        g.Apply(new CompoundOp([Refill(Player1, SuitResource.Oxygen, 10, 100), destroy]));
+        Assert.Null(g.VitalsOf(Player1));
+
         f.AssertFails(new CompoundOp([Refill(Player1, SuitResource.Oxygen, 10, 100), destroy]));
 
         Assert.Null(f.VitalsOf(Player1));
+
+        f.SetSuit(Player1, null);
+        var before = f.VitalsOf(Player1);
+        f.AssertFails(new CompoundOp([Refill(Player1, SuitResource.Oxygen, 10, 100), destroy]));
+        Assert.Equal(before, f.VitalsOf(Player1));
+        f.Give(Player1, Stone);
+        f.Apply(new CompoundOp([Refill(Player1, SuitResource.Oxygen, 10, 100), destroy]));
+        Assert.Equal(before, f.VitalsOf(Player1));
+    }
+
+    [Fact]
+    public void Refill_TwoRefillsThenFailure_UndoInReverseOrder()
+    {
+        var f = new HazardWorld();
+        f.SetSuit(Player1, _half);
+        var before = f.VitalsOf(Player1);
+        var destroy = new ItemDestroyOp(BagSlot(Player1, 0), Stone, 1, ItemSink.Admin);
+        var g = new HazardWorld();
+        g.SetSuit(Player1, _half);
+        g.Give(Player1, Stone);
+        Operation[] parts = [Refill(Player1, SuitResource.Oxygen, 10, 100), Refill(Player1, SuitResource.Oxygen, 20, 100), Refill(Player1, SuitResource.Heating, 5, 100), destroy];
+        g.Apply(new CompoundOp(parts));
+        Assert.Equal(_half with { Oxygen = 80f, Heating = 55f }, g.SuitOf(Player1));
+
+        f.AssertFails(new CompoundOp(parts));
+        Assert.Equal(before, f.VitalsOf(Player1));
+    }
+
+    [Fact]
+    public void UpdatePlayerVitals_InvalidSuit_Refused()
+    {
+        var f = new HazardWorld();
+        f.SetSuit(Player1, _half);
+        var before = f.VitalsOf(Player1);
+        foreach (var bad in new[] { float.NaN, 1001f })
+        {
+            Assert.False(f.Simulation.UpdatePlayerVitals(Player1, before!.Value with { Suit = _half with { Oxygen = bad } }));
+            Assert.Equal(before, f.VitalsOf(Player1));
+        }
     }
 
     [Fact]
@@ -223,11 +267,13 @@ public sealed class SuitRefillOpsTests
         f.Apply(Refill(Player1, SuitResource.Heating, 10, 100));
 
         var replay = new HazardWorld();
+        replay.SetSuit(Player1, _half);
         foreach (var entry in f.Blocks.Sim.Journal.Entries)
         {
             replay.Simulation.Replay(entry);
         }
 
         Assert.Equal(Horyzont.Core.Hashing.StateHasher.Hash(f.State), Horyzont.Core.Hashing.StateHasher.Hash(replay.State));
+        Assert.Equal(f.SuitOf(Player1), replay.SuitOf(Player1));
     }
 }

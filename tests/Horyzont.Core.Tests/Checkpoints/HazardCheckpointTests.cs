@@ -104,6 +104,26 @@ public sealed class HazardCheckpointTests
     }
 
     [Fact]
+    public void Builder_GeneratorWithOutputNextToIt_Throws()
+    {
+        var f = new HazardWorld();
+        var input = f.SetUpGenerator(GeneratorCell);
+        var checkpoint = f.State.CaptureCheckpoint();
+        Load(f.State, checkpoint);
+        var original = Assert.Single(checkpoint.UpsertedContainers, c => c.Id == input);
+        foreach (var kind in new[] { ContainerKind.StationInput, ContainerKind.StationOutput })
+        {
+            var extra = original with { Id = new ContainerId(checkpoint.NextContainerId), Kind = kind };
+            var corrupt = checkpoint with
+            {
+                NextContainerId = checkpoint.NextContainerId + 1,
+                UpsertedContainers = [.. checkpoint.UpsertedContainers, extra],
+            };
+            Assert.Throws<InvalidDataException>(() => Load(f.State, corrupt));
+        }
+    }
+
+    [Fact]
     public void Builder_InputWithoutGenerator_Throws()
     {
         var f = new HazardWorld();

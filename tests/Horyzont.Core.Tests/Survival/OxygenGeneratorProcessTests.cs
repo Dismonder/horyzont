@@ -31,7 +31,7 @@ public sealed class OxygenGeneratorProcessTests
     {
         var settlement = OxygenGeneratorProcess.Settle(2, PerCell, null, T(1000));
 
-        Assert.Equal(new GeneratorSettlement(0, T(1000)), settlement);
+        Assert.Equal(new GeneratorSettlement(1, T(1000)), settlement);
     }
 
     [Fact]
@@ -43,7 +43,7 @@ public sealed class OxygenGeneratorProcessTests
     [Fact]
     public void Settle_BurnsWholeCellsOnly()
     {
-        // Three cells, started at 1000: a cell burns 600 ticks, and one that is burning stays in the input until it is whole burned.
+        // Three queued cells plus the cell already consumed at start; only whole periods start another queued cell.
         Assert.Equal(new GeneratorSettlement(0, T(1000)), OxygenGeneratorProcess.Settle(3, PerCell, T(1000), T(1000)));
         Assert.Equal(new GeneratorSettlement(0, T(1000)), OxygenGeneratorProcess.Settle(3, PerCell, T(1000), T(1599)));
         Assert.Equal(new GeneratorSettlement(1, T(1600)), OxygenGeneratorProcess.Settle(3, PerCell, T(1000), T(1600)));
@@ -57,12 +57,14 @@ public sealed class OxygenGeneratorProcessTests
     [Fact]
     public void Settle_AllBurned_Idle()
     {
-        Assert.Equal(new GeneratorSettlement(3, null), OxygenGeneratorProcess.Settle(3, PerCell, T(1000), T(2800)));
+        Assert.Equal(new GeneratorSettlement(3, null), OxygenGeneratorProcess.Settle(3, PerCell, T(1000), T(3400)));
         Assert.Equal(new GeneratorSettlement(3, null), OxygenGeneratorProcess.Settle(3, PerCell, T(1000), T(500_000)));
-        Assert.Equal(new GeneratorSettlement(2, null), OxygenGeneratorProcess.Settle(2, PerCell, T(0), T(1200)));
+        Assert.Equal(new GeneratorSettlement(2, null), OxygenGeneratorProcess.Settle(2, PerCell, T(0), T(1800)));
 
-        // A running generator whose cells were taken out has nothing to burn and goes idle.
-        Assert.Equal(new GeneratorSettlement(0, null), OxygenGeneratorProcess.Settle(0, PerCell, T(1000), T(1100)));
+        // With no queued cells the prepaid cell continues until its deadline.
+        Assert.Equal(new GeneratorSettlement(0, T(1000)), OxygenGeneratorProcess.Settle(0, PerCell, T(1000), T(1100)));
+        Assert.Equal(new GeneratorSettlement(0, null), OxygenGeneratorProcess.Settle(0, PerCell, T(1000), T(1600)));
+        Assert.Equal(new GeneratorSettlement(3, T(2800)), OxygenGeneratorProcess.Settle(3, PerCell, T(1000), T(2800)));
     }
 
     [Fact]
@@ -101,16 +103,16 @@ public sealed class OxygenGeneratorProcessTests
     [Fact]
     public void IsRunning_UntilLastCellEnds()
     {
-        // Two cells started at 1000 run until 2200 (exclusive).
+        // One prepaid cell plus two queued cells run until 2800 (exclusive).
         Assert.True(OxygenGeneratorProcess.IsRunning(2, PerCell, T(1000), T(1000)));
         Assert.True(OxygenGeneratorProcess.IsRunning(2, PerCell, T(1000), T(1999)));
-        Assert.True(OxygenGeneratorProcess.IsRunning(2, PerCell, T(1000), T(2199)));
-        Assert.False(OxygenGeneratorProcess.IsRunning(2, PerCell, T(1000), T(2200)));
+        Assert.True(OxygenGeneratorProcess.IsRunning(2, PerCell, T(1000), T(2799)));
+        Assert.False(OxygenGeneratorProcess.IsRunning(2, PerCell, T(1000), T(2800)));
         Assert.False(OxygenGeneratorProcess.IsRunning(2, PerCell, T(1000), T(9999)));
 
-        // Idle (never started) and without cells it does not run.
+        // Without a start there is no prepaid cell; with a start and no queue it still runs.
         Assert.False(OxygenGeneratorProcess.IsRunning(2, PerCell, null, T(1000)));
-        Assert.False(OxygenGeneratorProcess.IsRunning(0, PerCell, T(1000), T(1000)));
+        Assert.True(OxygenGeneratorProcess.IsRunning(0, PerCell, T(1000), T(1000)));
     }
 
     [Fact]
@@ -127,6 +129,25 @@ public sealed class OxygenGeneratorProcessTests
     }
 
     [Fact]
+    public void RemoveLastCellMidBurn_GivesNoFreeTime()
+    {
+        var first = OxygenGeneratorProcess.Settle(1, PerCell, null, T(1000));
+        Assert.Equal(1, first.Burned);
+        Assert.True(OxygenGeneratorProcess.IsRunning(0, PerCell, first.NextStarted, T(1599)));
+        Assert.False(OxygenGeneratorProcess.IsRunning(0, PerCell, first.NextStarted, T(1600)));
+        Assert.Equal(new GeneratorSettlement(0, null), OxygenGeneratorProcess.Settle(0, PerCell, first.NextStarted, T(1600)));
+    }
+
+    [Fact]
+    public void NegativeCells_Throws()
+    {
+        Assert.True(OxygenGeneratorProcess.IsRunning(0, PerCell, T(0), T(1)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => OxygenGeneratorProcess.Settle(-1, PerCell, T(0), T(10)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => OxygenGeneratorProcess.IsRunning(-1, PerCell, T(0), T(10)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => OxygenGeneratorProcess.RemainingTicks(-1, PerCell, T(0), T(10)));
+    }
+
+    [Fact]
     public void TicksPerCellZero_Throws()
     {
         Assert.True(OxygenGeneratorProcess.IsRunning(1, 1, T(0), T(0)));
@@ -139,14 +160,14 @@ public sealed class OxygenGeneratorProcessTests
     [Fact]
     public void RemainingTicks_Counts()
     {
-        Assert.Equal(1200UL, OxygenGeneratorProcess.RemainingTicks(2, PerCell, T(1000), T(1000)));
-        Assert.Equal(700UL, OxygenGeneratorProcess.RemainingTicks(2, PerCell, T(1000), T(1500)));
-        Assert.Equal(1UL, OxygenGeneratorProcess.RemainingTicks(2, PerCell, T(1000), T(2199)));
-        Assert.Equal(0UL, OxygenGeneratorProcess.RemainingTicks(2, PerCell, T(1000), T(2200)));
-        Assert.Equal(1100UL, OxygenGeneratorProcess.RemainingTicks(3, PerCell, T(1000), T(1700)));
+        Assert.Equal(1800UL, OxygenGeneratorProcess.RemainingTicks(2, PerCell, T(1000), T(1000)));
+        Assert.Equal(1300UL, OxygenGeneratorProcess.RemainingTicks(2, PerCell, T(1000), T(1500)));
+        Assert.Equal(1UL, OxygenGeneratorProcess.RemainingTicks(2, PerCell, T(1000), T(2799)));
+        Assert.Equal(0UL, OxygenGeneratorProcess.RemainingTicks(2, PerCell, T(1000), T(2800)));
+        Assert.Equal(1700UL, OxygenGeneratorProcess.RemainingTicks(3, PerCell, T(1000), T(1700)));
 
         // Idle, without cells and before the start (a start in the future) is 0 or the whole time; only the first two are specified here.
         Assert.Equal(0UL, OxygenGeneratorProcess.RemainingTicks(2, PerCell, null, T(1500)));
-        Assert.Equal(0UL, OxygenGeneratorProcess.RemainingTicks(0, PerCell, T(1000), T(1000)));
+        Assert.Equal(600UL, OxygenGeneratorProcess.RemainingTicks(0, PerCell, T(1000), T(1000)));
     }
 }

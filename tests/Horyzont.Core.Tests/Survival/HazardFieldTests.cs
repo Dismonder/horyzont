@@ -17,6 +17,23 @@ public sealed class HazardFieldTests
         _profile with { Zones = [.. zones.Select(z => new HazardZoneDef(z.MinHeight, _ones with { Cold = z.ColdScale }))] };
 
     [Fact]
+    public void Rates_DaylightOutside01_Clamped()
+    {
+        Assert.Equal(_profile.Night, HazardField.Rates(_profile, 0f, -0.5f, 1f));
+        Assert.Equal(_profile.Day, HazardField.Rates(_profile, 0f, 1.5f, 1f));
+    }
+
+    [Fact]
+    public void Daylight_BandNotPositive_Throws()
+    {
+        Assert.Equal(1f, HazardField.Daylight(Vector3.UnitY, Vector3.UnitY, 0.1f));
+        foreach (var band in new[] { 0f, -0.1f, float.NaN })
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => HazardField.Daylight(Vector3.UnitY, Vector3.UnitY, band));
+        }
+    }
+
+    [Fact]
     public void Rates_DayNightBlend()
     {
         var night = HazardField.Rates(_profile, 0f, 0f, 1f);

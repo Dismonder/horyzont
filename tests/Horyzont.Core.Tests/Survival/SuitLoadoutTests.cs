@@ -26,6 +26,25 @@ public sealed class SuitLoadoutTests
     }
 
     [Fact]
+    public void Capacity_IsWholeNumber()
+    {
+        var stats = SuitLoadout.Compute(Equipment((4, HazardWorld.Tank)), _modules, _rules);
+        foreach (var resource in Enum.GetValues<SuitResource>())
+        {
+            Assert.Equal(MathF.Truncate(stats.Capacity[resource]), stats.Capacity[resource]);
+        }
+    }
+
+    [Fact]
+    public void StackOfThreeInModuleSlot_CountsOnce()
+    {
+        var equipment = Equipment((4, HazardWorld.Tank));
+        var once = SuitLoadout.Compute(equipment, _modules, _rules);
+        equipment[4] = new ItemStack(HazardWorld.Tank, 3);
+        Assert.Equal(once, SuitLoadout.Compute(equipment, _modules, _rules));
+    }
+
+    [Fact]
     public void NoModules_Base100()
     {
         var stats = SuitLoadout.Compute(Equipment(), _modules, _rules);

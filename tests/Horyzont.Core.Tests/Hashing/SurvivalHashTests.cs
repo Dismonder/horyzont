@@ -238,9 +238,11 @@ public sealed class SurvivalHashTests
         a.SetSuit(HazardWorld.Player1, new SuitResources(0f, 0f, 0f, 0f, 0f));
         Assert.Equal(StateHasher.Hash(b.State), StateHasher.Hash(a.State));
 
-        // A refill is a journaled operation, so the worlds that applied it differ in the last operation id only: the twin applies an empty food set, and the hashes agree.
+        // Different suits, identical journal operations: only the suit values differ.
+        a.SetSuit(HazardWorld.Player1, new SuitResources(10f, 10f, 10f, 10f, 10f));
+        b.SetSuit(HazardWorld.Player1, new SuitResources(50f, 50f, 50f, 50f, 50f));
         a.Apply(HazardWorld.Refill(HazardWorld.Player1, SuitResource.Oxygen, 10, 100));
-        b.Apply(new FoodSetOp(HazardWorld.Player1, default));
+        b.Apply(HazardWorld.Refill(HazardWorld.Player1, SuitResource.Oxygen, 10, 100));
         Assert.Equal(StateHasher.Hash(b.State), StateHasher.Hash(a.State));
     }
 

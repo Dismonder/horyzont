@@ -103,6 +103,18 @@ public sealed class GeneratorApplierTests
     }
 
     [Fact]
+    public void State_SecondContainerInCell_Fails()
+    {
+        var f = new HazardWorld();
+        f.Apply(f.PlaceGenerator(GeneratorCell));
+        foreach (var kind in new[] { ContainerKind.StationInput, ContainerKind.StationOutput })
+        {
+            f.AssertFails(InputContainer(f.State.ContainerIds.PeekNext(), GeneratorCell, kind: kind));
+            Assert.Single(f.Blocks.HostedBy(GeneratorCell));
+        }
+    }
+
+    [Fact]
     public void InputWithoutState_Fails()
     {
         var f = new HazardWorld();

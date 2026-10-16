@@ -128,6 +128,10 @@ public sealed class SuitStepProperties
                 {
                     Assert.True(value >= MathF.Min(MathF.Min(current[resource], capacity), capacity), $"{resource} fell without a hazard");
                 }
+                else
+                {
+                    Assert.True(value <= MathF.Min(current[resource], capacity), $"{resource} grew with an active hazard");
+                }
 
                 if (coverage is not null)
                 {
