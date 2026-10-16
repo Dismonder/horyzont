@@ -260,7 +260,8 @@ public sealed class BlockTypeCatalogTests
             Assert.Equal(function, block.Def.Function);
         }
 
-        Assert.Equal(expected.Length, catalog.BlockTypeKeys.Count);
+        // Later packages add content after the ship blocks, so the test pins the ship keys and not the count.
+        Assert.True(catalog.BlockTypeKeys.Count >= expected.Length);
         Assert.Equal(BlockShape.Mesh, catalog.Blocks.Single(b => b.Def.Key == "core:ship_seat").Def.Shape);
     }
 
@@ -269,8 +270,9 @@ public sealed class BlockTypeCatalogTests
     {
         var catalog = BlockTypeCatalog.Parse(File.ReadAllBytes(Path.Combine(RepoRoot(), "game", "content", "blocks", "blocks.json")), new FakeResolver());
 
-        Assert.Equal(ShipFixtures.BlockKeys, catalog.BlockTypeKeys);
-        foreach (var block in catalog.Blocks)
+        // The fixture lists the ship blocks, which come first in blocks.json; the blocks added after them are not fixture blocks.
+        Assert.Equal(ShipFixtures.BlockKeys, catalog.BlockTypeKeys.Take(ShipFixtures.BlockKeys.Length));
+        foreach (var block in catalog.Blocks.Where(b => ShipFixtures.BlockKeys.Contains(b.Def.Key)))
         {
             var fixture = ShipFixtures.Def(block.Def.Key);
             Assert.Equal(block.Def.MassKg, fixture.MassKg);
