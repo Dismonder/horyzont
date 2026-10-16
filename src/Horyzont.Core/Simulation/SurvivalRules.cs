@@ -183,7 +183,7 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
             return RejectReason.None;
         }
 
-        if (move.Count != source.Count)
+        if (sourceContainer.Kind == ContainerKind.StationOutput || move.Count != source.Count)
         {
             return RejectReason.InvalidParameters;
         }

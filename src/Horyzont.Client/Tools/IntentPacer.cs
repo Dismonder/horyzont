@@ -24,11 +24,13 @@ public sealed class IntentPacer
     private readonly TokenBucket _terrain;
     private readonly TokenBucket _blocks;
     private readonly TokenBucket _props;
+    private readonly TokenBucket _items;
     private readonly SlidingWindowLimiter _window;
     private long _lastTick;
     private long _lastTerrainSend = long.MinValue / 2;
     private long _lastBlockSend = long.MinValue / 2;
     private long _lastPropSend = long.MinValue / 2;
+    private long _lastItemSend = long.MinValue / 2;
     private bool _started;
 
     /// <summary>Initializes a new instance of the <see cref="IntentPacer"/> class.</summary>
@@ -39,6 +41,7 @@ public sealed class IntentPacer
         _terrain = new TokenBucket(rules.TerrainEditsPerSecond, rules.TerrainEditBurst, rules.TickRate);
         _blocks = new TokenBucket(rules.BlockEditsPerSecond, rules.BlockEditBurst, rules.TickRate);
         _props = new TokenBucket(rules.PropHitsPerSecond, rules.PropHitBurst, rules.TickRate);
+        _items = new TokenBucket(rules.ItemIntentsPerSecond, rules.ItemIntentBurst, rules.TickRate);
         _window = new SlidingWindowLimiter(Math.Max(1, rules.TerrainEditsPerSecond), rules.TickRate);
     }
 
@@ -55,12 +58,14 @@ public sealed class IntentPacer
         {
             PaceClass.Terrain => _lastTerrainSend,
             PaceClass.Prop => _lastPropSend,
+            PaceClass.Item => _lastItemSend,
             _ => _lastBlockSend,
         };
         var interval = paceClass switch
         {
             PaceClass.Terrain => TerrainRepeatTicks,
             PaceClass.Prop => PropRepeatTicks,
+            PaceClass.Item => PropRepeatTicks,
             _ => BlockRepeatTicks,
         };
         if (repeat && clientTick - last < interval)
@@ -72,6 +77,7 @@ public sealed class IntentPacer
         {
             PaceClass.Terrain => _terrain,
             PaceClass.Prop => _props,
+            PaceClass.Item => _items,
             _ => _blocks,
         };
         if (!bucket.HasToken || (terrain && !_window.CanAccept((ulong)clientTick)))
@@ -88,6 +94,10 @@ public sealed class IntentPacer
         else if (paceClass == PaceClass.Prop)
         {
             _lastPropSend = clientTick;
+        }
+        else if (paceClass == PaceClass.Item)
+        {
+            _lastItemSend = clientTick;
         }
         else
         {
@@ -107,6 +117,7 @@ public sealed class IntentPacer
                 _terrain.Refill();
                 _blocks.Refill();
                 _props.Refill();
+                _items.Refill();
             }
         }
 

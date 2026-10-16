@@ -19,6 +19,12 @@ namespace Horyzont.Server.Survival;
 /// </summary>
 internal static class RestTracker
 {
+    /// <summary>
+    /// How far above the centre of the seat or bed cell the surroundings are evaluated, metres. More than half the diagonal of a cell (0.87 m): in a tilted construct
+    /// a point closer than that lies inside the seat itself and the roof ray would hit the seat at distance zero.
+    /// </summary>
+    private const float PointLiftMeters = 0.9f;
+
     /// <summary>Starts the lying of a player when the bed is the own bed of the player and the eye is within <see cref="VitalsRules.RestBedRangeMeters"/> of its centre.</summary>
     /// <param name="sim">The simulation.</param>
     /// <param name="player">The player.</param>
@@ -102,7 +108,7 @@ internal static class RestTracker
         byte comfort = 0;
         if (ContainerReach.TryCellCenter(sim.State, construct, cell, out var planet, out var centre))
         {
-            var point = centre + (TerrainMath.UpAt(centre) * 0.5f);
+            var point = centre + (TerrainMath.UpAt(centre) * PointLiftMeters);
             var conditions = RestEnvironment.Evaluate(sim.State, sim.Content, sim.Terrain, planet, point, rules);
             met = conditions.Roofed && conditions.Heated;
             comfort = (byte)Math.Min((int)conditions.Comfort, ProtocolConstants.MaxRestComfort);

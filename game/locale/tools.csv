@@ -87,3 +87,11 @@ PROMPT_STATION_FURNACE,[E] Furnace,[E] Piec
 PROMPT_STATION_REFINERY,[E] Refinery,[E] Rafineria
 PROMPT_STATION_KITCHEN,[E] Kitchen,[E] Kuchnia
 PROMPT_STATION_FABRICATOR,[E] Fabricator,[E] Fabrykator
+REJECT_FOOD_ALREADY_ACTIVE,You still feel this food,Jeszcze czujesz to jedzenie
+HUD_HEALTH,Health,Zdrowie
+HUD_STAMINA,Stamina,Wytrzymałość
+HUD_EXHAUSTED,Exhausted,Wyczerpanie
+HUD_RESTING,Resting,Odpoczywasz
+HUD_RESTED,Rested,Wypoczęty
+HUD_COMFORT,Comfort,Komfort
+HUD_FOOD_REMAINING,left,pozostało

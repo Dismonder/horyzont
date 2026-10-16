@@ -12,6 +12,7 @@ namespace Horyzont.Client.Replication;
 public sealed class ClientReplication : IClientSessionListener
 {
     private readonly Action<Message> _send;
+    private readonly Crafting.ServerTickReader? _serverTick;
 
     /// <summary>Initializes a new instance of the <see cref="ClientReplication"/> class.</summary>
     /// <param name="send">Sends a client message to the server (reliable for resync, unreliable for acknowledgements).</param>
@@ -19,13 +20,18 @@ public sealed class ClientReplication : IClientSessionListener
     /// <param name="time">Clock of the resync retries; the system clock when omitted.</param>
     /// <param name="blockEntities">The states of the functional blocks (message 46, K6-30); null when the client does not track them.</param>
     /// <param name="propStates">The harvested props (message 45, K6-31); null when the client does not track them.</param>
-    /// <param name="progress">The discoveries and progress keys (message 48, K6-32); null when the client does not track them.</param>
+    /// <param name="progress">The discoveries, the progress keys and the food (message 48, K6-32, K6-33); null when the client does not track them.</param>
+    /// <param name="vitals">The health, the stamina and the rest (message 44, K6-33); null when the client does not track them.</param>
+    /// <param name="serverTick">Where the tick of the server comes from when a message 44 is received; null stores 0.</param>
     public ClientReplication(
         Action<Message> send, ConstructMirror? constructs, TimeProvider? time = null, Blocks.ClientBlockEntities? blockEntities = null,
-        Props.ClientPropStates? propStates = null, Crafting.ClientProgress? progress = null)
+        Props.ClientPropStates? propStates = null, Crafting.ClientProgress? progress = null, Survival.ClientVitals? vitals = null,
+        Crafting.ServerTickReader? serverTick = null)
     {
         ArgumentNullException.ThrowIfNull(send);
         _send = send;
+        Vitals = vitals;
+        _serverTick = serverTick;
         Progress = progress;
         BlockEntities = blockEntities;
         HarvestedProps = propStates;
@@ -52,8 +58,12 @@ public sealed class ClientReplication : IClientSessionListener
     /// <summary>Gets the states of the functional blocks; null when not tracked.</summary>
     public Blocks.ClientBlockEntities? BlockEntities { get; }
 
-    /// <summary>Gets the discoveries and progress keys; null when not tracked.</summary>
+    /// <summary>Gets the discoveries, progress keys and food; null when not tracked.</summary>
     public Crafting.ClientProgress? Progress { get; }
+
+    /// <summary>Gets the health, stamina and rest; null when not tracked.</summary>
+    public Survival.ClientVitals? Vitals { get; }
+
     /// <summary>Gets the harvested props; null when not tracked (a host and a solo player read the world of the server).</summary>
     public Props.ClientPropStates? HarvestedProps { get; }
 
@@ -93,6 +103,11 @@ public sealed class ClientReplication : IClientSessionListener
             case PlayerProgressState progress:
                 Progress?.Apply(progress);
                 break;
+            case PlayerVitalsMessage vitals:
+                var tick = 0UL;
+                _ = _serverTick is not null && _serverTick(out tick);
+                Vitals?.Apply(vitals, tick);
+                break;
             case PropStates states:
                 HarvestedProps?.Apply(states);
                 break;
@@ -111,6 +126,7 @@ public sealed class ClientReplication : IClientSessionListener
         Constructs?.Clear();
         BlockEntities?.Clear();
         Progress?.Clear();
+        Vitals?.Clear();
         HarvestedProps?.Clear();
     }
 

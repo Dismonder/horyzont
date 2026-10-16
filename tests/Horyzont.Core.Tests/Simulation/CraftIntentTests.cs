@@ -20,6 +20,20 @@ namespace Horyzont.Core.Tests.Simulation;
 /// </summary>
 public sealed class CraftIntentTests
 {
+    [Fact]
+    public void Craft_CheapRefusalAfterOtherPlayersQuickStack_StaysFree()
+    {
+        var f = Fixture(players: 2);
+        f.SetUpChestWith(FunctionalBlocks.ChestCell, Player1, ContainerAccess.Shared, (Gem, 1));
+        f.Stock(Bag, 0, Stone, 10);
+        f.AssertRejected(Player1, new QuickStackIntent(), RejectReason.NotEnoughItems);
+
+        for (var i = 0; i < f.Sim.Sim.Rules.ItemIntentBurst + 10; i++)
+        {
+            f.AssertRejected(Player2, Craft("t:nope"), RejectReason.InvalidParameters);
+        }
+    }
+
     private const RejectReason StationRequired = (RejectReason)44;
     private const RejectReason RecipeLocked = (RejectReason)45;
     private const RejectReason TooFarFromStation = (RejectReason)46;

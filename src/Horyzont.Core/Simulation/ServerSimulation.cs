@@ -191,12 +191,12 @@ public sealed class ServerSimulation
             operation = harvest;
             propResolved = true;
         }
-        else if (_crafting.TryResolve(player, intent, facts, out operation, out reason) || _functional.TryResolve(player, intent, facts, out operation, out reason))
+        else if (_crafting.TryResolve(player, intent, facts, out operation, out reason, out var refusalCostsToken) || _functional.TryResolve(player, intent, facts, out operation, out reason, out refusalCostsToken))
         {
             // Crafting and stations (K6-32), functional blocks (K6-30): chests, beds, lamps, doors, quick stack. The operation carries every value from the content.
             if (reason != RejectReason.None)
             {
-                if (_functional.RefusalCostsToken)
+                if (refusalCostsToken)
                 {
                     // A refusal that scanned the chests of the world counts against the rate limit of its class, like an accepted intent.
                     IntentValidator.BucketFor(intent, buckets!)!.Consume();

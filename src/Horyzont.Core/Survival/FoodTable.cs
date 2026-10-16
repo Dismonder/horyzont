@@ -36,6 +36,21 @@ public sealed class FoodTable
         return table;
     }
 
+    /// <summary>Builds the table from a lookup, for a client that has the content of the items but no registry of the world (K6-33 D21).</summary>
+    /// <param name="lookup">The food statistics of an item type id, null for a type that is no food.</param>
+    /// <returns>The table.</returns>
+    public static FoodTable Build(Func<ItemTypeId, FoodDef?> lookup)
+    {
+        ArgumentNullException.ThrowIfNull(lookup);
+        var table = new FoodTable();
+        for (var id = 1; id <= ProtocolConstants.MaxItemTypes; id++)
+        {
+            table._byType[id] = lookup(new ItemTypeId((ushort)id));
+        }
+
+        return table;
+    }
+
     /// <summary>Looks up the food statistics of an item type; allocates nothing.</summary>
     /// <param name="type">The item type.</param>
     /// <param name="food">The statistics when the type is food.</param>

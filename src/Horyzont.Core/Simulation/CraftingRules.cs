@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Content;
 using Horyzont.Core.Crafting;
+using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
@@ -33,15 +34,17 @@ internal sealed class CraftingRules(WorldState state, GameRules rules, BlockCont
     /// <param name="facts">Facts of the validator.</param>
     /// <param name="operation">The operation when <paramref name="reason"/> is <see cref="RejectReason.None"/>.</param>
     /// <param name="reason">The refusal, or none.</param>
+    /// <param name="refusalCostsToken">Whether this resolution performed costly work and its refusal costs a token.</param>
     /// <returns>False when the intent is not a crafting intent (the caller resolves it otherwise).</returns>
-    internal bool TryResolve(PlayerId player, Intent intent, IntentFacts facts, out Operation operation, out RejectReason reason)
+    internal bool TryResolve(PlayerId player, Intent intent, IntentFacts facts, out Operation operation, out RejectReason reason, out bool refusalCostsToken)
     {
         operation = null!;
         reason = RejectReason.None;
+        refusalCostsToken = false;
         switch (intent)
         {
             case CraftIntent craft:
-                reason = ResolveCraft(player, craft, out operation);
+                reason = ResolveCraft(player, craft, out operation, out refusalCostsToken);
                 return true;
 
             case PlaceBlockIntent place:
@@ -134,9 +137,10 @@ internal sealed class CraftingRules(WorldState state, GameRules rules, BlockCont
         return RejectReason.None;
     }
 
-    private RejectReason ResolveCraft(PlayerId player, CraftIntent craft, out Operation operation)
+    private RejectReason ResolveCraft(PlayerId player, CraftIntent craft, out Operation operation, out bool refusalCostsToken)
     {
         operation = null!;
+        refusalCostsToken = false;
         if (survival is null || !HasRecipes || !survival.TryGetRecipe(craft.Recipe, out var recipe))
         {
             return RejectReason.InvalidParameters;
@@ -155,7 +159,7 @@ internal sealed class CraftingRules(WorldState state, GameRules rules, BlockCont
                 return RejectReason.InvalidParameters;
             }
 
-            return ResolveInstant(player, craft, recipe, discovered, station: null, out operation);
+            return ResolveInstant(player, craft, recipe, discovered, station: null, out operation, out refusalCostsToken);
         }
 
         if (craft.Station is not { } target)
@@ -171,7 +175,7 @@ internal sealed class CraftingRules(WorldState state, GameRules rules, BlockCont
 
         return StationKinds.IsTimed(recipe.Station)
             ? ResolveSelect(craft, recipe, target, typeId, out operation)
-            : ResolveInstant(player, craft, recipe, discovered, target, out operation);
+            : ResolveInstant(player, craft, recipe, discovered, target, out operation, out refusalCostsToken);
     }
 
     /// <summary>The station of a craft intent, in the order of D14: it exists, has the kind of the recipe, is within reach, has the level.</summary>
@@ -233,9 +237,10 @@ internal sealed class CraftingRules(WorldState state, GameRules rules, BlockCont
     }
 
     /// <summary>Crafting in the hands or at a station without time (D12): the destroys of the ingredients, the creates of the result in the bag, the discovery.</summary>
-    private RejectReason ResolveInstant(PlayerId player, CraftIntent craft, RecipeDef recipe, ItemTypeBitSet discovered, BlockRef? station, out Operation operation)
+    private RejectReason ResolveInstant(PlayerId player, CraftIntent craft, RecipeDef recipe, ItemTypeBitSet discovered, BlockRef? station, out Operation operation, out bool refusalCostsToken)
     {
         operation = null!;
+        refusalCostsToken = false;
         if (!state.Containers.TryGetOfPlayer(player, ContainerKind.PlayerBag, out var bag)
             || !state.Containers.TryGetOfPlayer(player, ContainerKind.Hotbar, out var hotbar)
             || !state.ItemTypes.TryGetId(recipe.Result.ItemKey, out var resultType)
@@ -244,25 +249,23 @@ internal sealed class CraftingRules(WorldState state, GameRules rules, BlockCont
             return RejectReason.InvalidParameters;
         }
 
-        // The availability is counted on the live slots, so a refusal copies nothing and allocates nothing (review A+B, fix 4). Ingredients are distinct types.
-        BuildSources(player, station, bag, hotbar);
-        for (var i = 0; i < recipe.Ingredients.Count; i++)
+        // Personal containers are first in the consumption order. When they suffice, no chest search is needed.
+        _sources.Clear();
+        _sources.Add(new Source(bag, null, 0f));
+        _sources.Add(new Source(hotbar, null, 0f));
+        var availability = CheckIngredients(recipe, craft.Count);
+        if (availability == RejectReason.InvalidParameters)
         {
-            var entry = recipe.Ingredients[i];
-            if (!state.ItemTypes.TryGetId(entry.ItemKey, out var type))
-            {
-                return RejectReason.InvalidParameters;
-            }
+            return availability;
+        }
 
-            var have = 0;
-            for (var s = 0; s < _sources.Count; s++)
+        if (availability != RejectReason.None)
+        {
+            refusalCostsToken = BuildSources(player, station);
+            availability = CheckIngredients(recipe, craft.Count);
+            if (availability != RejectReason.None)
             {
-                have += ItemPlacement.CountOf(_sources[s].Live.Slots, type);
-            }
-
-            if (have < entry.Count * craft.Count)
-            {
-                return RejectReason.NotEnoughItems;
+                return availability;
             }
         }
 
@@ -307,16 +310,37 @@ internal sealed class CraftingRules(WorldState state, GameRules rules, BlockCont
         return RejectReason.None;
     }
 
-    /// <summary>The sources of the ingredients (D13): the bag, the hotbar, then the chests the player may use within the range of the centre, nearest first.</summary>
-    private void BuildSources(PlayerId player, BlockRef? station, Container bag, Container hotbar)
+    private RejectReason CheckIngredients(RecipeDef recipe, ushort count)
     {
-        _sources.Clear();
-        _sources.Add(new Source(bag, null, 0f));
-        _sources.Add(new Source(hotbar, null, 0f));
-        var chests = state.Containers.OfKind(ContainerKind.Chest);
-        if (chests.Count == 0)
+        for (var i = 0; i < recipe.Ingredients.Count; i++)
         {
-            return;
+            var entry = recipe.Ingredients[i];
+            if (!state.ItemTypes.TryGetId(entry.ItemKey, out var type))
+            {
+                return RejectReason.InvalidParameters;
+            }
+
+            var have = 0;
+            for (var s = 0; s < _sources.Count; s++)
+            {
+                have += ItemPlacement.CountOf(_sources[s].Live.Slots, type);
+            }
+
+            if (have < entry.Count * count)
+            {
+                return RejectReason.NotEnoughItems;
+            }
+        }
+
+        return RejectReason.None;
+    }
+
+    /// <summary>Adds accessible nearby chests, nearest first; returns whether a spatial search was performed.</summary>
+    private bool BuildSources(PlayerId player, BlockRef? station)
+    {
+        if (state.Containers.OfKind(ContainerKind.Chest).Count == 0)
+        {
+            return false;
         }
 
         PlanetId planet;
@@ -325,35 +349,64 @@ internal sealed class CraftingRules(WorldState state, GameRules rules, BlockCont
         {
             if (!ContainerReach.TryCellCenter(state, at.Construct, at.Cell, out planet, out centre))
             {
-                return;
+                return false;
             }
         }
         else if (!state.Players.TryGet(player, out var playerState) || !ContainerReach.TryGetEye(state, rules, playerState, out planet, out centre))
         {
-            return;
+            return false;
         }
 
         var first = _sources.Count;
-        for (var i = 0; i < chests.Count; i++)
+        var constructs = state.Constructs.All;
+        for (var c = 0; c < constructs.Count; c++)
         {
-            var chest = chests[i];
-            if (chest.Host.Kind != ContainerHostKind.ConstructBlock || (chest.Access != ContainerAccess.Shared && chest.Owner != player)
-                || !ContainerReach.TryCellCenter(state, new EntityId(chest.Host.Id), chest.Host.Cell, out var chestPlanet, out var chestCentre)
-                || chestPlanet != planet)
+            var construct = constructs[c];
+            if (!state.Containers.HasChests(construct.Id)
+                || !FrameGraph.TryGetPoseIn(new ConstructStoreFramePoses(state.Constructs), FrameRef.Of(construct.Id), FrameRef.Of(planet),
+                    state.Constructs.Count, out var pose))
             {
                 continue;
             }
 
-            var meters = Vector3.Distance(centre, chestCentre);
-            if (meters <= rules.CraftContainerRangeMeters)
+            var local = FrameMath.InverseTransformPoint(pose, Vector3D.FromFloat(centre));
+            // One cell of padding keeps this broad phase conservative at float boundaries; the exact distance below decides reach.
+            var extent = rules.CraftContainerRangeMeters + 1d;
+            var min = new ChunkPos(ClampChunk(local.X - extent), ClampChunk(local.Y - extent), ClampChunk(local.Z - extent));
+            var max = new ChunkPos(ClampChunk(local.X + extent), ClampChunk(local.Y + extent), ClampChunk(local.Z + extent));
+            for (var x = min.X; x <= max.X; x++)
             {
-                _sources.Add(new Source(chest, null, meters));
+                for (var y = min.Y; y <= max.Y; y++)
+                {
+                    for (var z = min.Z; z <= max.Z; z++)
+                    {
+                        var chests = state.Containers.ChestsInChunk(construct.Id, new ChunkPos(x, y, z));
+                        for (var i = 0; i < chests.Count; i++)
+                        {
+                            var chest = chests[i];
+                            if ((chest.Access != ContainerAccess.Shared && chest.Owner != player)
+                                || !ContainerReach.TryCellCenter(state, construct.Id, chest.Host.Cell, out var chestPlanet, out var chestCentre)
+                                || chestPlanet != planet)
+                            {
+                                continue;
+                            }
+
+                            var meters = Vector3.Distance(centre, chestCentre);
+                            if (meters <= rules.CraftContainerRangeMeters)
+                            {
+                                _sources.Add(new Source(chest, null, meters));
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        // The span sort with a static comparison allocates nothing (List.Sort with an IComparer builds a delegate per call).
         CollectionsMarshal.AsSpan(_sources)[first..].Sort(static (x, y) => CompareSources(x, y));
+        return true;
     }
+
+    private static int ClampChunk(double coordinate) => (int)Math.Clamp(Math.Floor(coordinate / 16d), -CellPos.Limit / 16, (CellPos.Limit - 1) / 16);
 
     private static bool IsEmpty(Container container)
     {
