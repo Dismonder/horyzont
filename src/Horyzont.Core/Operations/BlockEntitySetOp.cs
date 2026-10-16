@@ -12,5 +12,5 @@ namespace Horyzont.Core.Operations;
 public sealed record BlockEntitySetOp(EntityId Construct, CellPos Cell, ushort ExpectedType, BlockEntityState? State) : Operation
 {
     /// <inheritdoc />
-    public override OperationKind Kind => (OperationKind)40; // K6-30 A2: OperationKind.BlockEntitySet
+    public override OperationKind Kind => OperationKind.BlockEntitySet;
 }

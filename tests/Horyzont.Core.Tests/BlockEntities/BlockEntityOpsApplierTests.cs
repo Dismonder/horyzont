@@ -132,7 +132,7 @@ public sealed class BlockEntityOpsApplierTests
     public void BlockEntitySet_Over4096PerConstruct_Fails()
     {
         var f = new FunctionalBlockFixture();
-        var cells = Enumerable.Range(0, 4097).Select(i => new CellPos(10 + (i % 64), 5 + ((i / 64) % 64), 2)).ToArray();
+        var cells = Enumerable.Range(0, 4097).Select(i => new CellPos(10 + (i % 64), 5 + ((i / 64) % 64), 2 + (i / 4096))).ToArray();
         foreach (var cell in cells)
         {
             f.Apply(PlaceBlock(cell, FunctionalBlocks.BedType));

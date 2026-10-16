@@ -10,5 +10,5 @@ namespace Horyzont.Core.Operations;
 public sealed record ContainerConfigureOp(ContainerId Container, ushort Size, ContainerAccess Access) : Operation
 {
     /// <inheritdoc />
-    public override OperationKind Kind => (OperationKind)37; // K6-30 A2: OperationKind.ContainerConfigure
+    public override OperationKind Kind => OperationKind.ContainerConfigure;
 }

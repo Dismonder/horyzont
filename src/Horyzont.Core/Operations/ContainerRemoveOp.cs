@@ -7,5 +7,5 @@ namespace Horyzont.Core.Operations;
 public sealed record ContainerRemoveOp(ContainerId Container) : Operation
 {
     /// <inheritdoc />
-    public override OperationKind Kind => (OperationKind)36; // K6-30 A2: OperationKind.ContainerRemove
+    public override OperationKind Kind => OperationKind.ContainerRemove;
 }

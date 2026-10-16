@@ -2,9 +2,11 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Text;
 
+using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Progress;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Constructs;
@@ -23,15 +25,26 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
     private static readonly IReadOnlyList<TerrainBlockVersion> _noTerrain = [];
     private static readonly IReadOnlyList<ConstructChange> _noConstructs = [];
     private static readonly IReadOnlyList<ContainerChange> _noContainers = [];
+    private static readonly ushort[] _noSlots = [];
+
+    // Marks a container in the touched list that changed without a slot (configured or removed).
+    private const ushort NoSlot = ushort.MaxValue;
     private readonly List<TerrainBlockKey> _affected = [];
     private readonly UndoLog _undo = new();
     private readonly List<(ulong Container, ushort Slot)> _touched = [];
+    private readonly List<BlockFunctionStateSetOp> _pendingStates = [];
+    private readonly List<ulong> _pendingConstructs = [];
+
+    // The block that the last component of a compound writes: the earlier state components see its cell with this block (D12).
+    private BlockSetOp? _viewSet;
+    private ConstructCreateOp? _viewCreate;
 
     /// <summary>
-    /// Applies an operation when its preconditions hold and sets <see cref="WorldState.LastOpId"/>; otherwise changes nothing. Item operations
-    /// (31-35) and the item components of a <see cref="CompoundOp"/> are applied on the live state with an <see cref="UndoLog"/>; a refused
-    /// component rolls everything back. The terrain component of a compound is checked after the item components and applied last.
-    /// Every container changed by the operation gets its version raised by one at the end.
+    /// Applies an operation when its preconditions hold and sets <see cref="WorldState.LastOpId"/>; otherwise changes nothing. Item and state
+    /// operations (31-37, 40, 44, 49) and the components of a <see cref="CompoundOp"/> are applied on the live state with an
+    /// <see cref="UndoLog"/>; a refused component rolls everything back. The last component of a compound, a terrain edit or an edit of a
+    /// construct, is checked and applied last (D12 of K6-30). Every container changed by the operation gets its version raised by one at
+    /// the end, and so does every construct whose function states changed.
     /// </summary>
     /// <param name="id">Operation number.</param>
     /// <param name="tick">Tick.</param>
@@ -51,16 +64,16 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         {
             case CompoundOp compound:
                 return TryApplyCompound(id, tick, actor, compound, out applied, out failure, out componentIndex);
-            case ItemTransferOp or ItemSwapOp or ItemCreateOp or ItemDestroyOp or ContainerCreateOp:
-                _undo.Begin(state);
-                failure = ApplyItem(operation) ?? string.Empty;
+            case var _ when IsComponent(operation):
+                BeginOperation();
+                failure = ApplyComponent(operation) ?? string.Empty;
                 if (failure.Length != 0)
                 {
                     _undo.Rollback(state);
                     return false;
                 }
 
-                applied = Finish(id, tick, actor, operation, _noTerrain);
+                applied = Finish(id, tick, actor, operation, _noTerrain, _noConstructs);
                 return true;
             default:
                 if (!CheckPreconditions(operation, out failure))
@@ -81,7 +94,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             TerrainEditOp op => CheckTerrainEdit(op),
             ConstructCreateOp op => CheckConstructCreate(op),
             BlockSetOp op => CheckBlockSet(op),
-            BlockClearOp op => CheckBlockClear(op),
+            BlockClearOp op => CheckBlockClear(op) ?? CheckBlockClearOrphans(op),
             PlayerJoinOp op => CheckPlayerJoin(op),
             PlayerLeaveOp op => CheckPlayerLeave(op),
             EntityReparentOp op => CheckReparent(op),
@@ -94,8 +107,18 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         return failure.Length == 0;
     }
 
-    private static bool IsItemComponent(Operation operation) =>
-        operation is ItemTransferOp or ItemSwapOp or ItemCreateOp or ItemDestroyOp or ContainerCreateOp;
+    /// <summary>Item and state operations: applied with the undo log, alone or as a component of a compound.</summary>
+    private static bool IsComponent(Operation operation) =>
+        operation is ItemTransferOp or ItemSwapOp or ItemCreateOp or ItemDestroyOp or ContainerCreateOp or ContainerRemoveOp
+            or ContainerConfigureOp or BlockEntitySetOp or RespawnPointSetOp or BlockFunctionStateSetOp;
+
+    private void BeginOperation()
+    {
+        _undo.Begin(state);
+        _pendingStates.Clear();
+        _viewSet = null;
+        _viewCreate = null;
+    }
 
     /// <summary>Applies an operation of K1 whose preconditions hold and sets <see cref="WorldState.LastOpId"/>.</summary>
     private AppliedOperation Apply(OpId id, Tick tick, PlayerId? actor, Operation operation)
@@ -107,27 +130,8 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             case TerrainEditOp op:
                 terrainVersions = ApplyTerrainEdit(op);
                 break;
-            case ConstructCreateOp op:
-                state.EntityIds.MarkUsed(op.Construct);
-                var created = state.Constructs.Create(op.Construct, op.Parent, op.Origin, op.Rotation);
-                created.SetBlock(op.FirstCell, op.Block);
-                constructChanges = [new ConstructChange(created.Id, created.Version, false)];
-                break;
-            case BlockSetOp op:
-                state.Constructs.TryGet(op.Construct, out var target);
-                target!.SetBlock(op.Cell, op.Block);
-                constructChanges = [new ConstructChange(target.Id, target.Version, false)];
-                break;
-            case BlockClearOp op:
-                state.Constructs.TryGet(op.Construct, out var cleared);
-                cleared!.SetBlock(op.Cell, BlockState.Empty);
-                var removed = cleared.BlockCount == 0;
-                if (removed)
-                {
-                    state.Constructs.Remove(cleared.Id);
-                }
-
-                constructChanges = [new ConstructChange(cleared.Id, cleared.Version, removed)];
+            case ConstructCreateOp or BlockSetOp or BlockClearOp:
+                constructChanges = ApplyConstructEdit(operation);
                 break;
             case PlayerJoinOp op:
                 ApplyPlayerJoin(op);
@@ -167,6 +171,34 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         return new AppliedOperation(id, tick, actor, operation, terrainVersions, constructChanges, _noContainers);
     }
 
+    /// <summary>Applies a construct edit whose preconditions hold (operations 2, 3, 4).</summary>
+    private ConstructChange[] ApplyConstructEdit(Operation operation)
+    {
+        switch (operation)
+        {
+            case ConstructCreateOp op:
+                state.EntityIds.MarkUsed(op.Construct);
+                var created = state.Constructs.Create(op.Construct, op.Parent, op.Origin, op.Rotation);
+                created.SetBlock(op.FirstCell, op.Block);
+                return [new ConstructChange(created.Id, created.Version, false)];
+            case BlockSetOp op:
+                state.Constructs.TryGet(op.Construct, out var target);
+                target!.SetBlock(op.Cell, op.Block);
+                return [new ConstructChange(target.Id, target.Version, false)];
+            default:
+                var clear = (BlockClearOp)operation;
+                state.Constructs.TryGet(clear.Construct, out var cleared);
+                cleared!.SetBlock(clear.Cell, BlockState.Empty);
+                var removed = cleared.BlockCount == 0;
+                if (removed)
+                {
+                    state.Constructs.Remove(cleared.Id);
+                }
+
+                return [new ConstructChange(cleared.Id, cleared.Version, removed)];
+        }
+    }
+
     private bool TryApplyCompound(
         OpId id, Tick tick, PlayerId? actor, CompoundOp compound, [NotNullWhen(true)] out AppliedOperation? applied, out string failure,
         out int componentIndex)
@@ -180,6 +212,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             return false;
         }
 
+        var hasFunctionState = false;
         for (var i = 0; i < components.Count; i++)
         {
             var component = components[i];
@@ -188,8 +221,9 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 null => "missing component",
                 CompoundOp => "nested compound operation",
                 TerrainEditOp when i != components.Count - 1 => "a terrain edit must be the last component",
-                TerrainEditOp => null,
-                _ when IsItemComponent(component) => null,
+                ConstructCreateOp or BlockSetOp or BlockClearOp when i != components.Count - 1 => "a construct edit must be the last component",
+                TerrainEditOp or ConstructCreateOp or BlockSetOp or BlockClearOp => null,
+                _ when IsComponent(component) => null,
                 _ => $"{component.Kind} is not allowed in a compound operation",
             };
             if (structure is not null)
@@ -198,14 +232,44 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 componentIndex = i;
                 return false;
             }
+
+            hasFunctionState |= component is BlockFunctionStateSetOp;
         }
 
-        _undo.Begin(state);
-        var terrainEdit = components[^1] as TerrainEditOp;
-        var itemCount = terrainEdit is null ? components.Count : components.Count - 1;
-        for (var i = 0; i < itemCount; i++)
+        var last = components[^1];
+        var lastIsConstructEdit = last is ConstructCreateOp or BlockSetOp or BlockClearOp;
+        if (hasFunctionState && lastIsConstructEdit)
         {
-            var refused = ApplyItem(components[i]);
+            failure = "a function state change cannot share a compound with a construct edit";
+            componentIndex = components.Count - 1;
+            return false;
+        }
+
+        BeginOperation();
+        if (lastIsConstructEdit)
+        {
+            // The conditions of the last component are checked on the state before the compound: no other component changes constructs.
+            failure = last switch
+            {
+                ConstructCreateOp op => CheckConstructCreate(op),
+                BlockSetOp op => CheckBlockSet(op),
+                _ => CheckBlockClear((BlockClearOp)last),
+            } ?? string.Empty;
+            if (failure.Length != 0)
+            {
+                componentIndex = components.Count - 1;
+                return false;
+            }
+
+            _viewSet = last as BlockSetOp;
+            _viewCreate = last as ConstructCreateOp;
+        }
+
+        var terrainEdit = last as TerrainEditOp;
+        var otherCount = terrainEdit is null && !lastIsConstructEdit ? components.Count : components.Count - 1;
+        for (var i = 0; i < otherCount; i++)
+        {
+            var refused = ApplyComponent(components[i]);
             if (refused is not null)
             {
                 _undo.Rollback(state);
@@ -216,6 +280,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         }
 
         var terrainVersions = _noTerrain;
+        var constructChanges = _noConstructs;
         if (terrainEdit is not null)
         {
             if (!CheckPreconditions(terrainEdit, out failure))
@@ -227,14 +292,32 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
 
             terrainVersions = ApplyTerrainEdit(terrainEdit);
         }
+        else if (lastIsConstructEdit)
+        {
+            // No block state and no hosted container may stay on a cell that is cleared (D13), judged after the earlier components.
+            if (last is BlockClearOp clear && CheckBlockClearOrphans(clear) is { } orphans)
+            {
+                _undo.Rollback(state);
+                failure = orphans;
+                componentIndex = components.Count - 1;
+                return false;
+            }
+
+            constructChanges = ApplyConstructEdit(last);
+        }
 
         failure = string.Empty;
-        applied = Finish(id, tick, actor, compound, terrainVersions);
+        applied = Finish(id, tick, actor, compound, terrainVersions, constructChanges);
         return true;
     }
 
-    /// <summary>Raises the version of every container the undo log touched once, marks it for the checkpoint and sets LastOpId.</summary>
-    private AppliedOperation Finish(OpId id, Tick tick, PlayerId? actor, Operation operation, IReadOnlyList<TerrainBlockVersion> terrainVersions)
+    /// <summary>
+    /// Raises the version of every container the undo log touched once, marks it for the checkpoint, applies the function state changes
+    /// of the operation (one version bump per construct) and sets LastOpId.
+    /// </summary>
+    private AppliedOperation Finish(
+        OpId id, Tick tick, PlayerId? actor, Operation operation, IReadOnlyList<TerrainBlockVersion> terrainVersions,
+        IReadOnlyList<ConstructChange> constructChanges)
     {
         _touched.Clear();
         for (var i = 0; i < _undo.SlotCount; i++)
@@ -250,6 +333,18 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             {
                 _touched.Add((created[i].Id.Value, (ushort)slot));
             }
+        }
+
+        // Containers that changed without a slot (operation 37) or were removed (36): listed with a marker instead of a slot.
+        for (var i = 0; i < _undo.ConfiguredCount; i++)
+        {
+            _touched.Add((_undo.ConfiguredAt(i).Id.Value, NoSlot));
+        }
+
+        var removedContainers = _undo.Removed;
+        for (var i = 0; i < removedContainers.Count; i++)
+        {
+            _touched.Add((removedContainers[i].Id.Value, NoSlot));
         }
 
         var changes = _noContainers;
@@ -277,7 +372,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 var distinct = 0;
                 while (end < _touched.Count && _touched[end].Container == containerId.Value)
                 {
-                    if (end == start || _touched[end].Slot != _touched[end - 1].Slot)
+                    if (_touched[end].Slot != NoSlot && (end == start || _touched[end].Slot != _touched[end - 1].Slot))
                     {
                         distinct++;
                     }
@@ -285,39 +380,110 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                     end++;
                 }
 
-                var slots = new ushort[distinct];
+                var slots = distinct == 0 ? _noSlots : new ushort[distinct];
                 var written = 0;
                 for (var k = start; k < end; k++)
                 {
-                    if (k == start || _touched[k].Slot != _touched[k - 1].Slot)
+                    if (_touched[k].Slot != NoSlot && (k == start || _touched[k].Slot != _touched[k - 1].Slot))
                     {
                         slots[written++] = _touched[k].Slot;
                     }
                 }
 
-                state.Containers.TryGet(containerId, out var container);
-                container!.BumpVersion();
-                state.Containers.MarkChanged(containerId);
-                list[group++] = new ContainerChange(containerId, container.Version, slots);
+                if (state.Containers.TryGet(containerId, out var container))
+                {
+                    container.BumpVersion();
+                    state.Containers.MarkChanged(containerId);
+                    list[group++] = new ContainerChange(containerId, container.Version, slots);
+                }
+                else
+                {
+                    // Removed by the operation: its version is not raised, observers drop it.
+                    list[group++] = new ContainerChange(containerId, RemovedVersion(containerId), _noSlots, true);
+                }
+
                 start = end;
             }
 
             changes = list;
         }
 
+        if (_pendingStates.Count > 0)
+        {
+            constructChanges = ApplyPendingFunctionStates();
+        }
+
         state.SetLastOpId(id);
-        return new AppliedOperation(id, tick, actor, operation, terrainVersions, _noConstructs, changes);
+        return new AppliedOperation(id, tick, actor, operation, terrainVersions, constructChanges, changes);
     }
 
-    /// <summary>Checks and applies one item operation through the undo log; returns why it was refused or null.</summary>
-    private string? ApplyItem(Operation operation) => operation switch
+    private uint RemovedVersion(ContainerId id)
+    {
+        var removed = _undo.Removed;
+        for (var i = 0; i < removed.Count; i++)
+        {
+            if (removed[i].Id == id)
+            {
+                return removed[i].Version;
+            }
+        }
+
+        return 0;
+    }
+
+    /// <summary>Writes the collected function states in order, then raises the version of every construct they touched once.</summary>
+    private ConstructChange[] ApplyPendingFunctionStates()
+    {
+        _pendingConstructs.Clear();
+        for (var i = 0; i < _pendingStates.Count; i++)
+        {
+            var op = _pendingStates[i];
+            state.Constructs.TryGet(op.Construct, out var construct);
+            construct!.ChangeFunctionState(op.Cell, op.State);
+            _pendingConstructs.Add(op.Construct.Value);
+        }
+
+        _pendingConstructs.Sort();
+        var count = 0;
+        for (var i = 0; i < _pendingConstructs.Count; i++)
+        {
+            if (i == 0 || _pendingConstructs[i] != _pendingConstructs[i - 1])
+            {
+                count++;
+            }
+        }
+
+        var changes = new ConstructChange[count];
+        var written = 0;
+        for (var i = 0; i < _pendingConstructs.Count; i++)
+        {
+            if (i > 0 && _pendingConstructs[i] == _pendingConstructs[i - 1])
+            {
+                continue;
+            }
+
+            state.Constructs.TryGet(new EntityId(_pendingConstructs[i]), out var construct);
+            construct!.BumpVersion();
+            changes[written++] = new ConstructChange(construct.Id, construct.Version, false);
+        }
+
+        return changes;
+    }
+
+    /// <summary>Checks and applies one item or state operation through the undo log; returns why it was refused or null.</summary>
+    private string? ApplyComponent(Operation operation) => operation switch
     {
         ItemCreateOp op => ApplyItemCreate(op),
         ItemDestroyOp op => ApplyItemDestroy(op),
         ItemTransferOp op => ApplyItemTransfer(op),
         ItemSwapOp op => ApplyItemSwap(op),
         ContainerCreateOp op => ApplyContainerCreate(op),
-        _ => $"{operation.Kind} is not an item operation",
+        ContainerRemoveOp op => ApplyContainerRemove(op),
+        ContainerConfigureOp op => ApplyContainerConfigure(op),
+        BlockEntitySetOp op => ApplyBlockEntitySet(op),
+        RespawnPointSetOp op => ApplyRespawnPointSet(op),
+        BlockFunctionStateSetOp op => ApplyFunctionState(op),
+        _ => $"{operation.Kind} is not an item or state operation",
     };
 
     private string? ApplyItemCreate(ItemCreateOp op)
@@ -450,27 +616,47 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             return "kind, access or size invalid";
         }
 
-        if (op.Host.Kind != ContainerHostKind.Player)
+        // The codec writes only the player id of a player host and the construct and cell of a block host: any other host field would
+        // make the live hash differ from the replay hash. Older journals hold only player hosts; the block host is new (K6-30, D13).
+        if (op.Host.Kind == ContainerHostKind.Player)
         {
-            // Format 1 journals hold only player hosts; later packages add the others without changing the format.
+            if (op.Host != ContainerHost.Player(op.Host.PlayerId))
+            {
+                return "player host with extra fields";
+            }
+
+            var player = op.Host.PlayerId;
+            if (!state.Players.TryGet(player, out _))
+            {
+                return "host player unknown";
+            }
+
+            if (state.Containers.TryGetOfPlayer(player, op.ContainerKind, out _))
+            {
+                return "the player already has a container of this kind";
+            }
+        }
+        else if (op.Host.Kind == ContainerHostKind.ConstructBlock)
+        {
+            var construct = new EntityId(op.Host.Id);
+            if (op.Host != ContainerHost.ConstructBlock(construct, op.Host.Cell))
+            {
+                return "block host with extra fields";
+            }
+
+            if (!op.Host.Cell.IsInBounds || !TryGetViewBlock(construct, op.Host.Cell, out var hostBlock) || hostBlock.IsEmpty)
+            {
+                return "host block missing";
+            }
+
+            if (state.Containers.TryGetOfBlock(construct, op.Host.Cell, op.ContainerKind, out _))
+            {
+                return "the block already hosts a container of this kind";
+            }
+        }
+        else
+        {
             return "host kind not supported";
-        }
-
-        // The codec writes only the player id of a player host: any other host field would make the live hash differ from the replay hash.
-        if (op.Host != ContainerHost.Player(op.Host.PlayerId))
-        {
-            return "player host with extra fields";
-        }
-
-        var player = op.Host.PlayerId;
-        if (!state.Players.TryGet(player, out _))
-        {
-            return "host player unknown";
-        }
-
-        if (state.Containers.TryGetOfPlayer(player, op.ContainerKind, out _))
-        {
-            return "the player already has a container of this kind";
         }
 
         if (!op.Owner.IsNone && !state.Players.TryGet(op.Owner, out _))
@@ -481,6 +667,196 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         state.ContainerIds.MarkUsed(op.Id);
         _undo.AddCreated(state.Containers.Add(op.Id, op.ContainerKind, op.Host, op.Owner, op.Access, op.Size, 0));
         return null;
+    }
+
+    private string? ApplyContainerRemove(ContainerRemoveOp op)
+    {
+        if (!state.Containers.TryGet(op.Container, out var container))
+        {
+            return "unknown container";
+        }
+
+        if (container.Host.Kind == ContainerHostKind.Player)
+        {
+            return "the container of a player cannot be removed";
+        }
+
+        for (var i = 0; i < container.Size; i++)
+        {
+            if (!container.GetSlot(i).IsEmpty)
+            {
+                return "the container is not empty";
+            }
+        }
+
+        for (var i = 0; i < _undo.Created.Count; i++)
+        {
+            if (_undo.Created[i] == container)
+            {
+                return "the container was created by the same operation";
+            }
+        }
+
+        _undo.Remove(state, container);
+        return null;
+    }
+
+    private string? ApplyContainerConfigure(ContainerConfigureOp op)
+    {
+        if (!state.Containers.TryGet(op.Container, out var container))
+        {
+            return "unknown container";
+        }
+
+        if (op.Size == 0 || op.Size > ProtocolConstants.MaxContainerSlots || !Enum.IsDefined(op.Access))
+        {
+            return "size or access invalid";
+        }
+
+        if (op.Size == container.Size && op.Access == container.Access)
+        {
+            return "size and access are unchanged";
+        }
+
+        for (var i = op.Size; i < container.Size; i++)
+        {
+            if (!container.GetSlot(i).IsEmpty)
+            {
+                return "slots above the new size are not empty";
+            }
+        }
+
+        _undo.Configure(container, op.Size, op.Access);
+        return null;
+    }
+
+    private string? ApplyBlockEntitySet(BlockEntitySetOp op)
+    {
+        var key = new BlockRef(op.Construct, op.Cell);
+        state.BlockEntities.TryGet(key, out var existing);
+        if (op.State is null)
+        {
+            // Removing a state judges the live block: the block is still there (D12).
+            if (existing is null)
+            {
+                return "the block has no state";
+            }
+
+            if (!state.Constructs.TryGet(op.Construct, out var live) || live.GetBlock(op.Cell).TypeId != op.ExpectedType)
+            {
+                return "the block differs from the expected type";
+            }
+
+            _undo.SetBlockEntity(state, key, null);
+            return null;
+        }
+
+        if (!op.Cell.IsInBounds || !TryGetViewBlock(op.Construct, op.Cell, out var block) || block.IsEmpty || block.TypeId != op.ExpectedType)
+        {
+            return "the cell is empty or holds another block type";
+        }
+
+        if (existing is not null && existing.Kind != op.State.Kind)
+        {
+            return "the kind of a block state cannot change";
+        }
+
+        switch (op.State)
+        {
+            case ChestBlockState chest:
+                if (!state.Containers.TryGet(chest.Container, out var container) || container.Kind != ContainerKind.Chest
+                    || container.Host != ContainerHost.ConstructBlock(op.Construct, op.Cell))
+                {
+                    return "the container is not a chest hosted by this block";
+                }
+
+                break;
+            case BedBlockState bed:
+                if (!bed.Owner.IsNone && !state.Players.TryGet(bed.Owner, out _))
+                {
+                    return "bed owner unknown";
+                }
+
+                break;
+            default:
+                return "block state kind not supported";
+        }
+
+        if (existing is null && state.BlockEntities.CountOf(op.Construct) >= ProtocolConstants.MaxBlockEntitiesPerConstruct)
+        {
+            return "too many block states in the construct";
+        }
+
+        _undo.SetBlockEntity(state, key, op.State);
+        return null;
+    }
+
+    private string? ApplyRespawnPointSet(RespawnPointSetOp op)
+    {
+        if (!state.Players.TryGet(op.Player, out _))
+        {
+            return "player unknown";
+        }
+
+        if (op.Bed is not { } bed)
+        {
+            _undo.SetProgress(state, op.Player, null);
+            return null;
+        }
+
+        if (!bed.Cell.IsInBounds || !TryGetViewBlock(bed.Construct, bed.Cell, out var block) || block.IsEmpty || block.TypeId != bed.ExpectedType)
+        {
+            return "the cell is empty or holds another block type";
+        }
+
+        if (!state.BlockEntities.TryGet(new BlockRef(bed.Construct, bed.Cell), out var entity) || entity is not BedBlockState)
+        {
+            return "the block is not a bed";
+        }
+
+        _undo.SetProgress(state, op.Player, new PlayerProgress(op.Player, bed));
+        return null;
+    }
+
+    private string? ApplyFunctionState(BlockFunctionStateSetOp op)
+    {
+        if (op.State >= BlockState.FunctionStateCount)
+        {
+            return "function state out of range";
+        }
+
+        if (!state.Constructs.TryGet(op.Construct, out var construct))
+        {
+            return "unknown construct";
+        }
+
+        if (!op.Cell.IsInBounds || op.ExpectedType == 0 || construct.GetBlock(op.Cell).TypeId != op.ExpectedType)
+        {
+            return "the cell is empty or holds another block type";
+        }
+
+        // Applied with the other function states at the end, when the operation is accepted: no undo needed (D12).
+        _pendingStates.Add(op);
+        return null;
+    }
+
+    /// <summary>The block in a cell as the components of a compound see it (D12): the cell of the last component with its new block.</summary>
+    private bool TryGetViewBlock(EntityId construct, CellPos cell, out BlockState block)
+    {
+        if (_viewCreate is { } create && create.Construct == construct)
+        {
+            block = cell == create.FirstCell ? create.Block : BlockState.Empty;
+            return true;
+        }
+
+        if (!state.Constructs.TryGet(construct, out var live))
+        {
+            block = BlockState.Empty;
+            return false;
+        }
+
+        block = _viewSet is { } set && set.Construct == construct && set.Cell == cell ? set.Block : live.GetBlock(cell);
+        return true;
     }
 
     private static ItemStack Take(ItemStack stack, ushort count) =>
@@ -631,6 +1007,17 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         }
 
         return null;
+    }
+
+    /// <summary>D13 of K6-30: a cell with a block state or a hosted container is not cleared, or the items would be orphaned.</summary>
+    private string? CheckBlockClearOrphans(BlockClearOp op)
+    {
+        if (state.BlockEntities.TryGet(new BlockRef(op.Construct, op.Cell), out _))
+        {
+            return "the cell has a block state";
+        }
+
+        return state.Containers.IsBlockHost(op.Construct, op.Cell) ? "the cell hosts a container" : null;
     }
 
     private string? CheckPlayerJoin(PlayerJoinOp op)

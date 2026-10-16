@@ -9,5 +9,5 @@ namespace Horyzont.Core.Operations;
 public sealed record RespawnPointSetOp(PlayerId Player, BedRef? Bed) : Operation
 {
     /// <inheritdoc />
-    public override OperationKind Kind => (OperationKind)44; // K6-30 A2: OperationKind.RespawnPointSet
+    public override OperationKind Kind => OperationKind.RespawnPointSet;
 }

@@ -81,6 +81,9 @@ public static class ProtocolConstants
     /// <summary>Most slots of one container.</summary>
     public const int MaxContainerSlots = 256;
 
+    /// <summary>Most block states (<see cref="BlockEntities.BlockEntityState"/>) in one construct (K6-30).</summary>
+    public const int MaxBlockEntitiesPerConstruct = 4096;
+
     /// <summary>Most components of one <see cref="Operations.CompoundOp"/>.</summary>
     public const int MaxCompoundComponents = 4096;
 

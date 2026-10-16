@@ -60,6 +60,18 @@ public sealed class ContainerStore
     internal Container Add(ContainerId id, ContainerKind kind, ContainerHost host, PlayerId owner, ContainerAccess access, ushort size, uint version)
     {
         var container = new Container(id, kind, host, owner, access, size, version);
+        Insert(container);
+        return container;
+    }
+
+    /// <summary>Puts a removed container back (undo of a refused compound operation); the same instance, so earlier slot undo records stay valid.</summary>
+    internal void Restore(Container container) => Insert(container);
+
+    private void Insert(Container container)
+    {
+        var id = container.Id;
+        var host = container.Host;
+        var kind = container.Kind;
         _byId.Add(id, container);
         if (host.Kind == ContainerHostKind.Player)
         {
@@ -79,7 +91,6 @@ public sealed class ContainerStore
         }
 
         _sorted.Insert(index, container);
-        return container;
     }
 
     /// <summary>Removes a container (operation 36 or undo of a refused compound operation) and frees its host index.</summary>
