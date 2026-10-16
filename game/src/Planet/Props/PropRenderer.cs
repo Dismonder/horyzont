@@ -39,10 +39,6 @@ public sealed partial class PropRenderer : Node, IPropSource
     /// <summary>Region nodes built (or rebuilt) in one step.</summary>
     public const int MaxBuildsPerStep = 6;
 
-    // The half of the 8 x 8 cells of a region plus the largest scale of a tall tree: a prop never lies farther than this from the centre of
-    // its region, which bounds the search of the picker.
-    private const float RegionReachMeters = 64f;
-
     // A remote client forgets the harvested props of far regions about once a second (the state outlives them by 768 m).
     private const int ForgetEverySteps = 60;
 
@@ -150,7 +146,7 @@ public sealed partial class PropRenderer : Node, IPropSource
 
         foreach (var region in body.Regions.Values)
         {
-            if (region.Visuals is not { } visuals || NumVector3.Distance(region.Centre, center) > radius + RegionReachMeters)
+            if (region.Visuals is not { } visuals || !PropRegionReach.MayHold(region.Centre, center, radius))
             {
                 continue;
             }
