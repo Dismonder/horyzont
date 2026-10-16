@@ -388,6 +388,12 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
         Publish(c);
     }
 
+    /// <summary>
+    /// Gets or sets who is exhausted (K6-33 D20): the server body ignores the sprint and the jump of an exhausted player, the same filter the client applies to its own input.
+    /// Null means nobody is (a world without survival content).
+    /// </summary>
+    public Func<PlayerId, bool>? ExhaustedCheck { get; set; }
+
     private MotorInput ReadInput(Slot c, out bool hasInput)
     {
         if (_inputs.TryTakeInput(c.Player, out var wire, out var seq))
@@ -399,7 +405,7 @@ public sealed partial class ServerCharacters : Node3D, IServerTickParticipant, I
             {
                 c.LastYaw = valid.Yaw;
                 c.LastPitch = valid.Pitch;
-                return valid;
+                return ExhaustedCheck is { } exhausted ? Horyzont.Core.Survival.StaminaGate.Filter(valid, exhausted(c.Player)) : valid;
             }
 
             if (c.InvalidInputs++ % InvalidInputLogEvery == 0)

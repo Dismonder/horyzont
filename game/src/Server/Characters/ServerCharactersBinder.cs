@@ -66,6 +66,9 @@ public sealed class ServerCharactersBinder : IServerTickParticipant, IServerPlay
         _frameNodes = frameNodes;
     }
 
+    /// <summary>Gets or sets who is exhausted (K6-33 D20); handed to the characters when the world starts.</summary>
+    public Func<PlayerId, bool>? ExhaustedCheck { get; set; }
+
     /// <summary>Gets the characters once the world has started; null before.</summary>
     public ServerCharacters? Characters => _characters;
 
@@ -118,7 +121,10 @@ public sealed class ServerCharactersBinder : IServerTickParticipant, IServerPlay
         _characters = new ServerCharacters(
             runtime.Simulation, new SessionInputSource(runtime.Session), terrain.Voxel, _rules, _movement, _devFlightAllowed,
             _loggers.CreateLogger<ServerCharacters>(), constructsReady: _constructsReady,
-            frames: _frames is { } frames ? () => frames.EnsureWorld(runtime) : null, frameNodes: _frameNodes);
+            frames: _frames is { } frames ? () => frames.EnsureWorld(runtime) : null, frameNodes: _frameNodes)
+        {
+            ExhaustedCheck = ExhaustedCheck,
+        };
         _parent.AddChild(_characters);
         _sender = new OwnStateSender(runtime.Session, runtime.Simulation, _characters);
         return _characters;

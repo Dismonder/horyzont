@@ -36,6 +36,7 @@ using Horyzont.Server.Console;
 using Horyzont.Server.Crafting;
 using Horyzont.Server.Frames;
 using Horyzont.Server.Inventory;
+using Horyzont.Server.Survival;
 
 using Microsoft.Extensions.Logging;
 
@@ -342,6 +343,12 @@ public sealed partial class GameComposition
                 characters = new ServerCharactersBinder(
                     serverNode!, factory, rules, movement, devFlight, loggers, constructs.AreSpawnCollisionsReady, serverFrames, serverFrameNodes);
                 characters.Register(server);
+                if (survival is not null)
+                {
+                    // K6-33 C5: the vitals of the players, after the inventory and the progress; the bodies ignore sprint and jump of an exhausted player.
+                    var vitals = VitalsService.Register(server, new CharacterVitalsMotion(() => characters.Characters), loggers);
+                    characters.ExhaustedCheck = vitals.IsExhausted;
+                }
             }
 
             DedicatedConsole? console = null;
