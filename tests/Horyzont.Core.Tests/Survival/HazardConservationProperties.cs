@@ -11,6 +11,7 @@ using Horyzont.Core.Operations;
 using Horyzont.Core.Survival;
 using Horyzont.Core.Tests.BlockEntities;
 using Horyzont.Core.Tests.Serialization;
+using Horyzont.Testing;
 
 using static Horyzont.Core.Tests.Survival.HazardWorld;
 
@@ -35,6 +36,7 @@ public sealed class HazardConservationProperties
     private const int OperationsPerSequence = 40;
     private const int ModelSequences = 400;
     private const int ModelEvents = 30;
+    private const int SimulationSequences = 60;
     private const ulong Per = 600;
 
     private enum Action
@@ -310,19 +312,179 @@ public sealed class HazardConservationProperties
          select new Event(kind, count, ticks)).ArrayOf(ModelEvents);
 
     [Fact]
-    public void GeneratorSettlements_MatchTickByTickReference()
+    public void OxygenGeneratorProcess_DrivenLikeSimulation_MatchesTickByTickReference()
     {
+        // Only the pure functions, driven by hand the way the simulation drives them: this does not touch GeneratorSettlements, ServerSimulation or OxygenCoverage (see the next property).
         Kit.ForAll(Events, events => Assert.Null(RunModel(events)), ModelSequences);
+    }
+
+    [Fact]
+    public void GeneratorSettlements_ThroughSimulation_MatchTickByTickReference()
+    {
+        // The same events on a real generator of a HazardWorld: insert and take are ItemMoveIntents through Submit (settle before and after), settle is TrySettleStation, time is AdvanceTicks.
+        // The reference moves tick by tick; the burned fuel in the journal, the cells left in the input and OxygenCoverage at the sampled ticks must agree (review B1b, P2-1).
+        Kit.ForAll(Events, events => Assert.Null(RunSimulation(events)), SimulationSequences);
     }
 
     [Fact]
     public void GeneratorSettlements_Mutants_AreCaught()
     {
         // The property can fail: dropping the settlement before a change of the input, or the one after it, is caught on some sequence (the free cells of review B1, P2-2).
-        var sequences = Events.Sample(ModelSequences, 7);
+        // The sequences come from fixed seeds, so the test is deterministic (review B1b, P3-4).
+        var sequences = Enumerable.Range(0, ModelSequences).Select(seed => SeededEvents(seed + 1)).ToArray();
         Assert.Contains(sequences, s => RunModel(s, settleBefore: false) is not null);
         Assert.Contains(sequences, s => RunModel(s, settleAfter: false) is not null);
         Assert.All(sequences, s => Assert.Null(RunModel(s)));
+    }
+
+    private static readonly int[] _tickChoices = [1, 59, 599, 600, 601, 1199, 1200, 3000];
+
+    /// <summary>The events of <see cref="Events"/> from a fixed seed (the same weights: insert 4, take 3, settle 2, advance 6).</summary>
+    private static Event[] SeededEvents(int seed)
+    {
+        var rng = new Random(seed);
+        var events = new Event[ModelEvents];
+        for (var i = 0; i < events.Length; i++)
+        {
+            var pick = rng.Next(15);
+            var kind = pick < 4 ? EventKind.Insert : pick < 7 ? EventKind.Take : pick < 9 ? EventKind.Settle : EventKind.Advance;
+            events[i] = new Event(kind, rng.Next(1, 4), _tickChoices[rng.Next(_tickChoices.Length)]);
+        }
+
+        return events;
+    }
+
+    /// <summary>The centre of the cell of the generator in <see cref="PlacedCell"/> in the frame of the planet (the construct stands at (0, 4000, 0)).</summary>
+    private static readonly System.Numerics.Vector3 _generatorCentre = new(4.5f, 4001.5f, 0.5f);
+
+    private static int BurnedInJournal(HazardWorld w)
+    {
+        static int Count(Operation op) => op switch
+        {
+            ItemDestroyOp { Sink: ItemSink.Fuel } destroy => destroy.Count,
+            CompoundOp compound => compound.Components.Sum(Count),
+            _ => 0,
+        };
+
+        return w.Blocks.Sim.Journal.Entries.Sum(e => Count(e.Operation));
+    }
+
+    private static int FuelIn(HazardWorld w, ContainerId container)
+    {
+        var total = 0;
+        var c = w.Blocks.Container(container);
+        for (var i = 0; i < c.Size; i++)
+        {
+            total += c.GetSlot(i).Type == Fuel ? c.GetSlot(i).Count : 0;
+        }
+
+        return total;
+    }
+
+    /// <summary>Runs the events through a real generator and the reference; returns the first disagreement, null when they agree.</summary>
+    private static string? RunSimulation(Event[] events)
+    {
+        var w = new HazardWorld(survival: true);
+        var input = w.PlaceByIntent(PlacedCell);
+        var block = new BlockRef(FunctionalBlockFixture.ConstructId, PlacedCell);
+        var now = w.Now.Value;
+        var refQueue = 0;
+        var refBurning = false;
+        var refEnd = 0UL;
+        var burnedRef = 0;
+
+        void RefProcess()
+        {
+            if (refBurning && now >= refEnd)
+            {
+                refBurning = false;
+            }
+
+            if (!refBurning && refQueue > 0)
+            {
+                refQueue--;
+                burnedRef++;
+                refBurning = true;
+                refEnd = now + Per;
+            }
+        }
+
+        string? Compare(string where)
+        {
+            var covered = OxygenCoverage.IsCovered(w.State, WorldFactory.HomePlanet, _generatorCentre, Fuel, Per, w.Now, HazardRules.Default);
+            return covered == refBurning ? null : $"{where}: tick {now} coverage {covered}, reference {refBurning}";
+        }
+
+        foreach (var e in events)
+        {
+            switch (e.Kind)
+            {
+                case EventKind.Advance:
+                    for (var left = e.Ticks; left > 0;)
+                    {
+                        var step = Math.Min(left, 29);
+                        w.AdvanceTicks(step);
+                        for (var i = 0; i < step; i++)
+                        {
+                            now++;
+                            RefProcess();
+                        }
+
+                        left -= step;
+                        if (w.Now.Value != now)
+                        {
+                            return $"clock: world {w.Now.Value}, reference {now}";
+                        }
+
+                        if (Compare("advance") is { } failure)
+                        {
+                            return failure;
+                        }
+                    }
+
+                    break;
+                case EventKind.Settle:
+                    w.Simulation.TrySettleStation(block);
+                    break;
+                case EventKind.Insert:
+                    w.Give(Player1, Fuel, e.Count, bagSlot: 5);
+                    if (!w.Simulation.Submit(Player1, new ItemMoveIntent(BagSlot(Player1, 5), ItemMoveTarget.AnyIn(input), (ushort)e.Count, Fuel, (ushort)e.Count)).IsAccepted)
+                    {
+                        return $"insert refused at tick {now}";
+                    }
+
+                    refQueue += e.Count;
+                    RefProcess();
+                    break;
+                default:
+                    if (refQueue == 0)
+                    {
+                        break;
+                    }
+
+                    // The expected count is the settled queue of the reference: the settlement before the intent has to arrive at the same number.
+                    var taken = Math.Min(e.Count, refQueue);
+                    var result = w.Simulation.Submit(Player1, new ItemMoveIntent(new SlotRef(input, 0), ItemMoveTarget.AnyIn(BagOf(Player1)), (ushort)taken, Fuel, (ushort)refQueue));
+                    if (!result.IsAccepted)
+                    {
+                        return $"take {taken} of {refQueue} refused at tick {now}: {result.Reason}";
+                    }
+
+                    refQueue -= taken;
+                    break;
+            }
+
+            if (Compare(e.Kind.ToString()) is { } disagreement)
+            {
+                return disagreement;
+            }
+        }
+
+        // A last settlement: the destroyed fuel and the cells left must agree with the reference.
+        w.Simulation.TrySettleStation(block);
+        var burned = BurnedInJournal(w);
+        var left2 = FuelIn(w, input);
+        return burned == burnedRef && left2 == refQueue ? null : $"end: burned {burned} vs {burnedRef}, queue {left2} vs {refQueue}";
     }
 
     /// <summary>Runs the events through the driver and the reference; returns the first disagreement, null when they agree.</summary>

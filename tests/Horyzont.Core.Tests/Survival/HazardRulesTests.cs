@@ -124,4 +124,17 @@ public sealed class HazardRulesTests
             WorldFactory.CreateDefault(), new FakeTerrainService(), new InMemoryJournal(), new GameRules(), NullLogger<ServerSimulation>.Instance,
             Horyzont.Core.World.Blocks.BlockContentTable.Empty, null, null, HazardRules.Default with { SuitBaseCapacity = 0 }));
     }
+
+    [Fact]
+    public void DefaultSuit_EqualsTheBaseCapacity()
+    {
+        // The suit of a server without hazard content (message 44) and the base capacity of the rules are two hundreds that must not drift apart (review B1b, P3-9).
+        var expected = (float)HazardRules.Default.SuitBaseCapacity;
+        var suit = Horyzont.Core.Protocol.Messages.PlayerVitalsMessage.DefaultSuit;
+
+        foreach (var resource in Enum.GetValues<SuitResource>())
+        {
+            Assert.Equal(expected, suit[resource]);
+        }
+    }
 }

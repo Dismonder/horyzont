@@ -173,13 +173,15 @@ public sealed class GeneratorRulesTests
     [InlineData("MoveToSlotOut")]
     [InlineData("MoveAnyOut")]
     [InlineData("TakeAllOut")]
+    [InlineData("RemoveBlock")]
     public void EveryInputMutationPath_SettlesBefore(string path)
     {
         var intoInput = path.EndsWith("In", StringComparison.Ordinal);
 
         // In: a generator that started now with an empty queue, three periods and a tick past its only cell, so it is idle in truth and "running" only by its stale state.
         // Out: a generator with four queued cells, two periods and a tick behind it, so two of them have burned and two are left.
-        var (w, input) = intoInput ? Generator() : Generator(slot0: 4);
+        // RemoveBlock: one queued cell, two periods and a tick behind it, so the cell has burned in truth while the view of the client still shows it (review B1b, P3-3).
+        var (w, input) = intoInput ? Generator() : Generator(slot0: path == "RemoveBlock" ? 1 : 4);
         var started = w.Now;
         w.Apply(StateOp(PlacedCell, input, started));
         if (intoInput)
@@ -196,13 +198,20 @@ public sealed class GeneratorRulesTests
             "MoveAnyIn" => new ItemMoveIntent(bag, ItemMoveTarget.AnyIn(input), 2, HazardWorld.Fuel, 2),
             "MoveToSlotOut" => new ItemMoveIntent(Slot(input, 0), ItemMoveTarget.ToSlot(bag), 2, HazardWorld.Fuel, 2),
             "MoveAnyOut" => new ItemMoveIntent(Slot(input, 0), ItemMoveTarget.AnyIn(BagOf(Player1)), 2, HazardWorld.Fuel, 2),
+            "RemoveBlock" => RemoveGeneratorIntent(PlacedCell),
             _ => new TakeAllIntent(input),
         };
 
         // The expected count of the move out is the settled one (2, not the 4 of the stale view): the settlement runs before the intent is checked.
         w.Blocks.Accept(Player1, intent);
 
-        if (intoInput)
+        if (path == "RemoveBlock")
+        {
+            // The only cell burned: the settlement before empties the input, so the removal is accepted (without it the stale queue would be ContainerNotEmpty).
+            Assert.Null(w.GeneratorAt(PlacedCell));
+            Assert.Equal(0, FuelIn(w, BagOf(Player1)));
+        }
+        else if (intoInput)
         {
             // Settled before: the generator was idle, so the two new cells are not "burned in the past": one starts now, one waits.
             Assert.Equal(1, FuelIn(w, input));
@@ -215,6 +224,26 @@ public sealed class GeneratorRulesTests
             Assert.Equal(0, FuelIn(w, input));
             Assert.Equal(new OxygenGeneratorBlockState(input, new Tick(started.Value + (2 * Per))), w.GeneratorAt(PlacedCell));
         }
+    }
+
+    [Fact]
+    public void StaleExpectation_ContainerChanged_SettlementStays()
+    {
+        var (w, input) = Generator(slot0: 4);
+        var started = w.Now;
+        w.Apply(StateOp(PlacedCell, input, started));
+        w.AdvanceTicks((int)(2 * Per) + 1);
+        var entries = w.Blocks.Sim.Journal.Entries.Count;
+
+        // The client still sees 4 queued cells; the settlement before the intent leaves 2, so the expected count of the move no longer holds (D16a): the move is refused,
+        // the settlement stays applied (ServerSimulation.Submit) and is the only new entry of the journal (review B1b, P3-3).
+        w.Blocks.AssertRejected(
+            Player1, new ItemMoveIntent(Slot(input, 0), ItemMoveTarget.ToSlot(BagSlot(Player1, 0)), 2, HazardWorld.Fuel, 4), RejectReason.ContainerChanged);
+
+        Assert.Equal(2, FuelIn(w, input));
+        Assert.Equal(0, FuelIn(w, BagOf(Player1)));
+        Assert.Equal(new OxygenGeneratorBlockState(input, new Tick(started.Value + (2 * Per))), w.GeneratorAt(PlacedCell));
+        Assert.Equal(entries + 1, w.Blocks.Sim.Journal.Entries.Count);
     }
 
     [Fact]

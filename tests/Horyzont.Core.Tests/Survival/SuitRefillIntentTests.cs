@@ -153,6 +153,42 @@ public sealed class SuitRefillIntentTests
     }
 
     [Fact]
+    public void Refill_VitalsNull_InvalidParameters()
+    {
+        var twin = Stocked();
+        twin.Blocks.Accept(Player1, RefillBag(Player1));
+
+        // A fresh player (before the first tick of VitalsService; the join window of the server) has no vitals: the value is the capacity, so the refill is refused. Operation 42 on null
+        // vitals is by design a success without effect, so a wrong resolver would destroy the item for nothing and only this test notices (review B1b, P2-2).
+        var w = new HazardWorld(survival: true);
+        w.Give(Player1, HeatCell, 3);
+        Assert.Null(w.VitalsOf(Player1));
+
+        w.Blocks.AssertRejected(Player1, RefillBag(Player1), RejectReason.InvalidParameters);
+
+        Assert.Equal(new ItemStack(HeatCell, 3), w.Blocks.Container(BagOf(Player1)).GetSlot(0));
+        Assert.Null(w.VitalsOf(Player1));
+    }
+
+    [Fact]
+    public void Refill_AboveCapacityAfterModuleRemoved_InvalidParameters()
+    {
+        var w = new HazardWorld(survival: true);
+        w.Equip(Player1, 4, Tank);
+        w.SetSuit(Player1, _half with { Oxygen = 150f });
+        w.Give(Player1, Canister, 3);
+        w.Give(Player1, HeatCell, 2, bagSlot: 1);
+        w.Blocks.Accept(Player1, RefillBag(Player1, 1));
+
+        // The tank is taken off: oxygen stays at 150 of 100 until the next tick of the suit step. A value above the capacity is as full as a value at it (D7: >=, not ==).
+        w.Apply(new ItemDestroyOp(new SlotRef(EquipmentOf(Player1), 4), Tank, 1, ItemSink.Admin));
+        w.Blocks.AssertRejected(Player1, RefillBag(Player1), RejectReason.InvalidParameters);
+
+        Assert.Equal(150f, w.SuitOf(Player1)!.Value.Oxygen);
+        Assert.Equal(new ItemStack(Canister, 3), w.Blocks.Container(BagOf(Player1)).GetSlot(0));
+    }
+
+    [Fact]
     public void Refill_CapacityFromModules()
     {
         var w = new HazardWorld(survival: true);
@@ -275,6 +311,27 @@ public sealed class SuitRefillIntentTests
         w.Blocks.AssertRejected(Player1, new SuitRefillIntent(chest, 0), RejectReason.InvalidParameters);
         w.AdvanceTicks(3);
         Assert.True(w.Blocks.Submit(RefillBag(Player1)).IsAccepted);
+    }
+
+    [Fact]
+    public void Refill_Accepted_SpendsToken()
+    {
+        var w = Stocked();
+        w.Apply(Create(BagOf(Player1), 1, Stone, 20));
+        w.Apply(Create(BagOf(Player1), 2, Stone, 1));
+
+        // 39 accepted item moves and one accepted refill use the whole burst of 40: the next move is RateLimited. A refill that did not spend a token would leave one for the move (review B1b, P3-2; mutation 7).
+        for (var i = 0; i < 39; i++)
+        {
+            var (from, to) = i % 2 == 0 ? (1, 3) : (3, 1);
+            var move = new ItemMoveIntent(BagSlot(Player1, from), ItemMoveTarget.ToSlot(BagSlot(Player1, to)), 20, Stone, 20);
+            Assert.True(w.Blocks.Submit(move).IsAccepted, $"move {i}");
+        }
+
+        Assert.True(w.Blocks.Submit(RefillBag(Player1)).IsAccepted);
+
+        var last = new ItemMoveIntent(BagSlot(Player1, 2), ItemMoveTarget.ToSlot(BagSlot(Player1, 4)), 1, Stone, 1);
+        w.Blocks.AssertRejected(Player1, last, RejectReason.RateLimited);
     }
 
     [Fact]
