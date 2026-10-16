@@ -169,6 +169,7 @@ public sealed partial class CraftingPanel : PanelContainer
         }
 
         _rowTexts.Add(string.Join('\n', lines));
+        _rowKeys.Add(recipe.Key);
 
         var count = new SpinBox { MinValue = 1, MaxValue = 50, Step = 1, Value = _remembered.GetValueOrDefault(recipe.Key, 1) };
         var key = recipe.Key;

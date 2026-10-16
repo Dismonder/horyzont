@@ -1,5 +1,6 @@
 using Horyzont.Client.Survival;
 using Horyzont.Game.Client.Survival;
+using Horyzont.Game.Content;
 using Horyzont.Server;
 
 namespace Horyzont.Game.Boot;
@@ -28,6 +29,27 @@ public sealed partial class GameComposition
 
         // The same filter the server applies to the body of this player (StaminaGate), so the prediction does not run where the server stands still.
         player.ExhaustedCheck = () => vitals.Exhausted;
+
+        // K6-34: a world with hazards has a suit: the equipment slots work, the hotbar refills the suit and the HUD shows it.
+        var hazards = SurvivalContentLoader.Load().HasHazards;
+        foreach (var tools in new[] { Tools, RemoteTools })
+        {
+            if (tools is not null)
+            {
+                tools.Vitals = vitals;
+                tools.SuitEnabled = hazards;
+            }
+        }
+
+        if (Inventory is { } worn)
+        {
+            worn.Interaction.EquipmentEnabled = hazards;
+            worn.Vitals = vitals;
+            worn.GeneratorTime = hazards && (Tools ?? RemoteTools)?.BlockEntities is { } entities
+                ? new ClientGeneratorTime(worn.Inventory, entities, SurvivalContentLoader.Load().Hazards, GameServerHooks.TickRate)
+                : null;
+        }
+
         if (!_env.Render || ClientNode is not { } clientNode || Inventory is not { } inventory)
         {
             return;
@@ -35,7 +57,7 @@ public sealed partial class GameComposition
 
         var source = new VitalsHudSource(
             vitals, inventory.Progress, inventory.Inventory, inventory.VisualOf, inventory.ItemName, ReadServerTick, tickRate: GameServerHooks.TickRate);
-        VitalsHud = new VitalsHud(source.Build);
+        VitalsHud = new VitalsHud(source.Build, hazards ? () => SuitHudSource.Build(vitals) : null);
         clientNode.AddChild(VitalsHud);
     }
 }
