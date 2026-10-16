@@ -113,6 +113,45 @@ public class PropRendererTests
 
     [TestCase(Timeout = 300000)]
     [RequireGodotRuntime]
+    public async Task Planet_LeftWithJobsNotTaken_DoesNotBlockTheJobsOfTheNext()
+    {
+        await using var scene = EngineTestScene.Create();
+        var bodies = StarSystemGenesis.CreateWorldBodies(Seed, GeneratorProfiles.Current).Bodies;
+        var first = bodies[0];
+        var second = bodies.First(b => b.Id != first.Id && PropLayouts.TryGet(b.GeneratorProfile, out _) && CubeSphereGrid.TryGetCellsPerFace(b.RadiusMeters, out _));
+        var current = first;
+        var renderer = new PropRenderer { Name = "PropRenderer" };
+        renderer.Initialize(
+            () => bodies,
+            static () => null,
+            () => new ClientViewpoint(default, current.Id, current.RadiusMeters, MiddleOf(current), MiddleOf(current)),
+            new TestStates(),
+            NullLogger.Instance,
+            null,
+            static () => BoxMeshes());
+
+        // The first step on a planet starts a full set of jobs; the camera leaves before the renderer took any result.
+        renderer.Step();
+        AssertThat(renderer.PendingJobs).IsEqual(PropRenderer.MaxAnchorJobs);
+        current = second;
+        renderer.Step();
+
+        // The jobs of the planet that was left are settled with its nodes, so the next planet gets its own set and gets drawn.
+        AssertThat(renderer.PendingJobs).IsEqual(PropRenderer.MaxAnchorJobs);
+        var built = false;
+        for (var i = 0; i < 1500 && !built; i++)
+        {
+            await scene.WaitFrames(1);
+            renderer.Step();
+            built = renderer.BuiltRegions > 0;
+        }
+
+        AssertThat(built).IsTrue();
+        renderer.QueueFree();
+    }
+
+    [TestCase(Timeout = 300000)]
+    [RequireGodotRuntime]
     public async Task Source_ListsTheAnchorsOfTheBuiltRegions()
     {
         await using var scene = EngineTestScene.Create();
@@ -223,6 +262,23 @@ public class PropRendererTests
         await scene.WaitFrames(1);
     }
 
+    private static NumVector3 MiddleOf(PlanetParams planet)
+    {
+        CubeSphereGrid.TryGetCellsPerFace(planet.RadiusMeters, out var cells);
+        return CubeSphereGrid.DirectionOfPoint(0, cells / 2, cells / 2, cells) * planet.RadiusMeters;
+    }
+
+    private static Dictionary<string, Mesh> BoxMeshes()
+    {
+        var meshes = new Dictionary<string, Mesh>(StringComparer.Ordinal);
+        foreach (var kind in Enum.GetValues<PropKindV1>().Where(k => k != PropKindV1.None))
+        {
+            meshes[kind.ToString()] = new BoxMesh();
+        }
+
+        return meshes;
+    }
+
     private sealed class Rig
     {
         private Rig(PlanetParams home, IPropLayout layout, PlanetSurfaceSampler sampler, TestStates states, PropRenderer renderer, int cells)
@@ -306,17 +362,6 @@ public class PropRendererTests
             }
 
             return false;
-        }
-
-        private static Dictionary<string, Mesh> BoxMeshes()
-        {
-            var meshes = new Dictionary<string, Mesh>(StringComparer.Ordinal);
-            foreach (var kind in Enum.GetValues<PropKindV1>().Where(k => k != PropKindV1.None))
-            {
-                meshes[kind.ToString()] = new BoxMesh();
-            }
-
-            return meshes;
         }
     }
 

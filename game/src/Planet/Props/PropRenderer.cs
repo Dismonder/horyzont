@@ -436,11 +436,19 @@ public sealed partial class PropRenderer : Node, IPropSource
         }
     }
 
-    private static void FreeBody(Body body)
+    private void FreeBody(Body body)
     {
         foreach (var region in body.Regions.Values)
         {
             region.Free();
+
+            // A job nobody took is settled with its region: its result is never taken once the body is gone, and a job that stayed counted
+            // would hold one of the MaxAnchorJobs slots for good (eight such jobs would stop every later planet from getting props).
+            if (region.Job is not null)
+            {
+                region.Job = null;
+                _jobs--;
+            }
         }
 
         if (IsInstanceValid(body.Root))
