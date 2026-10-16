@@ -408,6 +408,7 @@ public sealed partial class GameComposition
         composition.ConfigureSpace();
         composition.ConfigurePlanets();
         composition.ConfigureReplication();
+        composition.ConfigureClientCrafting();
         composition.ConfigureTerrainReplication();
         composition.ConfigureMotion();
         composition.ConfigureNavigation();

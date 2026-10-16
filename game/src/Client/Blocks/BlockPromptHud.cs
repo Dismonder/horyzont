@@ -14,7 +14,7 @@ public sealed partial class BlockPromptHud : CanvasLayer
 {
     private readonly ToolNode _tools;
     private Label? _label;
-    private BlockPromptKind? _shown;
+    private BlockPrompt? _shown;
 
     /// <summary>Creates the HUD.</summary>
     /// <param name="tools">The tools whose interaction key is described.</param>
@@ -43,8 +43,15 @@ public sealed partial class BlockPromptHud : CanvasLayer
         BlockPromptKind.Sleep => "PROMPT_SLEEP",
         BlockPromptKind.OwnBed => "PROMPT_OWN_BED",
         BlockPromptKind.BedOccupied => "PROMPT_BED_OCCUPIED",
+        BlockPromptKind.OpenStation => "PROMPT_STATION_OPEN",
         _ => "PROMPT_UNKNOWN",
     };
+
+    /// <summary>Translation key of the hint of a prompt; a station names itself ("[E] Furnace").</summary>
+    /// <param name="prompt">The prompt under the crosshair.</param>
+    /// <returns>The key in <c>tools.csv</c>.</returns>
+    public static string KeyOfPrompt(BlockPrompt prompt) =>
+        prompt.Kind == BlockPromptKind.OpenStation ? "PROMPT_STATION_" + prompt.Station.ToString().ToUpperInvariant() : KeyOf(prompt.Kind);
 
     /// <inheritdoc />
     public override void _Ready()
@@ -76,17 +83,16 @@ public sealed partial class BlockPromptHud : CanvasLayer
         }
 
         var prompt = _tools.Inventory?.IsOpen == true ? null : _tools.Interaction?.Prompt;
-        var kind = prompt?.Kind;
-        if (kind == _shown && (kind is null) != _label.Visible)
+        if (prompt == _shown && (prompt is null) != _label.Visible)
         {
             return;
         }
 
-        _shown = kind;
-        _label.Visible = kind is not null;
-        if (kind is { } shown)
+        _shown = prompt;
+        _label.Visible = prompt is not null;
+        if (prompt is { } shown)
         {
-            _label.Text = Tr(KeyOf(shown));
+            _label.Text = Tr(KeyOfPrompt(shown));
         }
     }
 }
