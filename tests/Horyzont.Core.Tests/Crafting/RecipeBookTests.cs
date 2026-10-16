@@ -75,6 +75,24 @@ public sealed class RecipeBookTests
         Assert.False(RecipeBook.IsKnown(onlyMissing, _registry, Discovered(CraftingFixture.Stone), _noKeys));
     }
 
+    [Fact]
+    public void IsKnown_UsesAnyItemTypeKeys_NotOnlyTheRegistry()
+    {
+        // The client resolves keys by the mapping of message 49, which is not the order of the content: the rule has one source (D8).
+        var keys = new MappedKeys(SurvivalContentFactory.StoneKey, new ItemTypeId(77));
+        Assert.True(RecipeBook.IsKnown(Recipe(), keys, Discovered(new ItemTypeId(77)), _noKeys));
+        Assert.False(RecipeBook.IsKnown(Recipe(), keys, Discovered(CraftingFixture.Stone), _noKeys));
+    }
+
+    private sealed class MappedKeys(string key, ItemTypeId id) : IItemTypeKeys
+    {
+        public bool TryGetId(string itemKey, out ItemTypeId found)
+        {
+            found = id;
+            return itemKey == key;
+        }
+    }
+
     private static ItemTypeBitSet Discovered(params ItemTypeId[] types) => types.Aggregate(ItemTypeBitSet.Empty, (set, type) => set.With(type));
 
     private static RecipeDef Recipe(

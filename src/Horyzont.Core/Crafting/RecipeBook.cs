@@ -9,11 +9,11 @@ public static class RecipeBook
 {
     /// <summary>A recipe is known when the world has its progress key (or it needs none) and the player discovered an ingredient (not fuel).</summary>
     /// <param name="recipe">The recipe.</param>
-    /// <param name="registry">Item types of the world.</param>
+    /// <param name="items">Item keys of the world (the registry on the server, the keys of message 49 on the client).</param>
     /// <param name="discovered">Item types the player discovered.</param>
     /// <param name="worldKeys">Progress keys of the world.</param>
     /// <returns>True when the recipe is known.</returns>
-    public static bool IsKnown(RecipeDef recipe, ItemTypeRegistry registry, ItemTypeBitSet discovered, IReadOnlySet<string> worldKeys)
+    public static bool IsKnown(RecipeDef recipe, IItemTypeKeys items, ItemTypeBitSet discovered, IReadOnlySet<string> worldKeys)
     {
         ArgumentNullException.ThrowIfNull(recipe);
         if (recipe.ProgressKey is not null && !worldKeys.Contains(recipe.ProgressKey))
@@ -24,7 +24,7 @@ public static class RecipeBook
         var ingredients = recipe.Ingredients;
         for (var i = 0; i < ingredients.Count; i++)
         {
-            if (registry.TryGetId(ingredients[i].ItemKey, out var type) && discovered.Contains(type))
+            if (items.TryGetId(ingredients[i].ItemKey, out var type) && discovered.Contains(type))
             {
                 return true;
             }

@@ -1,8 +1,11 @@
 using Horyzont.Client.Crafting;
-using Horyzont.Core.Crafting;
+using Horyzont.Client.Inventory;
 using Horyzont.Core.Progress;
+using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Testing;
+
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Horyzont.Client.Tests.Crafting;
 
@@ -95,28 +98,25 @@ public sealed class RecipeListTests
     }
 
     [Fact]
-    public void IsKnown_AgreesWithRecipeBook_ForEveryDiscoveryAndKey()
+    public void IsKnown_UsesClientKeyMapping()
     {
-        var fixture = new CraftingClientFixture();
-        var registry = WorldFactory.CreateWithCrafting().ItemTypes;
-        string[][] keySets = [[], [SurvivalContentFactory.Boss2Key], ["other"]];
-        var discoveries = SurvivalContentFactory.CraftingItemKeys.Select(k => new[] { k }).Prepend([]).ToList();
-        discoveries.Add([SurvivalContentFactory.OreKey, SurvivalContentFactory.PeatKey]);
-        discoveries.Add([.. SurvivalContentFactory.CraftingItemKeys]);
+        // The ids of message 49 are shifted against the order of the content: the list resolves keys through the client inventory.
+        var content = SurvivalContentFactory.CreateTestWithRecipes();
+        var inventory = new ClientInventory(content.Items, _ => { }, NullLogger<ClientInventory>.Instance);
+        inventory.OnMessage(new ItemRegistry([.. SurvivalContentFactory.CraftingItemKeys.Select((key, i) => new RegistryEntry((ushort)(i + 100), key))]));
+        var progress = new ClientProgress();
+        var recipes = new RecipeList(content, inventory, progress);
+        var hand = content.TryGetRecipe("t:hand", out var recipe) ? recipe : throw new InvalidOperationException("no recipe t:hand");
 
-        foreach (var keys in keySets)
-        {
-            foreach (var discovered in discoveries)
-            {
-                fixture.Know(discovered, keys);
-                var bits = discovered.Aggregate(ItemTypeBitSet.Empty, (set, key) => set.With(CraftingClientFixture.Item(key)));
-                foreach (var recipe in fixture.Content.Recipes)
-                {
-                    Assert.Equal(
-                        RecipeBook.IsKnown(recipe, registry, bits, new HashSet<string>(keys, StringComparer.Ordinal)),
-                        fixture.Recipes.IsKnown(recipe));
-                }
-            }
-        }
+        Assert.True(inventory.TryGetTypeId(SurvivalContentFactory.StoneKey, out var stone));
+        Assert.True(stone.Value >= 100);
+        Assert.False(recipes.IsKnown(hand));
+
+        progress.Apply(new PlayerProgressState(ItemTypeBitSet.Empty.With(stone), []));
+        Assert.True(recipes.IsKnown(hand));
+
+        // The id the content order would give is not the discovered one.
+        progress.Apply(new PlayerProgressState(ItemTypeBitSet.Empty.With(CraftingClientFixture.Item(SurvivalContentFactory.StoneKey)), []));
+        Assert.False(recipes.IsKnown(hand));
     }
 }
