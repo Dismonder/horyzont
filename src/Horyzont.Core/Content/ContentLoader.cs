@@ -5,6 +5,7 @@ using Horyzont.Core.Crafting;
 using Horyzont.Core.Items;
 using Horyzont.Core.Props;
 using Horyzont.Core.Protocol;
+using Horyzont.Core.Survival;
 using Horyzont.Core.World.Blocks;
 
 namespace Horyzont.Core.Content;
@@ -46,7 +47,32 @@ public static class ContentLoader
     /// <summary>Longest time of a piece in seconds (K6-32 D26).</summary>
     public const int MaxRecipeSeconds = 3600;
 
+    /// <summary>Largest amount of a suit refill and of a capacity in the suit (K6-34 D8).</summary>
+    public const int MaxSuitRefill = 1000;
+
+    /// <summary>Largest capacity a suit module adds to one resource (K6-34 D8).</summary>
+    public const int MaxModuleCapacity = 500;
+
+    /// <summary>Smallest drain multiplier a suit module gives (K6-34 D8): a tenth of the drain.</summary>
+    public const double MinModuleDrain = 0.1;
+
+    /// <summary>Most profiles of the hazards file (K6-34 D8).</summary>
+    public const int MaxHazardProfiles = 64;
+
+    /// <summary>Largest rate or zone scale of a hazard in the hazards file (K6-34 D8).</summary>
+    public const double MaxHazardRate = 10;
+
+    /// <summary>Shortest burn time of a fuel cell in seconds (K6-34 D8).</summary>
+    public const int MinGeneratorSecondsPerCell = 10;
+
+    /// <summary>Longest burn time of a fuel cell in seconds (K6-34 D8): a day.</summary>
+    public const int MaxGeneratorSecondsPerCell = 86_400;
+
     private const int MaxStackLimit = 999;
+    private const int MaxHazardBody = 8;
+    private const int MaxSuitModuleEffects = 5;
+    private const double MinZoneHeight = -10_000;
+    private const double MaxZoneHeight = 100_000;
 
     /// <summary>Largest extra maximum health or stamina of a food, in points (K6-33 D8).</summary>
     private const int MaxFoodPoints = 500;
@@ -138,11 +164,6 @@ public static class ContentLoader
 
     private static SurvivalContent ParseAll(string itemsJson, string yieldsJson, string startJson, string? propsJson, string? recipesJson, string? hazardsJson = null)
     {
-        if (hazardsJson is not null)
-        {
-            throw new NotImplementedException("K6-34 B3");
-        }
-
         ArgumentNullException.ThrowIfNull(itemsJson);
         ArgumentNullException.ThrowIfNull(yieldsJson);
         ArgumentNullException.ThrowIfNull(startJson);
@@ -179,6 +200,13 @@ public static class ContentLoader
             recipes = ParseRecipes(document.RootElement, catalog);
         }
 
+        HazardContent? hazards = null;
+        if (hazardsJson is not null)
+        {
+            using var document = Open(hazardsJson, HazardsFile);
+            hazards = ParseHazards(document.RootElement, catalog);
+        }
+
         for (var i = 0; i < items.Length; i++)
         {
             var key = items[i].Key;
@@ -188,7 +216,7 @@ public static class ContentLoader
             }
         }
 
-        return new SurvivalContent(catalog, yields, startKit, props, recipes);
+        return new SurvivalContent(catalog, yields, startKit, props, recipes, hazards);
     }
 
     private static bool HasSource(string key, TerrainYieldDef[] yields, StartKitDef startKit, PropDef[] props, RecipeDef[] recipes)
@@ -296,7 +324,14 @@ public static class ContentLoader
             }
 
             var food = ParseFood(element, path, flags);
-            items.Add(new ItemDef(key, category, maxStack, flags, (byte)toolTier, slot, food));
+            var refill = ParseSuitRefill(element, path, food);
+            var module = ParseSuitModule(element, path, slot);
+            if (module is not null && maxStack != 1)
+            {
+                throw Invalid(ItemsFile, path + ".maxStack", "a suit module is worn once: its stack limit is 1");
+            }
+
+            items.Add(new ItemDef(key, category, maxStack, flags, (byte)toolTier, slot, food, refill, module));
             index++;
         }
 
@@ -345,6 +380,249 @@ public static class ContentLoader
         }
 
         return new FoodDef((ushort)health, (ushort)stamina, (float)regen, (uint)seconds);
+    }
+
+    // The "suitRefill" object of an item (K6-34 D8): a resource and an amount; an item that is food cannot also refill the suit.
+    private static SuitRefillDef? ParseSuitRefill(JsonElement item, string path, FoodDef? food)
+    {
+        if (!item.TryGetProperty("suitRefill", out var refill))
+        {
+            return null;
+        }
+
+        var refillPath = path + ".suitRefill";
+        RequireObject(refill, refillPath, ItemsFile);
+        if (food is not null)
+        {
+            throw Invalid(ItemsFile, refillPath, "a food cannot also refill the suit");
+        }
+
+        var resource = RequiredEnum<SuitResource>(refill, "resource", refillPath, ItemsFile);
+        var amount = RequiredInt(refill, "amount", refillPath, ItemsFile, 1, MaxSuitRefill);
+        return new SuitRefillDef(resource, (ushort)amount);
+    }
+
+    // The "suitModule" object of an item (K6-34 D8): present exactly when the item goes to a module slot, 1 to 5 effects of different resources, none of them neutral.
+    private static SuitModuleDef? ParseSuitModule(JsonElement item, string path, EquipmentSlot slot)
+    {
+        var hasObject = item.TryGetProperty("suitModule", out var module);
+        var modulePath = path + ".suitModule";
+        var moduleSlot = slot == EquipmentSlot.Module;
+        if (hasObject != moduleSlot)
+        {
+            throw Invalid(ItemsFile, modulePath, moduleSlot ? "an item for a module slot needs a \"suitModule\" object" : "a \"suitModule\" object needs \"equipmentSlot\": \"module\"");
+        }
+
+        if (!hasObject)
+        {
+            return null;
+        }
+
+        RequireObject(module, modulePath, ItemsFile);
+        var effectArray = RequiredArray(module, "effects", modulePath, ItemsFile);
+        var count = effectArray.GetArrayLength();
+        if (count < 1 || count > MaxSuitModuleEffects)
+        {
+            throw Invalid(ItemsFile, modulePath + ".effects", $"must have 1..{MaxSuitModuleEffects} entries");
+        }
+
+        var effects = new List<SuitModuleEffect>(count);
+        var seen = new HashSet<SuitResource>();
+        var index = 0;
+        foreach (var effect in effectArray.EnumerateArray())
+        {
+            var effectPath = $"{modulePath}.effects[{index}]";
+            RequireObject(effect, effectPath, ItemsFile);
+            var resource = RequiredEnum<SuitResource>(effect, "resource", effectPath, ItemsFile);
+            if (!seen.Add(resource))
+            {
+                throw Invalid(ItemsFile, effectPath + ".resource", $"resource '{resource}' repeats in this module");
+            }
+
+            var capacity = RequiredInt(effect, "capacity", effectPath, ItemsFile, 0, MaxModuleCapacity);
+            if (!effect.TryGetProperty("drain", out var drainElement) || drainElement.ValueKind != JsonValueKind.Number
+                || !drainElement.TryGetDouble(out var drain) || !double.IsFinite(drain) || drain < MinModuleDrain || drain > 1.0)
+            {
+                throw Invalid(ItemsFile, effectPath + ".drain", $"must be a finite number in {MinModuleDrain.ToString(System.Globalization.CultureInfo.InvariantCulture)}..1.0");
+            }
+
+            if (capacity == 0 && drain == 1.0)
+            {
+                throw Invalid(ItemsFile, effectPath, "an effect with capacity 0 and drain 1.0 changes nothing");
+            }
+
+            effects.Add(new SuitModuleEffect(resource, (ushort)capacity, (float)drain));
+            index++;
+        }
+
+        return new SuitModuleDef(effects);
+    }
+
+    private static HazardContent ParseHazards(JsonElement root, ItemCatalog catalog)
+    {
+        RequireObject(root, "$", HazardsFile);
+        RequiredInt(root, "formatVersion", "$", HazardsFile, 1, 1);
+        var profileArray = RequiredArray(root, "profiles", "$", HazardsFile);
+        var profileCount = profileArray.GetArrayLength();
+        if (profileCount < 1 || profileCount > MaxHazardProfiles)
+        {
+            throw Invalid(HazardsFile, "$.profiles", $"must have 1..{MaxHazardProfiles} entries");
+        }
+
+        var profiles = new List<HazardProfileDef>(profileCount);
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        var index = 0;
+        foreach (var element in profileArray.EnumerateArray())
+        {
+            var path = $"$.profiles[{index}]";
+            RequireObject(element, path, HazardsFile);
+            var key = RequiredKey(element, "key", path, HazardsFile);
+            if (!keys.Add(key))
+            {
+                throw Invalid(HazardsFile, path + ".key", $"duplicate key '{key}'");
+            }
+
+            var day = new float[5];
+            var night = new float[5];
+            for (var i = 0; i < 5; i++)
+            {
+                var name = HazardName((HazardKind)(i + 1));
+                if (!element.TryGetProperty(name, out var rate))
+                {
+                    continue;
+                }
+
+                var ratePath = path + "." + name;
+                RequireObject(rate, ratePath, HazardsFile);
+                day[i] = RequiredRate(rate, "day", ratePath);
+                night[i] = RequiredRate(rate, "night", ratePath);
+            }
+
+            var zones = new List<HazardZoneDef>();
+            if (element.TryGetProperty("zones", out _))
+            {
+                var zoneArray = RequiredArray(element, "zones", path, HazardsFile);
+                var zoneIndex = 0;
+                var previous = double.NegativeInfinity;
+                foreach (var zone in zoneArray.EnumerateArray())
+                {
+                    var zonePath = $"{path}.zones[{zoneIndex}]";
+                    RequireObject(zone, zonePath, HazardsFile);
+                    if (!zone.TryGetProperty("minHeight", out var heightElement) || heightElement.ValueKind != JsonValueKind.Number
+                        || !heightElement.TryGetDouble(out var height) || !double.IsFinite(height) || height < MinZoneHeight || height > MaxZoneHeight)
+                    {
+                        throw Invalid(HazardsFile, zonePath + ".minHeight", $"must be a number in {MinZoneHeight}..{MaxZoneHeight}");
+                    }
+
+                    if (height <= previous)
+                    {
+                        throw Invalid(HazardsFile, zonePath + ".minHeight", "zones must be in strictly ascending order of minHeight");
+                    }
+
+                    previous = height;
+                    if (!zone.TryGetProperty("scale", out var scale))
+                    {
+                        throw Invalid(HazardsFile, zonePath + ".scale", "expected an object");
+                    }
+
+                    var scalePath = zonePath + ".scale";
+                    RequireObject(scale, scalePath, HazardsFile);
+                    var factors = new float[5];
+                    for (var i = 0; i < 5; i++)
+                    {
+                        factors[i] = scale.TryGetProperty(HazardName((HazardKind)(i + 1)), out _)
+                            ? RequiredRate(scale, HazardName((HazardKind)(i + 1)), scalePath)
+                            : 1f;
+                    }
+
+                    zones.Add(new HazardZoneDef((float)height, new HazardRates(factors[0], factors[1], factors[2], factors[3], factors[4])));
+                    zoneIndex++;
+                }
+            }
+
+            profiles.Add(new HazardProfileDef(
+                key,
+                new HazardRates(day[0], day[1], day[2], day[3], day[4]),
+                new HazardRates(night[0], night[1], night[2], night[3], night[4]),
+                zones));
+            index++;
+        }
+
+        var bodies = new List<HazardBodyDef>();
+        var bodyIndexes = new HashSet<int>();
+        index = 0;
+        foreach (var element in RequiredArray(root, "bodies", "$", HazardsFile).EnumerateArray())
+        {
+            var path = $"$.bodies[{index}]";
+            RequireObject(element, path, HazardsFile);
+            var body = RequiredInt(element, "body", path, HazardsFile, 0, MaxHazardBody);
+            if (!bodyIndexes.Add(body))
+            {
+                throw Invalid(HazardsFile, path + ".body", $"body {body} already has a profile");
+            }
+
+            var profile = RequiredKey(element, "profile", path, HazardsFile);
+            if (!keys.Contains(profile))
+            {
+                throw Invalid(HazardsFile, path + ".profile", $"unknown profile '{profile}'");
+            }
+
+            bodies.Add(new HazardBodyDef((byte)body, profile));
+            index++;
+        }
+
+        var defaultProfile = RequiredKey(root, "defaultProfile", "$", HazardsFile);
+        if (!keys.Contains(defaultProfile))
+        {
+            throw Invalid(HazardsFile, "$.defaultProfile", $"unknown profile '{defaultProfile}'");
+        }
+
+        var spaceProfile = RequiredKey(root, "spaceProfile", "$", HazardsFile);
+        if (!keys.Contains(spaceProfile))
+        {
+            throw Invalid(HazardsFile, "$.spaceProfile", $"unknown profile '{spaceProfile}'");
+        }
+
+        if (!root.TryGetProperty("oxygenGenerator", out var generator))
+        {
+            throw Invalid(HazardsFile, "$.oxygenGenerator", "expected an object");
+        }
+
+        RequireObject(generator, "$.oxygenGenerator", HazardsFile);
+        var fuel = RequiredKey(generator, "fuel", "$.oxygenGenerator", HazardsFile);
+        if (!catalog.TryGet(fuel, out var fuelDef))
+        {
+            throw Invalid(HazardsFile, "$.oxygenGenerator.fuel", $"unknown item '{fuel}'");
+        }
+
+        if ((fuelDef.Flags & ItemFlags.Retired) != 0)
+        {
+            throw Invalid(HazardsFile, "$.oxygenGenerator.fuel", $"item '{fuel}' is retired");
+        }
+
+        var seconds = RequiredInt(generator, "secondsPerCell", "$.oxygenGenerator", HazardsFile, MinGeneratorSecondsPerCell, MaxGeneratorSecondsPerCell);
+        return new HazardContent(profiles, bodies, defaultProfile, spaceProfile, new OxygenGeneratorDef(fuel, seconds));
+    }
+
+    private static string HazardName(HazardKind kind) => kind switch
+    {
+        HazardKind.Cold => "cold",
+        HazardKind.Heat => "heat",
+        HazardKind.Toxins => "toxins",
+        HazardKind.Radiation => "radiation",
+        _ => "vacuum",
+    };
+
+    // A rate or a scale of a hazard: a finite number in 0..10 (K6-34 D8).
+    private static float RequiredRate(JsonElement parent, string name, string path)
+    {
+        if (!parent.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.Number
+            || !value.TryGetDouble(out var number) || !double.IsFinite(number) || number < 0 || number > MaxHazardRate)
+        {
+            throw Invalid(HazardsFile, $"{path}.{name}", $"must be a finite number in 0..{MaxHazardRate}");
+        }
+
+        return (float)number;
     }
 
     private static TerrainYieldDef[] ParseYields(JsonElement root, ItemCatalog catalog)

@@ -189,6 +189,16 @@ public sealed class HazardContentTests
     }
 
     [Fact]
+    public void GeneratorTicksPerCell_IsSecondsTimesTickRate()
+    {
+        // One source for the settlement, the coverage and the client (review B1b, P3-6): the test content agrees with the rule, and a tick rate below 1 is refused.
+        Assert.Equal(18_000UL, new OxygenGeneratorDef(Fuel, 300).TicksPerCell(60));
+        Assert.Equal(300UL, new OxygenGeneratorDef(Fuel, 10).TicksPerCell(30));
+        Assert.Equal(Survival.HazardTestContent.TicksPerCell, Survival.HazardTestContent.Hazards.Generator.TicksPerCell(Survival.HazardTestContent.TickRate));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new OxygenGeneratorDef(Fuel, 300).TicksPerCell(0));
+    }
+
+    [Fact]
     public void Parse_WrongFormatVersion_Throws()
     {
         Assert.True(Parse(Hazards()).HasHazards);

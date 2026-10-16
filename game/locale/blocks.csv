@@ -30,5 +30,6 @@ BLOCK_FURNACE,Furnace,Piec
 BLOCK_REFINERY,Refinery,Rafineria
 BLOCK_KITCHEN,Kitchen,Kuchnia
 BLOCK_FABRICATOR,Fabricator,Fabrykator
+BLOCK_OXYGEN_GENERATOR,Oxygen generator,Generator tlenu
 BLOCK_MISSING,Missing block,Brakujący blok
 BLOCK_CAMPFIRE,Campfire,Ognisko

@@ -44,6 +44,7 @@
     { "key": "core:furnace", "shape": "cube", "mass": 400, "material": "stone", "function": { "kind": "station", "station": "furnace", "inputSlots": 4, "outputSlots": 4 } },
     { "key": "core:refinery", "shape": "cube", "mass": 600, "material": "metal", "function": { "kind": "station", "station": "refinery", "inputSlots": 4, "outputSlots": 4 } },
     { "key": "core:kitchen", "shape": "cube", "mass": 120, "material": "wood", "function": { "kind": "station", "station": "kitchen" } },
-    { "key": "core:fabricator", "shape": "cube", "mass": 500, "material": "ship_console", "function": { "kind": "station", "station": "fabricator" } }
+    { "key": "core:fabricator", "shape": "cube", "mass": 500, "material": "ship_console", "function": { "kind": "station", "station": "fabricator" } },
+    { "key": "core:oxygen_generator", "shape": "cube", "mass": 300, "material": "metal", "function": { "kind": "oxygen_generator", "inputSlots": 2 } }
   ]
 }
