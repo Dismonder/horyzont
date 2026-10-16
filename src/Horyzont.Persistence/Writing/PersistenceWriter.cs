@@ -553,6 +553,8 @@ public sealed class PersistenceWriter : IAsyncDisposable
             WriteMarkers(connection, transaction, checkpoint);
             WriteShipStates(connection, transaction, checkpoint);
             WriteContainers(connection, transaction, checkpoint);
+            WriteBlockEntities(connection, transaction, checkpoint);
+            WriteProgress(connection, transaction, checkpoint);
             WriteTerrain(connection, transaction, command.Request.TerrainBlocks);
             Sql.SetMeta(connection, transaction, Sql.MetaNextEntityId, Sql.ToDb(checkpoint.NextEntityId));
             Sql.SetMeta(connection, transaction, Sql.MetaNextPlayerId, Sql.ToDb(checkpoint.NextPlayerId));
@@ -729,6 +731,55 @@ public sealed class PersistenceWriter : IAsyncDisposable
                 "INSERT INTO containers (container_id, data) VALUES ($id, $data) ON CONFLICT (container_id) DO UPDATE SET data = excluded.data;");
             command.Parameters.AddWithValue("$id", Sql.ToDb(container.Id.Value));
             command.Parameters.AddWithValue("$data", StateCodec.EncodeContainerBlob(container));
+            command.ExecuteNonQuery();
+        }
+    }
+
+    private static void WriteBlockEntities(SqliteConnection connection, SqliteTransaction transaction, Core.Checkpoints.WorldCheckpoint checkpoint)
+    {
+        foreach (var removed in checkpoint.RemovedBlockEntities)
+        {
+            using var command = Sql.Command(
+                connection, transaction,
+                "DELETE FROM block_entities WHERE construct_id = $id AND cell_x = $x AND cell_y = $y AND cell_z = $z;");
+            command.Parameters.AddWithValue("$id", Sql.ToDb(removed.Construct.Value));
+            command.Parameters.AddWithValue("$x", removed.Cell.X);
+            command.Parameters.AddWithValue("$y", removed.Cell.Y);
+            command.Parameters.AddWithValue("$z", removed.Cell.Z);
+            command.ExecuteNonQuery();
+        }
+
+        foreach (var entity in checkpoint.UpsertedBlockEntities)
+        {
+            using var command = Sql.Command(
+                connection, transaction,
+                "INSERT INTO block_entities (construct_id, cell_x, cell_y, cell_z, data) VALUES ($id, $x, $y, $z, $data) "
+                + "ON CONFLICT (construct_id, cell_x, cell_y, cell_z) DO UPDATE SET data = excluded.data;");
+            command.Parameters.AddWithValue("$id", Sql.ToDb(entity.Construct.Value));
+            command.Parameters.AddWithValue("$x", entity.Cell.X);
+            command.Parameters.AddWithValue("$y", entity.Cell.Y);
+            command.Parameters.AddWithValue("$z", entity.Cell.Z);
+            command.Parameters.AddWithValue("$data", StateCodec.EncodeBlockEntityBlob(entity));
+            command.ExecuteNonQuery();
+        }
+    }
+
+    private static void WriteProgress(SqliteConnection connection, SqliteTransaction transaction, Core.Checkpoints.WorldCheckpoint checkpoint)
+    {
+        foreach (var removed in checkpoint.RemovedProgress)
+        {
+            using var command = Sql.Command(connection, transaction, "DELETE FROM player_progress WHERE player_id = $id;");
+            command.Parameters.AddWithValue("$id", Sql.ToDb(removed.Value));
+            command.ExecuteNonQuery();
+        }
+
+        foreach (var progress in checkpoint.UpsertedProgress)
+        {
+            using var command = Sql.Command(
+                connection, transaction,
+                "INSERT INTO player_progress (player_id, data) VALUES ($id, $data) ON CONFLICT (player_id) DO UPDATE SET data = excluded.data;");
+            command.Parameters.AddWithValue("$id", Sql.ToDb(progress.Player.Value));
+            command.Parameters.AddWithValue("$data", StateCodec.EncodePlayerProgressBlob(progress));
             command.ExecuteNonQuery();
         }
     }
