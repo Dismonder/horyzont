@@ -168,4 +168,87 @@ public sealed class PropFieldTests
         Assert.True(field.TryGetProp(Planet, ids[0], out _));
         Assert.True(f.Terrain.GeneratedSurfaceCalls > calls, "The oldest of 4097 props must have left the cache of 4096.");
     }
+
+    [Fact]
+    public void TryGetProp_AbsentAfterSampling_SecondLookupNoSurfaceCall()
+    {
+        var f = new PropWorldFixture();
+        var tree = f.FindProp(PropKindV1.Pine);
+
+        // The candidate exists, but the surface is 1000 m over the radius: above the band of every kind, so the prop is refused after sampling.
+        f.Terrain.GeneratedSurfaceRadius = WorldFactory.HomePlanetParams.RadiusMeters + 1000f;
+        var field = new PropField(f.State, f.Terrain);
+        var before = f.Terrain.GeneratedSurfaceCalls;
+
+        Assert.False(field.TryGetProp(Planet, tree.Id, out _));
+        var afterFirst = f.Terrain.GeneratedSurfaceCalls;
+        Assert.True(afterFirst > before, "The first lookup must sample the generated surface.");
+        for (var i = 0; i < 100; i++)
+        {
+            Assert.False(field.TryGetProp(Planet, tree.Id, out _));
+        }
+
+        Assert.Equal(afterFirst, f.Terrain.GeneratedSurfaceCalls);
+    }
+
+    [Fact]
+    public void TryGetProp_NoSurface_IsNotRemembered()
+    {
+        var f = new PropWorldFixture();
+        var tree = f.FindProp(PropKindV1.Pine);
+        var field = new PropField(f.State, f.Terrain);
+
+        // No surface now: nothing was sampled, so the answer is not remembered and the prop exists as soon as the surface does.
+        f.Terrain.GeneratedSurfaceRadius = null;
+        Assert.False(field.TryGetProp(Planet, tree.Id, out _));
+        f.Terrain.GeneratedSurfaceRadius = PropWorldFixture.Surface;
+
+        Assert.True(field.TryGetProp(Planet, tree.Id, out _));
+    }
+
+    [Fact]
+    public void CollectInSphere_SamplesOnlyCandidatesWhoseRayMeetsSphere()
+    {
+        const float radius = 2f;
+        var f = new PropWorldFixture();
+        var center = Pole + new Vector3(3f, 0f, -2f);
+        Assert.True(f.State.Planets.TryGet(Planet, out var planet));
+        Assert.True(PropLayouts.TryGet(planet.GeneratorProfile, out var layout));
+        Assert.True(CubeSphereGrid.TryGetCellsPerFace(planet.RadiusMeters, out var cellsPerFace));
+
+        // Independent count in double precision: the candidates of the cells around the sphere, and those whose ray from the centre of the
+        // planet passes within the radius of the centre of the sphere (only these can have an anchor inside it).
+        var cells = new List<PropId>();
+        CubeSphereGrid.CellsInSphere(center, radius + 30f, planet.RadiusMeters, cells);
+        var candidates = 0;
+        var meeting = 0;
+        foreach (var cell in cells)
+        {
+            for (var slot = 0; slot < 4; slot++)
+            {
+                var id = new PropId(cell.Value | ((ulong)slot << 16));
+                if (!layout!.TryGetCandidate(planet.Seed, id, out var candidate))
+                {
+                    continue;
+                }
+
+                candidates++;
+                var d = CubeSphereGrid.DirectionOfPoint(id.Face, id.CellU + (candidate.OffsetU / 1024.0), id.CellV + (candidate.OffsetV / 1024.0), cellsPerFace);
+                var along = Vector3.Dot(center, d);
+                if ((center - (d * along)).Length() <= radius + 0.02f)
+                {
+                    meeting++;
+                }
+            }
+        }
+
+        var field = new PropField(f.State, f.Terrain);
+        var before = f.Terrain.GeneratedSurfaceCalls;
+        var found = Collect(field, center, radius);
+        var sampled = f.Terrain.GeneratedSurfaceCalls - before;
+
+        Assert.True(candidates > meeting + 5, $"The scene must have candidates that the filter can skip ({candidates} candidates, {meeting} meet the sphere).");
+        Assert.True(sampled <= meeting, $"{sampled} surface samples for {meeting} candidates whose ray meets the sphere.");
+        Assert.True(found.Count <= meeting);
+    }
 }

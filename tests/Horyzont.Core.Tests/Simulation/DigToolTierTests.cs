@@ -1,9 +1,13 @@
 using Horyzont.Core.Hashing;
+using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Simulation;
 using Horyzont.Core.Tests.Props;
 using Horyzont.Testing;
+
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Horyzont.Core.Tests.Simulation;
 
@@ -120,6 +124,50 @@ public sealed class DigToolTierTests
 
         Assert.True(result.IsAccepted, $"{result.Reason}");
         Assert.IsType<TerrainEditOp>(result.Applied!.Operation);
+    }
+
+    [Fact]
+    public void Dig_AreaNotLoaded_RejectedByValidator_NothingResolved()
+    {
+        // The valid twin: the same bare-hand dig of ash (no requirement) is accepted when the area is loaded.
+        var twin = Player(tool: false, measured: _ => MeasuredSphere.SolidOf(Ash, 3));
+        Assert.True(twin.DigGround().IsAccepted);
+
+        // An area that is not loaded never reaches the resolver (the validator refuses it before, and the applier has no say): the branch of
+        // "nothing measurable" in the resolver is therefore not a way around the tier check for terrain the server cannot read.
+        var f = Player(tool: false, measured: _ => MeasuredSphere.SolidOf(Stone, 3));
+        f.Terrain.AllAreasLoaded = false;
+        var measures = f.Terrain.MeasureCalls;
+
+        var result = f.DigGround();
+
+        Assert.Equal(RejectReason.AreaNotLoaded, result.Reason);
+        Assert.Null(result.Applied);
+        Assert.Equal(measures, f.Terrain.MeasureCalls);
+        Assert.Empty(f.Terrain.AppliedEdits);
+    }
+
+    [Fact]
+    public void Dig_PlayerWithoutContainers_StillNeedsTheTier()
+    {
+        // A player with no containers at all has no tool: the tier check does not depend on having somewhere to put the yield.
+        var state = WorldFactory.CreateWithProps(0);
+        var setup = new ServerSimulation(state, new FakeTerrainService(), new InMemoryJournal(), new GameRules(), NullLogger<ServerSimulation>.Instance);
+        setup.ApplyServerOperation(setup.PreparePlayerJoin(new PlatformIdentity(IdentityPlatform.Dev, 1), "player1"));
+        Assert.False(state.Containers.TryGetOfPlayer(PropWorldFixture.Player(), ContainerKind.Hotbar, out _));
+
+        var f = new PropWorldFixture(state: state, toolKey: null);
+        f.Terrain.MeasureResult = MeasuredSphere.SolidOf(Stone, 3);
+        var hash = StateHasher.Hash(f.State);
+
+        AssertRefusedUnchanged(f, f.DigGround());
+        Assert.Equal(hash, StateHasher.Hash(f.State));
+
+        // Material without a requirement is still dug as a plain edit.
+        f.Terrain.MeasureResult = MeasuredSphere.SolidOf(Ash, 3);
+        var ash = f.DigGround();
+        Assert.True(ash.IsAccepted, $"{ash.Reason}");
+        Assert.IsType<TerrainEditOp>(ash.Applied!.Operation);
     }
 
     [Fact]

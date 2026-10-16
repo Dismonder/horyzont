@@ -2,6 +2,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Props;
 using Horyzont.Core.Tests.Props;
+using Horyzont.Testing;
 
 namespace Horyzont.Core.Tests.Simulation;
 
@@ -49,6 +50,38 @@ public sealed class PropHitAllocationTests
         Run(f, refused);
         var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
+        Assert.Equal(0, allocated);
+    }
+
+    [Fact]
+    public void RepeatedBandRefusal_SamplesSurfaceOnce_AndDoesNotAllocate()
+    {
+        var f = new PropWorldFixture();
+        var rock = f.FindProp(PropKindV1.Rock);
+        f.StandBeside(rock, 3f);
+
+        // The valid twin: the hit is accepted over the normal surface (a rock needs no tier). Another prop is used for the refusals, because
+        // the simulation remembers the one that was hit; its candidate exists but the surface is moved above every height band.
+        var refusedRock = f.FindProp(PropKindV1.Boulder);
+        Assert.True(f.Hit(rock.Id).IsAccepted);
+        f.Terrain.GeneratedSurfaceRadius = WorldFactory.HomePlanetParams.RadiusMeters + 1000f;
+        var refused = new PropHitIntent(PropWorldFixture.Planet, refusedRock.Id, 0);
+
+        Assert.Equal(RejectReason.InvalidParameters, f.Submit(refused).Reason);
+        var calls = f.Terrain.GeneratedSurfaceCalls;
+        Assert.Equal(RejectReason.InvalidParameters, f.Submit(refused).Reason);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < Repeats; i++)
+        {
+            if (f.Submit(refused).Reason != RejectReason.InvalidParameters)
+            {
+                throw new InvalidOperationException("Expected InvalidParameters.");
+            }
+        }
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(calls, f.Terrain.GeneratedSurfaceCalls);
         Assert.Equal(0, allocated);
     }
 

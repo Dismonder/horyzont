@@ -213,17 +213,20 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
         _components.Clear();
         if (edit.Mode == TerrainEditMode.Remove)
         {
-            // Nothing measurable (no terrain, area not loaded) or no containers: a plain edit as in K2, plus the props the edit removes.
+            // The tool tier of the player must reach every material that yields something (K6-31 D9); only with the content of props (D21).
+            // It does not depend on having containers for the yield. Nothing is checked when nothing was measured: the validator refuses an
+            // area that is not loaded before the resolver runs (the applier does not look at the terrain), so this is a terrain the service
+            // cannot read at all.
+            if (measured && props is not null && !ToolsReach(player))
+            {
+                return RejectReason.ToolTierTooLow;
+            }
+
+            // Nothing measurable or no containers: a plain edit as in K2, plus the props the edit removes.
             if (!measured || !hasContainers)
             {
                 AddPropHarvests(edit);
                 return Compose(edit, out operation);
-            }
-
-            // The tool tier of the player must reach every material that yields something (K6-31 D9); only with the content of props (D21).
-            if (props is not null && !ToolsReach(player))
-            {
-                return RejectReason.ToolTierTooLow;
             }
 
             var hotbar = Copy(hotbarContainer!, _hotbar);
