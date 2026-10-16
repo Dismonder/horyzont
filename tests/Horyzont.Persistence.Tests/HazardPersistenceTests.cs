@@ -19,7 +19,7 @@ public sealed class HazardPersistenceTests
     public const string FixtureName = "world-v3-hazards.db";
 
     // The hash of the world of the fixture after the replay of its tail, taken when the fixture was generated (K6-34 D21).
-    private const ulong ExpectedHazardHash = 0UL;
+    private const ulong ExpectedHazardHash = 2385176141588066832UL;
 
     private static LoadedWorld LoadOnly(string path) =>
         WorldLoader.Load(path, WorldHarness.LoadOptions(path), new FakeTimeProvider(), NullLogger.Instance);
