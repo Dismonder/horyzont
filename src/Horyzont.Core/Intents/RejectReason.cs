@@ -97,6 +97,9 @@ public enum RejectReason : byte
     /// <summary>The container is not accessible to the player (K6-29).</summary>
     ContainerLocked = 43,
 
+    /// <summary>The tool is too weak for the prop or the terrain material the player works on (K6-31).</summary>
+    ToolTierTooLow = 53,
+
     /// <summary>The block or its container belongs to another player: a private chest, the bed of another player (K6-30).</summary>
     NotOwner = 54,
 

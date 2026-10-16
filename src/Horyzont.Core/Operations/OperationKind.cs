@@ -68,6 +68,12 @@ public enum OperationKind : byte
     /// <summary><see cref="RespawnPointSetOp"/>.</summary>
     RespawnPointSet = 44,
 
+    /// <summary><see cref="PropRegrowOp"/>.</summary>
+    PropRegrow = 47,
+
+    /// <summary><see cref="PropHarvestOp"/>.</summary>
+    PropHarvest = 48,
+
     /// <summary><see cref="BlockFunctionStateSetOp"/>.</summary>
     BlockFunctionStateSet = 49,
 }

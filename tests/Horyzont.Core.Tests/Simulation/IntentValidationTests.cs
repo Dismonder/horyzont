@@ -4,8 +4,10 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Props;
 using Horyzont.Core.Tests.BlockEntities;
 using Horyzont.Core.Tests.Items;
+using Horyzont.Core.Tests.Props;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Testing;
 
@@ -298,6 +300,18 @@ public sealed class IntentValidationTests
         };
 
         Assert.Equal((RejectReason)number, actual);
+    }
+
+    /// <summary>The reason of K6-31 (53): the bare hand on a tree that needs a tool; the same hit with the tool is accepted first.</summary>
+    [Fact]
+    public void Submit_PropScenario_ReturnsToolTierTooLow()
+    {
+        var f = new PropWorldFixture();
+        var tree = f.FindProp(PropKindV1.Pine);
+        f.StandBeside(tree, 3f);
+        Assert.True(f.Hit(tree.Id, 0).IsAccepted);
+
+        Assert.Equal(RejectReason.ToolTierTooLow, f.Hit(tree.Id, 9).Reason);
     }
 
     private static RejectReason NotOwnerScenario(FunctionalBlockFixture f)

@@ -6,6 +6,7 @@ using Horyzont.Core.Operations;
 using Horyzont.Core.Progress;
 using Horyzont.Core.Tests.BlockEntities;
 using Horyzont.Core.Tests.Items;
+using Horyzont.Core.Tests.Props;
 using Horyzont.Core.World;
 using Horyzont.Testing;
 
@@ -20,12 +21,83 @@ public sealed class SurvivalHashTests
     /// <summary>Hash of <see cref="WorldWithItems"/> recorded at commit b5e427e (start of K6-30, before the block entities and the respawn points).</summary>
     private const ulong WorldWithItemsHashBeforeBlockEntities = 15528921043589756334UL;
 
+    /// <summary>
+    /// Hash of <see cref="WorldWithBlockEntities"/> before the harvested props. Recorded at the start of K6-31 (17678442467951482955) and re-recorded
+    /// after the K6-30 review fixes, which build the chest of the fixture in one compound instead of two operations; the new value was measured
+    /// on the K6-30 branch itself (commit 2fa618b), so it does not depend on any prop code.
+    /// </summary>
+    private const ulong WorldWithBlockEntitiesHashBeforeProps = 12927208767499692UL;
+
     [Fact]
     public void WorldWithoutItems_HashUnchanged() => Assert.Equal(DefaultWorldHashBeforeItems, StateHasher.Hash(WorldFactory.CreateDefault()));
 
     [Fact]
     public void WorldWithItemsWithoutBlockEntities_HashUnchanged() =>
         Assert.Equal(WorldWithItemsHashBeforeBlockEntities, StateHasher.Hash(WorldWithItems()));
+
+    [Fact]
+    public void WorldWithBlockEntitiesWithoutProps_HashUnchanged() =>
+        Assert.Equal(WorldWithBlockEntitiesHashBeforeProps, StateHasher.Hash(WorldWithBlockEntities()));
+
+    [Fact]
+    public void HarvestProp_ChangesHash()
+    {
+        var a = new PropFixture();
+        var b = new PropFixture();
+        var c = new PropFixture();
+        var d = new PropFixture();
+        var e = new PropFixture();
+        Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(b.State));
+
+        a.Apply(PropFixture.Harvest(PropFixture.Tree(0), 100));
+        b.Apply(PropFixture.Harvest(PropFixture.Tree(0), 100));
+        c.Apply(PropFixture.Harvest(PropFixture.Tree(1), 100));
+        d.Apply(PropFixture.Harvest(PropFixture.Tree(0), 101));
+        e.Apply(PropFixture.Harvest(PropFixture.Rock(0), 100));
+
+        // The same prop and tick hash the same; another prop, tick or slot is another world, and so is a world without the harvest.
+        var hash = StateHasher.Hash(a.State);
+        Assert.Equal(hash, StateHasher.Hash(b.State));
+        Assert.NotEqual(hash, StateHasher.Hash(c.State));
+        Assert.NotEqual(hash, StateHasher.Hash(d.State));
+        Assert.NotEqual(hash, StateHasher.Hash(e.State));
+        Assert.NotEqual(hash, StateHasher.Hash(new PropFixture().State));
+        Assert.NotEqual(StateHasher.Hash(c.State), StateHasher.Hash(e.State));
+    }
+
+    [Fact]
+    public void HarvestedPropsOnly_InWorldWithoutItems_ChangeHash()
+    {
+        // The survival section is also a reason of its own for a world with nothing but harvested props (D15).
+        var plain = new PropFixture(state: WorldFactory.CreateDefault());
+        var harvested = new PropFixture(state: WorldFactory.CreateDefault());
+        Assert.Equal(DefaultWorldHashBeforeItems, StateHasher.Hash(plain.State));
+
+        harvested.Apply(PropFixture.Harvest(PropFixture.Tree(0)));
+
+        Assert.NotEqual(StateHasher.Hash(plain.State), StateHasher.Hash(harvested.State));
+    }
+
+    [Fact]
+    public void HarvestThenRegrow_HashEqualsBefore()
+    {
+        // LastOpId is part of the hash, so the worlds that are compared have applied the same number of operations.
+        var regrown = new PropFixture();
+        var other = new PropFixture();
+        var harvested = new PropFixture();
+        var untouched = new PropFixture();
+        regrown.Apply(PropFixture.Harvest(PropFixture.Tree(0), 100));
+        regrown.Apply(PropFixture.Regrow(PropFixture.Tree(0)));
+        other.Apply(PropFixture.Harvest(PropFixture.Rock(3), 5000));
+        other.Apply(PropFixture.Regrow(PropFixture.Rock(3)));
+        harvested.Apply(PropFixture.Harvest(PropFixture.Tree(0), 100));
+        harvested.Apply(PropFixture.Harvest(PropFixture.Tree(1), 100));
+
+        Assert.Equal(0, regrown.State.HarvestedProps.Count);
+        Assert.Equal(StateHasher.Hash(other.State), StateHasher.Hash(regrown.State));
+        Assert.NotEqual(StateHasher.Hash(untouched.State), StateHasher.Hash(harvested.State));
+        Assert.NotEqual(StateHasher.Hash(regrown.State), StateHasher.Hash(harvested.State));
+    }
 
     [Fact]
     public void BlockEntityChange_ChangesHash()
@@ -170,6 +242,24 @@ public sealed class SurvivalHashTests
             new ContainerCreateOp(chest, ContainerKind.Chest, ContainerHost.Player(ItemFixture.Player1), ItemFixture.Player1, ContainerAccess.Shared, 8),
             ItemFixture.Transfer(ItemFixture.BagSlot(4), new SlotRef(chest, 2), ItemFixture.Stone, 10),
         ]));
+        return f.State;
+    }
+
+    /// <summary>
+    /// The K6-30 world of the functional block tests: two players with their containers and the start kit (a tool in the hotbar, a gem
+    /// and stone in the bag), the functional block construct with a chest with a container and stone, a bed owned by player 1 with its
+    /// respawn point and an open door. No harvested props.
+    /// </summary>
+    private static WorldState WorldWithBlockEntities()
+    {
+        var f = new FunctionalBlockFixture(players: 2);
+        f.Apply(ItemFixture.Create(new SlotRef(FunctionalBlockFixture.Hotbar, 0), ItemFixture.Tool, 1, limit: 1, source: ItemSource.Starter));
+        f.Apply(ItemFixture.Create(new SlotRef(FunctionalBlockFixture.Hotbar, 1), ItemFixture.Gem, 3, limit: 5, source: ItemSource.Starter));
+        f.Apply(ItemFixture.Create(new SlotRef(FunctionalBlockFixture.Bag, 0), ItemFixture.Stone, 40, source: ItemSource.Harvest));
+        var chest = f.SetUpChest(FunctionalBlocks.ChestCell, size: 8);
+        f.Give(chest, 2, 10);
+        f.SetUpBed(FunctionalBlocks.BedCell, FunctionalBlockFixture.Player1);
+        f.Apply(FunctionalBlockFixture.SetFunctionState(FunctionalBlocks.DoorLowCell, FunctionalBlocks.DoorType, 1));
         return f.State;
     }
 

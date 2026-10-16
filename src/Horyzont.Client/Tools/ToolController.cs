@@ -56,6 +56,9 @@ public sealed class ToolController
             BlockOrientation.Identity);
     }
 
+    /// <summary>Gets or sets the hitting of props with the hand and the multitool (K6-31); null leaves the press to the terrain tool.</summary>
+    public Props.PropInteraction? Props { get; set; }
+
     /// <summary>Gets the current tool and its parameters.</summary>
     public ToolSettings Settings { get; private set; }
 
@@ -79,8 +82,28 @@ public sealed class ToolController
         WaitingForServer = false;
         if (!IsUsable(aim))
         {
+            Props?.Clear();
             Preview = default;
             return;
+        }
+
+        var primary = input.PrimaryPressed || input.PrimaryHeld;
+        var secondary = input.SecondaryPressed || input.SecondaryHeld;
+        if (Props is { } props)
+        {
+            // K6-31: the hand and the multitool hit the prop under the crosshair instead of digging under it; too weak a tool sends nothing.
+            props.Observe(aim, _world, Settings.Tool, clientTick);
+            if (props.HasTarget && primary)
+            {
+                Preview = default;
+                if (props.CanHit && Begin(PaceClass.Prop, !input.PrimaryPressed, clientTick))
+                {
+                    Send(props.CreateHit(), clientTick);
+                    props.NoteHit(clientTick);
+                }
+
+                return;
+            }
         }
 
         if (Settings.Tool == ToolKind.None)
@@ -89,8 +112,6 @@ public sealed class ToolController
             return;
         }
 
-        var primary = input.PrimaryPressed || input.PrimaryHeld;
-        var secondary = input.SecondaryPressed || input.SecondaryHeld;
         if (Settings.Tool == ToolKind.TerrainManipulator)
         {
             Preview = _previews.ForTerrainTool(aim, Settings, fill: secondary && !primary);
@@ -134,6 +155,7 @@ public sealed class ToolController
     {
         _pending.Tick(clientTick);
         WaitingForServer = false;
+        Props?.Clear();
         Preview = default;
     }
 

@@ -83,4 +83,10 @@ public sealed record WorldCheckpoint(
 
     /// <summary>Progress records removed (K6-30), by player.</summary>
     public IReadOnlyList<PlayerId> RemovedProgress { get; init; } = [];
+
+    /// <summary>Harvested props that exist and changed (K6-31), by planet and prop.</summary>
+    public IReadOnlyList<HarvestedPropRecord> UpsertedHarvestedProps { get; init; } = [];
+
+    /// <summary>Harvested props that grew back (K6-31), by planet and prop.</summary>
+    public IReadOnlyList<HarvestedPropKey> RemovedHarvestedProps { get; init; } = [];
 }

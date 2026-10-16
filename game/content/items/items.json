@@ -6,6 +6,9 @@
     { "key": "core:stone", "category": "resource", "flags": ["bulk"], "visual": { "glyph": "St", "color": "#8A8D91" } },
     { "key": "core:soil", "category": "resource", "flags": ["bulk"], "visual": { "glyph": "So", "color": "#7A5534" } },
     { "key": "core:sand", "category": "resource", "flags": ["bulk"], "visual": { "glyph": "Sa", "color": "#D9C38A" } },
-    { "key": "core:ore", "category": "resource", "flags": ["bulk"], "visual": { "glyph": "Or", "color": "#C9733A" } }
+    { "key": "core:ore", "category": "resource", "flags": ["bulk"], "visual": { "glyph": "Or", "color": "#C9733A" } },
+    { "key": "core:wood", "category": "resource", "flags": ["bulk"], "visual": { "glyph": "Wd", "color": "#A67C52" } },
+    { "key": "core:fiber", "category": "resource", "flags": ["bulk"], "visual": { "glyph": "Fi", "color": "#8DB255" } },
+    { "key": "core:crystal", "category": "resource", "flags": ["bulk"], "visual": { "glyph": "Cr", "color": "#7FD6F5" } }
   ]
 }

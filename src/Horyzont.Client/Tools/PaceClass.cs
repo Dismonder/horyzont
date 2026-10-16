@@ -8,4 +8,7 @@ public enum PaceClass : byte
 
     /// <summary>Block edits: token bucket.</summary>
     Block = 1,
+
+    /// <summary>Hits on props: token bucket.</summary>
+    Prop = 2,
 }

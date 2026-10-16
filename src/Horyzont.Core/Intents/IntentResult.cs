@@ -15,6 +15,10 @@ public readonly record struct IntentResult(RejectReason Reason, AppliedOperation
     /// <returns>The result.</returns>
     public static IntentResult Accepted(AppliedOperation applied) => new(RejectReason.None, applied);
 
+    /// <summary>An accepted result that changed no world state and so has no operation: a hit that did not finish a prop (K6-31 D10).</summary>
+    /// <returns>The result.</returns>
+    public static IntentResult AcceptedWithoutOperation() => new(RejectReason.None, null);
+
     /// <summary>A rejected result.</summary>
     /// <param name="reason">The reason.</param>
     /// <returns>The result.</returns>

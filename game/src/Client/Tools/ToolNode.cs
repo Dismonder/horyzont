@@ -2,9 +2,11 @@ using Godot;
 
 using Horyzont.Client;
 using Horyzont.Client.Blocks;
+using Horyzont.Client.Props;
 using Horyzont.Client.Session;
 using Horyzont.Client.Ships;
 using Horyzont.Client.Tools;
+using Horyzont.Core.Content;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
@@ -103,6 +105,22 @@ public sealed partial class ToolNode : Node, IClientSessionListener
 
     /// <summary>Gets the result of the latest press of the interaction key.</summary>
     public BlockInteractionResult? LastBlockInteraction { get; private set; }
+
+    /// <summary>
+    /// Gets or sets the harvested props the prop interaction (K6-31) reads: the replicated map of a remote client, the world state itself in
+    /// a process that runs the server. Set with <see cref="PropSource"/>, <see cref="PropContent"/> and <see cref="Inventory"/> before the
+    /// server hello; without any of them the hand and the multitool dig as before.
+    /// </summary>
+    public IPropStateView? PropStates { get; set; }
+
+    /// <summary>Gets or sets where the props around the eye come from (the drawing of the props: what the player sees is what can be hit).</summary>
+    public IPropSource? PropSource { get; set; }
+
+    /// <summary>Gets or sets the survival content whose props the interaction counts hits with; without props in it the interaction is off (D21).</summary>
+    public SurvivalContent? PropContent { get; set; }
+
+    /// <summary>Gets the prop interaction (K6-31 D19: the hand and the multitool hit props); null while there is no controller or a part is missing.</summary>
+    public PropInteraction? Props => Controller?.Props;
 
     /// <summary>Gets the block palette of the server hello; null before it.</summary>
     public BlockPalette? Blocks { get; private set; }
@@ -218,6 +236,9 @@ public sealed partial class ToolNode : Node, IClientSessionListener
             _rules, _view, new RecordingSender(new SessionIntentSender(_client!.Session), _sent), Pending, Blocks, Materials,
             _loggers!.CreateLogger<ToolController>());
         var content = BlockContentTable.Create(hello.BlockTypes, BlockDefinitions ?? new Dictionary<string, BlockTypeDef>());
+        Controller.Props = Inventory is { } held && PropStates is { } propStates && PropSource is { } propSource && PropContent is { Props.Count: > 0 } propContent
+            ? new PropInteraction(new PropPicker(propSource, propStates), propStates, propContent, new HotbarHeldTool(held.Inventory, held.Selection), _rules)
+            : null;
         _ship = new ShipModeSwitch(_view, new SessionIntentSender(_client.Session), Pending, content, _rules);
         _interaction = Inventory is { Chests: { } chests } && BlockEntities is { } entities
             ? new BlockInteraction(_view, new SessionIntentSender(_client.Session), Pending, content, entities, chests, hello.YourPlayer, _rules)
