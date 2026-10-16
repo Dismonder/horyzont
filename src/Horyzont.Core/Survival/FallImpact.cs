@@ -9,7 +9,7 @@ public static class FallImpact
 {
     /// <summary>Detects a landing: the previous mode was <see cref="MovementMode.Falling"/> or <see cref="MovementMode.Jumping"/> and the mode is now walking or sprinting.</summary>
     /// <param name="previousMode">The mode of the previous tick.</param>
-    /// <param name="previousVelocity">The velocity of the previous tick (after landing the engine zeroes the radial part).</param>
+    /// <param name="previousVelocity">The velocity the impact is counted from: on the server the fastest downward velocity of the current flight (<c>VitalsService</c>), in a test the velocity of the previous tick.</param>
     /// <param name="up">The unit vector pointing up.</param>
     /// <param name="mode">The mode of this tick.</param>
     /// <param name="impactSpeed">The speed against the ground in m/s: the downward part of <paramref name="previousVelocity"/>, never negative.</param>

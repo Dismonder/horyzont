@@ -92,7 +92,7 @@ public sealed partial class VitalsService : IServerTickParticipant, IServerPlaye
         }
     }
 
-    /// <summary>Spends stamina at once when the player has enough; otherwise changes nothing.</summary>
+    /// <summary>Spends stamina at once when the player has enough; otherwise changes nothing. Spending down to 0 does not set the exhaustion at once: <c>VitalsStep</c> sets it in the next tick, so <see cref="IsExhausted"/> still answers false for one tick.</summary>
     /// <param name="player">The player.</param>
     /// <param name="amount">Stamina points.</param>
     /// <returns>Whether the stamina was spent.</returns>

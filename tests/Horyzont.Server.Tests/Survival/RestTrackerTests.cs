@@ -226,4 +226,40 @@ public sealed class RestTrackerTests
 
         Assert.False(Last().RestConditionsMet);
     }
+
+    [Fact]
+    public void Seated_CeilingDirectlyAboveSeat_Roofed()
+    {
+        // The roof in the cell right above the seat: the point of the evaluation (0.9 m above the centre of the seat) starts inside it and must still count as roofed.
+        Prepare(heated: false);
+        _rig.Place(FoodServerRig.CampfireCell, FoodBlocks.CampfireType);
+        _rig.Place(new Horyzont.Core.World.Constructs.CellPos(FoodServerRig.SeatCell.X, FoodServerRig.SeatCell.Y + 1, FoodServerRig.SeatCell.Z), FunctionalBlocks.StoneType);
+        _rig.Seat(_rig.Alice);
+
+        _rig.Tick(100);
+
+        Assert.True(Last().RestConditionsMet);
+    }
+
+    [Fact]
+    public void Seated_InTiltedConstruct_RoofStandingStraightAboveThePoint_Roofed()
+    {
+        // The twin of Seated_InTiltedConstruct_RoofNotAboveTheSeat: the same 45 degree tilt, but a block of another (upright) construct stands in the world right above the
+        // point of the evaluation, so the vertical ray of the planet hits it.
+        Prepare();
+        _rig.Seat(_rig.Alice);
+        Assert.True(_rig.Sim.State.Constructs.TryGet(FunctionalBlocks.Construct, out var construct));
+        var tilt = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 4f);
+        _rig.Sim.ApplyServerOperation(new EntityReparentOp(
+            FunctionalBlocks.Construct, construct.Parent, construct.ParentSeq + 1, construct.Origin, tilt, Vector3.Zero, null));
+        var seat = Vector3.Transform(
+            new Vector3(FoodServerRig.SeatCell.X + 0.5f, FoodServerRig.SeatCell.Y + 0.5f, FoodServerRig.SeatCell.Z + 0.5f), tilt) + construct.Origin;
+        _rig.Sim.ApplyServerOperation(new ConstructCreateOp(
+            new EntityId(901), construct.Parent, seat + new Vector3(-0.5f, 1.5f, -0.5f), Quaternion.Identity,
+            new Horyzont.Core.World.Constructs.CellPos(0, 0, 0), Horyzont.Core.World.Constructs.BlockState.Create(FunctionalBlocks.StoneType, 0)));
+
+        _rig.Tick(100);
+
+        Assert.True(Last().RestConditionsMet);
+    }
 }
