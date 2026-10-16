@@ -408,7 +408,8 @@ public sealed class WorldStateBuilder
         CheckEntity(state, record.Entity);
         if (string.IsNullOrEmpty(record.DisplayName)
             || Encoding.UTF8.GetByteCount(record.DisplayName) > ProtocolConstants.MaxDisplayNameBytes
-            || !IsFinite(record.Position) || !Geometry.IsRotation(record.BodyRotation) || !float.IsFinite(record.Pitch))
+            || !IsFinite(record.Position) || !Geometry.IsRotation(record.BodyRotation) || !float.IsFinite(record.Pitch)
+            || record.Vitals is { IsValid: false })
         {
             throw new InvalidDataException($"Player {record.Player.Value} has invalid values.");
         }
@@ -429,7 +430,10 @@ public sealed class WorldStateBuilder
 
         state.Players.Load(new PlayerState(
             record.Player, record.Identity, record.DisplayName, record.Entity, record.Frame, record.ParentSeq, record.Seat,
-            record.Position, record.BodyRotation, record.Pitch, record.IsOnline));
+            record.Position, record.BodyRotation, record.Pitch, record.IsOnline)
+        {
+            Vitals = record.Vitals,
+        });
     }
 
     private static void LoadContainer(WorldState state, ContainerRecord record)
@@ -544,8 +548,10 @@ public sealed class WorldStateBuilder
 
     private static void LoadProgress(WorldState state, PlayerProgressRecord record)
     {
-        // A record exists if and only if it has a respawn point or a discovery (D7).
-        if (!state.Players.TryGet(record.Player, out _) || (record.RespawnBed is null && record.Discovered is null) || state.Progress.TryGet(record.Player, out _))
+        // A record exists if and only if a field differs from its default: a respawn point, a discovery or food (K6-32 D7, K6-33 D4).
+        if (!state.Players.TryGet(record.Player, out _)
+            || (record.RespawnBed is null && record.Discovered is null && record.Food.IsEmpty)
+            || state.Progress.TryGet(record.Player, out _))
         {
             throw new InvalidDataException($"Progress of player {record.Player.Value} is for an unknown player, is empty or is duplicated.");
         }
@@ -561,7 +567,39 @@ public sealed class WorldStateBuilder
             }
         }
 
-        state.Progress.Load(new PlayerProgress(record.Player, record.RespawnBed, record.Discovered));
+        CheckFood(state, record);
+        state.Progress.Load(new PlayerProgress(record.Player, record.RespawnBed, record.Discovered, record.Food));
+    }
+
+    /// <summary>Food slots of a record: an empty slot has tick 0, a filled one a type known to the world, and no type repeats (K6-33, D6).</summary>
+    private static void CheckFood(WorldState state, PlayerProgressRecord record)
+    {
+        for (var i = 0; i < FoodSlots.Count; i++)
+        {
+            var slot = record.Food[i];
+            if (slot.IsEmpty)
+            {
+                if (slot.Eaten.Value != 0)
+                {
+                    throw new InvalidDataException($"Player {record.Player.Value} has an empty food slot with a tick.");
+                }
+
+                continue;
+            }
+
+            if (slot.Type.Value > ProtocolConstants.MaxItemTypes || !state.ItemTypes.IsKnown(slot.Type))
+            {
+                throw new InvalidDataException($"Player {record.Player.Value} eats the unknown item type {slot.Type.Value}.");
+            }
+
+            for (var j = 0; j < i; j++)
+            {
+                if (record.Food[j].Type == slot.Type)
+                {
+                    throw new InvalidDataException($"Player {record.Player.Value} has the food type {slot.Type.Value} twice.");
+                }
+            }
+        }
     }
 
     private void LoadProgressKeys(WorldState state)

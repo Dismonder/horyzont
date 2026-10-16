@@ -676,6 +676,40 @@ public static class CodecGen
         from online in Gen.Elements(true, false)
         select new PlayerRecord(player, identity, name, entity, frame, parentSeq, seat, position, rotation, pitch, online);
 
+    /// <summary>
+    /// Vitals of a player (K6-33): health and stamina in 0 to 10000 in steps of a quarter, a rested-until tick, the exhausted flag. Only the player blob
+    /// carries them; <c>WritePlayer</c> and <c>ReadPlayer</c> are the bytes of version 1 and drop them, so the record case uses <see cref="PlayerRecord"/>.
+    /// </summary>
+    public static Gen<PlayerVitals> Vitals { get; } =
+        from health in Gen.Choose(0, 40_000)
+        from stamina in Gen.Choose(0, 40_000)
+        from rested in VarU64
+        from exhausted in Gen.Elements(true, false)
+        select new PlayerVitals(health / 4f, stamina / 4f, new Tick(rested), exhausted);
+
+    /// <summary>Player records with vitals or without (K6-33), for the player blob.</summary>
+    public static Gen<PlayerRecord> PlayerRecordWithVitals { get; } =
+        from record in PlayerRecord
+        from vitals in Optional(Vitals)
+        select record with { Vitals = vitals };
+
+    /// <summary>Progress records of a player (K6-33): any combination of a respawn point, discovered item types and food; the codec does not check repeated food types.</summary>
+    public static Gen<PlayerProgressRecord> PlayerProgressRecord { get; } =
+        from player in PlayerId
+        from bed in Optional(
+            from construct in EntityId
+            from cell in Cell
+            from type in VarU16
+            select new Horyzont.Core.Progress.BedRef(construct, cell, type))
+        from typeCount in Gen.Choose(0, 6)
+        from types in Gen.Choose(1, ProtocolConstants.MaxItemTypes).ArrayOf(typeCount)
+        from food in FoodSlots
+        select new PlayerProgressRecord(
+            player,
+            bed,
+            types.Aggregate(Horyzont.Core.Progress.ItemTypeBitSet.Empty, (set, type) => set.With(new ItemTypeId((ushort)type))),
+            food);
+
     /// <summary>Planet parameters.</summary>
     public static Gen<PlanetParams> Planet { get; } =
         from id in PlanetId

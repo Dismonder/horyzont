@@ -31,6 +31,6 @@ public sealed record PlayerRecord(
         ArgumentNullException.ThrowIfNull(player);
         return new(
             player.Player, player.Identity, player.DisplayName, player.Entity, player.Frame, player.ParentSeq, player.Seat,
-            player.Position, player.BodyRotation, player.Pitch, player.IsOnline);
+            player.Position, player.BodyRotation, player.Pitch, player.IsOnline, player.Vitals);
     }
 }

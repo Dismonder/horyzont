@@ -482,7 +482,7 @@ public sealed class WorldState
         {
             if (Progress.TryGet(id, out var progress))
             {
-                upsertedProgress.Add(new PlayerProgressRecord(id, progress.RespawnBed, progress.Discovered));
+                upsertedProgress.Add(new PlayerProgressRecord(id, progress.RespawnBed, progress.Discovered, progress.Food));
             }
             else
             {
