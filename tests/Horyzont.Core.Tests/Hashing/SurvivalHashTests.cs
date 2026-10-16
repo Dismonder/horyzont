@@ -205,6 +205,25 @@ public sealed class SurvivalHashTests
     }
 
     [Fact]
+    public void ProgressKeyOnly_OpensSurvivalSection()
+    {
+        // A world with no item types, containers, states or progress: before the keys the survival section was not hashed at all.
+        var without = new SimFixture();
+        var a = new SimFixture();
+        var b = new SimFixture();
+        Assert.Equal(DefaultWorldHashBeforeItems, StateHasher.Hash(without.State));
+
+        a.Sim.ApplyServerOperation(new ProgressKeyGrantOp("test:a"));
+        b.Sim.ApplyServerOperation(new ProgressKeyGrantOp("test:a"));
+
+        Assert.NotEqual(StateHasher.Hash(without.State), StateHasher.Hash(a.State));
+        Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(b.State));
+        var other = new SimFixture();
+        other.Sim.ApplyServerOperation(new ProgressKeyGrantOp("test:b"));
+        Assert.NotEqual(StateHasher.Hash(a.State), StateHasher.Hash(other.State));
+    }
+
+    [Fact]
     public void StationStateStarted_ChangesHash()
     {
         var states = new (string Recipe, Tick? Started)[]
@@ -214,6 +233,9 @@ public sealed class SurvivalHashTests
             ("t:a", new Tick(100)),
             ("t:a", new Tick(101)),
             ("t:b", new Tick(100)),
+
+            // Started = Tick(0) is another state than Started = null: a flag and a tick, not the tick alone (review A1, 4-7).
+            ("t:a", new Tick(0)),
         };
         var hashes = states.Select(s =>
         {

@@ -63,6 +63,25 @@ public sealed class CraftingCheckpointTests
     }
 
     [Fact]
+    public void Capture_RespawnClearedWithDiscoveries_UpsertedNotRemoved()
+    {
+        var f = new CraftingFixture();
+        f.Blocks.SetUpBed(Horyzont.Testing.FunctionalBlocks.BedCell, Player1);
+        f.Apply(CraftingFixture.Discover(Player1, CraftingFixture.Stone));
+        Complete(f);
+
+        // The respawn point is cleared, but the discoveries remain: the record stays and is upserted, it is not removed (D7).
+        f.Apply(new RespawnPointSetOp(Player1, null));
+        var checkpoint = f.State.CaptureCheckpoint();
+
+        var record = Assert.Single(checkpoint.UpsertedProgress);
+        Assert.Equal(Player1, record.Player);
+        Assert.Null(record.RespawnBed);
+        Assert.True(record.Discovered!.Contains(CraftingFixture.Stone));
+        Assert.Empty(checkpoint.RemovedProgress);
+    }
+
+    [Fact]
     public void Requeue_MarksProgressKeysAgain()
     {
         var f = new CraftingFixture();
@@ -135,6 +154,20 @@ public sealed class CraftingCheckpointTests
             e => e.State is StationBlockState s ? e with { State = s with { Input = s.Output, Output = s.Input } } : e);
 
         Assert.Throws<InvalidDataException>(() => Load(f.State, checkpoint with { UpsertedBlockEntities = [.. swapped] }));
+    }
+
+    [Fact]
+    public void Builder_StationContainerOfOtherCell_Throws()
+    {
+        var f = FullWorld(out var checkpoint, secondStation: true);
+        Assert.Equal(2, Load(f.State, checkpoint).Progress.Count);
+        var (otherInput, _) = f.StationContainersOf(CraftingFixture.StationCell2);
+
+        // The state of the first station refers to the input container of the second station (hosted by another cell).
+        var crossed = checkpoint.UpsertedBlockEntities.Select(
+            e => e.Cell == CraftingFixture.StationCell && e.State is StationBlockState s ? e with { State = s with { Input = otherInput } } : e);
+
+        Assert.Throws<InvalidDataException>(() => Load(f.State, checkpoint with { UpsertedBlockEntities = [.. crossed] }));
     }
 
     [Fact]
@@ -217,12 +250,17 @@ public sealed class CraftingCheckpointTests
     }
 
     /// <summary>A world with a chest, an owned bed with its respawn point, a station in work, two players with discoveries and a progress key, and the one full checkpoint of it.</summary>
-    private static CraftingFixture FullWorld(out WorldCheckpoint checkpoint)
+    private static CraftingFixture FullWorld(out WorldCheckpoint checkpoint, bool secondStation = false)
     {
         var f = new CraftingFixture(players: 2);
         f.Blocks.SetUpChest(Horyzont.Testing.FunctionalBlocks.ChestCell);
         f.Blocks.SetUpBed(Horyzont.Testing.FunctionalBlocks.BedCell, Player1);
         f.SetUpStation(CraftingFixture.StationCell, "t:a", new Tick(100));
+        if (secondStation)
+        {
+            f.SetUpStation(CraftingFixture.StationCell2);
+        }
+
         f.Apply(CraftingFixture.Discover(Player1, CraftingFixture.Stone));
         f.Apply(CraftingFixture.Discover(Player2, CraftingFixture.Gem));
         f.Apply(CraftingFixture.Grant("test:boss"));

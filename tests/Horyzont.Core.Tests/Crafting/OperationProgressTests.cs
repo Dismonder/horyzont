@@ -35,6 +35,22 @@ public sealed class OperationProgressTests
     }
 
     [Fact]
+    public void Collect_ClearsListFirst()
+    {
+        // The list is reused by the server: Collect starts by clearing it (review A1, 4-13).
+        var players = new List<PlayerId> { Player1 };
+
+        OperationProgress.Collect(CraftingFixture.Grant("test:boss"), players, out var keys);
+
+        Assert.True(keys);
+        Assert.Empty(players);
+
+        players.Add(Player1);
+        OperationProgress.Collect(CraftingFixture.Discover(Player2, CraftingFixture.Gem), players, out _);
+        Assert.Equal([Player2], players);
+    }
+
+    [Fact]
     public void Collect_GrantKey_KeysChanged()
     {
         var players = new List<PlayerId>();

@@ -17,6 +17,7 @@ public sealed class OperationCodecCraftingTests
     {
         RoundTrip(new ItemDiscoverOp(new PlayerId(4), new ItemTypeId(5)));
         RoundTrip(new ItemDiscoverOp(new PlayerId(ulong.MaxValue), new ItemTypeId(4095)));
+        RoundTrip(new ItemDiscoverOp(new PlayerId(4), new ItemTypeId(4096)));
         RoundTrip(new ProgressKeyGrantOp("t:boss"));
         RoundTrip(new ProgressKeyGrantOp("k"));
         RoundTrip(new ProgressKeyGrantOp(new string('k', 64)));
@@ -100,6 +101,27 @@ public sealed class OperationCodecCraftingTests
 
         Assert.Throws<ArgumentException>(() => Kit.Encode(new ItemDiscoverOp(new PlayerId(4), ItemTypeId.None)));
         Kit.AssertOperationViolation("2B 01 04 00");
+    }
+
+    [Fact]
+    public void DiscoverTypeAbove4096_Throws()
+    {
+        // Review A1 (4-2): 4096 is the highest valid type id, 4097 is not. 4096 as a varuint is 80 20, 4097 is 81 20.
+        RoundTrip(new ItemDiscoverOp(new PlayerId(4), new ItemTypeId(4096)));
+        Assert.IsType<ItemDiscoverOp>(Kit.DecodeOperation(Kit.Hex("2B 01 04 80 20")));
+
+        Assert.Throws<ArgumentException>(() => Kit.Encode(new ItemDiscoverOp(new PlayerId(4), new ItemTypeId(4097))));
+        Kit.AssertOperationViolation("2B 01 04 81 20");
+    }
+
+    [Fact]
+    public void StationStartedWithoutRecipe_Throws()
+    {
+        // Review A1 (4-5): Started != null requires a recipe. The accepted counterpart first.
+        RoundTrip(new BlockEntitySetOp(_construct, _cell, 11, new StationBlockState(new ContainerId(7), new ContainerId(8), "t:a", new Tick(100))));
+
+        Assert.Throws<ArgumentException>(() => Kit.Encode(new BlockEntitySetOp(_construct, _cell, 11, new StationBlockState(new ContainerId(7), new ContainerId(8), string.Empty, new Tick(100)))));
+        Kit.AssertOperationViolation("28 01 05 02 01 00 0B 03 07 08 00 01 64");
     }
 
     [Fact]

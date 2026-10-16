@@ -66,10 +66,14 @@ public sealed class StationProcessTests
     [Fact]
     public void Running_OutputFull_DoneLimitedByRoom_Idle()
     {
-        // The output holds 4 of 5 ingots: room for one piece only. The counterpart with an empty output makes all three.
-        Assert.Equal(3, StationProcess.Settle(Input(20, 20), Output(), _recipe, Duration, new Tick(100), new Tick(700), GemLimit).Done);
+        // The output has 2 slots of 5: an empty one has room for 10 pieces (the room is the sum over the slots). The counterpart limited only by the room.
+        Assert.Equal(10, StationProcess.Settle(Input(20, 20), Output(), _recipe, Duration, new Tick(100), new Tick(700), GemLimit).Done);
 
-        var result = StationProcess.Settle(Input(20, 20), Output(new ItemStack(_ingot, 4)), _recipe, Duration, new Tick(100), new Tick(700), GemLimit);
+        // [ingot 4, empty]: room for 6; the elapsed time (10 durations) and the wsad (10 pieces) would allow more.
+        Assert.Equal(new StationSettlement(6, null), StationProcess.Settle(Input(20, 20), Output(new ItemStack(_ingot, 4)), _recipe, Duration, new Tick(100), new Tick(700), GemLimit));
+
+        // [ingot 4, foreign type]: the slot with a foreign type gives no room, so only the one free place in the first slot remains.
+        var result = StationProcess.Settle(Input(20, 20), Output(new ItemStack(_ingot, 4), new ItemStack(CraftingFixture.Tool, 1)), _recipe, Duration, new Tick(100), new Tick(700), GemLimit);
 
         Assert.Equal(new StationSettlement(1, null), result);
     }
@@ -93,6 +97,33 @@ public sealed class StationProcessTests
 
         // Past one duration the bar starts over for the next piece.
         Assert.Equal(0.5, StationProcess.Progress(new Tick(100), new Tick(250), Duration), 6);
+    }
+
+    [Fact]
+    public void Settle_ZeroDuration_Throws()
+    {
+        // The counterpart with a positive duration is accepted.
+        Assert.Equal(0, StationProcess.Settle(Input(4, 2), Output(), _recipe, 1, new Tick(100), new Tick(100), GemLimit).Done);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => StationProcess.Settle(Input(4, 2), Output(), _recipe, 0, new Tick(100), new Tick(200), GemLimit));
+    }
+
+    [Fact]
+    public void Progress_NowBeforeStart_Zero()
+    {
+        // The tick of a client comes from snapshots and can be older than the Started tick from message 46: no unsigned underflow.
+        Assert.Equal(0.5, StationProcess.Progress(new Tick(100), new Tick(130), Duration), 6);
+
+        Assert.Equal(0.0, StationProcess.Progress(new Tick(100), new Tick(90), Duration), 6);
+    }
+
+    [Fact]
+    public void Settle_NowBeforeStart_NothingDone()
+    {
+        // The counterpart with a later "now" settles a piece.
+        Assert.Equal(1, StationProcess.Settle(Input(6, 3), Output(), _recipe, Duration, new Tick(100), new Tick(160), GemLimit).Done);
+
+        Assert.Equal(new StationSettlement(0, new Tick(100)), StationProcess.Settle(Input(6, 3), Output(), _recipe, Duration, new Tick(100), new Tick(90), GemLimit));
     }
 
     [Fact]

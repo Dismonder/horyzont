@@ -49,6 +49,9 @@ public sealed class CraftingConservationProperties
         SelectRecipe,
         Settle,
         Advance,
+
+        /// <summary>Review A1 (4-3): a standalone operation that would leave a station container without its state or the state without its containers. Always refused.</summary>
+        BreakStation,
     }
 
     private static Gen<Step> StepGen { get; } =
@@ -62,7 +65,8 @@ public sealed class CraftingConservationProperties
             (4, Gen.Constant(Action.CraftFromChests)),
             (3, Gen.Constant(Action.SelectRecipe)),
             (5, Gen.Constant(Action.Settle)),
-            (3, Gen.Constant(Action.Advance)))
+            (3, Gen.Constant(Action.Advance)),
+            (2, Gen.Constant(Action.BreakStation)))
         from station in Gen.Choose(0, _stationCells.Length - 1)
         from chest in Gen.Choose(0, _chestCells.Length - 1)
         from slot in Gen.Choose(0, 3)
@@ -98,6 +102,9 @@ public sealed class CraftingConservationProperties
         Assert.True(coverage.Removed >= 10, $"removed {coverage.Removed} times");
         Assert.True(coverage.Crafted >= 10, $"crafted {coverage.Crafted} times");
         Assert.True(coverage.PiecesSettled >= 10, $"settled {coverage.PiecesSettled} pieces");
+
+        // Review A1 (4-14): PiecesSettled counts the ItemCreateOp components; this counts the settlements that made at least one piece (Done >= 1).
+        Assert.True(coverage.SettlementsWithPieces >= 20, $"{coverage.SettlementsWithPieces} settlements with pieces");
         Assert.True(coverage.Refused >= 10, $"refused {coverage.Refused} times");
     }
 
@@ -121,6 +128,7 @@ public sealed class CraftingConservationProperties
             var hash = StateHasher.Hash(f.State);
             if (applier.TryApply(f.State.LastOpId.Next, f.State.CurrentTick, null, op, out _, out _, out _))
             {
+                Assert.NotEqual(Action.BreakStation, step.Action);
                 Account(op, expected);
                 discovered |= f.State.Progress.TryGet(Player1, out var progress) && progress.DiscoveredItems.Contains(CraftingFixture.Gem);
                 coverage?.Accepted(step.Action, op);
@@ -164,8 +172,31 @@ public sealed class CraftingConservationProperties
                 return hasStation
                     ? CraftingFixture.StationState(cell, input, output, Recipe, new Tick(now))
                     : CraftingFixture.StationState(cell, missing, missing, Recipe, new Tick(now));
+            case Action.BreakStation:
+                return BreakStation(f, cell, hasStation, input, output, step);
             default:
                 return hasStation ? Settle(f, cell, station!, now) : CraftingFixture.StationState(cell, missing, missing);
+        }
+    }
+
+    /// <summary>Three variants (by <see cref="Step.Broken"/>): remove one container of a live station, clear its state keeping the containers, create a station container without a state.</summary>
+    private static Operation BreakStation(CraftingFixture f, CellPos cell, bool hasStation, ContainerId input, ContainerId output, Step step)
+    {
+        switch (step.Broken % 3)
+        {
+            case 0:
+                return new ContainerRemoveOp(step.Soil ? output : input);
+            case 1:
+                return ClearState(cell, CraftingFixture.StationBlockType);
+            default:
+                var id = f.State.ContainerIds.PeekNext();
+                return hasStation
+                    ? CraftingFixture.StationContainer(id, ContainerKind.StationInput, cell)
+                    : new CompoundOp(
+                    [
+                        CraftingFixture.StationContainer(id, ContainerKind.StationInput, cell),
+                        CraftingFixture.StationContainer(new ContainerId(id.Value + 1), ContainerKind.StationOutput, cell),
+                    ]);
         }
     }
 
@@ -328,6 +359,8 @@ public sealed class CraftingConservationProperties
 
         public int PiecesSettled { get; private set; }
 
+        public int SettlementsWithPieces { get; private set; }
+
         public int Refused { get; private set; }
 
         public void Refuse() => Refused++;
@@ -346,7 +379,13 @@ public sealed class CraftingConservationProperties
                     Crafted++;
                     break;
                 case Action.Settle when op is CompoundOp compound:
-                    PiecesSettled += compound.Components.Count(c => c is ItemCreateOp);
+                    var pieces = compound.Components.Count(c => c is ItemCreateOp);
+                    PiecesSettled += pieces;
+                    if (pieces > 0)
+                    {
+                        SettlementsWithPieces++;
+                    }
+
                     break;
             }
         }

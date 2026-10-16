@@ -68,6 +68,78 @@ public sealed class StationStateOpsTests
     }
 
     [Fact]
+    public void BlockEntitySet_StationStartedWithoutRecipe_Fails()
+    {
+        var f = new CraftingFixture();
+        var (input, output) = f.SetUpStation(CraftingFixture.StationCell);
+
+        // Started != null requires a recipe (review A1, 4-5).
+        f.Apply(CraftingFixture.StationState(CraftingFixture.StationCell, input, output, "t:a", _start));
+        f.AssertFails(CraftingFixture.StationState(CraftingFixture.StationCell, input, output, string.Empty, _start));
+    }
+
+    [Fact]
+    public void BlockEntitySet_StationRecipeLoneSurrogate_Fails()
+    {
+        var f = new CraftingFixture();
+        var (input, output) = f.SetUpStation(CraftingFixture.StationCell);
+
+        // The recipe key must be strict UTF-8 (the journal writes it with ByteWriter, which refuses a lone surrogate). ContentLoader rejects such a key in B3.
+        f.Apply(CraftingFixture.StationState(CraftingFixture.StationCell, input, output, "t:\U0001F600"));
+        f.AssertFails(CraftingFixture.StationState(CraftingFixture.StationCell, input, output, "t:\uD800"));
+    }
+
+    [Fact]
+    public void ContainerCreate_StationContainerWithoutState_Fails()
+    {
+        var f = new CraftingFixture();
+
+        // The accepted counterpart: the full placement of a station.
+        f.Apply(f.PlaceStation(CraftingFixture.StationCell));
+
+        // The applier checks the cells an operation touched at its end (review A1, 4-3): a station container needs the station state of its cell.
+        f.Blocks.EnsureBlock(CraftingFixture.StationCell2, CraftingFixture.StationBlockType);
+        var input = f.State.ContainerIds.PeekNext();
+        f.AssertFails(CraftingFixture.StationContainer(input, ContainerKind.StationInput, CraftingFixture.StationCell2));
+        f.AssertFails(new CompoundOp(
+        [
+            CraftingFixture.StationContainer(input, ContainerKind.StationInput, CraftingFixture.StationCell2),
+            CraftingFixture.StationContainer(new ContainerId(input.Value + 1), ContainerKind.StationOutput, CraftingFixture.StationCell2),
+        ]));
+        Assert.Empty(f.Blocks.HostedBy(CraftingFixture.StationCell2));
+    }
+
+    [Fact]
+    public void ContainerRemove_StationContainerWithState_Fails()
+    {
+        var f = new CraftingFixture();
+        var (input, output) = f.SetUpStation(CraftingFixture.StationCell);
+        var (input2, output2) = f.SetUpStation(CraftingFixture.StationCell2);
+
+        // The accepted counterpart: the whole removal of the second station.
+        f.Apply(CraftingFixture.RemoveStation(CraftingFixture.StationCell2, input2, output2));
+
+        f.AssertFails(new ContainerRemoveOp(input));
+        f.AssertFails(new ContainerRemoveOp(output));
+        Assert.Equal(2, f.Blocks.HostedBy(CraftingFixture.StationCell).Count());
+    }
+
+    [Fact]
+    public void BlockEntitySet_ClearStationKeepingContainers_Fails()
+    {
+        var f = new CraftingFixture();
+        var (input, output) = f.SetUpStation(CraftingFixture.StationCell);
+        var (input2, output2) = f.SetUpStation(CraftingFixture.StationCell2);
+
+        // The accepted counterpart: the state is cleared together with the containers.
+        f.Apply(CraftingFixture.RemoveStation(CraftingFixture.StationCell2, input2, output2));
+
+        f.AssertFails(FunctionalBlockFixture.ClearState(CraftingFixture.StationCell, CraftingFixture.StationBlockType));
+        Assert.True(f.Blocks.HasState(CraftingFixture.StationCell, out var state));
+        Assert.Equal(new StationBlockState(input, output, string.Empty, null), state);
+    }
+
+    [Fact]
     public void BlockEntitySet_StationKindChange_Fails()
     {
         var f = new CraftingFixture();

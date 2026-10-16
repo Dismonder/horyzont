@@ -32,16 +32,27 @@ public sealed class StateCodecCraftingTests
     }
 
     [Fact]
+    public void StationStartedWithoutRecipe_Blob21_Throws()
+    {
+        // Review A1 (4-5): the same invariant as in operation 40. The accepted counterpart first.
+        Assert.Equal("t:a", Assert.IsType<StationBlockState>(StateCodec.DecodeBlockEntityBlob(Kit.Hex("15 01 05 02 01 00 03 07 08 03 74 3A 61 01 64")).State).Recipe);
+
+        Kit.AssertViolation(d => StateCodec.DecodeBlockEntityBlob(d), Kit.Hex("15 01 05 02 01 00 03 07 08 00 01 64"));
+        Assert.Throws<ArgumentException>(() => StateCodec.EncodeBlockEntityBlob(new BlockEntityRecord(_construct, _cell, new StationBlockState(new ContainerId(7), new ContainerId(8), string.Empty, new Tick(100)))));
+    }
+
+    [Fact]
     public void PlayerProgressBlob_V2_RoundTrip()
     {
         var five = ItemTypeBitSet.Empty.With(new ItemTypeId(5));
-        var many = ItemTypeBitSet.Empty.With(new ItemTypeId(1)).With(new ItemTypeId(9)).With(new ItemTypeId(4095));
+        var many = ItemTypeBitSet.Empty.With(new ItemTypeId(1)).With(new ItemTypeId(9)).With(new ItemTypeId(4095)).With(new ItemTypeId(4096));
         foreach (var record in new[]
         {
             new PlayerProgressRecord(new PlayerId(4), null, five),
             new PlayerProgressRecord(new PlayerId(4), _bed, five),
             new PlayerProgressRecord(new PlayerId(4), _bed, many),
             new PlayerProgressRecord(new PlayerId(4), _bed),
+            new PlayerProgressRecord(new PlayerId(4), _bed, ItemTypeBitSet.Empty),
         })
         {
             var blob = StateCodec.EncodePlayerProgressBlob(record);
@@ -49,6 +60,21 @@ public sealed class StateCodecCraftingTests
             DeepAssert.Equal(record, StateCodec.DecodePlayerProgressBlob(blob));
             Assert.Equal(blob, StateCodec.EncodePlayerProgressBlob(StateCodec.DecodePlayerProgressBlob(blob)));
         }
+    }
+
+    [Fact]
+    public void PlayerProgressBlob_EmptyDiscoveries_NormalizedToNull()
+    {
+        // The review of A1 (4-4): an empty set is one form, null, so the record with an empty set equals the record without one and has no bit 1.
+        var empty = new PlayerProgressRecord(new PlayerId(4), _bed, ItemTypeBitSet.Empty);
+        Assert.Null(empty.Discovered);
+        Assert.Equal(new PlayerProgressRecord(new PlayerId(4), _bed), empty);
+
+        var blob = StateCodec.EncodePlayerProgressBlob(empty);
+
+        Assert.Equal("16 02 04 01 05 02 01 00 03", Kit.ToHex(blob));
+        Assert.Null(StateCodec.DecodePlayerProgressBlob(blob).Discovered);
+        Assert.Null(new PlayerProgress(new PlayerId(4), _bed, ItemTypeBitSet.Empty).Discovered);
     }
 
     [Fact]
@@ -97,14 +123,16 @@ public sealed class StateCodecCraftingTests
     }
 
     [Fact]
-    public void BitsetOver512_Throws()
+    public void BitsetOver513_Throws()
     {
+        // Item type ids run 1...MaxItemTypes (4096), so bit 4096 sits in byte 512: the longest set is 513 bytes (review A1, 4-2).
         var at512 = Kit.Concat(Kit.Hex("16 02 04 02 80 04"), new byte[511], [0x80]);
-        var at513 = Kit.Concat(Kit.Hex("16 02 04 02 81 04"), new byte[512], [0x80]);
+        var at513 = Kit.Concat(Kit.Hex("16 02 04 02 81 04"), new byte[512], [0x01]);
+        var at514 = Kit.Concat(Kit.Hex("16 02 04 02 82 04"), new byte[513], [0x01]);
 
-        // 512 bytes (4096 types, the last is 4095) are the most that the format holds.
         Assert.True(StateCodec.DecodePlayerProgressBlob(at512).Discovered!.Contains(new ItemTypeId(4095)));
-        Kit.AssertViolation(d => StateCodec.DecodePlayerProgressBlob(d), at513);
+        Assert.True(StateCodec.DecodePlayerProgressBlob(at513).Discovered!.Contains(new ItemTypeId(4096)));
+        Kit.AssertViolation(d => StateCodec.DecodePlayerProgressBlob(d), at514);
     }
 
     [Fact]
@@ -116,6 +144,7 @@ public sealed class StateCodecCraftingTests
             Array.Empty<string>(),
             ["t:boss"],
             ["B", "a"],
+            ["\U0001F600", "\uE000"],
             [new string('k', 64)],
             Enumerable.Range(0, 256).Select(i => "k" + i.ToString("D3", System.Globalization.CultureInfo.InvariantCulture)).ToArray(),
         })
@@ -134,6 +163,10 @@ public sealed class StateCodecCraftingTests
         Kit.AssertViolation(d => StateCodec.DecodeProgressKeysBlob(d), Kit.Hex("19 01 02 01 62 01 61"));
         Assert.Throws<ArgumentException>(() => StateCodec.EncodeProgressKeysBlob(["b", "a"]));
         Assert.Throws<ArgumentException>(() => StateCodec.EncodeProgressKeysBlob(["a", "B"]));
+
+        // The order is string.CompareOrdinal (UTF-16 units): the surrogate pair (D83D) precedes U+E000, although its UTF-8 bytes would follow them.
+        Assert.Equal(["\U0001F600", "\uE000"], StateCodec.DecodeProgressKeysBlob(StateCodec.EncodeProgressKeysBlob(["\U0001F600", "\uE000"])));
+        Assert.Throws<ArgumentException>(() => StateCodec.EncodeProgressKeysBlob(["\uE000", "\U0001F600"]));
     }
 
     [Fact]

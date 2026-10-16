@@ -59,11 +59,11 @@ public sealed class OperationCodecBlockTests
     [Fact]
     public void ReservedBlockEntityKind_Read_Throws()
     {
-        // The frame without a state ends with the kind byte 0. The reserved kinds 3..7 and anything above are refused, 1 and 2 need their fields.
+        // The frame without a state ends with the kind byte 0. The reserved kinds 4..7 and anything above are refused (3 is the station since K6-32), 1 and 2 need their fields.
         var frame = Kit.Encode(new BlockEntitySetOp(_construct, _cell, 3, null));
         Assert.IsType<BlockEntitySetOp>(Kit.DecodeOperation(frame));
 
-        foreach (var kind in new byte[] { 3, 4, 5, 6, 7, 8, 255 })
+        foreach (var kind in new byte[] { 4, 5, 6, 7, 8, 255 })
         {
             var reserved = (byte[])frame.Clone();
             reserved[^1] = kind;

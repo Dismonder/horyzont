@@ -51,6 +51,18 @@ public sealed class ProgressKeyOpsTests
     }
 
     [Fact]
+    public void Grant_LoneSurrogate_Fails()
+    {
+        var f = new CraftingFixture();
+
+        // The accepted counterpart: a valid surrogate pair. The key must be strict UTF-8, the same as ByteWriter writes, or the journal could not store the operation.
+        f.Apply(CraftingFixture.Grant("t:\U0001F600"));
+        f.AssertFails(CraftingFixture.Grant("t:\uD800"));
+        f.AssertFails(CraftingFixture.Grant("t:\uDC00x"));
+        Assert.Equal(1, f.State.ProgressKeys.Count);
+    }
+
+    [Fact]
     public void Grant_At256Keys_Fails()
     {
         var f = new CraftingFixture();
