@@ -22,6 +22,7 @@ public sealed partial class CraftingPanel : PanelContainer
     private readonly List<Button> _make = [];
     private readonly List<SpinBox> _counts = [];
     private readonly List<string> _rowTexts = [];
+    private readonly List<string> _rowKeys = [];
     private readonly Dictionary<string, int> _remembered = new(StringComparer.Ordinal);
     private Label? _title;
     private Label? _status;
@@ -50,6 +51,11 @@ public sealed partial class CraftingPanel : PanelContainer
     /// <param name="row">Row index.</param>
     /// <returns>The text.</returns>
     public string RowText(int row) => _rowTexts[row];
+
+    /// <summary>Gets the key of the recipe of a row.</summary>
+    /// <param name="row">Row index.</param>
+    /// <returns>The recipe key.</returns>
+    public string RecipeKey(int row) => _rowKeys[row];
 
     /// <summary>Gets the "Make" button of a row.</summary>
     /// <param name="row">Row index.</param>
@@ -117,6 +123,7 @@ public sealed partial class CraftingPanel : PanelContainer
         _make.Clear();
         _counts.Clear();
         _rowTexts.Clear();
+        _rowKeys.Clear();
         foreach (var view in views)
         {
             AddRow(view, kind);
