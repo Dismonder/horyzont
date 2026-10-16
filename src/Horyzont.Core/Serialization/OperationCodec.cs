@@ -1,6 +1,7 @@
 using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Progress;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.World.Constructs;
 
@@ -163,6 +164,64 @@ public static class OperationCodec
                 w.WriteVarUInt(cr.Size);
                 break;
 
+            case ContainerRemoveOp rm:
+                w.WriteByte((byte)OperationKind.ContainerRemove);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(rm.Container.Value);
+                break;
+
+            case ContainerConfigureOp cf:
+                if (!Enum.IsDefined(cf.Access) || cf.Size == 0 || cf.Size > ProtocolConstants.MaxContainerSlots)
+                {
+                    throw new ArgumentException("Invalid container access or size.", nameof(op));
+                }
+
+                w.WriteByte((byte)OperationKind.ContainerConfigure);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(cf.Container.Value);
+                w.WriteVarUInt(cf.Size);
+                w.WriteByte((byte)cf.Access);
+                break;
+
+            case BlockEntitySetOp be:
+                w.WriteByte((byte)OperationKind.BlockEntitySet);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(be.Construct.Value);
+                CoreCodecPrimitives.WriteCellPos(w, be.Cell);
+                w.WriteVarUInt(be.ExpectedType);
+                CoreCodecPrimitives.WriteBlockEntityState(w, be.State, allowNone: true);
+                break;
+
+            case RespawnPointSetOp rp:
+                w.WriteByte((byte)OperationKind.RespawnPointSet);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(rp.Player.Value);
+                if (rp.Bed is { } bed)
+                {
+                    w.WriteBool(true);
+                    CoreCodecPrimitives.WriteBedRef(w, bed);
+                }
+                else
+                {
+                    w.WriteBool(false);
+                }
+
+                break;
+
+            case BlockFunctionStateSetOp fs:
+                if (fs.State >= BlockState.FunctionStateCount)
+                {
+                    throw new ArgumentException($"Function state {fs.State} is above {BlockState.FunctionStateCount - 1}.", nameof(op));
+                }
+
+                w.WriteByte((byte)OperationKind.BlockFunctionStateSet);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(fs.Construct.Value);
+                CoreCodecPrimitives.WriteCellPos(w, fs.Cell);
+                w.WriteVarUInt(fs.ExpectedType);
+                w.WriteByte(fs.State);
+                break;
+
             case EntityReparentOp er:
                 w.WriteByte((byte)OperationKind.EntityReparent);
                 w.WriteByte(CurrentFormatVersion);
@@ -286,7 +345,8 @@ public static class OperationCodec
         byte kindByte = r.ReadByte();
         var known = (kindByte >= (byte)OperationKind.TerrainEdit && kindByte <= (byte)OperationKind.EntityReparent)
             || (kindByte >= (byte)OperationKind.ShipModeSet && kindByte <= (byte)OperationKind.MarkerRemove)
-            || (kindByte >= (byte)OperationKind.Compound && kindByte <= (byte)OperationKind.ContainerCreate);
+            || (kindByte >= (byte)OperationKind.Compound && kindByte <= (byte)OperationKind.ContainerConfigure)
+            || kindByte is (byte)OperationKind.BlockEntitySet or (byte)OperationKind.RespawnPointSet or (byte)OperationKind.BlockFunctionStateSet;
         if (!known)
         {
             throw new ProtocolViolationException($"Unknown operation kind {kindByte}.");
@@ -349,6 +409,45 @@ public static class OperationCodec
                     ref r, (byte)ContainerAccess.Shared, (byte)ContainerAccess.Private, "container access");
                 ushort crSize = r.ReadVarUInt16();
                 return new ContainerCreateOp(crId, crKind, crHost, crOwner, crAccess, crSize);
+
+            case OperationKind.ContainerRemove:
+                return new ContainerRemoveOp(new ContainerId(r.ReadVarUInt()));
+
+            case OperationKind.ContainerConfigure:
+                var cfId = new ContainerId(r.ReadVarUInt());
+                ushort cfSize = r.ReadVarUInt16();
+                if (cfSize == 0 || cfSize > ProtocolConstants.MaxContainerSlots)
+                {
+                    throw new ProtocolViolationException($"Container size {cfSize} must be in 1..{ProtocolConstants.MaxContainerSlots}.");
+                }
+
+                var cfAccess = (ContainerAccess)CoreCodecPrimitives.ReadEnumByte(
+                    ref r, (byte)ContainerAccess.Shared, (byte)ContainerAccess.Private, "container access");
+                return new ContainerConfigureOp(cfId, cfSize, cfAccess);
+
+            case OperationKind.BlockEntitySet:
+                var beConstruct = new EntityId(r.ReadVarUInt());
+                var beCell = CoreCodecPrimitives.ReadCellPos(ref r);
+                ushort beType = r.ReadVarUInt16();
+                var beState = CoreCodecPrimitives.ReadBlockEntityState(ref r, allowNone: true);
+                return new BlockEntitySetOp(beConstruct, beCell, beType, beState);
+
+            case OperationKind.RespawnPointSet:
+                var rpPlayer = new PlayerId(r.ReadVarUInt());
+                BedRef? rpBed = r.ReadBool() ? CoreCodecPrimitives.ReadBedRef(ref r) : null;
+                return new RespawnPointSetOp(rpPlayer, rpBed);
+
+            case OperationKind.BlockFunctionStateSet:
+                var fsConstruct = new EntityId(r.ReadVarUInt());
+                var fsCell = CoreCodecPrimitives.ReadCellPos(ref r);
+                ushort fsType = r.ReadVarUInt16();
+                byte fsState = r.ReadByte();
+                if (fsState >= BlockState.FunctionStateCount)
+                {
+                    throw new ProtocolViolationException($"Function state {fsState} is above {BlockState.FunctionStateCount - 1}.");
+                }
+
+                return new BlockFunctionStateSetOp(fsConstruct, fsCell, fsType, fsState);
 
             case OperationKind.TerrainEdit:
                 var planet = new PlanetId(r.ReadVarUInt());

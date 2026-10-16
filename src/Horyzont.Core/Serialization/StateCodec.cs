@@ -5,6 +5,7 @@ using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Progress;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Space;
 using Horyzont.Core.World;
@@ -837,9 +838,14 @@ public static class StateCodec
     /// <returns>The blob.</returns>
     public static byte[] EncodeBlockEntityBlob(BlockEntityRecord record)
     {
-        // K6-30 A4: BlobKind.BlockEntity = 21.
         ArgumentNullException.ThrowIfNull(record);
-        throw new NotImplementedException("K6-30 A4");
+        var w = new ByteWriter();
+        w.WriteByte((byte)BlobKind.BlockEntity);
+        w.WriteByte(CurrentFormatVersion);
+        w.WriteVarUInt(record.Construct.Value);
+        CoreCodecPrimitives.WriteCellPos(w, record.Cell);
+        CoreCodecPrimitives.WriteBlockEntityState(w, record.State, allowNone: false);
+        return w.WrittenSpan.ToArray();
     }
 
     /// <summary>Decodes a functional block state blob (kind 21).</summary>
@@ -847,9 +853,13 @@ public static class StateCodec
     /// <returns>The record.</returns>
     public static BlockEntityRecord DecodeBlockEntityBlob(ReadOnlySpan<byte> blob)
     {
-        // K6-30 A4.
-        _ = blob.Length;
-        throw new NotImplementedException("K6-30 A4");
+        ValidateBlobHeader(blob, BlobKind.BlockEntity);
+        var r = new ByteReader(blob.Slice(2));
+        var construct = new EntityId(r.ReadVarUInt());
+        var cell = CoreCodecPrimitives.ReadCellPos(ref r);
+        var state = CoreCodecPrimitives.ReadBlockEntityState(ref r, allowNone: false)!;
+        r.EnsureEnd();
+        return new BlockEntityRecord(construct, cell, state);
     }
 
     /// <summary>Encodes the progress of a player as a SQLite blob (kind 22, version 1; K6-30).</summary>
@@ -857,9 +867,22 @@ public static class StateCodec
     /// <returns>The blob.</returns>
     public static byte[] EncodePlayerProgressBlob(PlayerProgressRecord record)
     {
-        // K6-30 A4: BlobKind.PlayerProgress = 22.
         ArgumentNullException.ThrowIfNull(record);
-        throw new NotImplementedException("K6-30 A4");
+        var w = new ByteWriter();
+        w.WriteByte((byte)BlobKind.PlayerProgress);
+        w.WriteByte(CurrentFormatVersion);
+        w.WriteVarUInt(record.Player.Value);
+        if (record.RespawnBed is { } bed)
+        {
+            w.WriteByte(1);
+            CoreCodecPrimitives.WriteBedRef(w, bed);
+        }
+        else
+        {
+            w.WriteByte(0);
+        }
+
+        return w.WrittenSpan.ToArray();
     }
 
     /// <summary>Decodes a player progress blob (kind 22).</summary>
@@ -867,9 +890,20 @@ public static class StateCodec
     /// <returns>The record.</returns>
     public static PlayerProgressRecord DecodePlayerProgressBlob(ReadOnlySpan<byte> blob)
     {
-        // K6-30 A4.
-        _ = blob.Length;
-        throw new NotImplementedException("K6-30 A4");
+        ValidateBlobHeader(blob, BlobKind.PlayerProgress);
+        var r = new ByteReader(blob.Slice(2));
+        var player = new PlayerId(r.ReadVarUInt());
+        byte flags = r.ReadByte();
+
+        // Bit 0: there is a respawn point. Other bits are reserved for the fields of later versions and make version 1 refuse the blob.
+        if (flags > 1)
+        {
+            throw new ProtocolViolationException($"Unknown player progress flags {flags}.");
+        }
+
+        BedRef? bed = flags == 1 ? CoreCodecPrimitives.ReadBedRef(ref r) : null;
+        r.EnsureEnd();
+        return new PlayerProgressRecord(player, bed);
     }
 
     private static void ValidateBlobHeader(ReadOnlySpan<byte> blob, BlobKind expectedKind)

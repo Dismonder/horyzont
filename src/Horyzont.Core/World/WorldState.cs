@@ -454,6 +454,38 @@ public sealed class WorldState
             }
         }
 
+        var entityKeys = _tracker.BlockEntities.ToArray();
+        Array.Sort(entityKeys);
+        var upsertedEntities = new List<BlockEntityRecord>();
+        var removedEntities = new List<BlockRef>();
+        foreach (var key in entityKeys)
+        {
+            if (BlockEntities.TryGet(key, out var entityState))
+            {
+                upsertedEntities.Add(new BlockEntityRecord(key.Construct, key.Cell, entityState));
+            }
+            else
+            {
+                removedEntities.Add(key);
+            }
+        }
+
+        var progressIds = _tracker.Progress.ToArray();
+        Array.Sort(progressIds, static (a, b) => a.Value.CompareTo(b.Value));
+        var upsertedProgress = new List<PlayerProgressRecord>();
+        var removedProgress = new List<PlayerId>();
+        foreach (var id in progressIds)
+        {
+            if (Progress.TryGet(id, out var progress))
+            {
+                upsertedProgress.Add(new PlayerProgressRecord(id, progress.RespawnBed));
+            }
+            else
+            {
+                removedProgress.Add(id);
+            }
+        }
+
         _tracker.Clear();
         _inFlight = new WorldCheckpoint(
             LastOpId, CurrentTick, EntityIds.NextValue, PlayerIds.NextValue,
@@ -463,6 +495,10 @@ public sealed class WorldState
             NextContainerId = ContainerIds.NextValue,
             UpsertedContainers = upsertedContainers,
             RemovedContainers = removedContainers,
+            UpsertedBlockEntities = upsertedEntities,
+            RemovedBlockEntities = removedEntities,
+            UpsertedProgress = upsertedProgress,
+            RemovedProgress = removedProgress,
         };
         return _inFlight;
     }
@@ -541,6 +577,26 @@ public sealed class WorldState
         foreach (var id in failed.RemovedContainers)
         {
             _tracker.MarkContainer(id);
+        }
+
+        foreach (var entity in failed.UpsertedBlockEntities)
+        {
+            _tracker.MarkBlockEntity(new BlockRef(entity.Construct, entity.Cell));
+        }
+
+        foreach (var key in failed.RemovedBlockEntities)
+        {
+            _tracker.MarkBlockEntity(key);
+        }
+
+        foreach (var progress in failed.UpsertedProgress)
+        {
+            _tracker.MarkProgress(progress.Player);
+        }
+
+        foreach (var id in failed.RemovedProgress)
+        {
+            _tracker.MarkProgress(id);
         }
 
         _inFlight = null;

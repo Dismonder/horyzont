@@ -190,7 +190,7 @@ public static class CodecGen
     /// <summary>Chunks of 4096 well-formed block states in assorted shapes (empty, uniform, sparse, banded, worst-case alternating, random).</summary>
     public static Gen<uint[]> ChunkBlocks { get; } = Gen.Choose(0, 5).SelectMany(shape => Gen.Choose(0, int.MaxValue).SelectMany(seed => BuildChunk(shape, seed)));
 
-    /// <summary>Operations of every kind (1-7, 20-23 and 30-35).</summary>
+    /// <summary>Operations of every kind (1-7, 20-23, 30-37, 40, 44 and 49).</summary>
     public static Gen<Operation> Operation => Gen.OneOf(
         TerrainEditOp.Select(o => (Operation)o),
         ConstructCreateOp.Select(o => (Operation)o),
@@ -208,7 +208,12 @@ public static class CodecGen
         ItemSwapOp.Select(o => (Operation)o),
         ItemCreateOp.Select(o => (Operation)o),
         ItemDestroyOp.Select(o => (Operation)o),
-        ContainerCreateOp.Select(o => (Operation)o));
+        ContainerCreateOp.Select(o => (Operation)o),
+        ContainerRemoveOp.Select(o => (Operation)o),
+        ContainerConfigureOp.Select(o => (Operation)o),
+        BlockEntitySetOp.Select(o => (Operation)o),
+        RespawnPointSetOp.Select(o => (Operation)o),
+        BlockFunctionStateSetOp.Select(o => (Operation)o));
 
     /// <summary>Terrain edit operations.</summary>
     public static Gen<TerrainEditOp> TerrainEditOp { get; } =
@@ -344,6 +349,48 @@ public static class CodecGen
         from access in Gen.Elements(Enum.GetValues<ContainerAccess>())
         from size in VarU16
         select new ContainerCreateOp(id, kind, host, new PlayerId(owner), access, size);
+
+    /// <summary>Container removals (K6-30).</summary>
+    public static Gen<ContainerRemoveOp> ContainerRemoveOp { get; } = ContainerId.Select(id => new ContainerRemoveOp(id));
+
+    /// <summary>Container configuration with a size inside the container limits (K6-30).</summary>
+    public static Gen<ContainerConfigureOp> ContainerConfigureOp { get; } =
+        from id in ContainerId
+        from size in Gen.Choose(1, ProtocolConstants.MaxContainerSlots)
+        from access in Gen.Elements(Enum.GetValues<ContainerAccess>())
+        select new ContainerConfigureOp(id, (ushort)size, access);
+
+    /// <summary>Block states of format 1: a chest, a bed or none (K6-30).</summary>
+    public static Gen<Horyzont.Core.BlockEntities.BlockEntityState?> BlockEntityStateOrNone { get; } = Gen.OneOf(
+        Gen.Constant<Horyzont.Core.BlockEntities.BlockEntityState?>(null),
+        ContainerId.Select(c => (Horyzont.Core.BlockEntities.BlockEntityState?)new Horyzont.Core.BlockEntities.ChestBlockState(c)),
+        PlayerId.Select(p => (Horyzont.Core.BlockEntities.BlockEntityState?)new Horyzont.Core.BlockEntities.BedBlockState(p)));
+
+    /// <summary>Block state operations (K6-30).</summary>
+    public static Gen<BlockEntitySetOp> BlockEntitySetOp { get; } =
+        from construct in EntityId
+        from cell in Cell
+        from type in VarU16
+        from state in BlockEntityStateOrNone
+        select new BlockEntitySetOp(construct, cell, type, state);
+
+    /// <summary>Respawn point operations (K6-30).</summary>
+    public static Gen<RespawnPointSetOp> RespawnPointSetOp { get; } =
+        from player in PlayerId
+        from bed in Optional(
+            from construct in EntityId
+            from cell in Cell
+            from type in VarU16
+            select new Horyzont.Core.Progress.BedRef(construct, cell, type))
+        select new RespawnPointSetOp(player, bed);
+
+    /// <summary>Function state operations with a state in 0..7 (K6-30).</summary>
+    public static Gen<BlockFunctionStateSetOp> BlockFunctionStateSetOp { get; } =
+        from construct in EntityId
+        from cell in Cell
+        from type in VarU16
+        from state in Gen.Choose(0, BlockState.FunctionStateCount - 1)
+        select new BlockFunctionStateSetOp(construct, cell, type, (byte)state);
 
     /// <summary>Item components of compound operations.</summary>
     public static Gen<Operation> ItemComponent { get; } = Gen.OneOf(

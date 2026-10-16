@@ -28,4 +28,10 @@ public enum BlobKind : byte
     ShipState = 12,
     /// <summary>A container record (K6-29).</summary>
     Container = 20,
+
+    /// <summary>The state of a functional block (K6-30).</summary>
+    BlockEntity = 21,
+
+    /// <summary>The progress of a player; in version 1 only the respawn point (K6-30).</summary>
+    PlayerProgress = 22,
 }

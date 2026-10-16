@@ -41,6 +41,9 @@ public sealed class PlayerProgressStore
         return previous;
     }
 
+    /// <summary>Stores a record read from a checkpoint without marking it changed (world loader); the caller checked the preconditions.</summary>
+    internal void Load(PlayerProgress progress) => _byPlayer.Add(progress.Player, progress);
+
     /// <summary>Removes the record of a player and marks it changed.</summary>
     /// <returns>The record that was removed, null when the player had none (nothing is marked).</returns>
     internal PlayerProgress? Remove(PlayerId player)

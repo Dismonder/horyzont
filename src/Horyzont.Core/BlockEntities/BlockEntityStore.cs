@@ -50,6 +50,13 @@ public sealed class BlockEntityStore
         return previous;
     }
 
+    /// <summary>Stores a state read from a checkpoint without marking it changed (world loader); the caller checked the preconditions.</summary>
+    internal void Load(BlockRef key, BlockEntityState state)
+    {
+        _states.Add(key, state);
+        _perConstruct[key.Construct] = _perConstruct.GetValueOrDefault(key.Construct) + 1;
+    }
+
     /// <summary>Removes a state and marks it changed.</summary>
     /// <returns>The state that was removed, null when the block had none (nothing is marked).</returns>
     internal BlockEntityState? Remove(BlockRef key)

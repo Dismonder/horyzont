@@ -1,6 +1,8 @@
+using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
+using Horyzont.Core.Progress;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.World.Constructs;
 
@@ -225,5 +227,58 @@ internal static class CoreCodecPrimitives
         }
 
         return new ItemStack(new ItemTypeId(type), count);
+    }
+
+    /// <summary>A block state: a kind byte (0 = no state, only when <paramref name="allowNone"/>) and the fields of the kind (K6-30).</summary>
+    public static void WriteBlockEntityState(ByteWriter w, BlockEntityState? state, bool allowNone)
+    {
+        switch (state)
+        {
+            case null when allowNone:
+                w.WriteByte(0);
+                break;
+            case ChestBlockState chest:
+                w.WriteByte((byte)BlockEntityKind.Chest);
+                w.WriteVarUInt(chest.Container.Value);
+                break;
+            case BedBlockState bed:
+                w.WriteByte((byte)BlockEntityKind.Bed);
+                w.WriteVarUInt(bed.Owner.Value);
+                break;
+            default:
+                throw new ArgumentException($"A block state of format 1 is a chest or a bed, not {state?.GetType().Name ?? "null"}.", nameof(state));
+        }
+    }
+
+    public static BlockEntityState? ReadBlockEntityState(ref ByteReader r, bool allowNone)
+    {
+        byte kind = r.ReadByte();
+        switch (kind)
+        {
+            case 0 when allowNone:
+                return null;
+            case (byte)BlockEntityKind.Chest:
+                return new ChestBlockState(new ContainerId(r.ReadVarUInt()));
+            case (byte)BlockEntityKind.Bed:
+                return new BedBlockState(new PlayerId(r.ReadVarUInt()));
+            default:
+                throw new ProtocolViolationException($"Unknown or reserved block state kind {kind}.");
+        }
+    }
+
+    /// <summary>A bed reference: construct, cell and expected block type (K6-30).</summary>
+    public static void WriteBedRef(ByteWriter w, BedRef bed)
+    {
+        w.WriteVarUInt(bed.Construct.Value);
+        WriteCellPos(w, bed.Cell);
+        w.WriteVarUInt(bed.ExpectedType);
+    }
+
+    public static BedRef ReadBedRef(ref ByteReader r)
+    {
+        var construct = new EntityId(r.ReadVarUInt());
+        var cell = ReadCellPos(ref r);
+        ushort type = r.ReadVarUInt16();
+        return new BedRef(construct, cell, type);
     }
 }
