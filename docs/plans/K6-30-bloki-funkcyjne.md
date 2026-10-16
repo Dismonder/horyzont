@@ -367,7 +367,7 @@ Każdy krok kończy się zielonym budowaniem i testami; commity w formacie Conve
 
 ### Etap C — zapis i serwer
 
-- [ ] C1. Testy z tabeli etapu C (czerwone). Commit `test: add functional block persistence and server tests`.
+- [x] C1 (testy napisane, czerwone). Testy z tabeli etapu C (czerwone). Commit `test: add functional block persistence and server tests`.
 - [ ] C2. Persistence: `WorldLoader`, `PersistenceWriter`, `WorldCreator`, `Sql`; fikstura `world-v3-blocks.db` (`FixtureGenerator.Generate_WorldV3Blocks`, `Manual`). Commit `feat(persistence): store block entities and player progress`.
 - [ ] C3. `InventoryService`: subskrypcje skrzyń (D20), sprawdzanie co 10 ticków jako uczestnik ticku, delty do subskrybentów, `ContainerState` po 37, odmowa po 36. Commit `feat(server): subscribe to chests within reach`.
 - [ ] C4. `BlockEntityReplicator`, `ConstructStateSender.LinkLive`, rzut w `EntityReplication`, rejestracja w `EntityReplicationBinder`. Commit `feat(server): replicate block entity states`.

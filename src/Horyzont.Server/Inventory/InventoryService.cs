@@ -128,6 +128,16 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
         return true;
     }
 
+    /// <summary>
+    /// Checks the chest subscriptions (K6-30 D20): ends those of a player who walked further than 8 m, lost access or whose container is gone.
+    /// Called every 10th tick.
+    /// </summary>
+    public void CheckSubscriptions()
+    {
+        // K6-30 C3.
+        _ = _attached;
+    }
+
     private static bool IsOwnedBy(Container container, PlayerId player) =>
         container.Owner == player && container.Host is { Kind: ContainerHostKind.Player } host && host.PlayerId == player;
 

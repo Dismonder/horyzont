@@ -66,16 +66,11 @@ public static class FunctionalBlocks
     /// <summary>Key of the door block type.</summary>
     public const string DoorKey = "core:wood_door";
 
-    /// <summary>
-    /// The content table of a world created by <see cref="WorldFactory.CreateWithFunctionalBlocks"/>: a stone block, a chest with
-    /// <paramref name="chestSlots"/> slots, a bed, a lamp and a door (K6-30 D5).
-    /// </summary>
-    /// <param name="state">The world.</param>
+    /// <summary>The block definitions of <see cref="BlockKeys"/> (a stone block, a chest with <paramref name="chestSlots"/> slots, a bed, a lamp and a door; K6-30 D5).</summary>
     /// <param name="chestSlots">Slots of the container of a chest.</param>
-    /// <returns>The table.</returns>
-    public static BlockContentTable ContentFor(WorldState state, ushort chestSlots = 4)
+    /// <returns>The definitions by key, for <c>ServerRuntimeOptions.BlockDefinitions</c> or <c>BlockContentTable.Create</c>.</returns>
+    public static IReadOnlyDictionary<string, BlockTypeDef> DefinitionsFor(ushort chestSlots = 4)
     {
-        ArgumentNullException.ThrowIfNull(state);
         (string Key, float Mass, BlockFunction Function)[] all =
         [
             (WorldFactory.StoneBlockKey, 2400f, BlockFunction.None),
@@ -90,6 +85,19 @@ public static class FunctionalBlocks
             definitions.Add(key, new BlockTypeDef(key, BlockShape.Cube, 1, true, mass, function));
         }
 
-        return BlockContentTable.Create(state.BlockTypes, definitions);
+        return definitions;
+    }
+
+    /// <summary>
+    /// The content table of a world created by <see cref="WorldFactory.CreateWithFunctionalBlocks"/>: a stone block, a chest with
+    /// <paramref name="chestSlots"/> slots, a bed, a lamp and a door (K6-30 D5).
+    /// </summary>
+    /// <param name="state">The world.</param>
+    /// <param name="chestSlots">Slots of the container of a chest.</param>
+    /// <returns>The table.</returns>
+    public static BlockContentTable ContentFor(WorldState state, ushort chestSlots = 4)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        return BlockContentTable.Create(state.BlockTypes, DefinitionsFor(chestSlots));
     }
 }
