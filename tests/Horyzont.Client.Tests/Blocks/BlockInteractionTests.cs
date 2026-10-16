@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 
 using Horyzont.Client.Blocks;
+using Horyzont.Client.Crafting;
 using Horyzont.Client.Inventory;
 using Horyzont.Client.Tests.Inventory;
 using Horyzont.Client.Tools;
@@ -12,6 +13,7 @@ using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.World;
+using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Terrain;
 using Horyzont.Testing;
@@ -26,6 +28,7 @@ public sealed class BlockInteractionTests
     private static readonly PlayerId _me = new(1);
     private static readonly PlayerId _other = new(2);
     private static readonly ContainerId _chestId = new(7);
+    private static readonly CellPos _stationCell = new(4, 1, 0);
 
     private sealed class FakeSender : IIntentSender
     {
@@ -69,16 +72,21 @@ public sealed class BlockInteractionTests
 
     private sealed class Rig
     {
-        public Rig()
+        public Rig(bool crafting = false)
         {
-            State = WorldFactory.CreateWithFunctionalBlocks(players: 2);
+            State = crafting ? WorldFactory.CreateWithCrafting(players: 2) : WorldFactory.CreateWithFunctionalBlocks(players: 2);
             Sim = new ServerSimulation(State, new FakeTerrainService(), new InMemoryJournal(), new GameRules(), NullLogger<ServerSimulation>.Instance);
             Pending = new PendingIntentTracker(NoEditPrediction.Instance, NullLogger<PendingIntentTracker>.Instance);
             Inventory = new InventoryFixture();
             Chests = new ChestSession(Inventory.Inventory, Sender, Sent.Add, NullLogger<ChestSession>.Instance);
             Entities = new ClientBlockEntities();
+            Crafting = new CraftingSession(Sender, new GameRules(), NullLogger<CraftingSession>.Instance);
+            Stations = new StationSession(
+                Inventory.Inventory, Entities, SurvivalContentFactory.CreateTestWithRecipes(), Sender, Sent.Add, ReadTick, new GameRules(),
+                NullLogger<StationSession>.Instance);
             Interaction = new BlockInteraction(
-                new StateWorldView(State), Sender, Pending, FunctionalBlocks.ContentFor(State), Entities, Chests, _me, new GameRules());
+                new StateWorldView(State), Sender, Pending, crafting ? CraftingBlocks.ContentFor(State) : FunctionalBlocks.ContentFor(State), Entities, Chests,
+                _me, new GameRules(), Crafting, Stations);
         }
 
         public WorldState State { get; }
@@ -97,7 +105,20 @@ public sealed class BlockInteractionTests
 
         public ClientBlockEntities Entities { get; }
 
+        public CraftingSession Crafting { get; }
+
+        public StationSession Stations { get; }
+
         public BlockInteraction Interaction { get; }
+
+        public void PlaceBlock(ushort type, CellPos cell) =>
+            Sim.ApplyServerOperation(new BlockSetOp(FunctionalBlocks.Construct, cell, BlockState.Create(type, 0)));
+
+        private static bool ReadTick(out ulong tick)
+        {
+            tick = 0;
+            return false;
+        }
 
         public void SetState(CellPos cell, ushort type, byte state) =>
             Sim.ApplyServerOperation(new BlockFunctionStateSetOp(FunctionalBlocks.Construct, cell, type, state));
@@ -111,6 +132,71 @@ public sealed class BlockInteractionTests
             var from = to + new Vector3(0, 0.1f, -distance - 0.5f);
             return new AimRay(WorldFactory.HomePlanet, from, Vector3.Normalize(to - from), -Vector3.UnitZ, from - new Vector3(0, 1.62f, 0));
         }
+    }
+
+    [Fact]
+    public void AimFurnace_PromptOpenStation_OpensStationSession()
+    {
+        var rig = new Rig(crafting: true);
+        rig.PlaceBlock(CraftingBlocks.FurnaceType, _stationCell);
+        var aim = Rig.AimAt(_stationCell);
+
+        // Without the replicated state the containers of the furnace are unknown: no prompt, like a chest.
+        rig.Interaction.Observe(aim);
+        Assert.Null(rig.Interaction.Prompt);
+        Assert.Equal(BlockInteractionResult.NothingToInteract, rig.Interaction.Interact(aim, 5));
+
+        rig.Replicate(_stationCell, new StationBlockState(new ContainerId(20), new ContainerId(21), string.Empty, null));
+        rig.Interaction.Observe(aim);
+
+        Assert.Equal(
+            new BlockPrompt(BlockPromptKind.OpenStation, FunctionalBlocks.Construct, _stationCell, StationKind.Furnace), rig.Interaction.Prompt);
+        Assert.Equal(BlockInteractionResult.StationRequested, rig.Interaction.Interact(aim, 5));
+        Assert.Equal([new ContainerSubscribe(new ContainerId(20)), new ContainerSubscribe(new ContainerId(21))], rig.Sent);
+        Assert.True(rig.Stations.IsOpening);
+        Assert.Equal(StationKind.Furnace, rig.Stations.Kind);
+        Assert.Empty(rig.Sender.Intents);
+        Assert.False(rig.Crafting.IsStationOpen);
+    }
+
+    [Theory]
+    [InlineData(CraftingBlocks.WorkbenchType, StationKind.Workbench)]
+    [InlineData(CraftingBlocks.KitchenType, StationKind.Kitchen)]
+    [InlineData(CraftingBlocks.FabricatorType, StationKind.Fabricator)]
+    public void AimWorkbench_PromptOpenStation_OpensCrafting(ushort type, StationKind kind)
+    {
+        var rig = new Rig(crafting: true);
+        rig.PlaceBlock(type, _stationCell);
+        var aim = Rig.AimAt(_stationCell);
+
+        rig.Interaction.Observe(aim);
+
+        Assert.Equal(new BlockPrompt(BlockPromptKind.OpenStation, FunctionalBlocks.Construct, _stationCell, kind), rig.Interaction.Prompt);
+        Assert.Equal(BlockInteractionResult.CraftingOpened, rig.Interaction.Interact(aim, 5));
+        Assert.True(rig.Crafting.IsStationOpen);
+        Assert.Equal(kind, rig.Crafting.Kind);
+        Assert.Equal(new BlockRef(FunctionalBlocks.Construct, _stationCell), rig.Crafting.Station);
+        Assert.Empty(rig.Sent);
+        Assert.Empty(rig.Sender.Intents);
+        Assert.False(rig.Stations.IsOpening);
+    }
+
+    [Theory]
+    [InlineData(CraftingBlocks.AnvilType)]
+    [InlineData(CraftingBlocks.ToolrackType)]
+    [InlineData(CraftingBlocks.GrindstoneType)]
+    public void AimUpgrade_NoPrompt(ushort type)
+    {
+        var rig = new Rig(crafting: true);
+        rig.PlaceBlock(type, _stationCell);
+        var aim = Rig.AimAt(_stationCell);
+
+        rig.Interaction.Observe(aim);
+
+        Assert.Null(rig.Interaction.Prompt);
+        Assert.Equal(BlockInteractionResult.NothingToInteract, rig.Interaction.Interact(aim, 5));
+        Assert.False(rig.Crafting.IsStationOpen);
+        Assert.Empty(rig.Sent);
     }
 
     [Fact]

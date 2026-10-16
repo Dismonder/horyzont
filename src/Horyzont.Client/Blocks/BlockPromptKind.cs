@@ -29,4 +29,7 @@ public enum BlockPromptKind : byte
 
     /// <summary>A bed of another player.</summary>
     BedOccupied = 9,
+
+    /// <summary>Open a station: the crafting panel (workbench, kitchen, fabricator) or the panel with the input and the output (furnace, refinery; K6-32).</summary>
+    OpenStation = 10,
 }

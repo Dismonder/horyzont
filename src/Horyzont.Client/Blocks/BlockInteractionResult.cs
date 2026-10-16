@@ -20,4 +20,10 @@ public enum BlockInteractionResult : byte
 
     /// <summary>Too many intents wait for the server.</summary>
     Waiting = 5,
+
+    /// <summary>A station with no time was opened for crafting (K6-32).</summary>
+    CraftingOpened = 6,
+
+    /// <summary>The subscription to the containers of a station with time went to the server; the screen opens when both states arrive (K6-32).</summary>
+    StationRequested = 7,
 }

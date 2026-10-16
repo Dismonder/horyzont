@@ -1,3 +1,4 @@
+using Horyzont.Client.Crafting;
 using Horyzont.Client.Inventory;
 using Horyzont.Client.Tools;
 using Horyzont.Core.BlockEntities;
@@ -25,6 +26,8 @@ public sealed class BlockInteraction
     private readonly ChestSession _chests;
     private readonly PlayerId _localPlayer;
     private readonly GameRules _rules;
+    private readonly CraftingSession? _crafting;
+    private readonly StationSession? _stations;
 
     /// <summary>Initializes a new instance of the <see cref="BlockInteraction"/> class.</summary>
     /// <param name="world">World view of the tools.</param>
@@ -35,10 +38,14 @@ public sealed class BlockInteraction
     /// <param name="chests">The chest session.</param>
     /// <param name="localPlayer">The local player (the owner of a bed is compared with it).</param>
     /// <param name="rules">Game rules (reach).</param>
+    /// <param name="crafting">The crafting session that a station with no time opens (K6-32); null: such stations give no prompt.</param>
+    /// <param name="stations">The station session that a station with time opens (K6-32); null: such stations give no prompt.</param>
     public BlockInteraction(
         IToolWorldView world, IIntentSender sender, PendingIntentTracker pending, BlockContentTable content, IBlockEntityView entities,
-        ChestSession chests, PlayerId localPlayer, GameRules rules)
+        ChestSession chests, PlayerId localPlayer, GameRules rules, CraftingSession? crafting = null, StationSession? stations = null)
     {
+        _crafting = crafting;
+        _stations = stations;
         _world = world ?? throw new ArgumentNullException(nameof(world));
         _sender = sender ?? throw new ArgumentNullException(nameof(sender));
         _pending = pending ?? throw new ArgumentNullException(nameof(pending));

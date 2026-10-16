@@ -29,9 +29,12 @@ public sealed class InventoryInteraction : IClientSessionListener
     /// <param name="sender">Where the intents go.</param>
     /// <param name="logger">Logger.</param>
     /// <param name="chests">The chest session whose open chest is the other side of a shift click (K6-30); null for none.</param>
-    public InventoryInteraction(ClientInventory inventory, IIntentSender sender, ILogger<InventoryInteraction> logger, ChestSession? chests = null)
+    /// <param name="stations">The station session whose input is the other side of a shift click (K6-32); null for none.</param>
+    public InventoryInteraction(
+        ClientInventory inventory, IIntentSender sender, ILogger<InventoryInteraction> logger, ChestSession? chests = null, Crafting.StationSession? stations = null)
     {
         Chests = chests;
+        Stations = stations;
         _inventory = inventory ?? throw new ArgumentNullException(nameof(inventory));
         _sender = sender ?? throw new ArgumentNullException(nameof(sender));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -39,6 +42,9 @@ public sealed class InventoryInteraction : IClientSessionListener
 
     /// <summary>Gets the chest session, or null.</summary>
     public ChestSession? Chests { get; }
+
+    /// <summary>Gets the station session, or null.</summary>
+    public Crafting.StationSession? Stations { get; }
 
     /// <summary>Gets the items in hand, or null.</summary>
     public HeldStack? Held { get; private set; }

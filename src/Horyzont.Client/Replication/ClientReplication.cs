@@ -18,10 +18,14 @@ public sealed class ClientReplication : IClientSessionListener
     /// <param name="constructs">Mirror of constructs; null when the world is shared with the server.</param>
     /// <param name="time">Clock of the resync retries; the system clock when omitted.</param>
     /// <param name="blockEntities">The states of the functional blocks (message 46, K6-30); null when the client does not track them.</param>
-    public ClientReplication(Action<Message> send, ConstructMirror? constructs, TimeProvider? time = null, Blocks.ClientBlockEntities? blockEntities = null)
+    /// <param name="progress">The discoveries and progress keys (message 48, K6-32); null when the client does not track them.</param>
+    public ClientReplication(
+        Action<Message> send, ConstructMirror? constructs, TimeProvider? time = null, Blocks.ClientBlockEntities? blockEntities = null,
+        Crafting.ClientProgress? progress = null)
     {
         ArgumentNullException.ThrowIfNull(send);
         _send = send;
+        Progress = progress;
         BlockEntities = blockEntities;
         Constructs = constructs;
         Entities = new EntityMirror(time);
@@ -45,6 +49,9 @@ public sealed class ClientReplication : IClientSessionListener
 
     /// <summary>Gets the states of the functional blocks; null when not tracked.</summary>
     public Blocks.ClientBlockEntities? BlockEntities { get; }
+
+    /// <summary>Gets the discoveries and progress keys; null when not tracked.</summary>
+    public Crafting.ClientProgress? Progress { get; }
 
     /// <inheritdoc />
     public void OnMessage(Message message)
