@@ -397,6 +397,13 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
                 continue;
             }
 
+            if (change.Configured)
+            {
+                // A change of size or access (also together with slots) is more than a delta can say: the owner gets the whole state.
+                _send(container.Owner, StateOf(container));
+                continue;
+            }
+
             SendDelta(container.Owner, container, change, applied.Id.Value);
         }
     }

@@ -51,6 +51,27 @@ public sealed class InventoryBoundaryTests
         AssertRejected(Move(from, 1, to, 2), RejectReason.ContainerLocked);
     }
 
+    [Fact]
+    public void ConfigurePlayerBagWithTransferIntoNewSlot_OwnerGetsFullState()
+    {
+        var bag = Bag;
+        var size = (ushort)bag.Size;
+        var newSlot = (ushort)(size + 1);
+
+        // The bigger bag and an item in a slot that exists only after the change: a delta alone would name a slot outside the old size.
+        _sim.ApplyServerOperation(new CompoundOp(
+        [
+            new ContainerConfigureOp(bag.Id, (ushort)(size + 4), bag.Access),
+            new ItemCreateOp(new SlotRef(bag.Id, newSlot), Gem, 3, 5, ItemSource.Admin),
+        ]));
+
+        var state = Assert.Single(_sent.OfType<ContainerState>());
+        Assert.Equal(bag.Id, state.Container);
+        Assert.Equal(size + 4, state.Size);
+        Assert.Contains(state.Slots, slot => slot.Slot == newSlot && slot.Stack.Count == 3);
+        Assert.Empty(_sent.OfType<ContainerDelta>());
+    }
+
     [Theory]
     [InlineData(0, 0, 3, RejectReason.InvalidParameters)]
     [InlineData(40, 1, 3, RejectReason.InvalidParameters)]
