@@ -104,6 +104,27 @@ public sealed class DigRemovesPropsTests
     }
 
     [Fact]
+    public void Dig_NotMeasurable_PropsStillRemoved()
+    {
+        // The twin: the same dig with a measurable sphere removes the tree.
+        var twin = Beside(PropKindV1.Pine, out var treeA);
+        Assert.Contains(treeA.Id, AssertHarvestsOfEdit(twin, Components(twin.DigAt(treeA.Anchor, Radius))).Select(h => h.Prop));
+
+        // No tool on the hotbar and no measurement: no tier check, no yield, but the props come from the generated surface and are still removed.
+        var f = Beside(PropKindV1.Pine, out var tree, new PropWorldFixture(toolKey: null));
+        f.Terrain.MeasureResult = null;
+
+        var result = f.DigAt(tree.Anchor, Radius);
+
+        Assert.NotEqual(PropProtocol.ToolTierTooLow, result.Reason);
+        var components = Components(result);
+        Assert.DoesNotContain(components, c => c is ItemCreateOp);
+        Assert.Contains(tree.Id, AssertHarvestsOfEdit(f, components).Select(h => h.Prop));
+        Assert.True(f.State.HarvestedProps.Contains(Planet, tree.Id));
+        Assert.Single(f.Terrain.AppliedEdits);
+    }
+
+    [Fact]
     public void Fill_RockAnchorInSphere_PropRemoved()
     {
         var f = Beside(PropKindV1.Rock, out var rock);

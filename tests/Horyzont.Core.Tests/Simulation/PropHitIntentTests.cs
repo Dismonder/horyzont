@@ -4,6 +4,7 @@ using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Props;
 using Horyzont.Core.Tests.Props;
+using Horyzont.Core.World;
 using Horyzont.Testing;
 
 namespace Horyzont.Core.Tests.Simulation;
@@ -203,10 +204,61 @@ public sealed class PropHitIntentTests
         var f = Near(PropKindV1.Pine, out var tree);
         AssertAcceptedWithoutOperation(f.Hit(tree.Id));
 
+        // A second planet the world knows, but the player is not on it: the planet is known, so it is the wrong one and not an unknown one.
+        f.State.Planets.Add(new PlanetParams(new PlanetId(2), new SystemId(1), 9, WorldFactory.PropProfile));
         f.Sim.Ticks(15);
         var result = f.Submit(new PropHitIntent(new PlanetId(2), tree.Id, 0));
 
         Assert.Equal(RejectReason.WrongPlanet, result.Reason);
+    }
+
+    [Fact]
+    public void Hit_UnknownPlanet_UnknownPlanet()
+    {
+        var f = Near(PropKindV1.Pine, out var tree);
+        AssertAcceptedWithoutOperation(f.Hit(tree.Id));
+
+        f.Sim.Ticks(15);
+        var result = f.Submit(new PropHitIntent(new PlanetId(99), tree.Id, 0));
+
+        Assert.Equal(RejectReason.UnknownPlanet, result.Reason);
+        Assert.Equal(0, f.State.HarvestedProps.Count);
+    }
+
+    [Fact]
+    public void Hit_Refused_DoesNotWear()
+    {
+        var f = Near(PropKindV1.Pine, out var tree);
+        AssertAcceptedWithoutOperation(f.Hit(tree.Id));
+        AssertAcceptedWithoutOperation(f.Hit(tree.Id));
+
+        // Refusals between the hits (reach, tool tier, line of sight) leave the hit points as they are.
+        Assert.Equal(PropProtocol.ToolTierTooLow, f.Hit(tree.Id, Hand).Reason);
+        f.StandBeside(tree, 14f);
+        Assert.Equal(RejectReason.OutOfReach, f.Hit(tree.Id).Reason);
+        f.StandUnderground(tree, 3f);
+        Assert.Equal(RejectReason.NoLineOfSight, f.Hit(tree.Id).Reason);
+        f.StandBeside(tree, 3f);
+
+        // Three accepted hits finish the tree: the third one does it, so the refusals above did not count as hits.
+        Assert.Equal(0, f.State.HarvestedProps.Count);
+        AssertHarvest(f, f.Hit(tree.Id), tree);
+    }
+
+    [Fact]
+    public void Hit_AfterRegrow_FullHitPoints()
+    {
+        var f = Near(PropKindV1.Pine, out var tree);
+        AssertAcceptedWithoutOperation(f.Hit(tree.Id));
+        AssertAcceptedWithoutOperation(f.Hit(tree.Id));
+        AssertHarvest(f, f.Hit(tree.Id), tree);
+
+        // The ledger entry is gone with the harvest: after the regrowth the tree needs its three hits again, not one.
+        f.Apply(new PropRegrowOp(PropWorldFixture.Planet, tree.Id));
+        Assert.Equal(0, f.State.HarvestedProps.Count);
+        AssertAcceptedWithoutOperation(f.Hit(tree.Id));
+        AssertAcceptedWithoutOperation(f.Hit(tree.Id));
+        AssertHarvest(f, f.Hit(tree.Id), tree);
     }
 
     [Fact]

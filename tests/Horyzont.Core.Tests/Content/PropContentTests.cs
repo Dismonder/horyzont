@@ -104,6 +104,20 @@ public sealed class PropContentTests
         SurvivalContentFactory.PropsJson.Replace("\"hitPoints\": 30,", "\"hitPoints\": 1001,", StringComparison.Ordinal), "$.props[6].hitPoints");
 
     [Fact]
+    public void Parse_RegrowSecondsOverMax_Throws()
+    {
+        const string pine = "{ \"key\": \"core:pine\", \"hitPoints\": 3, \"toolTier\": 1, \"regrowSeconds\": 10,";
+        Assert.Contains(pine, SurvivalContentFactory.PropsJson, StringComparison.Ordinal);
+
+        // 30 days (2 592 000 s) is the most; the valid twin parses, one second more is refused with the path of the field.
+        var most = SurvivalContentFactory.PropsJson.Replace(pine, pine.Replace("\"regrowSeconds\": 10", "\"regrowSeconds\": 2592000", StringComparison.Ordinal), StringComparison.Ordinal);
+        Assert.Equal(2_592_000u, Parse(most).Props.Single(p => p.Key == "core:pine").RegrowSeconds);
+        AssertRefused(
+            SurvivalContentFactory.PropsJson.Replace(pine, pine.Replace("\"regrowSeconds\": 10", "\"regrowSeconds\": 2592001", StringComparison.Ordinal), StringComparison.Ordinal),
+            "$.props[0].regrowSeconds");
+    }
+
+    [Fact]
     public void Parse_CountZero_Throws() => AssertRefused(
         SurvivalContentFactory.PropsJson.Replace("\"count\": 2 }", "\"count\": 0 }", StringComparison.Ordinal), ".count");
 

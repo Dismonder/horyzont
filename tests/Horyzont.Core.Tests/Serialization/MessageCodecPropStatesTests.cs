@@ -135,6 +135,37 @@ public sealed class MessageCodecPropStatesTests
     }
 
     [Fact]
+    public void InvalidRegionKey_Throws()
+    {
+        DeepAssert.Equal(new PropStates(new PlanetId(1), [Region(_rock)]), MessageCodec.Read(Kit.Hex("2D 01 01 01 " + RockRegionBytes + " 00")));
+
+        // A key is 37 bits (face 0..5, 17 bits of region u, 17 of region v): bit 37 set, face 6 and face 7 are refused on read and on write.
+        Kit.AssertMessageViolation("2D 01 01 01 80 80 80 80 80 04 00");
+        Kit.AssertMessageViolation("2D 01 01 01 80 80 80 80 80 03 00");
+        Kit.AssertMessageViolation("2D 01 01 01 80 80 80 80 C0 03 00");
+        foreach (var key in new[] { 1UL << 37, 6UL << 34, 7UL << 34 })
+        {
+            Assert.Throws<ArgumentException>(() => Kit.Encode(new PropStates(new PlanetId(1), [new PropRegionState(new PropRegionKey(key), [])])));
+        }
+    }
+
+    [Fact]
+    public void Read_RegionOver256Entries_ThrowsBeforeAllocation()
+    {
+        DeepAssert.Equal(
+            new PropStates(new PlanetId(1), [Region(_tree, (_tree, 300))]), MessageCodec.Read(Kit.Hex("2D 01 01 01 " + TreeRegionBytes + " 01 " + TreeBytes + " AC 02")));
+
+        // A region holds at most 256 ids (8 x 8 cells, 4 slots), so 257 entries cannot be a valid region: refused on the count, before a list
+        // is allocated for it (the frame has no bytes for the entries).
+        var full = new PropStates(new PlanetId(1), [FullRegion(0, 256)]);
+        DeepAssert.Equal(full, MessageCodec.Read(Kit.Encode(full)));
+        Kit.AssertMessageViolation("2D 01 01 01 80 80 80 80 80 00 81 02");
+        Kit.AssertMessageViolation("2D 01 01 01 " + TreeRegionBytes + " 81 02");
+        Assert.Throws<ArgumentException>(() => Kit.Encode(new PropStates(
+            new PlanetId(1), [new PropRegionState(_tree.Region, [.. Enumerable.Repeat(new HarvestedPropEntry(_tree, new Tick(1)), 257)])])));
+    }
+
+    [Fact]
     public void EntryOutsideRegion_Throws()
     {
         DeepAssert.Equal(
