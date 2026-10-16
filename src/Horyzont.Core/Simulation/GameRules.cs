@@ -74,4 +74,25 @@ public sealed record GameRules
 
     /// <summary>Largest eye distance to a chest that takes part in a quick stack, metres (K6-30 D9).</summary>
     public float QuickStackRangeMeters { get; init; } = 10f;
+
+    /// <summary>Largest number of pieces in one <c>CraftIntent</c> (K6-32 D12).</summary>
+    public int MaxCraftCount { get; init; } = 50;
+
+    /// <summary>Radius around the station cell (the eye of the player for the hands) in which chests are ingredient sources, metres (K6-32 D13).</summary>
+    public float CraftContainerRangeMeters { get; init; } = 20f;
+
+    /// <summary>Largest eye distance to the centre of the cell of a station for crafting at it, metres (K6-32 D14).</summary>
+    public float StationUseRangeMeters { get; init; } = 8f;
+
+    /// <summary>Radius around a workbench in which upgrades count towards its level, metres (K6-32 D14).</summary>
+    public float StationUpgradeRangeMeters { get; init; } = 5f;
+
+    /// <summary>Ticks between settlements of the observed stations with time (K6-32 D16).</summary>
+    public int StationSettleEveryTicks { get; init; } = 10;
+
+    /// <summary>
+    /// Most stations with time (furnace, refinery) in one construct: the state of each is in message 46, whose size is limited to
+    /// <c>ProtocolConstants.MaxReliableMessageBytes</c> (K6-32, review A1 note a). Placing one more is <c>InvalidParameters</c>.
+    /// </summary>
+    public int MaxTimedStationsPerConstruct { get; init; } = 512;
 }

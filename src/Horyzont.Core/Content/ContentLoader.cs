@@ -21,6 +21,9 @@ public static class ContentLoader
     /// <summary>Start kit file relative to the content root.</summary>
     public const string StartFile = "start.json";
 
+    /// <summary>Recipes file relative to the content root (K6-32 D4); optional.</summary>
+    public const string RecipesFile = "recipes/recipes.json";
+
     private const int MaxStackLimit = 999;
 
     private static readonly JsonDocumentOptions _options = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = false };
@@ -79,6 +82,16 @@ public static class ContentLoader
 
         return new SurvivalContent(catalog, yields, startKit);
     }
+
+    /// <summary>Parses and validates the content with the recipes of <see cref="RecipesFile"/>. Skeleton: with recipes the body arrives with step B3.</summary>
+    /// <param name="itemsJson">Text of <see cref="ItemsFile"/>.</param>
+    /// <param name="yieldsJson">Text of <see cref="YieldsFile"/>.</param>
+    /// <param name="startJson">Text of <see cref="StartFile"/>.</param>
+    /// <param name="recipesJson">Text of <see cref="RecipesFile"/>, or null when the content has no recipes.</param>
+    /// <returns>The content.</returns>
+    /// <exception cref="InvalidDataException">The content is invalid.</exception>
+    public static SurvivalContent Parse(string itemsJson, string yieldsJson, string startJson, string? recipesJson) =>
+        recipesJson is null ? Parse(itemsJson, yieldsJson, startJson) : throw new NotImplementedException("K6-32 B3");
 
     private static bool HasSource(string key, TerrainYieldDef[] yields, StartKitDef startKit)
     {

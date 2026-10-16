@@ -1,5 +1,6 @@
 using System.Numerics;
 
+using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Content;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
@@ -231,6 +232,22 @@ public sealed class ServerSimulation
         RaiseApplied(applied);
         return applied;
     }
+
+    /// <summary>
+    /// Discovers every item type the player holds in the bag, the hotbar or the equipment and has not discovered yet, as one server operation
+    /// (K6-32 D9c); for a player who joined before the discoveries existed. Skeleton: the body arrives with step B4.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <returns>The applied operation (a single <see cref="ItemDiscoverOp"/> or a compound of them in ascending type order), null when there is nothing to discover or the content has no recipes.</returns>
+    public AppliedOperation? DiscoverHeldItems(PlayerId player) => throw new NotImplementedException("K6-32 B4");
+
+    /// <summary>
+    /// Settles a station with time at the current tick as one server operation (K6-32 D16): the pieces done since the start move from the input to the
+    /// output. Skeleton: the body arrives with step B4.
+    /// </summary>
+    /// <param name="station">The block with the station state.</param>
+    /// <returns>The applied operation, null when nothing changes (no state, no recipe, no piece done and the same start).</returns>
+    public AppliedOperation? TrySettleStation(BlockRef station) => throw new NotImplementedException("K6-32 B4");
 
     /// <summary>Applies a <see cref="PlayerLeaveOp"/> with the current kinematics for every online player, by player id.</summary>
     /// <returns>The applied operations.</returns>

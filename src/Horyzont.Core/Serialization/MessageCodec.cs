@@ -23,6 +23,14 @@ public static class MessageCodec
 {
     private const byte CurrentFormatVersion = 1;
 
+    /// <summary>
+    /// The newest format version of a message type (K6-32 D27): the version byte of a frame is checked per type, so that a package which extends one
+    /// message (48, by K6-33) does not change the bytes of the others. Skeleton: the body arrives with step B2.
+    /// </summary>
+    /// <param name="type">Message type.</param>
+    /// <returns>The version the writer uses and the newest the reader accepts.</returns>
+    public static byte FormatVersionOf(MessageType type) => throw new NotImplementedException("K6-32 B2");
+
     /// <summary>Appends the frame of <paramref name="message"/>; throws <see cref="ArgumentException"/> when it exceeds the channel limit.</summary>
     /// <param name="w">Target writer.</param>
     /// <param name="message">Message.</param>

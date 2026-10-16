@@ -40,6 +40,16 @@ public static class ContainerReach
         return true;
     }
 
+    /// <summary>The centre of <paramref name="cell"/> in the frame of the planet the construct stands on (K6-32 D13); the same centre the reach measure above uses.</summary>
+    /// <param name="state">World state.</param>
+    /// <param name="construct">Construct holding the block.</param>
+    /// <param name="cell">Cell of the block.</param>
+    /// <param name="planet">The planet whose frame <paramref name="centre"/> is in.</param>
+    /// <param name="centre">The centre when the method returns true.</param>
+    /// <returns>False when the construct is unknown.</returns>
+    public static bool TryCellCenter(WorldState state, EntityId construct, CellPos cell, out PlanetId planet, out Vector3 centre) =>
+        throw new NotImplementedException("K6-32 B4");
+
     /// <summary>The eye of a player in the frame of their planet: the feet plus the local up times the eye height (the one formula of the validator and the server).</summary>
     internal static bool TryGetEye(WorldState state, GameRules rules, PlayerState player, out PlanetId planet, out Vector3 eye)
     {

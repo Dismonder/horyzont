@@ -80,4 +80,40 @@ public sealed class ContainerReachTests
         Assert.True(inside <= boundary);
         Assert.NotEqual(RejectReason.OutOfReach, f.SubmitAs(Player1, remove).Reason);
     }
+
+    [Fact]
+    public void TryCellCenter_IsTheCellCentreInThePlanetFrame()
+    {
+        var f = ForIntents();
+
+        var found = ContainerReach.TryCellCenter(f.State, ConstructId, FunctionalBlocks.ChestCell, out var planet, out var centre);
+
+        Assert.True(found);
+        Assert.Equal(WorldFactory.HomePlanet, planet);
+        Assert.Equal(_constructOrigin + new Vector3(0.5f, 1.5f, 0.5f), centre);
+    }
+
+    [Fact]
+    public void TryCellCenter_RotatedConstruct_UsesTheRotation()
+    {
+        var f = ForIntents();
+        var origin = new Vector3(10f, 4000f, 10f);
+        var rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, MathF.PI / 2f);
+        var other = f.State.EntityIds.PeekNext();
+        f.Apply(new ConstructCreateOp(other, FrameRef.Of(WorldFactory.HomePlanet), origin, rotation, new CellPos(0, 0, 0), BlockState.Create(FunctionalBlocks.StoneType, 0)));
+
+        var found = ContainerReach.TryCellCenter(f.State, other, new CellPos(2, 1, 0), out _, out var centre);
+
+        Assert.True(found);
+        Assert.Equal(0f, Vector3.Distance(origin + Vector3.Transform(new Vector3(2.5f, 1.5f, 0.5f), rotation), centre), 0.001f);
+    }
+
+    [Fact]
+    public void TryCellCenter_UnknownConstruct_False()
+    {
+        var f = ForIntents();
+        Assert.True(ContainerReach.TryCellCenter(f.State, ConstructId, FunctionalBlocks.ChestCell, out _, out _));
+
+        Assert.False(ContainerReach.TryCellCenter(f.State, new EntityId(999), FunctionalBlocks.ChestCell, out _, out _));
+    }
 }
