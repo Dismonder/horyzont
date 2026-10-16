@@ -1,0 +1,460 @@
+# K6-30 · Bloki funkcyjne
+
+| | |
+| --- | --- |
+| Prowadzi | Sonnet 5.5 (Claude Code, `claude --model sonnet`); krok A1 (zatwierdzenie kontraktów Core) i przegląd PR — Opus 5.5 |
+| Testy akceptacyjne | Sonnet 5.5, przed kodem; testy i kontrakty etapów A i B (operacje 36, 37, 40, 44, 49, reguły `CompoundOp`, nowy warunek `BlockClearOp`, intencje, bloby 21/22, komunikat 46) zatwierdza Opus 5.5 **przed** kodem (ZASADY §3, §8) |
+| Przegląd | Opus 5.5 w PR (pakiet Sonnet zmienia kontrakty Core — ZASADY §9); wygląd (ekran skrzyni, podpowiedzi, otwarte drzwi, lampa) ogląda Dismond na zrzutach przed scaleniem |
+| Zależy od | K6-29 — na gałęzi jest wycinek K6-29W (kontenery, operacje 30–35, `M0003_Survival`, `ProtocolVersion` 14); K2-12 (budowle). Brakujące elementy „reszty K6-29”, których K6-30 potrzebuje, bierze ten pakiet (D0, **DO USTALENIA-1**) |
+| Gałąź | `pakiet/k6-30-bloki-funkcyjne` |
+| Kamień milowy | K6 Przetrwanie; odbiór wg spec 03: „skrzynie, łóżka, drzwi i światła działają i przetrwają restart” |
+
+**Cel:** skrzynie (wspólne albo prywatne, z kontenerem z K6-29W), łóżka ustawiające punkt odrodzenia, drzwi i lampy przełączane klawiszem interakcji oraz szybkie odkładanie do skrzyń w promieniu 10 m — każda zmiana jest jedną operacją dziennika (złożoną, gdy łączy blok, stan bloku i kontener), stany bloków funkcyjnych (`BlockEntity`, blob 21) i punkt odrodzenia przechodzą przez checkpoint i powtórkę, a klienci widzą je przez `BlockEntityStates` (46) i `OperationApplied`. Formaty są te ze spec 03, więc K6-32, K6-34, K6-35, K6-37 i K6-38 je rozszerzają (nowe rodzaje stanu bloku), a nie zastępują.
+
+## Kontekst
+
+- `docs/ZASADY.md`: §2 (każda zmiana świata to operacja; `OperationTerrain.TryGetTerrainEdit`), §3 (kontrakty chronione, zakresy kodów, reguła z linii 66 o zmianie appliera bez podbicia formatu), §4 (applier nie czyta treści ani terenu), §5, §6, §7, §8, §9, §11.
+- `docs/spec/03-przetrwanie.md`: Ekwipunek i kontenery (wspólny/prywatny, szybkie odkładanie 10 m, blok z niepustym kontenerem nie do rozebrania), Śmierć i odrodzenie (łóżko ustawia punkt odrodzenia snem albo z menu), Architektura — Kontenery, Bloki ze stanem i byty trwałe, Stan gracza; Operacje i dziennik (operacje 36, 37, 40, 44, 49; tabela akcji: „Postawienie bloku”, „Rozbiórka”; intencje 22, 23, 28, 29; odmowy 40–58); Sieć (subskrypcja skrzyni do 6 m, koniec powyżej 8 m, komunikat 46, rzut złożonej w `OperationApplied`); Zapis (tabela `block_entities`, blob 21; `player_progress`, blob 22; skrót stanu); Obsługa błędów; Pakiety pracy (wiersz K6-30 i zależne K6-32/34/35/37/38).
+- `docs/plan/plan-projektu.md:131` (K6-30: Sonnet 5.5; zależy od K6-29, K2-12) i wiersze K6-32…K6-38 (zależą od K6-30).
+- `docs/plans/K6-29W-ekwipunek-i-wydobycie.md` — baza: D4 (dozwolone składowe złożonej, teren ostatni), D5 (`TryApply` z `UndoLog`), D7 (warunkowa sekcja skrótu), D8 (reguły Przetrwania tylko z `SurvivalContent`), D20 (subskrypcje), odstępstwa etapów A–D.
+- `docs/plans/K2-12-budowle.md` (katalog bloków, `ConstructWorld`, siatki wbudowane), `docs/plans/K5-23-bloki-statku.md` (D1: `BlockFunction` jako treść w Core, `BlockContentTable` dla walidatora; drzwi `Door = 9` z `FunctionState` 0 = zamknięte; wzorzec akcji na bloku pod celownikiem — `ShipModeSwitch`).
+- `docs/plans/K1-03-core-stan-i-operacje.md:614-622` (zakresy Przetrwania: operacje 30–49, odmowy 40–59, komunikaty 40–49, intencje 20–39, bloby 20–29).
+- `docs/plans/README.md`: D4 (`ProtocolVersion` = `main` + 1 przy scaleniu), X5 (reguły routera), X6 (wspólne fixture protokołu).
+
+Kod, na którym pakiet buduje (stan gałęzi przy pisaniu planu, 2026-10-16):
+
+| Co | Gdzie |
+| --- | --- |
+| `OperationKind`: 1–7, 20–23, 30–35 (wolne w zakresie Przetrwania: 36–49) | `src/Horyzont.Core/Operations/OperationKind.cs` |
+| `OperationApplier.TryApply` / `TryApplyCompound` (składowe przedmiotów z `UndoLog`, potem warunek i zastosowanie `TerrainEditOp` jako ostatniej), `CheckBlockClear`, `ApplyContainerCreate` („host kind not supported” dla gospodarza innego niż `Player`), `Finish` (wersje kontenerów raz na operację) | `src/Horyzont.Core/Simulation/OperationApplier.cs` |
+| `OperationCodec` (format 1; złożona przyjmuje w kodeku dowolne składowe poza 30 — ograniczenia są w applierze) | `src/Horyzont.Core/Serialization/OperationCodec.cs` |
+| `IntentCodec` (prywatny `IntentCode`: 1–3, 10, 13–15, 20, 21) | `src/Horyzont.Core/Serialization/IntentCodec.cs` |
+| `RejectReason`: 0–21, 30, 31, 36, 37, 39, 40–43 | `src/Horyzont.Core/Intents/RejectReason.cs` |
+| `MessageType`: 1–25, 31–33, 40–43, 49; `MessageChannels`; `BlobKind`: 1–5, 10–12, 20 | `src/Horyzont.Core/Protocol/`, `src/Horyzont.Core/Serialization/BlobKind.cs` |
+| `ProtocolConstants.ProtocolVersion = 14`, `MaxContainerSlots = 256`, `MaxCompoundComponents = 4096`, `MaxCompoundBytes = 160 KiB`, `MaxReliableMessageBytes = 256 KiB` | `src/Horyzont.Core/Protocol/ProtocolConstants.cs` |
+| `IntentValidator` (`Validate`, `BucketFor`, `ValidateRemove`: zasięg od oka, linia wzroku, `IntersectsPlayer`; `CellHitsPlayer`, `ToPlanet`), `SurvivalRules` (`CheckItemParameters`, `Resolve`; tylko własne `PlayerBag`/`Hotbar`), `ItemPlacement`, `IntentResolver` (statyczny), `ServerSimulation.Submit` (walidacja → `SurvivalRules.Resolve` → `TryApplyAndJournal`), `GameRules` (`ReachMeters` 8, kapsuła 1,8 m) | `src/Horyzont.Core/Simulation/` |
+| `Container`, `ContainerStore` (`TryGet`, `TryGetOfPlayer`), `ContainerHost.ConstructBlock(construct, cell)`, `ContainerHostKind`, `ContainerKind.Chest = 4`, `ContainerAccess` (`Shared` 1, `Private` 2), `ContainerIdAllocator` | `src/Horyzont.Core/Items/`, `src/Horyzont.Core/Ids/` |
+| `BlockState.FunctionState` / `WithFunctionState` (bity 25–27, `FunctionStateCount = 8`) | `src/Horyzont.Core/World/Constructs/BlockState.cs` |
+| `BlockTypeDef(Key, Shape, MaterialId, HasCollision, MassKg, Function)`, `BlockFunction` (rodzaj + parametry), `BlockFunctionKind` (`Door = 9`, `RefuelStation = 10`), `BlockContentTable` | `src/Horyzont.Core/World/Blocks/` |
+| `StateHasher`: sekcja Przetrwania `0x53` dopisywana warunkowo (`StateHasher.cs:159`) | `src/Horyzont.Core/Hashing/StateHasher.cs` |
+| `WorldState.TryToPlanetFrame` (punkt ramy → planeta), `ChangeTracker`, `WorldCheckpoint`, `WorldStateBuilder`, `ContainerRecord` | `src/Horyzont.Core/World/WorldState.cs`, `src/Horyzont.Core/Checkpoints/` |
+| `ConstructReplica` / `ConstructReplicaSet` (lustro budowli u klienta) | `src/Horyzont.Core/Replication/` |
+| `BlockTypeCatalog` (`FormatVersion = 2`, `ParseFunction`: `cockpit`, `seat`, `engine`, `stabilizer`, `fuel_tank`, `cargo`, `landing_gear`, `pulse_drive`, `door`, `refuel_station`), `BlockTypeContent`, `BuiltInShapeMeshes` | `src/Horyzont.Constructs/Content/` |
+| `ChunkMesher` (`_solid` z `HasCollision`), `BlockRenderTable`, `BlockRenderInfo`; `ConstructDirtyChunks.Collect` (rozpoznaje `ConstructCreateOp`/`BlockSetOp`/`BlockClearOp` po typie — złożonej nie zna) | `src/Horyzont.Constructs/Meshing/`, `src/Horyzont.Constructs/Sources/ConstructDirtyChunks.cs` |
+| Treść bloków (18 typów plus wbudowany `core:missing`, w tym `core:ship_door`), nazwy bloków | `game/content/blocks/blocks.json`, `game/locale/blocks.csv` |
+| `M0003_Survival`: tabele `block_entities (construct_id, cell_x, cell_y, cell_z, data)` i `player_progress (player_id, data)` już istnieją (puste); migracje `M0001_Initial`, `M0002_Space`, `M0003_Survival`; fikstury `world-v1.db`, `world-v3.db` (`FixtureGenerator.Generate_WorldV3`) | `src/Horyzont.Persistence/Migrations/`, `tests/Horyzont.Persistence.Tests/` |
+| `WorldLoader`, `WorldCreator`, `WorldLoadOptions`, `Sql`, `Writing/PersistenceWriter.cs` | `src/Horyzont.Persistence/` |
+| `InventoryService` (własne kontenery; `ContainerSubscribe` na cudzy → `ContainerState.Rejected(…, ContainerLocked)`; delty tylko do właściciela), `IServerClientMessageHandler`, `GameServerHooks` | `src/Horyzont.Server/Inventory/InventoryService.cs`, `src/Horyzont.Server/` |
+| `ConstructStateSender` (`IsLive`, `RouteOperation`, `Complete`, `SendLive`), `EntityReplication.OnApplied` (wysyła `applied.Operation` bez rzutu), `ShipStatsCache` (po `ConstructChanges`) | `src/Horyzont.Server/Replication/`, `src/Horyzont.Server/Ships/ShipStatsCache.cs` |
+| `ConstructMirror.ApplyOperation` (`ConstructCreateOp`, `BlockSetOp`, `BlockClearOp`, `ShipModeSetOp`, `EntityReparentOp`; inne → `RequestResync`), `ConstructPrediction` | `src/Horyzont.Client/Replication/` |
+| `ShipModeSwitch` (wzór: blok pod celownikiem w zasięgu → intencja przez `IIntentSender` i `PendingIntentTracker`), `IToolWorldView`, `AimRay` | `src/Horyzont.Client/Ships/ShipModeSwitch.cs`, `src/Horyzont.Client/Tools/` |
+| `ClientInventory` (stany i delty kontenerów, luka = ponowna subskrypcja), `InventoryInteraction`, `HeldStack` | `src/Horyzont.Client/Inventory/` |
+| `ConstructWorld.OnApplied` → `ConstructDirtyChunks.Collect`, `HostConstructs`, `RemoteConstructs`, `BlockContentLoader` | `game/src/Constructs/`, `game/src/Client/Replication/RemoteConstructs.cs` |
+| `InventoryNode`, `InventoryScreen`, `HotbarHud`, `HudTheme`, `SlotView`; `ToolInputReader` (`ship_mode_toggle` = G); akcje w `game/project.godot` (zajęte: W A S D, spacja, Shift, Ctrl, V, F, M, R, N, G, T, 1–0, Tab, I, Esc; **E wolne**) | `game/src/Client/Inventory/`, `game/src/Client/Tools/`, `game/project.godot` |
+| Lokalizacja: `blocks.csv`, `items.csv` (`ITEM_*`, `INV_*`), `tools.csv` (`REJECT_*`, `TOOL_*`), `ui.csv` | `game/locale/` |
+
+## Zakres
+
+1. **Core: model i operacje.** `BlockEntity` (klucz budowla + komórka, stan zależny od funkcji: w tym pakiecie `Chest` i `Bed`, pozostałe rodzaje zarezerwowane), `BlockEntityStore` w `WorldState`, minimalny `PlayerProgress` z punktem odrodzenia (D11), operacje 36 `ContainerRemoveOp`, 37 `ContainerConfigureOp`, 40 `BlockEntitySetOp`, 44 `RespawnPointSetOp`, 49 `BlockFunctionStateSetOp`, rozszerzenie reguł `CompoundOp` (D12), gospodarz `ConstructBlock` w `ContainerCreateOp`, nowy warunek `BlockClearOp` (D13), kodeki, bloby 21 i 22, checkpoint, skrót stanu, rzut operacji dla klientów (`OperationConstructs`, D14).
+2. **Core: intencje i protokół.** `QuickStackIntent` (22), `TakeAllIntent` (23, **DO USTALENIA-2**), `BlockInteractIntent` (28), `BlockConfigIntent` (29), odmowy `NotOwner` (54) i `ContainerNotEmpty` (57), postawienie i rozbiórka skrzyń i łóżek jako operacje złożone, przenoszenie do skrzyń w zasięgu, komunikat `BlockEntityStates` (46), `ProtocolVersion` 15.
+3. **Treść.** Rodzaje funkcji `Chest`, `Bed`, `Light` w `BlockFunctionKind` i `BlockTypeCatalog` (format 2, dopisane rodzaje); bloki `core:chest_wood`, `core:chest_metal`, `core:bed`, `core:lamp`, `core:wood_door`.
+4. **Zapis i serwer.** Zapis i odczyt `block_entities` i `player_progress` (tabele z M0003, bez nowej migracji), subskrypcje skrzyń (6 m / 8 m, dostęp), delty do wszystkich subskrybentów, replikacja stanów bloków (46), rzut złożonej w `OperationApplied`.
+5. **Klient i gra (tylko to, co pakiet musi pokazać).** Klawisz interakcji E z podpowiedzią, ekran skrzyni obok plecaka, przycisk szybkiego odkładania, menu dostępu skrzyni dla właściciela, otwarte drzwi bez kolizji, światło lampy, etykiety PL/EN.
+
+Poza zakresem:
+
+| Co | Gdzie |
+| --- | --- |
+| Operacje 38, 39 (byty trwałe), przedmioty leżące, wysypanie zawartości zawalonego/zniszczonego bloku jako przedmiotów leżących, blob 24 | reszta K6-29 (przedmioty leżące), K6-36 (zawalenia) |
+| Operacje 41–43, 45–48, bloby 23 i 25, komunikaty 47 i 48, pozostałe pola `PlayerProgress` (zdrowie, jedzenie, odkrycia, nagrobki, odpoczynek) | reszta K6-29, K6-32, K6-33 |
+| Stacje (warsztat, piec, rafineria, kuchnia, fabrykator), kontenery `StationInput`/`StationOutput`, rozliczenie z ticków, rodzaj stanu `Station` | K6-32 |
+| Generator tlenu (rodzaj stanu `OxygenGenerator`), schronienie, ciepło i komfort z bloków | K6-34, K6-33 |
+| Odrodzenie przy łóżku po śmierci, nagrobki, `TakeAllIntent` na nagrobku (znikanie pustego), punkt odrodzenia jako jedna funkcja Core | K6-35 |
+| Koszt postawienia skrzyni/łóżka/lampy/drzwi z ekwipunku, zwrot przy rozbiórce, wytrzymałość, `AllowCollapse`, `CollapseNotConfirmed` | K6-36 |
+| Teleporty (rodzaj stanu `Teleport`, wariant `TeleportName` w `BlockConfigIntent` — format ustalony tu, obsługa `InvalidParameters`), kontener ładowni `CargoHold` w blokach `Cargo` | K6-37 |
+| Grządki (rodzaj stanu `Planter`), `PlantIntent`, `CropHarvestIntent`, lampa uprawna jako źródło światła dla roślin | K6-38 |
+| Pełny interfejs (podgląd przeniesienia przed odpowiedzią serwera, sortowanie, nazwy skrzyń, ikony bloków) | K6-39 |
+| Animacja drzwi, grafika bloków, emisyjny materiał lampy | K8-50 (grafika) |
+
+## Decyzje
+
+Każda decyzja rozstrzyga miejsce, w którym specyfikacja milczy albo pakiet świadomie bierze jej wycinek. Odstępstwa od spec 03 są oznaczone **[odstępstwo]** i trafiają do opisu PR. Rzeczy, których nie da się ustalić z kodu ani specyfikacji, są oznaczone **DO USTALENIA-n** z proponowaną decyzją; wykonawca stosuje propozycję, dopóki Opus 5.5 albo właściciel nie zdecyduje inaczej w kroku A1.
+
+- **D0. Baza i wycinek „reszty K6-29”. DO USTALENIA-1.** K6-29W zrealizował tylko część K6-29 (operacje 30–35, blob 20, komunikaty 40–43 i 49). K6-30 potrzebuje operacji 36 (rozbiórka skrzyni usuwa pusty kontener), 37 (zmiana dostępu skrzyni) i miejsca na punkt odrodzenia (`PlayerProgress`, blob 22). **Propozycja:** K6-30 dodaje 36, 37 i blob 22 w wersji 1 tylko z punktem odrodzenia (D11); osobny pakiet „reszta K6-29” nie jest warunkiem startu. Alternatywa (odrzucona w propozycji): czekać na pakiet „reszta K6-29” — blokuje cztery pakiety K6 zależne od K6-30.
+- **D1. Kody w tym pakiecie (zakres Przetrwania, K1-03).** Operacje 36, 37, 40, 44, 49; intencje 22, 23 (DO USTALENIA-2), 28, 29; odmowy `NotOwner` 54, `ContainerNotEmpty` 57; komunikat 46; bloby 21 (`BlockEntity`), 22 (`PlayerProgress`). Pozostałe numery ze spec 03 zostają zarezerwowane (kodeki odrzucają je jako nieznane).
+- **D2. `ProtocolVersion` = 15** (`main` ma 14 po K6-29W; README D4). Aktualizowane istniejące testy `ProtocolContractTests.ProtocolVersion_MatchesDocumentedMergeValue` i `Constants_GoldenValues`; przy rebase wartość = (`main` w chwili scalenia) + 1.
+- **D3. Bez nowej migracji.** Tabele `block_entities` i `player_progress` utworzyła `M0003_Survival` (spec: „kolejne pakiety dodają tylko bloby i zapis”). Następny wolny numer to **M0004**; K6-30 go nie zajmuje (spec 04:197 planuje M0004 dla Walki; numer nadaje się przy scaleniu). Gdyby przegląd zażądał zmiany schematu, migracja dostaje następny wolny numer w chwili scalenia, a `M0003` nie jest edytowana. Nowa fikstura `world-v3-blocks.db` (D25) zabezpiecza dane tego pakietu przed przyszłymi migracjami.
+- **D4. Model stanu bloku.** Nowy katalog `src/Horyzont.Core/BlockEntities/`:
+  - `BlockRef(EntityId Construct, CellPos Cell)` — klucz (`readonly record struct`, porządek: budowla, potem `CellPos` jak w checkpointach chunków);
+  - `BlockEntityKind : byte` — `Chest = 1`, `Bed = 2`; zarezerwowane z nazwą i numerem, bez formatu: `Station = 3` (K6-32), `Teleport = 4` (K6-37), `OxygenGenerator = 5` (K6-34), `Planter = 6` (K6-38), `CargoHold = 7` (K6-37). Kodek formatu 1 przyjmuje tylko 1 i 2; kolejne pakiety dopisują rodzaj (nowa wartość dyskryminatora, istniejące bajty bez zmian, `ProtocolVersion` w tamtym pakiecie);
+  - `BlockEntityState` — `abstract record` z konstruktorem `private protected`; `ChestBlockState(ContainerId Container)`, `BedBlockState(PlayerId Owner)` (`PlayerId.None` = łóżko wolne);
+  - `BlockEntityStore` — magazyn po `BlockRef`, iteracja posortowana (ZASADY §4), liczba stanów na budowlę (limit D23), zbiór zmienionych kluczy dla checkpointu.
+  Drzwi i lampy nie mają `BlockEntity`: ich stan to bity funkcji bloku (spec), zmieniane operacją 49.
+- **D5. Treść bloków.** `BlockFunctionKind` dostaje `Chest = 11`, `Bed = 12`, `Light = 13` (treść, nie format — wiersz `BlockTypeDef.cs` w ZASADY §3), `BlockFunction` nowy parametr `ContainerSlots` (`ushort`, 1…256, tylko `Chest`) i fabryki `CreateChest(slots)`, `Bed`, `Light`. `BlockTypeCatalog` przyjmuje `{"kind":"chest","slots":20}`, `{"kind":"bed"}`, `{"kind":"light","range":8,"color":"#FFD9A0","energy":1.5}`; parametry wizualne światła (zasięg, kolor, moc) trafiają do `BlockTypeContent` (Constructs), nie do Core. `FormatVersion` zostaje 2: rodzaje są dopisane, a istniejące pliki parsują się bez zmian (precedens: `refuel_station` z K5-24 bez podbicia). Nowe typy (liczby to dane do strojenia, **DO USTALENIA-11**):
+
+  | Klucz | Kształt | Masa (kg) | Funkcja | Materiał |
+  | --- | --- | --- | --- | --- |
+  | `core:chest_wood` | `cube` | 80 | `Chest`, 20 miejsc | `wood` |
+  | `core:chest_metal` | `cube` | 200 | `Chest`, 40 miejsc | `metal` |
+  | `core:bed` | `mesh` `builtin:slab` | 120 | `Bed` | `ship_fabric` |
+  | `core:lamp` | `cube` | 20 | `Light` (8 m, `#FFD9A0`, 1,5) | nowy `lamp` (`#F2E3B3`) |
+  | `core:wood_door` | `cube` | 100 | `Door` | `wood` |
+
+- **D6. Drzwi wysokie na kilka bloków. DO USTALENIA-3.** Kapsuła postaci ma 1,8 m (`GameRules.PlayerCapsuleHeight`), komórka 1 m, więc pojedynczy blok drzwi nie przepuszcza gracza. **Propozycja:** `Toggle` na komórce drzwi przełącza „kolumnę drzwi”: komórkę wskazaną i przylegające do niej wzdłuż osi Y budowli komórki tego samego typu drzwi, łącznie najwyżej `GameRules.MaxDoorColumnCells = 3` (najpierw w dół, potem w górę, od wskazanej). Nowy stan = przeciwny do stanu komórki wskazanej (0 ↔ 1) dla wszystkich komórek kolumny. Jedna komórka → `BlockFunctionStateSetOp`; więcej → `CompoundOp` z samych składowych 49 (D12), wersja budowli +1 raz. Zamknięcie, przy którym którakolwiek komórka przecina kapsułę gracza online → `IntersectsPlayer` (18). Otwarte drzwi nie kolidują i rysują się jako cienki panel przy jednej ścianie (nowa siatka wbudowana `builtin:door_open`, panel 1 × 1 × 0,1 m przy ścianie −X w orientacji bloku); wygląd zatwierdza Dismond na zrzucie (ZASADY: wygląd przed animacją). Alternatywy: dwa niezależne bloki przełączane osobno (połowa drzwi otwarta przy odmowie drugiej intencji); blok wielokomórkowy (nie istnieje w K2-12).
+- **D7. Lampy. DO USTALENIA-4.** `Light`: `FunctionState` 1 = włączona, 0 = wyłączona. Resolver `PlaceBlockIntent` stawia lampę włączoną (`BlockState` z `FunctionState` 1 — operacja niesie wartość, applier nie czyta treści), inne bloki jak dotąd z 0. `Toggle` → jedna operacja 49. Gra: `OmniLight3D` bez cieni na lampę włączoną, najwyżej `MaxLitLampsRendered = 32` najbliższych kamerze (stała gry, nie Core); reszta bez światła. Propozycja do zatwierdzenia: limit 32 i brak cieni.
+- **D8. Skrzynie: postawienie i rozbiórka.** Postawienie typu z funkcją `Chest` (resolver w `SurvivalRules`): `CompoundOp[ContainerCreateOp(nowy id, Chest, ConstructBlock(budowla, komórka), właściciel = stawiający, dostęp = Shared, rozmiar = ContainerSlots z treści), BlockEntitySetOp(budowla, komórka, typ, ChestBlockState(id)), BlockSetOp | ConstructCreateOp]` — składowa budowli jest ostatnia (D12). Rozbiórka (`RemoveBlockIntent`): kontener niepusty → `ContainerNotEmpty` (57); skrzynia prywatna i gracz nie jest właścicielem → `NotOwner` (54, **DO USTALENIA-5**); inaczej `CompoundOp[ContainerRemoveOp, BlockEntitySetOp(pusty stan), BlockClearOp]`. Bez kosztu i zwrotu (K6-36). Domyślny dostęp nowej skrzyni: `Shared` (**DO USTALENIA-5**; spec nie podaje).
+- **D9. Dostęp i zasięg skrzyń. DO USTALENIA-8.** Odległość = od oka serwera (`TryGetEye` jak w walidatorze) do środka komórki skrzyni w ramie planety (`WorldState.TryToPlanetFrame`), ten sam region planety. `GameRules.ContainerOpenRangeMeters = 6` (subskrypcja), `ContainerKeepRangeMeters = 8` (koniec subskrypcji i zasięg intencji przedmiotów na skrzyni), `QuickStackRangeMeters = 10`. Dostęp: `Shared` albo właściciel. Intencje przedmiotów (`ItemMoveIntent`, „dowolny” cel, 22, 23) mogą używać kontenerów: własny `PlayerBag`, własny `Hotbar`, skrzynia z dostępem w zasięgu 8 m. Nieistniejący kontener albo brak dostępu → `ContainerLocked` (43, jak K6-29W); skrzynia poza zasięgiem → `OutOfReach` (7). `ItemDropIntent` (21) tylko z własnych kontenerów (jak K6-29W D13).
+- **D10. Łóżka. DO USTALENIA-6.** `BedBlockState(Owner)`; postawienie: `CompoundOp[BlockEntitySetOp(…, BedBlockState(None)), BlockSetOp | ConstructCreateOp]`. `Sleep` i `SetRespawn` (w tym pakiecie skutek ten sam; odpoczynek dokłada K6-33): łóżko wolne albo własne → `CompoundOp[BlockEntitySetOp(stare łóżko, Bed(None))` gdy gracz ma inne istniejące łóżko ze swoim właścicielem`, BlockEntitySetOp(łóżko, Bed(gracz))` gdy właściciel inny niż gracz`, RespawnPointSetOp(gracz, łóżko)]`; łóżko innego gracza → `NotOwner` (54). Rozbiórka łóżka: `CompoundOp[RespawnPointSetOp(właściciel, brak)` gdy jego punkt wskazuje to łóżko`, BlockEntitySetOp(pusty), BlockClearOp]` (rozebrać może każdy — spec nie ma uprawnień do bloków). Niezmiennik pilnowany przez resolver i test właściwości: punkt odrodzenia gracza P = łóżko B ⇔ właściciel B = P. Samo odrodzenie przy łóżku robi K6-35.
+- **D11. `PlayerProgress` w wersji 1 tylko z punktem odrodzenia. [odstępstwo]** `PlayerProgress(PlayerId Player, BedRef? RespawnBed)`, `BedRef(EntityId Construct, CellPos Cell, ushort ExpectedType)`; `PlayerProgressStore` w `WorldState`. Blob 22 wersja 1: varuint gracz, bajt flag (bit 0 = jest punkt), opcjonalnie varuint budowla, `CellPos`, varuint typ. K6-33 dokłada pola jako wersję 2 z odczytem wersji 1 (ZASADY §3, wiersz `Checkpoints/`). Rekord istnieje tylko dla gracza z punktem odrodzenia (wpis bez punktu jest usuwany).
+- **D12. `CompoundOp` w formacie 1 — rozszerzenie zbioru składowych.** Dozwolone teraz: 31–37, 40, 44, 49 oraz co najwyżej **jedna składowa świata nieodwracalna**: `TerrainEditOp` (1), `ConstructCreateOp` (2), `BlockSetOp` (3) albo `BlockClearOp` (4) — zawsze **ostatnia**. Składowe 49 tylko w złożonej bez składowej budowli (2–4). Kolejność stosowania (rozszerza K6-29W D5, jedno przejście z `UndoLog`):
+  1. struktura (jak dziś + nowe reguły);
+  2. warunki wstępne składowej ostatniej na stanie wyjściowym (żadna inna składowa nie zmienia budowli ani terenu, więc wynik się nie zmienia);
+  3. pozostałe składowe po kolei z `UndoLog` (36, 37, 40, 44, 49 dostają wpisy cofania); ich warunki dotyczące bloku (gospodarz `ConstructBlock` w 35, niepusty stan w 40, łóżko w 44) czytają **widok efektywny**: komórkę, którą zapisuje składowa ostatnia (`BlockSetOp.Block`, `ConstructCreateOp.Block` w `FirstCell` nowej budowli), widzą z jej nowym blokiem; pozostałe komórki — ze stanu żywego. Usunięcie stanu (40 z pustym stanem) i usunięcie kontenera sprawdzają stan żywy;
+  4. dla `BlockClearOp` ostatniej: warunek D13 po składowych z kroku 3; niespełniony → cofnięcie i błąd z numerem ostatniej składowej;
+  5. zastosowanie składowej ostatniej; `Finish` podbija wersję kontenerów i — dla składowych 49 — wersję każdej dotkniętej budowli raz, i składa `ConstructChanges` (składowa budowli albo budowle z 49).
+  Stare dzienniki nie zawierają nowych rodzajów składowych, więc powtórka się nie zmienia (jak K6-29W D4). Wersja formatu złożonej zostaje 1.
+- **D13. Nowe warunki istniejących operacji.** `BlockClearOp` (4): komórka nie ma `BlockEntity` i nie jest gospodarzem żadnego kontenera (inaczej zostałyby osierocone przedmioty). `ContainerCreateOp` (35): gospodarz `ConstructBlock` obsługiwany — blok istnieje (widok efektywny D12) i nie ma jeszcze kontenera tego samego rodzaju z tym gospodarzem (indeks gospodarz × rodzaj w `ContainerStore`; stacje z K6-32 będą mieć dwa rodzaje na jednym bloku). Format obu operacji zostaje 1: stare dzienniki nie mają stanów bloków ani gospodarzy blokowych, więc ich powtórka daje identyczny wynik; spełnia to warunek ZASADY §3 (linia 66: korpus złoty i `DeterminismTests` bez zmian w plikach), tak jak K6-29W dla gospodarzy kontenerów. **Do przeglądu Opus.**
+- **D14. Rzut operacji dla budowli i klientów: `OperationConstructs`.** Nowa klasa w `src/Horyzont.Core/Operations/` (wzór `OperationTerrain`): `TryGetConstructPart(Operation op, out Operation part)` — dla operacji niezłożonej zwraca ją samą, gdy dotyczy budowli (2, 3, 4, 20, 49); dla złożonej: jej ostatnią składową budowli (2–4) albo nową `CompoundOp` z samych składowych 49; inaczej `false`. Używają jej: `EntityReplication.OnApplied` (`OperationApplied.Operation` = rzut, więc składowe przedmiotów i stanów bloków nie trafiają do obcych klientów — spec Sieć), `ConstructWorld.OnApplied`/`ConstructDirtyChunks` (przebudowa chunków po złożonej i po 49), `ConstructMirror` (obsługa `BlockFunctionStateSetOp` i złożonej z 49). Do ZASAD jako reguła obok `OperationTerrain` (Pułapki).
+- **D15. `BlockEntityStates` (46).** `BlockEntityStates(EntityId Construct, IReadOnlyList<BlockEntityEntry> Entries)`, `BlockEntityEntry(CellPos Cell, BlockEntityState State)`; pełna lista stanów jednej budowli (także pusta — czyści mapę klienta). Kanał niezawodny uporządkowany, ten sam co `ConstructState` i `OperationApplied`. Serwer wysyła: (a) gdy łącze budowli u gracza staje się `Live` (nowe zdarzenie `ConstructStateSender.LinkLive`, po przekazaniu buforowanych operacji) — bieżący stan, jeśli budowla ma choć jeden stan; (b) po każdej zastosowanej operacji, która zmieniła stany bloków budowli (składowe 40), do każdego gracza z `IsLive(gracz, budowla)` — po `OperationApplied` tej operacji. Gracz z łączem w transferze dostaje stan w (a). Klient czyści mapę budowli przy nowym pełnym stanie (`ConstructState`) i przy jej usunięciu. Router: jak `ConstructState` (X5), fixture X6.
+- **D16. Szybkie odkładanie (22).** Źródło: tylko własny `PlayerBag` (spec: „z plecaka”; pasek nietknięty). Cele: skrzynie z dostępem w promieniu `QuickStackRangeMeters` (D9), które już zawierają dany typ; kolejność skrzyń: rosnąca odległość, remis — rosnący `ContainerId`. Dla każdego slotu plecaka rosnąco: dopełnienie istniejących stosów tego typu w kolejnych skrzyniach (sloty rosnąco), potem puste sloty tych skrzyń; limit stosu z `ItemDef` w każdej `ItemTransferOp` (ZASADY §4). Wynik: jedna `CompoundOp` przeniesień. Nic pasującego → `NotEnoughItems` (41); pasujące, ale skrzynie pełne → `InventoryFull` (40) (**DO USTALENIA-10**). Kubełek `Items` (jeden żeton).
+- **D17. `TakeAllIntent` (23) dla skrzyń. DO USTALENIA-2.** Spec wymienia go w tabeli intencji, a wiersz K6-30 go nie zawiera; ekran skrzyni bez „Weź wszystko” jest niepełny. **Propozycja:** w K6-30 dla kontenerów `Chest` (format intencji ze spec: kontener); rozmieszczenie jak urobek z K6-29W D10 (`ItemPlacement`: dopełnienie stosów paska, potem plecaka, puste sloty plecaka, potem paska); częściowo → przenosi, ile wejdzie; nic → `InventoryFull`. Gałąź nagrobka (znikanie pustego) dokłada K6-35.
+- **D18. `BlockInteractIntent` (28) i `BlockConfigIntent` (29).** Pola ze spec: `BlockInteractIntent(EntityId Construct, CellPos Cell, BlockInteractAction Action)` (`Toggle` 1, `Sleep` 2, `SetRespawn` 3); `BlockConfigIntent(EntityId Construct, CellPos Cell, BlockConfig Config)` — wariant bajtem: 1 `TeleportName(string Name)` (UTF-8 1–32 B; w K6-30 → `InvalidParameters`, obsługa K6-37), 2 `ContainerAccess(ContainerAccess Access)`. Walidacja jak `ValidateRemove`: `UnknownConstruct`, `WrongPlanet`, `CellOutOfBounds`, `CellEmpty`, `OutOfReach` (zasięg `ReachMeters` + luz komórki), `NoLineOfSight`; potem funkcja bloku zgodna z akcją (`Toggle`: `Door`, `Light`; `Sleep`/`SetRespawn`: `Bed`; `ContainerAccess`: blok ze stanem `Chest`), inaczej `InvalidParameters`. Zmiana dostępu tylko przez właściciela kontenera (`NotOwner`) → `ContainerConfigureOp(kontener, ten sam rozmiar, nowy dostęp)`; ten sam dostęp → `InvalidParameters`. Kubełek `Blocks`. Otwarcie skrzyni nie jest intencją, tylko subskrypcją (D9, D20).
+- **D19. Applier 37 nie sprawdza właściciela.** Spec: „dostęp zmienia tylko właściciel”. Warunek właściciela jest w walidatorze (`NotOwner`), bo operacja nie niesie aktora, a operacje serwera (administrator, K6-39) mogą zmieniać dostęp; applier sprawdza tylko, że usuwane sloty są puste i rozmiar 1…256. **Do przeglądu Opus.**
+- **D20. Subskrypcje cudzych kontenerów (serwer).** `ContainerSubscribe` na skrzynię: dostęp (`ContainerLocked`), zasięg 6 m (`OutOfReach`) → `ContainerState` z pełnym stanem i zapis subskrypcji. `InventoryService` co 10 ticków (uczestnik ticku serwera) sprawdza subskrypcje skrzyń: odległość > 8 m, utrata dostępu (zmiana na prywatną) albo usunięcie kontenera → `ContainerState.Rejected(id, OutOfReach | ContainerLocked)` i koniec subskrypcji. `ContainerUnsubscribe` na skrzynię kończy subskrypcję (na własny kontener dalej ignorowany, K6-29W D20). Delty idą do wszystkich subskrybentów kontenera. Rozłączenie gracza usuwa jego subskrypcje.
+- **D21. Bez `SurvivalContent` (testy K1/K2/K5).** `Toggle` drzwi i lamp działa (wymaga tylko `BlockContentTable`). Postawienie typu `Chest`/`Bed`, rozbiórka komórki ze stanem bloku albo kontenerem, `Sleep`, `SetRespawn`, 22, 23, 29 → `InvalidParameters` (zachowanie K6-29W D8; inaczej applier odrzuciłby zwykły `BlockClearOp` i `Submit` rzuciłby wyjątek).
+- **D22. Skrót stanu.** Sekcja Przetrwania (`0x53`) obejmuje teraz także stany bloków i punkty odrodzenia: warunek sekcji dostaje `BlockEntities.Count > 0 || Progress.Count > 0`, a w sekcji, po kontenerach, podsekcje dopisywane tylko gdy niepuste: `0x42` + stany bloków po `BlockRef` (rodzaj, pola), `0x50` + punkty odrodzenia po graczu. Skrót świata z przedmiotami bez stanów bloków (K6-29W) się nie zmienia. Bity funkcji bloku są już w skrócie (stan bloku w chunkach).
+- **D23. Limity.** `ProtocolConstants.MaxBlockEntitiesPerConstruct = 4096` (walidator odrzuca postawienie bloku funkcyjnego ponad limit `InvalidParameters`; komunikat 46 ≤ 4096 wpisów, ok. 100 KiB < 256 KiB); `MaxTeleportNameBytes = 32`; `GameRules.MaxDoorColumnCells = 3`, `ContainerOpenRangeMeters = 6`, `ContainerKeepRangeMeters = 8`, `QuickStackRangeMeters = 10`.
+- **D24. Klient bez przewidywania przełączeń.** Drzwi i lampa zmieniają się po `OperationApplied` (host i solo — w następnym ticku). Spec nie wymaga predykcji stanu bloku; postawienie skrzyni korzysta z istniejącej predykcji bloku (`ConstructPrediction`), bo rzut złożonej to zwykły `BlockSetOp`/`ConstructCreateOp`.
+- **D25. Fikstura. DO USTALENIA-9.** Nowa `tests/Horyzont.Persistence.Tests/Fixtures/world-v3-blocks.db` z `FixtureGenerator.Generate_WorldV3Blocks` (kategoria `Manual`): świat ze skrzynią z przedmiotami, łóżkiem z właścicielem i punktem odrodzenia, otwartymi drzwiami i lampą w checkpoincie oraz przełączeniem drzwi i przeniesieniem do skrzyni w ogonie dziennika. `world-v3.db` bez zmian. Następna migracja (M0004) testuje się też na tej fiksturze.
+
+## Kontrakty chronione i wersje
+
+| Ścieżka (ZASADY §3) | Zmiana w K6-30 | Co podbić / jak udowodnić |
+| --- | --- | --- |
+| `src/Horyzont.Core/Operations/`, `Simulation/OperationApplier.cs` | nowe rodzaje 36, 37, 40, 44, 49 (format 1); `OperationKind`; reguły złożonej (D12); nowy warunek `BlockClearOp` i gospodarz `ConstructBlock` w 35 (D13); `ContainerChange.Removed`; `OperationConstructs` | nowe rodzaje mają rekord w wersji 1; rodzaje 1–35 bez zmiany bajtów i bez zmiany wyniku powtórki starych dzienników — dowód: `git diff <commit startu A>..HEAD` na korpusie złotym i `DeterminismTests` pusty (ZASADY §3, linia 66); przegląd Opus |
+| `src/Horyzont.Core/Intents/` | intencje 22, 23, 28, 29; `RejectReason` 54, 57 | kody intencji z wersją rekordu 1 w `IntentCodec`; `ProtocolVersion` 15 |
+| `src/Horyzont.Core/Checkpoints/`, nowe typy zapisywane (`BlockEntities/`, `Progress/`) | `BlockEntityRecord`, `PlayerProgressRecord`, pola `WorldCheckpoint` (`init`, domyślnie puste), `ChangeTracker`, `WorldStateBuilder` | nowe bloby 21 i 22 w wersji 1; Persistence czyta wersję 1 (przyszła wersja 2 bloba 22 musi czytać 1) |
+| `src/Horyzont.Core/World/` | `WorldState` (magazyny stanów bloków i postępu); `BlockFunction`/`BlockFunctionKind` | `WorldState` nie jest formatem; `BlockFunction*` to treść — nic do podbicia (wiersz `BlockTypeDef.cs`) |
+| `src/Horyzont.Core/Hashing/` | podsekcje `0x42`, `0x50` w sekcji Przetrwania (D22) | opis w PR: skróty światów ze stanami bloków albo punktem odrodzenia są nowe; skróty świata domyślnego i świata K6-29W bez zmian (testy z A0) |
+| `src/Horyzont.Core/Protocol/`, `Serialization/` | `MessageType.BlockEntityStates = 46`, `BlobKind` 21, 22, kodeki, `ProtocolConstants` (limity D23) | `ProtocolVersion` = 15 (D2); fixture X6; router X5 |
+| `src/Horyzont.Core/Replication/ConstructReplica.cs` | `TrySetFunctionState` | przegląd Opus (cały Core) |
+| `src/Horyzont.Persistence/Migrations/` | **brak zmian** (D3) | następny wolny numer M0004 nieużyty |
+| `game/content/blocks/blocks.json` | nowe typy i rodzaje funkcji | `BlockTypeCatalog.FormatVersion` zostaje 2 (D5) |
+| `tests/Horyzont.Core.Tests/Golden/TerrainJournals/`, `TerrainJournalGoldenCorpusTests.cs`, `DeterminismTests.cs` | **bez zmian** | `git diff` pusty |
+
+## Projekt
+
+### Pliki
+
+```
+src/Horyzont.Core/
+  BlockEntities/BlockRef.cs, BlockEntityKind.cs, BlockEntityState.cs, ChestBlockState.cs, BedBlockState.cs, BlockEntityStore.cs
+  Progress/PlayerProgress.cs, BedRef.cs, PlayerProgressStore.cs
+  Operations/ContainerRemoveOp.cs, ContainerConfigureOp.cs, BlockEntitySetOp.cs, RespawnPointSetOp.cs, BlockFunctionStateSetOp.cs,
+             OperationConstructs.cs (D14)
+  Operations/OperationKind.cs (36, 37, 40, 44, 49), ContainerChange.cs (Removed)
+  Intents/QuickStackIntent.cs, TakeAllIntent.cs, BlockInteractIntent.cs, BlockInteractAction.cs, BlockConfigIntent.cs, BlockConfig.cs,
+          BlockConfigKind.cs, RejectReason.cs (54, 57)
+  Simulation/OperationApplier.cs (36, 37, 40, 44, 49, D12, D13), UndoLog.cs (wpisy nowych składowych), IntentValidator.cs (28, 29, 22, 23,
+             BucketFor), SurvivalRules.cs (BlockContentTable w konstruktorze; postawienie/rozbiórka skrzyń i łóżek, zasięg skrzyń),
+             FunctionalBlockRules.cs (wewnętrzna: Toggle z kolumną drzwi, Sleep/SetRespawn, config, quick stack, take all),
+             ContainerReach.cs (publiczna, statyczna: odległość oko → środek komórki, wspólna z serwerem), GameRules.cs (D23),
+             ServerSimulation.cs (przekazanie BlockContentTable do SurvivalRules)
+  Items/ContainerStore.cs (indeks gospodarz × rodzaj, Remove), Container.cs (Configure)
+  World/WorldState.cs (BlockEntities, Progress), World/Blocks/BlockFunction.cs (ContainerSlots, fabryki), BlockFunctionKind.cs (11–13)
+  Checkpoints/BlockEntityRecord.cs, PlayerProgressRecord.cs, ChangeTracker.cs, WorldCheckpoint.cs, WorldStateBuilder.cs
+  Hashing/StateHasher.cs (D22)
+  Serialization/OperationCodec.cs, IntentCodec.cs (22, 23, 28, 29), MessageCodec.cs (46), StateCodec.cs (bloby 21, 22), BlobKind.cs,
+                CoreCodecPrimitives.cs (BlockEntityState, BedRef)
+  Protocol/MessageType.cs (46), MessageChannels.cs, ProtocolConstants.cs (15, limity), Messages/BlockEntityStates.cs, Messages/BlockEntityEntry.cs
+  Replication/ConstructReplica.cs (TrySetFunctionState)
+src/Horyzont.Constructs/
+  Content/BlockTypeCatalog.cs (chest, bed, light), BlockTypeContent.cs (parametry światła), BuiltInShapeMeshes.cs (builtin:door_open)
+  Meshing/BlockRenderInfo.cs, BlockRenderTable.cs (rodzaj funkcji), ChunkMesher.cs (otwarte drzwi, komórki lamp), ChunkMeshData.cs (LightCells)
+  Sources/ConstructDirtyChunks.cs (OperationConstructs, operacja 49)
+src/Horyzont.Persistence/
+  Sql.cs, WorldLoader.cs (block_entities, player_progress), WorldCreator.cs (odrzuca świat ze stanami bloków i postępem, jak z kontenerami),
+  Writing/PersistenceWriter.cs (upsert/usuwanie wierszy w transakcji checkpointu)
+src/Horyzont.Net/Session/MessageRouter.cs (46 od serwera w tych samych stanach co ConstructState)
+src/Horyzont.Server/
+  Inventory/InventoryService.cs (subskrypcje skrzyń, sprawdzanie co 10 ticków, delty do subskrybentów, ContainerState po 37, odmowa po 36),
+            InventoryLog.cs
+  Replication/BlockEntityReplicator.cs (nowy, D15), ConstructStateSender.cs (zdarzenie LinkLive), EntityReplication.cs (rzut D14),
+              EntityReplicationBinder.cs (rejestracja replikatora), ReplicationLog.cs
+src/Horyzont.Client/
+  Blocks/ClientBlockEntities.cs, BlockInteraction.cs, BlockInteractionResult.cs, BlockPrompt.cs
+  Inventory/ClientInventory.cs (otwieranie i zamykanie cudzych kontenerów, zdarzenie odmowy), InventoryInteraction.cs (skrzynia jako źródło/cel),
+            ChestSession.cs
+  Replication/ConstructMirror.cs (operacja 49 i złożona z 49), ClientReplication.cs (46 → ClientBlockEntities)
+game/
+  content/blocks/blocks.json (D5), locale/blocks.csv (nazwy), locale/items.csv (INV_CHEST_*, INV_QUICK_STACK, INV_TAKE_ALL, INV_ACCESS_*),
+  locale/tools.csv (REJECT_54, REJECT_57, PROMPT_*), project.godot (akcja block_interact = E)
+  src/Constructs/ConstructWorld.cs (światła chunków), BlockMeshFactory.cs (siatka builtin:door_open), BlockContentLoader.cs
+  src/Client/Blocks/BlockLights.cs (limit 32, D7), BlockPromptHud.cs
+  src/Client/Tools/ToolInputReader.cs (block_interact obok ship_mode_toggle), ToolNode.cs (wywołanie BlockInteraction)
+  src/Client/Inventory/InventoryScreen.cs (panel skrzyni, przyciski), ChestPanel.cs, InventoryNode.cs
+  src/Boot/GameComposition.Blocks.cs (nowa część: ClientBlockEntities, BlockInteraction, BlockEntityReplicator, BlockLights)
+tests/  (nazwy w „Testy akceptacyjne”)
+```
+
+Nazwy nowych plików są propozycją; istniejące ścieżki sprawdzono w repozytorium. Pomocnicze typy (`BlockInteractionResult`, `ChestSession`) wykonawca może scalić z sąsiednimi, jeśli plik miałby kilka linii.
+
+### Kontrakty Core (format 1)
+
+| Kod | Typ | Pola w kolejności kodeka | Warunki wstępne appliera |
+| --- | --- | --- | --- |
+| op 36 | `ContainerRemoveOp(ContainerId Container)` | varuint | kontener istnieje; wszystkie sloty puste; gospodarz nie jest `Player` (kontenery gracza nie znikają; spec milczy — warunek ostrzejszy, do przeglądu) → usunięcie, zwolnienie indeksu gospodarza, `ContainerChange(…, Removed: true)` |
+| op 37 | `ContainerConfigureOp(ContainerId Container, ushort Size, ContainerAccess Access)` | varuint, varuint, bajt | kontener istnieje; rozmiar 1…256; sloty o indeksie ≥ `Size` puste; rozmiar albo dostęp różny od obecnego (D19: bez sprawdzania aktora) → wersja +1 |
+| op 40 | `BlockEntitySetOp(EntityId Construct, CellPos Cell, ushort ExpectedType, BlockEntityState? State)` | varuint, `CellPos`, varuint, bajt rodzaju (0 = brak stanu), pola rodzaju: `Chest` varuint kontener; `Bed` varuint właściciel (0 = brak) | niepusty stan: w widoku efektywnym (D12) budowla istnieje, komórka ma blok typu `ExpectedType`; brak stanu w tej komórce albo stan tego samego rodzaju; `Chest`: kontener istnieje, rodzaj `Chest`, gospodarz = ta komórka; `Bed`: właściciel `None` albo znany gracz; liczba stanów budowli ≤ 4096. Pusty stan: na stanie żywym blok typu `ExpectedType` i stan istnieje → usunięcie |
+| op 44 | `RespawnPointSetOp(PlayerId Player, BedRef? Bed)` | varuint, bajt (0/1), [varuint budowla, `CellPos`, varuint typ] | gracz znany; z łóżkiem: w widoku efektywnym blok typu `ExpectedType` ze stanem `Bed`; brak łóżka czyści punkt |
+| op 49 | `BlockFunctionStateSetOp(EntityId Construct, CellPos Cell, ushort ExpectedType, byte State)` | varuint, `CellPos`, varuint, bajt | budowla istnieje; komórka ma blok typu `ExpectedType`; `State` < 8 → `WithFunctionState`, wersja budowli +1 (w złożonej: raz na budowlę, D12), `ConstructChange` |
+
+- Zapis z wartością spoza zakresu (rodzaj stanu 3–7, `State` ≥ 8, zarezerwowany wariant) → `ArgumentException`; odczyt → `ProtocolViolationException` (wzór K6-29W).
+- Blob `BlockEntity` (21), wersja 1: budowla, komórka, rodzaj, pola rodzaju (jak w operacji 40). Wiersz `block_entities` o kluczu innym niż w blobie → `WorldCorruptedException`.
+- Blob `PlayerProgress` (22), wersja 1: D11. Wiersz `player_progress` o `player_id` innym niż w blobie → `WorldCorruptedException`.
+- Intencja 22 `QuickStackIntent()` — bez pól. Intencja 23 `TakeAllIntent(ContainerId Container)`. Intencja 28 `BlockInteractIntent(EntityId Construct, CellPos Cell, BlockInteractAction Action)` — bajt akcji 1–3. Intencja 29 `BlockConfigIntent(EntityId Construct, CellPos Cell, BlockConfig Config)` — bajt wariantu (1: napis UTF-8 z długością varuint, 1–32 B; 2: bajt dostępu).
+- Komunikat 46 `BlockEntityStates(EntityId Construct, IReadOnlyList<BlockEntityEntry> Entries)` — varuint budowla, varuint liczba (0…4096), wpisy (`CellPos`, bajt rodzaju, pola rodzaju), niezawodny uporządkowany.
+- `ContainerChange` dostaje pozycyjny `bool Removed` na końcu (jedyne miejsce tworzenia: applier). `InventoryService` przy `Removed` kończy subskrypcje kontenera (`ContainerLocked`), a po operacji 37 wysyła subskrybentom pełny `ContainerState` zamiast delty (delta nie niesie rozmiaru ani dostępu).
+
+### Walidacja i rozwiązanie intencji
+
+Kolejność ogólna z `IntentValidator.Validate` bez zmian (gracz → online → parametry → początek promienia → kubełek → walidacja rodzaju); reguły Przetrwania w `SurvivalRules`/`FunctionalBlockRules` po walidacji ogólnej, jak w K6-29W.
+
+| Intencja | Sprawdzenia (kolejność = kod) | Wynik |
+| --- | --- | --- |
+| `PlaceBlockIntent` z typem `Chest`/`Bed`/`Light` | walidacja K2/K5 bez zmian; bez treści Przetrwania i typ `Chest`/`Bed` → `InvalidParameters` (D21); limit stanów budowli (D23) → `InvalidParameters` | `Chest`: złożona D8; `Bed`: złożona D10; `Light`: zwykły `BlockSetOp`/`ConstructCreateOp` z `FunctionState` 1 (D7) |
+| `RemoveBlockIntent` komórki ze stanem albo kontenerem | walidacja K2/K5; bez treści → `InvalidParameters`; skrzynia prywatna i nie właściciel → `NotOwner`; kontener niepusty → `ContainerNotEmpty` | złożona D8 albo D10 |
+| `BlockInteractIntent` `Toggle` | D18; funkcja `Door`/`Light`; drzwi: kolumna (D6), zamknięcie na graczu → `IntersectsPlayer` | `BlockFunctionStateSetOp` albo złożona z 49 |
+| `BlockInteractIntent` `Sleep`/`SetRespawn` | D18; bez treści → `InvalidParameters`; funkcja `Bed`, stan `Bed`; właściciel inny → `NotOwner` | złożona D10 |
+| `BlockConfigIntent` | D18; `TeleportName` → `InvalidParameters`; nie właściciel → `NotOwner`; ten sam dostęp → `InvalidParameters` | `ContainerConfigureOp` |
+| `ItemMoveIntent` z kontenerem skrzyni | jak K6-29W, a dostęp do kontenera wg D9 (`ContainerLocked`, `OutOfReach`) | `ItemTransferOp` / `ItemSwapOp` / złożona przeniesień |
+| `QuickStackIntent` | bez treści → `InvalidParameters`; kubełek `Items` | złożona przeniesień (D16) albo `NotEnoughItems` / `InventoryFull` |
+| `TakeAllIntent` | bez treści, kontener nie `Chest` → `InvalidParameters`; dostęp D9; kubełek `Items` | złożona przeniesień (D17) albo `InventoryFull` |
+
+Zasoby treści i terenu czyta tylko walidator i resolver; każda wartość (rozmiar skrzyni, limit stosu, stan początkowy lampy, identyfikatory) trafia do operacji (ZASADY §4). Identyfikatory nowych kontenerów i budowli przydziela resolver z bieżących alokatorów, jak `InventoryService.CreateContainers` i `IntentResolver` dla `ConstructCreateOp`.
+
+### Przepływ intencja → walidator → operacja → replikacja → klient
+
+```
+Postawienie skrzyni
+  klient: narzędzie budowy, typ core:chest_wood → PlaceBlockIntent (bez zmian formatu)
+  serwer: IntentValidator (K2/K5) → SurvivalRules: funkcja Chest
+          → CompoundOp[ContainerCreateOp, BlockEntitySetOp(Chest), BlockSetOp|ConstructCreateOp]
+          → OperationApplier.TryApply (D12) → dziennik → Applied:
+             EntityReplication: OperationApplied{ rzut = BlockSetOp|ConstructCreateOp } (D14)
+             BlockEntityReplicator: BlockEntityStates(budowla) do graczy z łączem Live (D15)
+             ConstructWorld (host): przebudowa chunku przez OperationConstructs
+  klient: ConstructMirror (blok, ConstructPrediction potwierdza) → ClientBlockEntities (stan Chest z ContainerId)
+
+Otwarcie skrzyni i przeniesienie
+  klient: E na skrzyni → BlockInteraction: stan Chest → ContainerSubscribe(id)
+  serwer: InventoryService: dostęp, ≤ 6 m → ContainerState (albo odmowa ContainerLocked / OutOfReach)
+  klient: ekran skrzyni obok plecaka; przeciągnięcie → ItemMoveIntent (oczekiwana zawartość źródła)
+  serwer: walidacja D9 → ItemTransferOp → ContainerDelta do wszystkich subskrybentów; > 8 m → odmowa OutOfReach, koniec subskrypcji
+  klient: zamknięcie ekranu → ContainerUnsubscribe(id)
+
+Drzwi i lampa
+  klient: E → BlockInteractIntent(Toggle)
+  serwer: walidacja D18 → kolumna drzwi (D6) → BlockFunctionStateSetOp albo CompoundOp[49…]
+          → OperationApplied (rzut = ta sama operacja) → wszyscy z łączem Live
+  klient/host: ConstructMirror.TrySetFunctionState → ConstructDirtyChunks → ChunkMesher: kolizja i panel drzwi, komórki lamp → światła
+
+Łóżko
+  klient: E na łóżku → BlockInteractIntent(Sleep)
+  serwer: CompoundOp[BlockEntitySetOp(stare łóżko → wolne)?, BlockEntitySetOp(łóżko → gracz)?, RespawnPointSetOp] → BlockEntityStates
+  klient: podpowiedź „Twoje łóżko” z właściciela w ClientBlockEntities (bez komunikatu 48, DO USTALENIA-7)
+
+Szybkie odkładanie
+  klient: przycisk w ekranie ekwipunku/skrzyni → QuickStackIntent
+  serwer: D16 → CompoundOp[ItemTransferOp…] → ContainerDelta do subskrybentów (właściciel plecaka zawsze; skrzynie — kto je otworzył)
+```
+
+### Interfejs użytkownika (tylko to, co pakiet musi pokazać)
+
+Styl i komponenty z K6-29W (`HudTheme`, `SlotView`, `ItemTooltip`); wygląd zatwierdza Dismond na zrzutach przed scaleniem.
+
+- **Podpowiedź interakcji** (środek ekranu pod celownikiem, `BlockPromptHud`): „[E] Otwórz skrzynię” / „Skrzynia prywatna” (zablokowana, bez akcji, gdy klient zna odmowę), „[E] Otwórz drzwi” / „[E] Zamknij drzwi”, „[E] Włącz światło” / „[E] Wyłącz światło”, „[E] Śpij (ustaw punkt odrodzenia)” / „Twoje łóżko” / „Łóżko zajęte”. Tylko dla bloku w zasięgu `ReachMeters` pod celownikiem (ten sam promień z oka co narzędzia, `AimRayBuilder.EyeFromFeet`).
+- **Ekran skrzyni**: otwarcie skrzyni otwiera ekran ekwipunku z panelem skrzyni nad siatką plecaka (siatka 8 kolumn: 20 miejsc = 3 rzędy z niepełnym ostatnim, 40 = 5 rzędów), nagłówek z nazwą typu bloku i stanem dostępu; przyciski „Weź wszystko” (23), „Odłóż pasujące” (22) i — tylko dla właściciela — przełącznik „Wspólna / Prywatna” (29). Przenoszenie myszą jak w K6-29W (LPM, PPM, Shift+klik do „dowolnego” w drugim kontenerze). Esc / Tab / I / oddalenie (odmowa `OutOfReach`) zamyka panel i wysyła `ContainerUnsubscribe`.
+- **Ekran ekwipunku bez skrzyni**: przycisk „Odłóż pasujące do skrzyń w pobliżu” (22).
+- **Odmowy**: istniejący komunikat odmowy w HUD z tekstami PL/EN dla 54 („To nie twoje”) i 57 („Skrzynia nie jest pusta”).
+- **Świat**: otwarte drzwi jako panel bez kolizji, światło lampy. Bez animacji (K8-50).
+
+## Testy akceptacyjne (napisz najpierw)
+
+Pisze Sonnet 5.5 przed kodem (ZASADY §8); testy etapów A i B zatwierdza Opus 5.5 przed implementacją (krok A1, B1). Pomocnicze w `tests/Horyzont.Testing`: `SurvivalContentFactory.CreateTest()` dostaje typy bloków testowych (skrzynia 4 miejsca, skrzynia 8 miejsc, łóżko, lampa, drzwi) w tabeli `BlockContentTable` testów; `WorldFactory.CreateWithFunctionalBlocks()` (budowla z kolumną 2 drzwi, lampą, skrzynią i łóżkiem); `FunctionalBlockFixture` (stawianie przez intencje); generatory `CodecGen` dla nowych operacji, intencji i komunikatu (X6).
+
+### Etap A — model, operacje, kodeki, skrót (Core)
+
+| Test | Kryterium |
+| --- | --- |
+| `BlockEntities/BlockEntityOpsApplierTests`: `BlockEntitySet_OnBlockOfExpectedType_StoresState`, `BlockEntitySet_WrongExpectedType_Fails`, `BlockEntitySet_EmptyCell_Fails`, `BlockEntitySet_KindChange_Fails`, `BlockEntitySet_ChestWithForeignContainer_Fails`, `BlockEntitySet_EmptyStateWithoutEntity_Fails`, `BlockEntitySet_EmptyState_RemovesEntity`, `BlockEntitySet_Over4096PerConstruct_Fails` | tabela kontraktów; błąd nie zmienia skrótu |
+| `BlockEntities/RespawnPointOpsTests`: `RespawnPointSet_OnBed_SetsProgress`, `RespawnPointSet_CellWithoutBedState_Fails`, `RespawnPointSet_None_ClearsPoint`, `RespawnPointSet_UnknownPlayer_Fails` | |
+| `BlockEntities/FunctionStateOpsTests`: `FunctionStateSet_SetsBits25To27_VersionPlusOne`, `FunctionStateSet_WrongExpectedType_Fails`, `FunctionStateSet_UnknownConstruct_Fails` | |
+| `Items/ContainerLifecycleTests`: `ContainerCreate_ConstructBlockHost_Succeeds`, `ContainerCreate_ConstructBlockHostEmptyCell_Fails`, `ContainerCreate_SecondOfKindOnSameBlock_Fails`, `ContainerRemove_Empty_RemovedAndHostFreed`, `ContainerRemove_NotEmpty_Fails`, `ContainerRemove_PlayerContainer_Fails`, `ContainerConfigure_Access_VersionPlusOne`, `ContainerConfigure_ShrinkOverItems_Fails`, `ContainerConfigure_NoChange_Fails` | |
+| `Items/CompoundConstructTests`: `PlaceChestOnTerrain_Compound_CreatesConstructContainerAndEntity`, `PlaceChestOnFace_Compound_ConstructVersionPlusOneOnce`, `ConstructComponentNotLast_Fails`, `TerrainAndBlockInOneCompound_Fails`, `FunctionStateWithBlockComponent_Fails`, `RemoveChest_Compound_ClearsContainerEntityAndBlock`, `RemoveLastBlockWithEntity_Compound_RemovesConstruct`, `BlockClear_WithBlockEntity_Fails`, `BlockClear_WithHostedContainer_Fails`, `FailingItemComponent_ConstructAndEntitiesUntouched`, `DoorColumnCompound_TwoCells_OneVersionBump` | D12, D13; przy błędzie skrót przed = po |
+| `BlockEntities/FunctionalBlockConservationProperties` (FsCheck, 2000 sekwencji po 50 operacji: postawienie/rozbiórka skrzyń, przeniesienia do i ze skrzyń, złożone z losowym błędem) | po każdej operacji: suma sztuk każdego typu = Σ create − Σ destroy; brak kontenera z gospodarzem `ConstructBlock` bez bloku; brak stanu bloku bez bloku |
+| `Operations/OperationConstructsTests`: `ConstructPart_PlaceChestCompound_ReturnsBlockSetOnly`, `ConstructPart_ItemOnlyCompound_False`, `ConstructPart_DoorColumn_CompoundOfFunctionStates`, `ConstructPart_TerrainCompound_False` | D14 |
+| `Serialization/OperationCodecBlockTests`: round-trip 36, 37, 40 (`Chest`, `Bed`, brak stanu), 44 (z łóżkiem i bez), 49; `ReservedBlockEntityKind_Read_Throws`, `FunctionStateAbove7_Write_Throws`, `CompoundWithNewComponents_RoundTrip` | zapis `ArgumentException`, odczyt `ProtocolViolationException` |
+| `Serialization/StateCodecBlockEntityTests`: blob 21 round-trip obu rodzajów; blob 22 v1 round-trip; nieznana wersja bloba → wyjątek | |
+| `Hashing/SurvivalHashTests` (dopisane): `WorldWithItemsWithoutBlockEntities_HashUnchanged` (stała zapisana w A0), `BlockEntityChange_ChangesHash`, `RespawnPointChange_ChangesHash`, `FunctionStateChange_ChangesHash` | D22; istniejący `WorldWithoutItems_HashUnchanged` bez zmian |
+| `Checkpoints/BlockEntityCheckpointTests`: `Capture_ChangedBlockEntity_Included`, `Capture_RemovedBlockEntity_ListedAsRemoved`, `Capture_ChangedProgress_Included`, `Requeue_MarksBlockEntitiesAndProgressAgain`, `Builder_RestoresBlockEntitiesAndProgress`, `Builder_EntityOnEmptyCell_Throws`, `Builder_ContainerHostOnEmptyCell_Throws`, `CheckpointPlusJournal_SameHash` | |
+| `Replication/ConstructReplicaTests` (dopisane): `TrySetFunctionState_NextVersion_Applies`, `TrySetFunctionState_StaleVersion_Ignored` | |
+| Bez zmian w plikach: `TerrainJournalGoldenCorpusTests`, korpus `Golden/TerrainJournals`, `DeterminismTests` i wszystkie dotychczasowe testy (poza fixture X6 i złotymi wartościami enumów) | `git diff <commit startu A>..HEAD` na ścieżkach korpusu i tych testów pusty |
+
+### Etap B — intencje, treść, protokół (Core, Constructs, Net)
+
+| Test | Kryterium |
+| --- | --- |
+| `Simulation/BlockInteractIntentTests`: `Toggle_ClosedDoor_FunctionStateOpOpens`, `Toggle_DoorColumnOfTwo_CompoundOfTwo`, `Toggle_DoorColumnOfFour_TogglesThreeFromAimed`, `Toggle_DoorClosingOnPlayer_IntersectsPlayer`, `Toggle_Lamp_SwitchesOff`, `Toggle_PlainBlock_InvalidParameters`, `Toggle_OutOfReach_OutOfReach`, `Toggle_BehindWall_NoLineOfSight`, `Toggle_WithoutSurvivalContent_Applies`, `Sleep_FreeBed_ClaimsAndSetsRespawn`, `Sleep_OwnBedAgain_RespawnOnly`, `Sleep_NewBed_ReleasesOldBed`, `SetRespawn_BedOfOther_NotOwner`, `Sleep_OnDoor_InvalidParameters`, `Sleep_WithoutSurvivalContent_InvalidParameters`, `Burst_BlocksBucket_RateLimited` | D6, D7, D10, D18, D21 |
+| `Simulation/ChestIntentTests`: `PlaceChest_OnTerrain_CompoundWithContainerAndEntity`, `PlaceChest_OnConstructFace_CompoundBlockSetLast`, `PlaceChest_SizeFromContent_CarriedInOp`, `PlaceLamp_InitialStateOn`, `PlaceChest_WithoutSurvivalContent_InvalidParameters`, `RemoveChest_Empty_Compound`, `RemoveChest_NotEmpty_ContainerNotEmpty`, `RemovePrivateChest_NotOwner_NotOwner`, `RemoveBed_OwnerRespawnCleared`, `MoveBagToChest_InRange_Transfer`, `MoveToChest_Beyond8m_OutOfReach`, `MoveToPrivateChestOfOther_ContainerLocked`, `ConfigureAccess_Owner_ContainerConfigureOp`, `ConfigureAccess_NotOwner_NotOwner`, `ConfigureAccess_Same_InvalidParameters`, `ConfigureTeleportName_InvalidParameters` | D8, D9, D18 |
+| `Simulation/QuickStackIntentTests`: `QuickStack_MatchingTypes_NearestChestFirst`, `QuickStack_TopsUpStacksThenEmptySlots`, `QuickStack_HotbarUntouched`, `QuickStack_ChestBeyond10m_Ignored`, `QuickStack_PrivateChestOfOther_Ignored`, `QuickStack_NoMatchingItems_NotEnoughItems`, `QuickStack_ChestsFull_InventoryFull`, `QuickStack_SameState_SameOperation` | D16 |
+| `Simulation/TakeAllIntentTests` (gdy DO USTALENIA-2 = tak): `TakeAll_Chest_MovesToHotbarStacksThenBag`, `TakeAll_PartialRoom_MovesWhatFits`, `TakeAll_NoRoom_InventoryFull`, `TakeAll_PrivateChestOfOther_ContainerLocked` | D17 |
+| `Simulation/BedOwnershipProperties` (FsCheck, 1000 sekwencji Sleep/SetRespawn/rozbiórek łóżek przez 4 graczy) | po każdej operacji: punkt odrodzenia P = łóżko B ⇔ właściciel B = P |
+| `Simulation/IntentValidationTests.AllReasons` (dopisane 54, 57) | każdy nowy kod ma test walidacji |
+| `Serialization/IntentCodecBlockTests`: round-trip 22, 23, 28 (trzy akcje), 29 (oba warianty); `TeleportNameOver32Bytes_Write_Throws`, `UnknownAction_Read_Throws`, `UnknownConfigVariant_Read_Throws` | |
+| `Serialization/MessageCodecBlockEntityTests`: round-trip 46 (pusty, oba rodzaje); 4097 wpisów → wyjątek | |
+| `Protocol/ProtocolContractTests` (istniejące): `ProtocolVersion_MatchesDocumentedMergeValue` = 15, `Constants_GoldenValues` (limity D23), `Enums_GoldenValues` (op 36, 37, 40, 44, 49; odmowy 54, 57; komunikat 46; bloby 21, 22; `BlockEntityKind`, `BlockInteractAction`, `BlockConfigKind`), lista rekordów komunikatów; `MaxMessages.All()`, `CodecGen` | X6 |
+| `Net.Tests/MessageRouterTests` (dopisane) | 46 dozwolony od serwera w tych samych stanach co `ConstructState` (sprawdzić w `MessageRouter` przy B2), niedozwolony od klienta |
+| `Constructs.Tests/Content/BlockTypeCatalogTests` (dopisane): `Parse_RepoContent_HasChestBedLampDoor`, `Parse_ChestWithoutSlots_Throws`, `Parse_ChestSlotsOver256_Throws`, `Parse_LightWithInvalidColor_Throws` | `InvalidDataException` ze ścieżką JSON |
+| `Constructs.Tests/Sources/ConstructDirtyChunksTests` (dopisane): `Collect_FunctionStateSet_DirtiesCell`, `Collect_CompoundWithBlockSet_DirtiesCell`, `Collect_ItemOnlyCompound_Nothing` | D14 |
+| `Constructs.Tests/Meshing/ChunkMesherTests` (dopisane): `OpenDoor_NoCollision_DrawsOpenPanel`, `ClosedDoor_Collides`, `LitLamp_ListedInLightCells`, `UnlitLamp_NotListed` | D6, D7 |
+
+### Etap C — zapis i serwer
+
+| Test | Kryterium |
+| --- | --- |
+| `Persistence.Tests/BlockEntityPersistenceTests`: `Checkpoint_WritesBlockEntitiesAndProgress_LoadRestores`, `Checkpoint_RemovedBlockEntity_DeletesRow`, `Checkpoint_ClearedRespawn_DeletesRow`, `CorruptBlockEntityBlob_WorldCorrupted`, `BlockEntityRowKeyMismatch_WorldCorrupted`, `ProgressRowPlayerMismatch_WorldCorrupted` | |
+| `Persistence.Tests/MigrationTests`: istniejące `FixtureWorldV1_MigratesToLatest_CreatesSurvivalTables` i `FixtureWorldV3_CopiedToTemp_LoadsAndReplays` bez zmian i zielone; nowy `FixtureWorldV3Blocks_CopiedToTemp_LoadsAndReplays` | `user_version` nadal 3 (D3) |
+| `Server.Tests/Inventory/ChestSubscriptionTests`: `Subscribe_SharedChestWithin6m_SendsState`, `Subscribe_Beyond6m_OutOfReach`, `Subscribe_PrivateChestOfOther_ContainerLocked`, `WalkAwayBeyond8m_ServerEndsSubscription`, `Delta_SentToAllSubscribers`, `ChestRemoved_SubscribersGetLocked`, `SwitchToPrivate_NonOwnerSubscriptionsEnded`, `Configure_SubscribersGetFullState`, `Disconnect_SubscriptionDropped`, `UnsubscribeChest_StopsDeltas` | D20 |
+| `Server.Tests/Replication/BlockEntityReplicationTests`: `LinkLive_SendsStatesAfterConstructState`, `BlockEntitySet_SendsStatesToLiveRecipientsOnly`, `TransferringRecipient_GetsStatesOnLinkLive`, `PlaceChest_OperationAppliedCarriesBlockSetOnly`, `DoorToggle_OperationAppliedForwarded_NoResync` | D14, D15 |
+| `Integration.Tests/Blocks/FunctionalBlocksFlowTests` (klient → `InMemoryTransport` → sesja → symulacja → writer): `PlaceChest_MoveItems_Restart_ItemsAndChestIdentical`, `BedSleep_Restart_RespawnPointKept`, `DoorAndLamp_Toggle_Restart_StateKept`, `TwoClients_DoorToggle_BothSeeOpen`, `TwoClientsSameChest_RandomMoves_NoDuplication` (2 × 500 intencji, `FakeTimeProvider`), `CrashMidChestPlacement_WholeOrNothing` (oba punkty awarii, wzór K6-29W), `QuickStack_EndToEnd_DeltasToSubscribers` | odbiór spec: „działają i przetrwają restart”; skrót po powtórce = skrót przed |
+| `game/tests/Blocks/FunctionalBlocksTests` (gdUnit4, prawdziwy `ConstructWorld`) | otwarte drzwi nie mają kształtu kolizji w komórce, zamknięte mają; włączona lampa ma `OmniLight3D`, wyłączona nie; ponad 32 lampy → 32 światła najbliżej kamery |
+
+### Etap D — klient
+
+| Test | Kryterium |
+| --- | --- |
+| `Client.Tests/Blocks/ClientBlockEntitiesTests`: `States_ReplaceConstructMap`, `EmptyStates_ClearsMap`, `ConstructRemoved_ClearsMap`, `NewConstructState_ClearsMap` | D15 |
+| `Client.Tests/Blocks/BlockInteractionTests`: `AimDoor_PromptOpen_SendsToggle`, `AimLamp_PromptSwitchOff`, `AimFreeBed_SendsSleep`, `AimBedOfOther_PromptOccupied_SendsNothing`, `AimChest_SendsSubscribe`, `AimPlainBlock_NoPrompt`, `PendingFull_Waiting`, `OutOfReach_NoPrompt` | wzór `ShipModeSwitch` |
+| `Client.Tests/Inventory/ChestSessionTests`: `Open_StateStored_Opened`, `RejectedLocked_PromptLocked`, `ServerOutOfReach_ClosesPanel`, `Close_SendsUnsubscribe`, `MoveBagToChest_IntentCarriesExpectedSource`, `ShiftClickInChest_MovesAnyToBag`, `QuickStackButton_SendsIntent`, `TakeAllButton_SendsIntent`, `AccessToggle_OwnerOnly` | |
+| `Client.Tests/Replication/ConstructMirrorFunctionStateTests`: `FunctionStateOp_AppliesToReplica`, `DoorColumnCompound_Applies`, `FunctionStateGap_RequestsResync` | D14 |
+| `game/tests/Inventory/InventoryUiTests` (dopisane, gdUnit4, bez grafiki) | E na skrzyni otwiera ekran z panelem skrzyni i zwalnia mysz; Esc zamyka i wysyła `ContainerUnsubscribe`; podpowiedź pokazuje tekst z CSV; przycisk dostępu widoczny tylko dla właściciela |
+| Ręcznie (kategoria `Manual`, wynik i zrzuty do PR, `docs/reports/k6-30/`) | solo: postawienie obu skrzyń, przeniesienie, „Weź wszystko”, „Odłóż pasujące”, prywatna/wspólna; drzwi z dwóch bloków otwierają się i przepuszczają postać; lampa świeci i gaśnie; sen na łóżku daje „Twoje łóżko”; restart zachowuje wszystko. Zrzuty: ekran skrzyni, podpowiedzi, otwarte i zamknięte drzwi, lampa w nocy — do oceny Dismonda przed scaleniem |
+
+## Kroki
+
+Każdy krok kończy się zielonym budowaniem i testami; commity w formacie Conventional Commits, małe.
+
+### Etap A — model, operacje, kodeki, skrót (Core)
+
+- [ ] A0. Zapisz `StateHasher.Hash` świata K6-29W z przedmiotami (`WorldFactory.CreateWithPlayerContainers()` + zestaw startowy) z bieżącego commita jako stałą testu `WorldWithItemsWithoutBlockEntities_HashUnchanged`; zanotuj commit startowy etapu (do `git diff` korpusu).
+- [ ] A1. Testy z tabeli etapu A (czerwone, budowa może nie przechodzić do A2). **Przegląd Opus 5.5 przed kodem:** kontrakty operacji 36, 37, 40, 44, 49, D12, D13, D19, bloby 21/22, D22 oraz rozstrzygnięcie DO USTALENIA-1, 3, 5, 6, 7, 9. Commit `test(core): add functional block contract tests`.
+- [ ] A2. Typy: `BlockRef`, `BlockEntityKind`, `BlockEntityState` z rodzajami, `BlockEntityStore`, `PlayerProgress`, `BedRef`, `PlayerProgressStore`; magazyny w `WorldState`; indeks gospodarz × rodzaj i `Remove` w `ContainerStore`. Commit `feat(core): add block entity and player progress state`.
+- [ ] A3. Operacje 36, 37, 40, 44, 49 w applierze z `UndoLog`; reguły złożonej D12 (widok efektywny, składowa ostatnia, wersja budowli raz w `Finish`); D13; `ContainerChange.Removed`. Testy applier i złożonej zielone. Commit `feat(core): add block entity, respawn and function state operations`.
+- [ ] A4. Kodeki operacji, bloby 21 i 22, rekordy checkpointu, `ChangeTracker`, `WorldStateBuilder`, `CaptureCheckpoint`/`Requeue`. Commit `feat(core): encode and checkpoint block entities`.
+- [ ] A5. `StateHasher` (D22) i test A0 zielony. Commit `feat(core): hash block entities and respawn points`.
+- [ ] A6. `OperationConstructs` (D14), `ConstructReplica.TrySetFunctionState`. Commit `feat(core): project compound operations for construct views`.
+- [ ] A7. Testy właściwości zielone; sprawdzenie mutacją (usunięty warunek D13 → `BlockClear_WithHostedContainer_Fails` i test właściwości czerwone); korpus i `DeterminismTests` bez zmian w plikach.
+
+### Etap B — intencje, treść, protokół
+
+- [ ] B1. Testy z tabeli etapu B (czerwone); przegląd Opus kontraktów intencji i komunikatu 46 oraz DO USTALENIA-2, 4, 8, 10, 11. Commit `test(core): add functional block intent tests`.
+- [ ] B2. `RejectReason` 54, 57; intencje 22, 23, 28, 29; `IntentCodec`; komunikat 46, `MessageCodec`, `MessageChannels`, `MessageRouter`; fixture X6; `ProtocolVersion` = 15 i jego testy. Commit `feat(protocol): add block entity states and functional block intents`.
+- [ ] B3. Treść: `BlockFunctionKind` 11–13, `BlockFunction.ContainerSlots`, `BlockTypeCatalog`, `BlockTypeContent` (światło), nowe typy w `blocks.json`, materiał `lamp`, nazwy w `blocks.csv`. Commit `feat(content): add chests, a bed, a lamp and a wooden door`.
+- [ ] B4. `SurvivalRules` z `BlockContentTable`; `FunctionalBlockRules` (postawienie, rozbiórka, Toggle z kolumną, Sleep/SetRespawn, config, quick stack, take all); `ContainerReach`; walidator (28, 29, 22, 23; `BucketFor`; D21; D23); `GameRules`. Commit `feat(core): resolve chests, beds, doors, lamps and quick stacking`.
+- [ ] B5. `ConstructDirtyChunks` przez `OperationConstructs` i 49; `ChunkMesher` (otwarte drzwi, komórki lamp), `BuiltInShapeMeshes` (`builtin:door_open`). Commit `feat(constructs): mesh open doors and report lamp cells`.
+- [ ] B6. Sprawdzenie (niżej).
+
+### Etap C — zapis i serwer
+
+- [ ] C1. Testy z tabeli etapu C (czerwone). Commit `test: add functional block persistence and server tests`.
+- [ ] C2. Persistence: `WorldLoader`, `PersistenceWriter`, `WorldCreator`, `Sql`; fikstura `world-v3-blocks.db` (`FixtureGenerator.Generate_WorldV3Blocks`, `Manual`). Commit `feat(persistence): store block entities and player progress`.
+- [ ] C3. `InventoryService`: subskrypcje skrzyń (D20), sprawdzanie co 10 ticków jako uczestnik ticku, delty do subskrybentów, `ContainerState` po 37, odmowa po 36. Commit `feat(server): subscribe to chests within reach`.
+- [ ] C4. `BlockEntityReplicator`, `ConstructStateSender.LinkLive`, rzut w `EntityReplication`, rejestracja w `EntityReplicationBinder`. Commit `feat(server): replicate block entity states`.
+- [ ] C5. Gra: `ConstructWorld` (przez `OperationConstructs`; światła chunków), `BlockLights` (limit 32), `BlockMeshFactory` (`builtin:door_open`), `GameComposition.Blocks.cs`. Commit `feat(game): show open doors and lamp lights`.
+- [ ] C6. Sprawdzenie (z `dotnet test game` i `smoke` zgodnie z regułą wspólnego runnera).
+
+### Etap D — klient (wygląd ogląda Dismond)
+
+- [ ] D1. Testy z tabeli etapu D (czerwone). Commit `test(client): add block interaction and chest tests`.
+- [ ] D2. `src/Horyzont.Client/Blocks/*`, `ClientInventory` (cudze kontenery), `ChestSession`, `InventoryInteraction` (skrzynia), `ConstructMirror` (49), `ClientReplication` (46). Commit `feat(client): open chests and interact with blocks`.
+- [ ] D3. Akcja `block_interact` (E) w `project.godot`, `ToolInputReader`, `ToolNode`, `BlockPromptHud`. Commit `feat(game): add the interact key and block prompts`.
+- [ ] D4. **Najpierw wygląd statyczny:** `ChestPanel`, przyciski i przełącznik dostępu w `InventoryScreen` — zrzuty ekranu skrzyni i podpowiedzi oceniane krytycznie, potem akceptacja Dismonda; dopiero potem dopracowanie zachowania. Commit `feat(game): add the chest panel to the inventory screen`.
+- [ ] D5. Teksty PL/EN (`items.csv`, `tools.csv`, `blocks.csv`), import tłumaczeń (`--import`). Commit `feat(game): translate functional block texts`.
+- [ ] D6. Test ręczny solo ze zrzutami w `docs/reports/k6-30/`, sprawdzenie, opis PR z odstępstwami i DO USTALENIA.
+
+### Sprawdzenie na końcu każdego etapu
+
+```
+dotnet build Horyzont.sln
+dotnet test Horyzont.sln --filter "Category!=Soak&Category!=Manual"
+dotnet format Horyzont.sln --verify-no-changes
+python tools/engine/build.py smoke          # etapy C i D
+dotnet test game                            # etapy C i D (gdUnit4; reguła wspólnego runnera jak w K6-29W)
+git diff <commit startu A>..HEAD -- tests/Horyzont.Core.Tests/Golden/TerrainJournals tests/Horyzont.Core.Tests/TerrainJournalGoldenCorpusTests.cs tests/Horyzont.Core.Tests/Hashing/DeterminismTests.cs   # pusty
+git diff <commit startu A>..HEAD -- src/Horyzont.Persistence/Migrations   # pusty (D3)
+```
+
+## Ryzyka i odstępstwa
+
+| Ryzyko | Skutek | Odpowiedź |
+| --- | --- | --- |
+| Nowa droga duplikacji lub zgubienia przy skrzyniach (dwóch graczy, rozbiórka, zmiana dostępu) | przedmiot w dwóch miejscach albo w żadnym | wszystko przez `TryApply`; warunek D13 jako obrona w applierze; test właściwości z `ConstructBlock`; test integracyjny dwóch klientów przy jednej skrzyni |
+| Konsument rozpoznaje operacje budowli po typie i nie zna złożonej | host nie przebudowuje chunku po postawieniu skrzyni; klient dostaje złożoną z przedmiotami, robi resync; `ShipStatsCache` pomija zmianę | `OperationConstructs` w każdym konsumencie (`EntityReplication`, `ConstructDirtyChunks`, `ConstructMirror`), testy D14; reguła do ZASAD; przegląd grepem `BlockSetOp\|BlockClearOp\|ConstructCreateOp` w kroku C4 |
+| Widok efektywny D12 rozjedzie się z kolejnością stosowania | składowa przyjęta przy powtórce inaczej niż na żywo | jedna ścieżka (`TryApply`) w `Submit`, `ApplyServerOperation` i `Replay`; test `CheckpointPlusJournal_SameHash` i test integracyjny z restartem |
+| Zmiana skrótu światów K6-29W | fałszywy alarm w testach i raportach | podsekcje tylko gdy niepuste (D22), test A0 |
+| `BlockEntityStates` przed `ConstructState` albo stan nieaktualny po transferze | klient bez stanu skrzyni/łóżka | wysyłka przy `LinkLive` i tylko do łącz `Live`; klient czyści mapę przy nowym pełnym stanie |
+| Kolumna drzwi (D6) nie spodoba się właścicielowi | przeróbka resolvera i siatki | DO USTALENIA-3 rozstrzygane w A1; format operacji 49 i złożonej niezależny od decyzji |
+| Wydajność świateł | spadek FPS w bazie z wieloma lampami | limit 32, bez cieni (D7); test gdUnit z 40 lampami |
+| Równoległe pakiety K6 (K6-31, K6-33) zmieniają `SurvivalRules`, enumy i `StateHasher` | konflikty przy scaleniu | zakresy kodów rozdzielone; integrację robi pakiet scalany później (README); `ProtocolVersion` wg D4 |
+| Ruchomy statek ze skrzynią | odległość liczona w innej ramie | `ContainerReach` przez `WorldState.TryToPlanetFrame` (ten sam region planety), test subskrypcji na budowli w trybie `Ship` |
+
+Odstępstwa od spec 03 (do opisu PR):
+
+- **[odstępstwo] D11:** `PlayerProgress` (blob 22) w wersji 1 ma tylko punkt odrodzenia; reszta pól w K6-33/K6-35 jako wersja 2.
+- **[odstępstwo] DO USTALENIA-7:** komunikat 48 `PlayerProgressState` nie powstaje; klient zna swoje łóżko z właściciela w 46.
+- **[odstępstwo] D10:** `Sleep` = `SetRespawn` (odpoczynek z K6-33).
+- **[odstępstwo]** Postawienie skrzyni, łóżka, lampy i drzwi nic nie kosztuje, a rozbiórka nic nie zwraca (K6-36); zawartość niszczonego bloku nie wysypuje się (rozbiórka niepustej skrzyni jest odrzucana, zawalenia — K6-36).
+- **Warunek ostrzejszy niż spec:** `ContainerRemoveOp` nie usuwa kontenera gracza; `BlockEntitySetOp` nie zmienia rodzaju istniejącego stanu i nie usuwa nieistniejącego.
+
+## Odbiór (ZASADY §11)
+
+- [ ] Testy akceptacyjne z tego planu przechodzą w CI (w tym `dotnet test game` i `smoke`); korpus złoty, `DeterminismTests` i migracje bez zmian w plikach.
+- [ ] Przegląd Opus 5.5 w PR (zmiana kontraktów Core: operacje 36, 37, 40, 44, 49, D12, D13, intencje, bloby 21/22, komunikat 46, `ProtocolVersion`), uwagi rozwiązane; wygląd zaakceptowany przez Dismonda.
+- [ ] Brak `TODO` bez odnośnika do zgłoszenia.
+- [ ] Checklista kroków odhaczona; odstępstwa i rozstrzygnięcia DO USTALENIA opisane w sekcji „Odstępstwa i uwagi z realizacji” tego planu i w PR.
+- [ ] Nowe zasady dopisane do `docs/ZASADY.md` (z Pułapek oznaczonych „do ZASAD”).
+- [ ] Kryterium spec: skrzynie, łóżka, drzwi i światła działają i przetrwają restart (test integracyjny + test ręczny ze zrzutami).
+
+## DO USTALENIA (zbiorczo, z propozycją)
+
+| # | Kwestia | Propozycja |
+| --- | --- | --- |
+| 1 | Operacje 36, 37 i blob 22 z „reszty K6-29” | bierze K6-30 (D0, D11) |
+| 2 | `TakeAllIntent` (23) w K6-30 | tak, tylko dla skrzyń (D17) |
+| 3 | Drzwi wyższe niż blok i wygląd otwartych | kolumna do 3 bloków, panel `builtin:door_open` (D6) |
+| 4 | Lampy: stan początkowy, liczba świateł | włączona po postawieniu; 32 światła bez cieni (D7) |
+| 5 | Domyślny dostęp skrzyni, rozbiórka cudzej prywatnej | `Shared`; prywatną rozbiera tylko właściciel (D8) |
+| 6 | Zasady łóżek | zajęcie snem lub wyborem, jedno łóżko na gracza, cudze → `NotOwner`, rozebrać może każdy (D10) |
+| 7 | Komunikat 48 | pominięty w K6-30 |
+| 8 | Zasięgi skrzyń i punkt pomiaru | 6 / 8 / 10 m od oka do środka komórki (D9) |
+| 9 | Fikstura ze stanami bloków | nowa `world-v3-blocks.db`, `world-v3.db` bez zmian (D25) |
+| 10 | Kody odmów szybkiego odkładania | brak pasujących → 41, pełne skrzynie → 40 (D16) |
+| 11 | Liczby treści (masy, sloty, światło) | tabela D5, strojone bez zmiany kodu |
+
+## Pułapki
+
+- **Rozpoznawanie operacji budowli po typie.** Każde miejsce, które patrzy na `BlockSetOp`/`BlockClearOp`/`ConstructCreateOp`/`BlockFunctionStateSetOp`, używa `OperationConstructs.TryGetConstructPart`, bo operacje bywają składową `CompoundOp` (postawienie i rozbiórka bloków funkcyjnych, kolumna drzwi). (do ZASAD, §2, obok reguły `OperationTerrain`)
+- **Składowa nieodwracalna ostatnia.** W `CompoundOp` co najwyżej jedna składowa terenu albo budowli, zawsze ostatnia; jej warunki sprawdza się przed pozostałymi, a warunki odwołujące się do jej komórki — w widoku efektywnym. (do ZASAD, §2)
+- **Brak sierot.** `BlockClearOp` wymaga komórki bez stanu bloku i bez kontenera; stany bloków zmienia tylko operacja 40. (do ZASAD, §4: przykład obok limitów stosu)
+- **Treść w applierze.** Rozmiar skrzyni, stan początkowy lampy i komórki kolumny drzwi wylicza resolver; applier ich nie liczy z `BlockContentTable`.
+- **Rzut w `OperationApplied`.** Obcy klienci nie dostają składowych przedmiotów, stanów bloków ani punktu odrodzenia; stany bloków idą w 46.
+- **Subskrypcje.** Koniec subskrypcji (oddalenie, prywatna, usunięcie) zawsze wysyła `ContainerState` z odmową, inaczej klient zostaje z otwartym panelem i odrzucanymi intencjami.
+- **Kolejność w ticku.** `BlockEntityStates` po `OperationApplied` tej samej operacji; przy `LinkLive` po buforowanych operacjach.
+- **Mysz i wejście.** Otwarty panel skrzyni to otwarty ekran ekwipunku: wejście ruchu, kamery, narzędzi i E zablokowane (K6-29W D18).
+- **Tłumaczenia.** Nowe klucze w istniejących CSV wymagają importu (`--import`); bez tego etykiety pokażą klucze.
+- **Rebase.** `ProtocolVersion` (D2), kolizje kodów z równoległymi pakietami K6 (tylko pliki enumów), numer migracji nie dotyczy (D3).
+
+## Odstępstwa i uwagi z realizacji
+
+(uzupełnia wykonawca po każdym etapie)
