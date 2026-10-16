@@ -162,7 +162,8 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
             return true;
         }
 
-        if (container.Kind != ContainerKind.Chest || container.Host.Kind != ContainerHostKind.ConstructBlock || !HasAccess(container, player))
+        if (container.Kind is not (ContainerKind.Chest or ContainerKind.StationInput or ContainerKind.StationOutput)
+            || container.Host.Kind != ContainerHostKind.ConstructBlock || !HasAccess(container, player))
         {
             Reject(player, subscribe.Container, RejectReason.ContainerLocked, "locked");
             return true;
@@ -173,6 +174,12 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
         {
             Reject(player, subscribe.Container, RejectReason.OutOfReach, "out of reach");
             return true;
+        }
+
+        // K6-32 D16b: the pieces of a station that are due are settled before its state is sent, so the player opens a station that is up to date.
+        if (container.Kind is (ContainerKind.StationInput or ContainerKind.StationOutput) && !_isReadOnly())
+        {
+            sim.TrySettleStation(new BlockRef(new EntityId(container.Host.Id), container.Host.Cell));
         }
 
         if (!_chestSubscribers.TryGetValue(container.Id, out var subscribers))
@@ -249,7 +256,30 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
     /// <param name="stations">The list to add to.</param>
     public void CollectObservedStations(List<BlockRef> stations)
     {
-        throw new NotImplementedException("K6-32 C3");
+        ArgumentNullException.ThrowIfNull(stations);
+        if (_attached is not { } sim || _chestSubscribers.Count == 0)
+        {
+            return;
+        }
+
+        var first = stations.Count;
+        foreach (var pair in _chestSubscribers)
+        {
+            if (pair.Value.Count == 0 || !sim.State.Containers.TryGet(pair.Key, out var container)
+                || container.Kind is not (ContainerKind.StationInput or ContainerKind.StationOutput) || container.Host.Kind != ContainerHostKind.ConstructBlock)
+            {
+                continue;
+            }
+
+            var block = new BlockRef(new EntityId(container.Host.Id), container.Host.Cell);
+            if (stations.IndexOf(block, first) < 0)
+            {
+                stations.Add(block);
+            }
+        }
+
+        // The dictionary has no order the world may depend on: the stations are settled in block order.
+        System.Runtime.InteropServices.CollectionsMarshal.AsSpan(stations)[first..].Sort();
     }
 
     private static bool HasAccess(Container container, PlayerId player) =>
