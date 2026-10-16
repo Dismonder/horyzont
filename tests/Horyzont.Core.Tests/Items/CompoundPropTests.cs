@@ -16,6 +16,8 @@ public sealed class CompoundPropTests
     public void HarvestWithItems_Compound_AddsPropAndItems()
     {
         var f = new PropFixture();
+        Assert.True(f.State.Containers.TryGet(Bag, out var before));
+        var version = before.Version;
 
         var applied = f.Apply(new CompoundOp([Harvest(Tree(0), 77), Create(BagSlot(0), Stone, 4, source: ItemSource.Harvest)]));
 
@@ -23,7 +25,7 @@ public sealed class CompoundPropTests
         Assert.Equal(new Tick(77), tick);
         Assert.True(f.State.Containers.TryGet(Bag, out var bag));
         Assert.Equal(new ItemStack(Stone, 4), bag.GetSlot(0));
-        Assert.Equal(1u, bag.Version);
+        Assert.Equal(version + 1, bag.Version);
         Assert.Equal(Bag, Assert.Single(applied.ContainerChanges).Container);
         Assert.Empty(applied.TerrainVersions);
         Assert.Empty(applied.ConstructChanges);

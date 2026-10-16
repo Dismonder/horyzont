@@ -9,5 +9,5 @@ namespace Horyzont.Core.Operations;
 public sealed record PropHarvestOp(PlanetId Planet, PropId Prop, Tick Tick) : Operation
 {
     /// <inheritdoc />
-    public override OperationKind Kind => (OperationKind)48; // K6-31 A3: OperationKind.PropHarvest
+    public override OperationKind Kind => OperationKind.PropHarvest;
 }

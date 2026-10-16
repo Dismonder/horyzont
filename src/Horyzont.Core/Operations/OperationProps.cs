@@ -11,8 +11,34 @@ public static class OperationProps
     /// <param name="changes">Receives the changes; not cleared.</param>
     public static void CollectChanges(Operation operation, List<PropChange> changes)
     {
-        // K6-31 A3.
         ArgumentNullException.ThrowIfNull(operation);
         ArgumentNullException.ThrowIfNull(changes);
+        switch (operation)
+        {
+            case CompoundOp compound:
+                var components = compound.Components;
+                for (var i = 0; i < components.Count; i++)
+                {
+                    AddChange(components[i], changes);
+                }
+
+                break;
+            default:
+                AddChange(operation, changes);
+                break;
+        }
+    }
+
+    private static void AddChange(Operation operation, List<PropChange> changes)
+    {
+        switch (operation)
+        {
+            case PropHarvestOp harvest:
+                changes.Add(new PropChange(harvest.Planet, harvest.Prop, true));
+                break;
+            case PropRegrowOp regrow:
+                changes.Add(new PropChange(regrow.Planet, regrow.Prop, false));
+                break;
+        }
     }
 }

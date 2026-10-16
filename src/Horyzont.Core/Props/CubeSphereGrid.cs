@@ -22,18 +22,34 @@ public static class CubeSphereGrid
     /// <exception cref="ArgumentOutOfRangeException">The radius is not finite or the grid would not fit a <see cref="PropId"/>.</exception>
     public static int CellsPerFace(float planetRadiusMeters)
     {
+        if (!TryGetCellsPerFace(planetRadiusMeters, out var cells))
+        {
+            throw new ArgumentOutOfRangeException(nameof(planetRadiusMeters), planetRadiusMeters, "The radius is not finite or the planet is too large for a prop grid.");
+        }
+
+        return cells;
+    }
+
+    /// <summary>Cells per face edge for a planet radius, without throwing.</summary>
+    /// <param name="planetRadiusMeters">Radius in metres.</param>
+    /// <param name="cellsPerFace">A multiple of 8, at least 8, when the grid fits a <see cref="PropId"/>.</param>
+    /// <returns>False when the radius is not finite or the grid would not fit.</returns>
+    public static bool TryGetCellsPerFace(float planetRadiusMeters, out int cellsPerFace)
+    {
+        cellsPerFace = 0;
         if (!float.IsFinite(planetRadiusMeters))
         {
-            throw new ArgumentOutOfRangeException(nameof(planetRadiusMeters), planetRadiusMeters, "The radius must be finite.");
+            return false;
         }
 
         var regions = Math.Round(planetRadiusMeters * Math.PI / 2 / MetersPerRegion, MidpointRounding.AwayFromZero);
         if (regions > PropId.MaxCellsPerFace / CellsPerRegionEdge)
         {
-            throw new ArgumentOutOfRangeException(nameof(planetRadiusMeters), planetRadiusMeters, "The planet is too large for a prop grid.");
+            return false;
         }
 
-        return CellsPerRegionEdge * Math.Max(1, (int)regions);
+        cellsPerFace = CellsPerRegionEdge * Math.Max(1, (int)regions);
+        return true;
     }
 
     /// <summary>Unit direction to the centre of a cell.</summary>

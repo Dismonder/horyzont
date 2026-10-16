@@ -8,5 +8,5 @@ namespace Horyzont.Core.Operations;
 public sealed record PropRegrowOp(PlanetId Planet, PropId Prop) : Operation
 {
     /// <inheritdoc />
-    public override OperationKind Kind => (OperationKind)47; // K6-31 A3: OperationKind.PropRegrow
+    public override OperationKind Kind => OperationKind.PropRegrow;
 }
