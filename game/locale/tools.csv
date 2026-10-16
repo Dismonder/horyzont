@@ -78,3 +78,12 @@ PROMPT_PROP_CUT_BUSH,[LMB] Cut the bush,[LPM] Zetnij krzew
 PROMPT_PROP_BREAK_ROCK,[LMB] Break the rock,[LPM] Rozbij skałę
 PROMPT_PROP_MINE_CRYSTALS,[LMB] Mine the crystals,[LPM] Wydobądź kryształy
 PROMPT_PROP_TOOL_TIER,Needs a tool of tier {0},Wymaga narzędzia poziomu {0}
+REJECT_STATION_REQUIRED,A station or a higher level is needed,Potrzebna stacja albo wyższy poziom
+REJECT_RECIPE_LOCKED,Unknown recipe,Receptura nieznana
+REJECT_TOO_FAR_FROM_STATION,Too far from the station,Za daleko od stacji
+PROMPT_STATION_OPEN,[E] Open,[E] Otwórz
+PROMPT_STATION_WORKBENCH,[E] Workbench,[E] Warsztat
+PROMPT_STATION_FURNACE,[E] Furnace,[E] Piec
+PROMPT_STATION_REFINERY,[E] Refinery,[E] Rafineria
+PROMPT_STATION_KITCHEN,[E] Kitchen,[E] Kuchnia
+PROMPT_STATION_FABRICATOR,[E] Fabricator,[E] Fabrykator

@@ -1,6 +1,8 @@
+using Horyzont.Client.Crafting;
 using Horyzont.Client.Inventory;
 using Horyzont.Client.Tools;
 using Horyzont.Core.BlockEntities;
+using Horyzont.Core.Crafting;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Simulation;
@@ -25,6 +27,8 @@ public sealed class BlockInteraction
     private readonly ChestSession _chests;
     private readonly PlayerId _localPlayer;
     private readonly GameRules _rules;
+    private readonly CraftingSession? _crafting;
+    private readonly StationSession? _stations;
 
     /// <summary>Initializes a new instance of the <see cref="BlockInteraction"/> class.</summary>
     /// <param name="world">World view of the tools.</param>
@@ -35,10 +39,14 @@ public sealed class BlockInteraction
     /// <param name="chests">The chest session.</param>
     /// <param name="localPlayer">The local player (the owner of a bed is compared with it).</param>
     /// <param name="rules">Game rules (reach).</param>
+    /// <param name="crafting">The crafting session that a station with no time opens (K6-32); null: such stations give no prompt.</param>
+    /// <param name="stations">The station session that a station with time opens (K6-32); null: such stations give no prompt.</param>
     public BlockInteraction(
         IToolWorldView world, IIntentSender sender, PendingIntentTracker pending, BlockContentTable content, IBlockEntityView entities,
-        ChestSession chests, PlayerId localPlayer, GameRules rules)
+        ChestSession chests, PlayerId localPlayer, GameRules rules, CraftingSession? crafting = null, StationSession? stations = null)
     {
+        _crafting = crafting;
+        _stations = stations;
         _world = world ?? throw new ArgumentNullException(nameof(world));
         _sender = sender ?? throw new ArgumentNullException(nameof(sender));
         _pending = pending ?? throw new ArgumentNullException(nameof(pending));
@@ -82,6 +90,22 @@ public sealed class BlockInteraction
                 }
 
                 return BlockInteractionResult.NothingToInteract;
+            case BlockPromptKind.OpenStation:
+                var station = new BlockRef(prompt.Construct, prompt.Cell);
+                if (StationKinds.IsTimed(prompt.Station))
+                {
+                    return _stations is not null && _stations.Open(prompt.Station, station)
+                        ? BlockInteractionResult.StationRequested
+                        : BlockInteractionResult.NothingToInteract;
+                }
+
+                if (_crafting is null)
+                {
+                    return BlockInteractionResult.NothingToInteract;
+                }
+
+                _crafting.OpenStation(prompt.Station, station);
+                return BlockInteractionResult.CraftingOpened;
             case BlockPromptKind.OwnBed:
             case BlockPromptKind.BedOccupied:
                 return BlockInteractionResult.Refused;
@@ -112,15 +136,32 @@ public sealed class BlockInteraction
         }
 
         var block = construct.GetBlock(hit.Cell);
-        var kind = _content.Get(block.TypeId).Function.Kind switch
+        var function = _content.Get(block.TypeId).Function;
+        var kind = function.Kind switch
         {
+            BlockFunctionKind.Station => StationPrompt(construct.Id, hit.Cell, function.Station),
             BlockFunctionKind.Chest => ChestPrompt(construct.Id, hit.Cell),
             BlockFunctionKind.Bed => BedPrompt(construct.Id, hit.Cell),
             BlockFunctionKind.Door => block.FunctionState == 0 ? BlockPromptKind.OpenDoor : BlockPromptKind.CloseDoor,
             BlockFunctionKind.Light => block.FunctionState == 0 ? BlockPromptKind.SwitchLightOn : BlockPromptKind.SwitchLightOff,
             _ => (BlockPromptKind?)null,
         };
-        return kind is { } found ? new BlockPrompt(found, construct.Id, hit.Cell) : null;
+        return kind is { } found
+            ? new BlockPrompt(found, construct.Id, hit.Cell, found == BlockPromptKind.OpenStation ? function.Station : StationKind.Hands)
+            : null;
+    }
+
+    private BlockPromptKind? StationPrompt(EntityId construct, CellPos cell, StationKind station)
+    {
+        if (!StationKinds.IsTimed(station))
+        {
+            return _crafting is null ? null : BlockPromptKind.OpenStation;
+        }
+
+        // Like a chest: without the replicated state the containers of the station are unknown.
+        return _stations is not null && _entities.TryGet(construct, cell, out var state) && state is StationBlockState
+            ? BlockPromptKind.OpenStation
+            : null;
     }
 
     private BlockPromptKind? ChestPrompt(EntityId construct, CellPos cell)

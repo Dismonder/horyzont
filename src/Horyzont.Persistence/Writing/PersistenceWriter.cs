@@ -556,6 +556,11 @@ public sealed class PersistenceWriter : IAsyncDisposable
             WriteBlockEntities(connection, transaction, checkpoint);
             WriteProgress(connection, transaction, checkpoint);
             WriteHarvestedProps(connection, transaction, checkpoint);
+            if (checkpoint.ProgressKeys is { } progressKeys)
+            {
+                Sql.SetMeta(connection, transaction, Sql.MetaProgressKeys, StateCodec.EncodeProgressKeysBlob(progressKeys));
+            }
+
             WriteTerrain(connection, transaction, command.Request.TerrainBlocks);
             Sql.SetMeta(connection, transaction, Sql.MetaNextEntityId, Sql.ToDb(checkpoint.NextEntityId));
             Sql.SetMeta(connection, transaction, Sql.MetaNextPlayerId, Sql.ToDb(checkpoint.NextPlayerId));

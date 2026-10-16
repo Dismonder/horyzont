@@ -6,6 +6,7 @@ using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Props;
 using Horyzont.Core.Tests.BlockEntities;
+using Horyzont.Core.Tests.Crafting;
 using Horyzont.Core.Tests.Items;
 using Horyzont.Core.Tests.Props;
 using Horyzont.Core.World.Constructs;
@@ -325,6 +326,39 @@ public sealed class IntentValidationTests
         var chest = f.SetUpChestAt(FunctionalBlocks.ChestCell, FunctionalBlockFixture.Player1);
         f.Give(chest, 0, 1);
         return f.SubmitAs(FunctionalBlockFixture.Player1, new RemoveBlockIntent(FunctionalBlockFixture.ConstructId, FunctionalBlocks.ChestCell)).Reason;
+    }
+
+    /// <summary>
+    /// The reasons of K6-32 (44, 45, 46): each new code gets its scenario here. The member names of the enum arrive with the protocol (step B2).
+    /// </summary>
+    [Theory]
+    [InlineData((byte)44)]
+    [InlineData((byte)45)]
+    [InlineData((byte)46)]
+    public void Submit_CraftingScenario_ReturnsNewReason(byte number)
+    {
+        var f = FunctionalBlockFixture.ForCrafting();
+        f.EnsureBlock(CraftingWorld.BenchCell, CraftingBlocks.WorkbenchType);
+        f.Stock(FunctionalBlockFixture.Bag, 0, CraftingWorld.Brick, 4);
+        f.Discover(FunctionalBlockFixture.Player1, CraftingWorld.Brick);
+
+        // The valid twin of every scenario: the bench recipe at the bench, in reach, with a discovered ingredient.
+        f.Accept(FunctionalBlockFixture.Player1, CraftingWorld.Craft("t:bench1", 1, CraftingWorld.BenchCell));
+        var actual = number switch
+        {
+            44 => f.SubmitAs(FunctionalBlockFixture.Player1, CraftingWorld.Craft("t:bench1")).Reason,
+            45 => f.SubmitAs(FunctionalBlockFixture.Player1, CraftingWorld.Craft("t:hand")).Reason,
+            46 => TooFar(f),
+            _ => throw new ArgumentOutOfRangeException(nameof(number)),
+        };
+
+        Assert.Equal((RejectReason)number, actual);
+    }
+
+    private static RejectReason TooFar(FunctionalBlockFixture f)
+    {
+        ReachPlacement.MoveEyeToDistance(f, FunctionalBlockFixture.Player1, CraftingWorld.BenchCell, 8.5f);
+        return f.SubmitAs(FunctionalBlockFixture.Player1, CraftingWorld.Craft("t:bench1", 1, CraftingWorld.BenchCell)).Reason;
     }
 
     [Fact]

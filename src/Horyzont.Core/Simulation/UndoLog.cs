@@ -21,6 +21,7 @@ internal sealed class UndoLog
     private readonly List<BlockEntityRecordUndo> _entities = [];
     private readonly List<ProgressRecordUndo> _progress = [];
     private readonly List<PropRecordUndo> _props = [];
+    private readonly List<string> _keys = [];
     private readonly List<Step> _steps = [];
     private ulong _nextContainerId;
 
@@ -41,6 +42,7 @@ internal sealed class UndoLog
         _entities.Clear();
         _progress.Clear();
         _props.Clear();
+        _keys.Clear();
         _steps.Clear();
         _nextContainerId = state.ContainerIds.NextValue;
     }
@@ -108,6 +110,14 @@ internal sealed class UndoLog
         _props.Add(new PropRecordUndo(planet, prop, previous));
     }
 
+    /// <summary>Adds a progress key of the world, remembering it so that the rollback removes it (the caller checked that it is new).</summary>
+    internal void AddProgressKey(WorldState state, string key)
+    {
+        state.ProgressKeys.Add(key);
+        _steps.Add(new Step(StepKind.ProgressKey, _keys.Count));
+        _keys.Add(key);
+    }
+
     internal (Container Container, ushort Slot) SlotAt(int index) => (_slots[index].Container, _slots[index].Slot);
 
     internal Container ConfiguredAt(int index) => _configured[index].Container;
@@ -157,6 +167,9 @@ internal sealed class UndoLog
                     }
 
                     break;
+                case StepKind.ProgressKey:
+                    state.ProgressKeys.Remove(_keys[step.Index]);
+                    break;
                 default:
                     var progress = _progress[step.Index];
                     if (progress.Previous is null)
@@ -180,6 +193,7 @@ internal sealed class UndoLog
         _entities.Clear();
         _progress.Clear();
         _props.Clear();
+        _keys.Clear();
         _steps.Clear();
     }
 
@@ -192,6 +206,7 @@ internal sealed class UndoLog
         BlockEntity,
         Progress,
         Prop,
+        ProgressKey,
     }
 
     private readonly record struct Step(StepKind Kind, int Index);

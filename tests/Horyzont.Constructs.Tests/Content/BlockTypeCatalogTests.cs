@@ -228,6 +228,112 @@ public sealed class BlockTypeCatalogTests
         AssertInvalid(Block("{ \"key\": \"a:b\", \"shape\": \"cube\", " + mass + "\"material\": \"stone\" }"), "$.blocks[0].mass");
 
     [Fact]
+    public void Parse_RepoContent_HasStationsAndUpgrades()
+    {
+        var catalog = BlockTypeCatalog.Parse(File.ReadAllBytes(Path.Combine(RepoRoot(), "game", "content", "blocks", "blocks.json")), new FakeResolver());
+
+        // The tuning numbers (masses, slots) are data; the test pins the shape of the content (K6-32 D6, D24).
+        var stations = new Dictionary<string, StationKind>
+        {
+            ["core:workbench"] = StationKind.Workbench,
+            ["core:furnace"] = StationKind.Furnace,
+            ["core:refinery"] = StationKind.Refinery,
+            ["core:kitchen"] = StationKind.Kitchen,
+            ["core:fabricator"] = StationKind.Fabricator,
+        };
+        foreach (var (key, kind) in stations)
+        {
+            var function = Shipped(catalog, key).Def.Function;
+            Assert.Equal((BlockFunctionKind.Station, kind), (function.Kind, function.Station));
+            Assert.Equal(kind is StationKind.Furnace or StationKind.Refinery, function.ContainerSlots > 0);
+            Assert.Equal(function.ContainerSlots > 0, function.OutputSlots > 0);
+            Assert.InRange(function.ContainerSlots, 0, 256);
+            Assert.InRange(function.OutputSlots, 0, 256);
+        }
+
+        foreach (var key in new[] { "core:workbench_anvil", "core:workbench_toolrack", "core:workbench_grindstone" })
+        {
+            var function = Shipped(catalog, key).Def.Function;
+            Assert.Equal((BlockFunctionKind.StationUpgrade, StationKind.Workbench), (function.Kind, function.Station));
+        }
+
+        var all = stations.Keys.Concat(["core:workbench_anvil", "core:workbench_toolrack", "core:workbench_grindstone"]).ToArray();
+        Assert.All(all, key => Assert.True(Shipped(catalog, key).Def.MassKg > 0f && float.IsFinite(Shipped(catalog, key).Def.MassKg)));
+
+        // Every new type has a translation row.
+        var csv = File.ReadAllLines(Path.Combine(RepoRoot(), "game", "locale", "blocks.csv"));
+        var names = csv.Skip(1).Select(line => line.Split(',')[0]).ToHashSet();
+        Assert.All(all, key => Assert.Contains(Shipped(catalog, key).NameKey, names));
+    }
+
+    [Fact]
+    public void Parse_StationFunctions_AreRead()
+    {
+        static BlockTypeContent Content(string function) => Parse(FunctionBlock(function)).TryGet("a:b", out var b) ? b : throw new InvalidOperationException();
+
+        Assert.Equal(BlockFunction.CreateStation(StationKind.Workbench), Content("{ \"kind\": \"station\", \"station\": \"workbench\" }").Def.Function);
+        Assert.Equal(BlockFunction.CreateStation(StationKind.Kitchen), Content("{ \"kind\": \"station\", \"station\": \"kitchen\" }").Def.Function);
+        Assert.Equal(BlockFunction.CreateStation(StationKind.Fabricator), Content("{ \"kind\": \"station\", \"station\": \"fabricator\" }").Def.Function);
+        Assert.Equal(
+            BlockFunction.CreateStation(StationKind.Furnace, 4, 2),
+            Content("{ \"kind\": \"station\", \"station\": \"furnace\", \"inputSlots\": 4, \"outputSlots\": 2 }").Def.Function);
+        Assert.Equal(
+            BlockFunction.CreateStation(StationKind.Refinery, 256, 256),
+            Content("{ \"kind\": \"station\", \"station\": \"refinery\", \"inputSlots\": 256, \"outputSlots\": 256 }").Def.Function);
+        Assert.Equal(BlockFunction.CreateStationUpgrade(StationKind.Workbench), Content("{ \"kind\": \"station_upgrade\", \"station\": \"workbench\" }").Def.Function);
+    }
+
+    [Fact]
+    public void Parse_TimedStationWithoutSlots_Throws()
+    {
+        Parse(FunctionBlock("{ \"kind\": \"station\", \"station\": \"furnace\", \"inputSlots\": 4, \"outputSlots\": 2 }"));
+
+        AssertInvalid(FunctionBlock("{ \"kind\": \"station\", \"station\": \"furnace\", \"outputSlots\": 2 }"), "$.blocks[0].function.inputSlots");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"station\", \"station\": \"furnace\", \"inputSlots\": 4 }"), "$.blocks[0].function.outputSlots");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"station\", \"station\": \"furnace\", \"inputSlots\": 0, \"outputSlots\": 2 }"), "$.blocks[0].function.inputSlots");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"station\", \"station\": \"refinery\", \"inputSlots\": 4, \"outputSlots\": 257 }"), "$.blocks[0].function.outputSlots");
+    }
+
+    [Fact]
+    public void Parse_InstantStationWithSlots_Throws()
+    {
+        Parse(FunctionBlock("{ \"kind\": \"station\", \"station\": \"workbench\" }"));
+
+        AssertInvalid(FunctionBlock("{ \"kind\": \"station\", \"station\": \"workbench\", \"inputSlots\": 4 }"), "$.blocks[0].function.inputSlots");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"station\", \"station\": \"kitchen\", \"outputSlots\": 2 }"), "$.blocks[0].function.outputSlots");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"station_upgrade\", \"station\": \"workbench\", \"inputSlots\": 4 }"), "$.blocks[0].function.inputSlots");
+    }
+
+    [Fact]
+    public void Parse_StationHands_Throws()
+    {
+        Parse(FunctionBlock("{ \"kind\": \"station\", \"station\": \"workbench\" }"));
+
+        AssertInvalid(FunctionBlock("{ \"kind\": \"station\", \"station\": \"hands\" }"), "$.blocks[0].function.station");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"station_upgrade\", \"station\": \"hands\" }"), "$.blocks[0].function.station");
+    }
+
+    [Fact]
+    public void Parse_UpgradeOfStationWithoutLevels_Throws()
+    {
+        // Review B1, 9: only the workbench has levels, so an upgrade of any other station would never count and is an error of the content.
+        Parse(FunctionBlock("{ \"kind\": \"station_upgrade\", \"station\": \"workbench\" }"));
+
+        AssertInvalid(FunctionBlock("{ \"kind\": \"station_upgrade\", \"station\": \"furnace\" }"), "$.blocks[0].function.station");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"station_upgrade\", \"station\": \"kitchen\" }"), "$.blocks[0].function.station");
+    }
+
+    [Fact]
+    public void Parse_UnknownOrMissingStation_Throws()
+    {
+        Parse(FunctionBlock("{ \"kind\": \"station_upgrade\", \"station\": \"workbench\" }"));
+
+        AssertInvalid(FunctionBlock("{ \"kind\": \"station\", \"station\": \"forge\" }"), "$.blocks[0].function.station");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"station\" }"), "$.blocks[0].function.station");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"station_upgrade\" }"), "$.blocks[0].function.station");
+    }
+
+    [Fact]
     public void ShippedContent_AllShipBlocksPresentWithMass()
     {
         var catalog = BlockTypeCatalog.Parse(File.ReadAllBytes(Path.Combine(RepoRoot(), "game", "content", "blocks", "blocks.json")), new FakeResolver());

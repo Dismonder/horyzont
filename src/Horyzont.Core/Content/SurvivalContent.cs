@@ -8,10 +8,18 @@ namespace Horyzont.Core.Content;
 public sealed class SurvivalContent
 {
     private readonly Dictionary<string, TerrainYieldDef> _yieldByMaterial;
+    private readonly Dictionary<string, RecipeDef> _recipeByKey;
     private readonly PropDef?[] _propByKind;
 
-    internal SurvivalContent(ItemCatalog items, TerrainYieldDef[] yields, StartKitDef startKit, PropDef[] props)
+    internal SurvivalContent(ItemCatalog items, TerrainYieldDef[] yields, StartKitDef startKit, PropDef[] props, RecipeDef[]? recipes = null)
     {
+        Recipes = recipes ?? [];
+        _recipeByKey = new Dictionary<string, RecipeDef>(Recipes.Count, StringComparer.Ordinal);
+        foreach (var recipe in Recipes)
+        {
+            _recipeByKey.Add(recipe.Key, recipe);
+        }
+
         Items = items;
         Yields = yields;
         StartKit = startKit;
@@ -37,6 +45,15 @@ public sealed class SurvivalContent
 
     /// <summary>Terrain yields in file order.</summary>
     public IReadOnlyList<TerrainYieldDef> Yields { get; }
+
+    /// <summary>Recipes in file order; empty when the content has none (K6-32: then crafting and the automatic discoveries are off).</summary>
+    public IReadOnlyList<RecipeDef> Recipes { get; }
+
+    /// <summary>Looks up a recipe by key.</summary>
+    /// <param name="key">Recipe key.</param>
+    /// <param name="recipe">The recipe when found.</param>
+    /// <returns>True when the content has the recipe.</returns>
+    public bool TryGetRecipe(string key, [NotNullWhen(true)] out RecipeDef? recipe) => _recipeByKey.TryGetValue(key, out recipe);
 
     /// <summary>Player containers and start kit.</summary>
     public StartKitDef StartKit { get; }

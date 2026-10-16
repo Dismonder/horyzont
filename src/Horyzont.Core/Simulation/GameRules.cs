@@ -1,3 +1,5 @@
+using Horyzont.Core.Protocol;
+
 namespace Horyzont.Core.Simulation;
 
 /// <summary>
@@ -7,6 +9,8 @@ namespace Horyzont.Core.Simulation;
 /// </summary>
 public sealed record GameRules
 {
+    private readonly int _maxTimedStationsPerConstruct = ProtocolConstants.MaxTimedStationsPerConstruct;
+
     /// <summary>Simulation ticks per second.</summary>
     public int TickRate { get; init; } = 60;
 
@@ -122,4 +126,34 @@ public sealed record GameRules
 
     /// <summary>Distance from a player beyond which a prop region is dropped from synchronisation, metres (K6-31 D17).</summary>
     public float PropSyncLeaveMeters { get; init; } = 576f;
+    /// <summary>Largest number of pieces in one <c>CraftIntent</c> (K6-32 D12).</summary>
+    public int MaxCraftCount { get; init; } = 50;
+
+    /// <summary>Radius around the station cell (the eye of the player for the hands) in which chests are ingredient sources, metres (K6-32 D13).</summary>
+    public float CraftContainerRangeMeters { get; init; } = 20f;
+
+    /// <summary>Largest eye distance to the centre of the cell of a station for crafting at it, metres (K6-32 D14).</summary>
+    public float StationUseRangeMeters { get; init; } = 8f;
+
+    /// <summary>Radius around a workbench in which upgrades count towards its level, metres (K6-32 D14).</summary>
+    public float StationUpgradeRangeMeters { get; init; } = 5f;
+
+    /// <summary>Ticks between settlements of the observed stations with time (K6-32 D16).</summary>
+    public int StationSettleEveryTicks { get; init; } = 10;
+
+    /// <summary>
+    /// Most stations with time (furnace, refinery) in one construct: the state of each is in message 46, whose size is limited to
+    /// <c>ProtocolConstants.MaxReliableMessageBytes</c> (K6-32, review A1 note a). Placing one more is <c>InvalidParameters</c>. A value above
+    /// <see cref="ProtocolConstants.MaxTimedStationsPerConstruct"/> is refused (review B1, 7): the limit protects the protocol format.
+    /// </summary>
+    public int MaxTimedStationsPerConstruct
+    {
+        get => _maxTimedStationsPerConstruct;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, ProtocolConstants.MaxTimedStationsPerConstruct);
+            ArgumentOutOfRangeException.ThrowIfNegative(value);
+            _maxTimedStationsPerConstruct = value;
+        }
+    }
 }

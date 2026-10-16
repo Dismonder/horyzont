@@ -20,6 +20,7 @@ public static class MessageChannels
             or MessageType.StarSystemState or MessageType.MarkersState
             or MessageType.ContainerState or MessageType.ContainerDelta or MessageType.ContainerSubscribe
             or MessageType.ContainerUnsubscribe or MessageType.BlockEntityStates or MessageType.PropStates or MessageType.ItemRegistry
+            or MessageType.PlayerProgressState
             => DeliveryChannel.ReliableOrdered,
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unknown message type."),
     };

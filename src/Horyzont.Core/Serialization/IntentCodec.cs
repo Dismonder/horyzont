@@ -1,3 +1,4 @@
+using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
@@ -29,6 +30,7 @@ public static class IntentCodec
         ItemDrop = 21,
         QuickStack = 22,
         TakeAll = 23,
+        Craft = 24,
         PropHit = 27,
         BlockInteract = 28,
         BlockConfig = 29,
@@ -199,6 +201,30 @@ public static class IntentCodec
                 w.WriteByte((byte)IntentCode.TakeAll);
                 w.WriteByte(CurrentFormatVersion);
                 w.WriteVarUInt(takeAll.Container.Value);
+                break;
+
+            case CraftIntent craft:
+                if (string.IsNullOrEmpty(craft.Recipe))
+                {
+                    throw new ArgumentException("A recipe key cannot be empty.", nameof(intent));
+                }
+
+                if (craft.Count == 0)
+                {
+                    throw new ArgumentException("A craft intent has at least one piece.", nameof(intent));
+                }
+
+                w.WriteByte((byte)IntentCode.Craft);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteString(craft.Recipe, ProtocolConstants.MaxRecipeKeyBytes);
+                w.WriteVarUInt(craft.Count);
+                w.WriteBool(craft.Station is not null);
+                if (craft.Station is { } station)
+                {
+                    w.WriteVarUInt(station.Construct.Value);
+                    CoreCodecPrimitives.WriteCellPos(w, station.Cell);
+                }
+
                 break;
 
             case BlockInteractIntent interact:
@@ -391,6 +417,28 @@ public static class IntentCodec
                 }
 
                 return new PropHitIntent(phPlanet, phProp, phSlot);
+
+            case IntentCode.Craft:
+                var recipe = r.ReadString(ProtocolConstants.MaxRecipeKeyBytes);
+                if (recipe.Length == 0)
+                {
+                    throw new ProtocolViolationException("A recipe key cannot be empty.");
+                }
+
+                var craftCount = r.ReadVarUInt16();
+                if (craftCount == 0)
+                {
+                    throw new ProtocolViolationException("A craft intent has at least one piece.");
+                }
+
+                BlockRef? craftStation = null;
+                if (r.ReadBool())
+                {
+                    var craftConstruct = new EntityId(r.ReadVarUInt());
+                    craftStation = new BlockRef(craftConstruct, CoreCodecPrimitives.ReadCellPos(ref r));
+                }
+
+                return new CraftIntent(recipe, craftCount, craftStation);
 
             case IntentCode.BlockInteract:
                 var biConstruct = new EntityId(r.ReadVarUInt());

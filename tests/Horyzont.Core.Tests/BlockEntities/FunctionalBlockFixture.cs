@@ -37,6 +37,32 @@ internal sealed class FunctionalBlockFixture
         }
     }
 
+    private FunctionalBlockFixture(int players, CraftingOptions options)
+    {
+        var state = WorldFactory.CreateWithCrafting(players, options.SecondPlanet);
+        Sim = new SimFixture(
+            rules: options.Rules, state: state, content: CraftingBlocks.ContentFor(state),
+            survival: options.WithRecipes ? SurvivalContentFactory.CreateTestWithRecipes() : SurvivalContentFactory.CreateCraftingWithoutRecipes());
+        for (var n = 1; n <= players; n++)
+        {
+            Move(new PlayerId((ulong)n), StandFor(n));
+        }
+    }
+
+    private readonly record struct CraftingOptions(bool SecondPlanet, bool WithRecipes, GameRules? Rules);
+
+    /// <summary>
+    /// A fixture for crafting intents (K6-32 stage B): the world of <see cref="WorldFactory.CreateWithCrafting"/> with the block content of
+    /// <see cref="CraftingBlocks.ContentFor"/> and the survival content of <see cref="SurvivalContentFactory.CreateTestWithRecipes"/> (or, without
+    /// <paramref name="withRecipes"/>, <see cref="SurvivalContentFactory.CreateCraftingWithoutRecipes"/>). Player n stands at <see cref="StandFor"/>.
+    /// </summary>
+    /// <param name="players">Number of players.</param>
+    /// <param name="withRecipes">Whether the survival content has the test recipes.</param>
+    /// <param name="secondPlanet">Whether the world has a second planet.</param>
+    /// <param name="rules">Game rules, null for the defaults.</param>
+    public static FunctionalBlockFixture ForCrafting(int players = 1, bool withRecipes = true, bool secondPlanet = false, GameRules? rules = null) =>
+        new(players, new CraftingOptions(secondPlanet, withRecipes, rules));
+
     /// <summary>
     /// A fixture for intents (K6-30 stage B): the simulation has the block content of <see cref="FunctionalBlocks.ContentFor"/> and, unless
     /// <paramref name="withSurvival"/> is false, the survival content of <see cref="SurvivalContentFactory.CreateTest"/>. Player n stands at

@@ -10,7 +10,7 @@ namespace Horyzont.Core.Items;
 /// Item types of a world (<c>item_types</c>): text key ↔ <see cref="ItemTypeId"/> 1..<see cref="ProtocolConstants.MaxItemTypes"/>.
 /// Grows only when a world is created or loaded with newer content, never through operations.
 /// </summary>
-public sealed class ItemTypeRegistry
+public sealed class ItemTypeRegistry : IItemTypeKeys
 {
     private readonly RegistryTable _table = new("item type", ProtocolConstants.MaxItemTypes);
 

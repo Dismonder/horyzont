@@ -41,7 +41,7 @@ public sealed class StateCodecBlockEntityTests
     }
 
     [Fact]
-    public void PlayerProgressBlob_V1_RoundTrip()
+    public void PlayerProgressBlob_RoundTrip_WritesVersion2()
     {
         foreach (var record in new[]
         {
@@ -54,9 +54,9 @@ public sealed class StateCodecBlockEntityTests
         }
 
         Assert.Equal(
-            "16 01 04 01 05 02 01 00 03",
+            "16 02 04 01 05 02 01 00 03",
             Kit.ToHex(StateCodec.EncodePlayerProgressBlob(new PlayerProgressRecord(new PlayerId(4), new BedRef(_construct, _cell, 3)))));
-        Assert.Equal("16 01 04 00", Kit.ToHex(StateCodec.EncodePlayerProgressBlob(new PlayerProgressRecord(new PlayerId(4), null))));
+        Assert.Equal("16 02 04 00", Kit.ToHex(StateCodec.EncodePlayerProgressBlob(new PlayerProgressRecord(new PlayerId(4), null))));
     }
 
     [Fact]
@@ -71,14 +71,14 @@ public sealed class StateCodecBlockEntityTests
         futureEntity[1] = 2;
         Kit.AssertViolation(d => StateCodec.DecodeBlockEntityBlob(d), futureEntity);
         var futureProgress = (byte[])progress.Clone();
-        futureProgress[1] = 2;
+        futureProgress[1] = 3;
         Kit.AssertViolation(d => StateCodec.DecodePlayerProgressBlob(d), futureProgress);
 
         // A blob of the other kind, a reserved state kind and a trailing byte are refused as well.
         Kit.AssertViolation(d => StateCodec.DecodeBlockEntityBlob(d), progress);
         Kit.AssertViolation(d => StateCodec.DecodePlayerProgressBlob(d), entity);
         var reserved = (byte[])entity.Clone();
-        reserved[^2] = 3;
+        reserved[^2] = 4;
         Kit.AssertViolation(d => StateCodec.DecodeBlockEntityBlob(d), reserved);
         Kit.AssertViolation(d => StateCodec.DecodeBlockEntityBlob(d), [.. entity, (byte)0]);
     }

@@ -212,6 +212,8 @@ public static class CodecGen
         ContainerRemoveOp.Select(o => (Operation)o),
         ContainerConfigureOp.Select(o => (Operation)o),
         BlockEntitySetOp.Select(o => (Operation)o),
+        ItemDiscoverOp.Select(o => (Operation)o),
+        ProgressKeyGrantOp.Select(o => (Operation)o),
         RespawnPointSetOp.Select(o => (Operation)o),
         BlockFunctionStateSetOp.Select(o => (Operation)o),
         PropHarvestOp.Select(o => (Operation)o),
@@ -383,16 +385,41 @@ public static class CodecGen
         from access in Gen.Elements(Enum.GetValues<ContainerAccess>())
         select new ContainerConfigureOp(id, (ushort)size, access);
 
-    /// <summary>Block states of format 1: a chest, a bed or none (K6-30).</summary>
+    /// <summary>Keys and recipe names: 1 to 32 characters, ASCII and two-byte letters, so at most 64 bytes of UTF-8 (K6-32).</summary>
+    public static Gen<string> RegistryKey { get; } =
+        from length in Gen.Choose(1, 32)
+        from chars in Gen.Elements("abcdefgxyz:_09ąęż".ToCharArray()).ArrayOf(length)
+        select new string(chars);
+
+    /// <summary>The state of a station with time: its containers, a recipe up to 64 bytes or none, a start tick only with a recipe (K6-32).</summary>
+    public static Gen<Horyzont.Core.BlockEntities.StationBlockState> StationState { get; } =
+        from input in ContainerId
+        from output in ContainerId
+        from recipe in Gen.OneOf(Gen.Constant(string.Empty), RegistryKey)
+        from started in recipe.Length == 0 ? Gen.Constant<Tick?>(null) : Optional(VarU64.Select(v => new Tick(v)))
+        select new Horyzont.Core.BlockEntities.StationBlockState(input, output, recipe, started);
+
+    /// <summary>Block states of format 1: a chest, a bed, a station or none (K6-30, K6-32).</summary>
     public static Gen<Horyzont.Core.BlockEntities.BlockEntityState?> BlockEntityStateOrNone { get; } = Gen.OneOf(
         Gen.Constant<Horyzont.Core.BlockEntities.BlockEntityState?>(null),
         ContainerId.Select(c => (Horyzont.Core.BlockEntities.BlockEntityState?)new Horyzont.Core.BlockEntities.ChestBlockState(c)),
-        PlayerId.Select(p => (Horyzont.Core.BlockEntities.BlockEntityState?)new Horyzont.Core.BlockEntities.BedBlockState(p)));
+        PlayerId.Select(p => (Horyzont.Core.BlockEntities.BlockEntityState?)new Horyzont.Core.BlockEntities.BedBlockState(p)),
+        StationState.Select(s => (Horyzont.Core.BlockEntities.BlockEntityState?)s));
 
-    /// <summary>Block states of messages: a chest or a bed (K6-30).</summary>
+    /// <summary>Block states of messages: a chest, a bed or a station (K6-30, K6-32).</summary>
     private static Gen<Horyzont.Core.BlockEntities.BlockEntityState> BlockEntityStateOfEntry { get; } = Gen.OneOf(
         ContainerId.Select(c => (Horyzont.Core.BlockEntities.BlockEntityState)new Horyzont.Core.BlockEntities.ChestBlockState(c)),
-        PlayerId.Select(p => (Horyzont.Core.BlockEntities.BlockEntityState)new Horyzont.Core.BlockEntities.BedBlockState(p)));
+        PlayerId.Select(p => (Horyzont.Core.BlockEntities.BlockEntityState)new Horyzont.Core.BlockEntities.BedBlockState(p)),
+        StationState.Select(s => (Horyzont.Core.BlockEntities.BlockEntityState)s));
+
+    /// <summary>Discoveries: a player and an item type 1 to 4096 (K6-32).</summary>
+    public static Gen<ItemDiscoverOp> ItemDiscoverOp { get; } =
+        from player in PlayerId
+        from type in Gen.Choose(1, ProtocolConstants.MaxItemTypes)
+        select new ItemDiscoverOp(player, new ItemTypeId((ushort)type));
+
+    /// <summary>Progress key grants (K6-32).</summary>
+    public static Gen<ProgressKeyGrantOp> ProgressKeyGrantOp { get; } = RegistryKey.Select(k => new ProgressKeyGrantOp(k));
 
     /// <summary>Block state lists of one construct: strictly ascending by cell (chunk, then index in the chunk), no repeats (K6-30).</summary>
     public static Gen<BlockEntityStates> BlockEntityStatesMessage { get; } =
@@ -473,7 +500,27 @@ public static class CodecGen
         ContainerId.Select(c => (Intent)new TakeAllIntent(c)),
         BlockInteractIntent.Select(i => (Intent)i),
         BlockConfigIntent.Select(i => (Intent)i),
+        CraftIntent.Select(i => (Intent)i),
         PropHitIntent.Select(i => (Intent)i));
+
+    /// <summary>Craft intents: a recipe key, 1 to 65535 pieces, a station block or none (K6-32).</summary>
+    public static Gen<CraftIntent> CraftIntent { get; } =
+        from recipe in RegistryKey
+        from count in Gen.Frequency((3, Gen.Choose(1, 50)), (1, Gen.Choose(1, ushort.MaxValue)))
+        from station in Optional(from construct in EntityId
+                                 from cell in Cell
+                                 select new Horyzont.Core.BlockEntities.BlockRef(construct, cell))
+        select new CraftIntent(recipe, (ushort)count, station);
+
+    /// <summary>The discoveries and progress keys message: a sparse set of item types 1 to 4096 and ascending distinct keys (K6-32).</summary>
+    public static Gen<PlayerProgressState> PlayerProgressStateMessage { get; } =
+        from typeCount in Gen.Choose(0, 6)
+        from types in Gen.Choose(1, ProtocolConstants.MaxItemTypes).ArrayOf(typeCount)
+        from keyCount in Gen.Choose(0, 5)
+        from keys in RegistryKey.ArrayOf(keyCount)
+        select new PlayerProgressState(
+            types.Aggregate(Horyzont.Core.Progress.ItemTypeBitSet.Empty, (set, type) => set.With(new ItemTypeId((ushort)type))),
+            keys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
 
     /// <summary>Prop hit intents (K6-31): any planet and prop, a hotbar slot of 0 to 255.</summary>
     public static Gen<PropHitIntent> PropHitIntent { get; } =
@@ -781,6 +828,7 @@ public static class CodecGen
         ContainerId.Select(c => (Message)new ContainerUnsubscribe(c)),
         BlockEntityStatesMessage.Select(m => (Message)m),
         PropStatesMessage.Select(m => (Message)m),
+        PlayerProgressStateMessage.Select(m => (Message)m),
         ListUpTo(RegistryEntry(ProtocolConstants.MaxItemTypes), ProtocolConstants.MaxItemTypes, 12).Select(e => (Message)new ItemRegistry(e)));
 
     /// <summary>Ship status messages (K5-26): any ship and tick, non-negative finite values, any flags, a defined launch block.</summary>

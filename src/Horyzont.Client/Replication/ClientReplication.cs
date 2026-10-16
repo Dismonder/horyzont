@@ -19,11 +19,14 @@ public sealed class ClientReplication : IClientSessionListener
     /// <param name="time">Clock of the resync retries; the system clock when omitted.</param>
     /// <param name="blockEntities">The states of the functional blocks (message 46, K6-30); null when the client does not track them.</param>
     /// <param name="propStates">The harvested props (message 45, K6-31); null when the client does not track them.</param>
-    public ClientReplication(Action<Message> send, ConstructMirror? constructs, TimeProvider? time = null, Blocks.ClientBlockEntities? blockEntities = null,
-        Props.ClientPropStates? propStates = null)
+    /// <param name="progress">The discoveries and progress keys (message 48, K6-32); null when the client does not track them.</param>
+    public ClientReplication(
+        Action<Message> send, ConstructMirror? constructs, TimeProvider? time = null, Blocks.ClientBlockEntities? blockEntities = null,
+        Props.ClientPropStates? propStates = null, Crafting.ClientProgress? progress = null)
     {
         ArgumentNullException.ThrowIfNull(send);
         _send = send;
+        Progress = progress;
         BlockEntities = blockEntities;
         HarvestedProps = propStates;
         Constructs = constructs;
@@ -49,6 +52,8 @@ public sealed class ClientReplication : IClientSessionListener
     /// <summary>Gets the states of the functional blocks; null when not tracked.</summary>
     public Blocks.ClientBlockEntities? BlockEntities { get; }
 
+    /// <summary>Gets the discoveries and progress keys; null when not tracked.</summary>
+    public Crafting.ClientProgress? Progress { get; }
     /// <summary>Gets the harvested props; null when not tracked (a host and a solo player read the world of the server).</summary>
     public Props.ClientPropStates? HarvestedProps { get; }
 
@@ -85,6 +90,9 @@ public sealed class ClientReplication : IClientSessionListener
             case BlockEntityStates states:
                 BlockEntities?.Apply(states);
                 break;
+            case PlayerProgressState progress:
+                Progress?.Apply(progress);
+                break;
             case PropStates states:
                 HarvestedProps?.Apply(states);
                 break;
@@ -102,6 +110,7 @@ public sealed class ClientReplication : IClientSessionListener
         Entities.Clear();
         Constructs?.Clear();
         BlockEntities?.Clear();
+        Progress?.Clear();
         HarvestedProps?.Clear();
     }
 

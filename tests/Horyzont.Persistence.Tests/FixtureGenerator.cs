@@ -153,6 +153,54 @@ public sealed class FixtureGenerator
         File.Copy(dir.WorldPath, target);
     }
 
+    /// <summary>
+    /// Writes <c>Fixtures/world-v3-crafting.db</c> (schema version 3, K6-32 D25): two players (Alice with a respawn point and discoveries, Bob with
+    /// discoveries only), two chests, a furnace smelting with its input and the progress key <c>test:boss_2</c> in the checkpoint; the progress key
+    /// <c>test:boss</c>, a discovery, the settlement of one piece of the furnace and a craft from two chests in the journal tail. Same rules as
+    /// <see cref="Generate_WorldV1"/>.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "Manual")]
+    public async Task Generate_WorldV3Crafting()
+    {
+        var target = Path.Combine(RepoRoot(), "tests", "Horyzont.Persistence.Tests", "Fixtures", MigrationTests.FixtureV3CraftingName);
+        Assert.False(File.Exists(target), $"{target} exists; delete it first if it really must be regenerated.");
+        using var dir = new TempDirectory();
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 16, 12, 0, 0, TimeSpan.Zero));
+        await using (var h = WorldHarness.CreateNew(dir.WorldPath, world: CraftingWorldScript.NewWorld(), time: time))
+        {
+            var built = CraftingWorldScript.Build(h);
+            Assert.True(await h.CheckpointAndPump());
+
+            h.Sim.ApplyServerOperation(new ProgressKeyGrantOp("test:boss"));
+            h.Sim.ApplyServerOperation(new ItemDiscoverOp(built.Bob, CraftingWorldScript.Ingot));
+            Assert.True(h.State.BlockEntities.TryGet(new Core.BlockEntities.BlockRef(built.Construct, CraftingWorldBuilt.FurnaceCell), out var furnace));
+            var station = Assert.IsType<Core.BlockEntities.StationBlockState>(furnace);
+            h.Sim.ApplyServerOperation(new CompoundOp(
+            [
+                new ItemDestroyOp(new SlotRef(built.Input, 0), CraftingWorldScript.Ore, 2, ItemSink.Station),
+                new ItemDestroyOp(new SlotRef(built.Input, 1), CraftingWorldScript.Peat, 1, ItemSink.Fuel),
+                new ItemCreateOp(new SlotRef(built.Output, 0), CraftingWorldScript.Ingot, 1, 5, ItemSource.Station),
+                new BlockEntitySetOp(
+                    built.Construct, CraftingWorldBuilt.FurnaceCell, CraftingBlocks.FurnaceType,
+                    station with { Started = new Core.Ids.Tick(station.Started!.Value.Value + 60) }),
+            ]));
+            h.Sim.ApplyServerOperation(new CompoundOp(
+            [
+                new ItemDestroyOp(new SlotRef(built.Chest, 1), CraftingWorldScript.Stone, 1, ItemSink.Craft),
+                new ItemDestroyOp(new SlotRef(built.Chest2, 0), CraftingWorldScript.Stone, 1, ItemSink.Craft),
+                new ItemCreateOp(new SlotRef(WorldFactory.BagOf(1), 0), CraftingWorldScript.Brick, 1, 500, ItemSource.Craft),
+                new ItemDiscoverOp(built.Alice, CraftingWorldScript.Brick),
+            ]));
+            await h.FlushAndPump();
+        }
+
+        dir.ReleasePools();
+        RawDb.Execute(dir.WorldPath, "PRAGMA journal_mode = DELETE;");
+        Assert.False(File.Exists(dir.WorldPath + "-wal"));
+        File.Copy(dir.WorldPath, target);
+    }
+
     private static string RepoRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);

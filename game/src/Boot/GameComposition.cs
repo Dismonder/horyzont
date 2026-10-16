@@ -33,6 +33,7 @@ using Horyzont.Net.Transport.Udp;
 using Horyzont.Persistence.Backup;
 using Horyzont.Server;
 using Horyzont.Server.Console;
+using Horyzont.Server.Crafting;
 using Horyzont.Server.Frames;
 using Horyzont.Server.Inventory;
 
@@ -331,7 +332,9 @@ public sealed partial class GameComposition
                 launch.Mode, runtimeOptions, serverTransport, factory, () => NewWorld(worldId, seed, catalog.BlockTypeKeys, itemKeys), env.Time, loggers);
             constructs = new HostConstructs(serverNode!, catalog, env.Render, loggers, env.Time);
             constructs.Register(server);
-            InventoryService.Register(server, loggers);
+            var inventoryService = InventoryService.Register(server, loggers);
+            StationService.Register(server, inventoryService, loggers);
+            ProgressReplication.Register(server, loggers);
 
             (serverFrames, serverFrameNodes) = RegisterServerFrames(server, serverNode!);
             if (env.Characters)
@@ -405,6 +408,7 @@ public sealed partial class GameComposition
         composition.ConfigureSpace();
         composition.ConfigurePlanets();
         composition.ConfigureReplication();
+        composition.ConfigureClientCrafting();
         composition.ConfigureTerrainReplication();
         composition.ConfigureProps();
         composition.ConfigureMotion();

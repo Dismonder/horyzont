@@ -15,6 +15,10 @@ public sealed class MigrationTests
     public const string FixtureV3Name = "world-v3.db";
     public const string FixtureV3BlocksName = "world-v3-blocks.db";
     public const string FixtureV3PropsName = "world-v3-props.db";
+    public const string FixtureV3CraftingName = "world-v3-crafting.db";
+
+    // The hash of the world of the fixture after the replay of its tail, taken when the fixture was generated (K6-32 D25).
+    private const ulong ExpectedCraftingHash = 15992051266765363849UL;
 
     // Newest production schema; the test migrations come right after it (K5-21 added M0002).
     private static int Latest => MigrationRunner.All.Count;
@@ -130,6 +134,42 @@ public sealed class MigrationTests
         Assert.Equal(0, construct.GetBlock(FunctionalBlocks.DoorHighCell).FunctionState);
         Assert.True(sim.State.Containers.TryGet(WorldFactory.BagOf(1), out var bag));
         Assert.Equal(2, bag.GetSlot(0).Count);
+        Assert.False(Directory.Exists(dir.BackupsPath) && Directory.GetFiles(dir.BackupsPath).Length > 0);
+    }
+
+    [Fact]
+    public void FixtureWorldV3Crafting_CopiedToTemp_LoadsAndReplays()
+    {
+        var fixture = Path.Combine(AppContext.BaseDirectory, "Fixtures", FixtureV3CraftingName);
+        Assert.True(File.Exists(fixture), $"Missing {fixture}; generate it once with FixtureGenerator (Category=Manual) and commit it.");
+        using var dir = new TempDirectory();
+        File.Copy(fixture, dir.WorldPath);
+        Assert.Equal(3L, RawDb.Long(dir.WorldPath, "PRAGMA user_version;"));
+
+        var (loaded, sim, _) = WorldHarness.LoadAndReplay(dir.WorldPath);
+
+        // The checkpoint holds the furnace smelting, two players with discoveries and one progress key; the tail grants a key, discovers an item,
+        // settles one piece of the furnace and crafts a brick from two chests (K6-32 D25). The schema stays at version 3: no migration.
+        Assert.Equal(4, loaded.JournalTail.Count);
+        Assert.Equal(["test:boss", "test:boss_2"], sim.State.ProgressKeys.Sorted);
+        var construct = Assert.Single(sim.State.Constructs.All);
+        Assert.True(sim.State.BlockEntities.TryGet(new Core.BlockEntities.BlockRef(construct.Id, FunctionalBlocks.FreeCell), out var furnace));
+        var station = Assert.IsType<Core.BlockEntities.StationBlockState>(furnace);
+        Assert.Equal("t:smelt", station.Recipe);
+        Assert.Equal(60UL, station.Started!.Value.Value - 0UL);
+        Assert.True(sim.State.Containers.TryGet(station.Input, out var input));
+        Assert.Equal(new Core.Items.ItemStack(WorldFactory.Item(SurvivalContentFactory.OreKey), 2), input.GetSlot(0));
+        Assert.True(sim.State.Containers.TryGet(station.Output, out var output));
+        Assert.Equal(new Core.Items.ItemStack(WorldFactory.Item(SurvivalContentFactory.IngotKey), 1), output.GetSlot(0));
+        Assert.True(sim.State.Progress.TryGet(new Core.Ids.PlayerId(1), out var alice));
+        Assert.NotNull(alice.RespawnBed);
+        Assert.True(alice.DiscoveredItems.Contains(WorldFactory.Item(SurvivalContentFactory.BrickKey)));
+        Assert.True(sim.State.Progress.TryGet(new Core.Ids.PlayerId(2), out var bob));
+        Assert.Null(bob.RespawnBed);
+        Assert.Equal(2, bob.DiscoveredItems.Count);
+        Assert.True(sim.State.Containers.TryGet(WorldFactory.BagOf(1), out var bag));
+        Assert.Equal(new Core.Items.ItemStack(WorldFactory.Item(SurvivalContentFactory.BrickKey), 1), bag.GetSlot(0));
+        Assert.Equal(ExpectedCraftingHash, Core.Hashing.StateHasher.Hash(sim.State));
         Assert.False(Directory.Exists(dir.BackupsPath) && Directory.GetFiles(dir.BackupsPath).Length > 0);
     }
 

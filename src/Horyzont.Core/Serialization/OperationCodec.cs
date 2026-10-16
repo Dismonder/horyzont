@@ -192,6 +192,29 @@ public static class OperationCodec
                 CoreCodecPrimitives.WriteBlockEntityState(w, be.State, allowNone: true);
                 break;
 
+            case ItemDiscoverOp disc:
+                if (disc.Type.Value is 0 or > ProtocolConstants.MaxItemTypes)
+                {
+                    throw new ArgumentException($"A discovered item type is 1 to {ProtocolConstants.MaxItemTypes}, not {disc.Type.Value}.", nameof(op));
+                }
+
+                w.WriteByte((byte)OperationKind.ItemDiscover);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(disc.Player.Value);
+                w.WriteVarUInt(disc.Type.Value);
+                break;
+
+            case ProgressKeyGrantOp grant:
+                if (string.IsNullOrEmpty(grant.Key))
+                {
+                    throw new ArgumentException("A progress key cannot be empty.", nameof(op));
+                }
+
+                w.WriteByte((byte)OperationKind.ProgressKeyGrant);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteString(grant.Key, ProtocolConstants.MaxRegistryKeyBytes);
+                break;
+
             case RespawnPointSetOp rp:
                 w.WriteByte((byte)OperationKind.RespawnPointSet);
                 w.WriteByte(CurrentFormatVersion);
@@ -361,8 +384,9 @@ public static class OperationCodec
         var known = (kindByte >= (byte)OperationKind.TerrainEdit && kindByte <= (byte)OperationKind.EntityReparent)
             || (kindByte >= (byte)OperationKind.ShipModeSet && kindByte <= (byte)OperationKind.MarkerRemove)
             || (kindByte >= (byte)OperationKind.Compound && kindByte <= (byte)OperationKind.ContainerConfigure)
-            || kindByte is (byte)OperationKind.BlockEntitySet or (byte)OperationKind.RespawnPointSet or (byte)OperationKind.PropRegrow
-                or (byte)OperationKind.PropHarvest or (byte)OperationKind.BlockFunctionStateSet;
+            || kindByte is (byte)OperationKind.BlockEntitySet or (byte)OperationKind.ItemDiscover or (byte)OperationKind.RespawnPointSet
+                or (byte)OperationKind.ProgressKeyGrant or (byte)OperationKind.PropRegrow or (byte)OperationKind.PropHarvest
+                or (byte)OperationKind.BlockFunctionStateSet;
         if (!known)
         {
             throw new ProtocolViolationException($"Unknown operation kind {kindByte}.");
@@ -447,6 +471,25 @@ public static class OperationCodec
                 ushort beType = r.ReadVarUInt16();
                 var beState = CoreCodecPrimitives.ReadBlockEntityState(ref r, allowNone: true);
                 return new BlockEntitySetOp(beConstruct, beCell, beType, beState);
+
+            case OperationKind.ItemDiscover:
+                var discPlayer = new PlayerId(r.ReadVarUInt());
+                ushort discType = r.ReadVarUInt16();
+                if (discType is 0 or > ProtocolConstants.MaxItemTypes)
+                {
+                    throw new ProtocolViolationException($"A discovered item type is 1 to {ProtocolConstants.MaxItemTypes}, not {discType}.");
+                }
+
+                return new ItemDiscoverOp(discPlayer, new ItemTypeId(discType));
+
+            case OperationKind.ProgressKeyGrant:
+                var grantKey = r.ReadString(ProtocolConstants.MaxRegistryKeyBytes);
+                if (grantKey.Length == 0)
+                {
+                    throw new ProtocolViolationException("A progress key cannot be empty.");
+                }
+
+                return new ProgressKeyGrantOp(grantKey);
 
             case OperationKind.RespawnPointSet:
                 var rpPlayer = new PlayerId(r.ReadVarUInt());

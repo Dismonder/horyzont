@@ -50,8 +50,8 @@ public sealed class ContainerLifecycleTests
 
         f.AssertFails(ChestContainer(next, ConstructId, _chestCell));
 
-        // Another kind may share the block (the stations of K6-32 have an input and an output).
-        f.Apply(new ContainerCreateOp(next, ContainerKind.StationOutput, ContainerHost.ConstructBlock(ConstructId, _chestCell), Player1, ContainerAccess.Shared, 4));
+        // Another kind may share the block (a cargo hold here; the stations of K6-32 have an input and an output, but only together with their state).
+        f.Apply(new ContainerCreateOp(next, ContainerKind.CargoHold, ContainerHost.ConstructBlock(ConstructId, _chestCell), Player1, ContainerAccess.Shared, 4));
         Assert.Equal(2, f.HostedBy(_chestCell).Count());
     }
 

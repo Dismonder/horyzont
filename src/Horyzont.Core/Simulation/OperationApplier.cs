@@ -9,6 +9,7 @@ using Horyzont.Core.Operations;
 using Horyzont.Core.Progress;
 using Horyzont.Core.Props;
 using Horyzont.Core.Protocol;
+using Horyzont.Core.Serialization;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Ships;
@@ -41,13 +42,16 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
     private int _component = -1;
     private readonly List<ulong> _pendingConstructs = [];
 
+    // Cells whose station state or station containers the operation touched; judged at the end of the operation (D19 of K6-32).
+    private readonly List<BlockRef> _stationCells = [];
+
     // The block that the last component of a compound writes: the earlier state components see its cell with this block (D12).
     private BlockSetOp? _viewSet;
     private ConstructCreateOp? _viewCreate;
 
     /// <summary>
     /// Applies an operation when its preconditions hold and sets <see cref="WorldState.LastOpId"/>; otherwise changes nothing. Item and state
-    /// operations (31-37, 40, 44, 47-49) and the components of a <see cref="CompoundOp"/> are applied on the live state with an
+    /// operations (31-37, 40, 43-45, 47-49) and the components of a <see cref="CompoundOp"/> are applied on the live state with an
     /// <see cref="UndoLog"/>; a refused component rolls everything back. The last component of a compound, a terrain edit or an edit of a
     /// construct, is checked and applied last (D12 of K6-30). Every container changed by the operation gets its version raised by one at
     /// the end, and so does every construct whose function states changed.
@@ -74,7 +78,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 return ok;
             case var _ when IsComponent(operation):
                 BeginOperation();
-                failure = ApplyComponent(operation) ?? CheckChestConsistency(out _) ?? string.Empty;
+                failure = ApplyComponent(operation) ?? CheckChestConsistency(out _) ?? CheckStations() ?? string.Empty;
                 if (failure.Length != 0)
                 {
                     _undo.Rollback(state);
@@ -120,7 +124,8 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
     /// <summary>Item and state operations: applied with the undo log, alone or as a component of a compound.</summary>
     private static bool IsComponent(Operation operation) =>
         operation is ItemTransferOp or ItemSwapOp or ItemCreateOp or ItemDestroyOp or ContainerCreateOp or ContainerRemoveOp
-            or ContainerConfigureOp or BlockEntitySetOp or RespawnPointSetOp or BlockFunctionStateSetOp or PropHarvestOp or PropRegrowOp;
+            or ContainerConfigureOp or BlockEntitySetOp or RespawnPointSetOp or BlockFunctionStateSetOp or ItemDiscoverOp or ProgressKeyGrantOp
+            or PropHarvestOp or PropRegrowOp;
 
     private void BeginOperation()
     {
@@ -132,6 +137,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
     private void EndOperation()
     {
         _pendingStates.Clear();
+        _stationCells.Clear();
         _chestKeys.Clear();
         _component = -1;
         _viewSet = null;
@@ -304,6 +310,14 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             _undo.Rollback(state);
             failure = inconsistent;
             componentIndex = inconsistentAt;
+            return false;
+        }
+
+        if (CheckStations() is { } stationFailure)
+        {
+            _undo.Rollback(state);
+            failure = stationFailure;
+            componentIndex = components.Count - 1;
             return false;
         }
 
@@ -509,6 +523,8 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         ContainerRemoveOp op => ApplyContainerRemove(op),
         ContainerConfigureOp op => ApplyContainerConfigure(op),
         BlockEntitySetOp op => ApplyBlockEntitySet(op),
+        ItemDiscoverOp op => ApplyItemDiscover(op),
+        ProgressKeyGrantOp op => ApplyProgressKeyGrant(op),
         RespawnPointSetOp op => ApplyRespawnPointSet(op),
         BlockFunctionStateSetOp op => ApplyFunctionState(op),
         PropHarvestOp op => ApplyPropHarvest(op),
@@ -694,6 +710,11 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             return "owner unknown";
         }
 
+        if (op.ContainerKind is ContainerKind.StationInput or ContainerKind.StationOutput && op.Host.Kind == ContainerHostKind.ConstructBlock)
+        {
+            _stationCells.Add(new BlockRef(new EntityId(op.Host.Id), op.Host.Cell));
+        }
+
         if (op.ContainerKind == ContainerKind.Chest && op.Host.Kind == ContainerHostKind.ConstructBlock)
         {
             _chestKeys.Add((new BlockRef(new EntityId(op.Host.Id), op.Host.Cell), _component));
@@ -730,6 +751,11 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             {
                 return "the container was created by the same operation";
             }
+        }
+
+        if (container.Kind is ContainerKind.StationInput or ContainerKind.StationOutput && container.Host.Kind == ContainerHostKind.ConstructBlock)
+        {
+            _stationCells.Add(new BlockRef(new EntityId(container.Host.Id), container.Host.Cell));
         }
 
         if (container.Kind == ContainerKind.Chest && container.Host.Kind == ContainerHostKind.ConstructBlock)
@@ -822,6 +848,11 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 return "the block differs from the expected type";
             }
 
+            if (existing is StationBlockState)
+            {
+                _stationCells.Add(key);
+            }
+
             if (existing.Kind == BlockEntityKind.Chest)
             {
                 _chestKeys.Add((key, _component));
@@ -858,6 +889,20 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 }
 
                 break;
+            case StationBlockState station:
+                if (CheckStationState(op, station) is { } stationFailure)
+                {
+                    return stationFailure;
+                }
+
+                // The cap keeps the construct's block states message within one reliable message (the validator checks it too, but server operations bypass it).
+                if (existing is null && state.BlockEntities.StationsOf(op.Construct) >= ProtocolConstants.MaxTimedStationsPerConstruct)
+                {
+                    return "too many stations with time in the construct";
+                }
+
+                _stationCells.Add(key);
+                break;
             default:
                 return "block state kind not supported";
         }
@@ -878,9 +923,11 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             return "player unknown";
         }
 
+        state.Progress.TryGet(op.Player, out var existing);
         if (op.Bed is not { } bed)
         {
-            _undo.SetProgress(state, op.Player, null);
+            // A record with discoveries stays without the respawn point (D7); a record with nothing else goes.
+            _undo.SetProgress(state, op.Player, existing is { Discovered: not null } ? existing with { RespawnBed = null } : null);
             return null;
         }
 
@@ -894,7 +941,111 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             return "the block is not a bed";
         }
 
-        _undo.SetProgress(state, op.Player, new PlayerProgress(op.Player, bed));
+        _undo.SetProgress(state, op.Player, existing is null ? new PlayerProgress(op.Player, bed) : existing with { RespawnBed = bed });
+        return null;
+    }
+
+    private string? ApplyItemDiscover(ItemDiscoverOp op)
+    {
+        if (!state.Players.TryGet(op.Player, out _))
+        {
+            return "player unknown";
+        }
+
+        if (op.Type.Value is 0 or > ProtocolConstants.MaxItemTypes || !state.ItemTypes.IsKnown(op.Type))
+        {
+            return "unknown item type";
+        }
+
+        state.Progress.TryGet(op.Player, out var existing);
+        var discovered = existing?.DiscoveredItems ?? ItemTypeBitSet.Empty;
+        if (discovered.Contains(op.Type))
+        {
+            return "the item type is already discovered";
+        }
+
+        var updated = existing is null ? new PlayerProgress(op.Player, null, discovered.With(op.Type)) : existing with { Discovered = discovered.With(op.Type) };
+        _undo.SetProgress(state, op.Player, updated);
+        return null;
+    }
+
+    private string? ApplyProgressKeyGrant(ProgressKeyGrantOp op)
+    {
+        if (!StrictUtf8.TryGetByteCount(op.Key, out var bytes))
+        {
+            return "the key is not valid UTF-8";
+        }
+
+        if (bytes == 0 || bytes > ProtocolConstants.MaxRegistryKeyBytes)
+        {
+            return "the key must be 1 to 64 bytes";
+        }
+
+        if (state.ProgressKeys.Contains(op.Key))
+        {
+            return "the world already has the key";
+        }
+
+        if (state.ProgressKeys.Count >= ProtocolConstants.MaxProgressKeys)
+        {
+            return "too many progress keys";
+        }
+
+        _undo.AddProgressKey(state, op.Key);
+        return null;
+    }
+
+    /// <summary>The state of a station with time (D19): its own containers of the right kinds hosted by this block, a recipe of valid UTF-8 up to 64 bytes, and a recipe when it has started.</summary>
+    private string? CheckStationState(BlockEntitySetOp op, StationBlockState station)
+    {
+        var host = ContainerHost.ConstructBlock(op.Construct, op.Cell);
+        if (!state.Containers.TryGet(station.Input, out var input) || input.Kind != ContainerKind.StationInput || input.Host != host)
+        {
+            return "the input is not a station input hosted by this block";
+        }
+
+        if (!state.Containers.TryGet(station.Output, out var output) || output.Kind != ContainerKind.StationOutput || output.Host != host)
+        {
+            return "the output is not a station output hosted by this block";
+        }
+
+        if (!StrictUtf8.TryGetByteCount(station.Recipe, out var recipeBytes))
+        {
+            return "the recipe is not valid UTF-8";
+        }
+
+        if (recipeBytes > ProtocolConstants.MaxRecipeKeyBytes)
+        {
+            return "the recipe is longer than 64 bytes";
+        }
+
+        return station.Started is not null && recipeBytes == 0 ? "a started station needs a recipe" : null;
+    }
+
+    /// <summary>
+    /// At the end of an operation, for every cell where it touched a station state or a station container (D19 of K6-32): a station state needs both of
+    /// its containers, and a station container needs the state of its cell that points at it. Chests are judged by <see cref="CheckChestConsistency"/>, just before.
+    /// </summary>
+    private string? CheckStations()
+    {
+        for (var i = 0; i < _stationCells.Count; i++)
+        {
+            var cell = _stationCells[i];
+            state.Containers.TryGetOfBlock(cell.Construct, cell.Cell, ContainerKind.StationInput, out var input);
+            state.Containers.TryGetOfBlock(cell.Construct, cell.Cell, ContainerKind.StationOutput, out var output);
+            if (state.BlockEntities.TryGet(cell, out var entity) && entity is StationBlockState station)
+            {
+                if (input is null || output is null || input.Id != station.Input || output.Id != station.Output)
+                {
+                    return "a station state needs its two containers";
+                }
+            }
+            else if (input is not null || output is not null)
+            {
+                return "a station container needs the station state of its block";
+            }
+        }
+
         return null;
     }
 

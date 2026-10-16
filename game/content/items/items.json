@@ -9,6 +9,12 @@
     { "key": "core:ore", "category": "resource", "flags": ["bulk"], "visual": { "glyph": "Or", "color": "#C9733A" } },
     { "key": "core:wood", "category": "resource", "flags": ["bulk"], "visual": { "glyph": "Wd", "color": "#A67C52" } },
     { "key": "core:fiber", "category": "resource", "flags": ["bulk"], "visual": { "glyph": "Fi", "color": "#8DB255" } },
-    { "key": "core:crystal", "category": "resource", "flags": ["bulk"], "visual": { "glyph": "Cr", "color": "#7FD6F5" } }
+    { "key": "core:crystal", "category": "resource", "flags": ["bulk"], "visual": { "glyph": "Cr", "color": "#7FD6F5" } },
+    { "key": "core:peat", "category": "component", "visual": { "glyph": "Pe", "color": "#5A4632" } },
+    { "key": "core:stone_brick", "category": "component", "visual": { "glyph": "Br", "color": "#A07A62" } },
+    { "key": "core:iron_ingot", "category": "component", "visual": { "glyph": "In", "color": "#B7BDC4" } },
+    { "key": "core:glass", "category": "component", "visual": { "glyph": "Gl", "color": "#9FD8E6" } },
+    { "key": "core:fuel_cell", "category": "component", "visual": { "glyph": "Fc", "color": "#E8B63A" } },
+    { "key": "core:multitool_t2", "category": "tool", "flags": ["tool"], "toolTier": 2, "visual": { "glyph": "M2", "color": "#4FD1C5", "clientTool": "terrain" } }
   ]
 }

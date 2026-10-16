@@ -5,6 +5,7 @@ using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Progress;
 using Horyzont.Core.Tests.BlockEntities;
+using Horyzont.Core.Tests.Crafting;
 using Horyzont.Core.Tests.Items;
 using Horyzont.Core.Tests.Props;
 using Horyzont.Core.World;
@@ -27,6 +28,14 @@ public sealed class SurvivalHashTests
     /// on the K6-30 branch itself (commit 2fa618b), so it does not depend on any prop code.
     /// </summary>
     private const ulong WorldWithBlockEntitiesHashBeforeProps = 12927208767499692UL;
+
+    /// <summary>
+    /// Hash of <see cref="WorldWithChestAndBed"/> as K6-30 leaves it (commit 2fa618b), before discoveries, progress keys and stations. Re-pinned when K6-30
+    /// was merged: K6-30 rebuilt the chest fixture as one CompoundOp (container and state together, so the chest-consistency check holds), which changes the
+    /// hash of this mock-up (container ids, versions) without any production change to the hash. The old value, 256735958396369194, was recorded at 06814a8;
+    /// the new one was measured on a clean K6-30 checkout with the same world, and K6-32 agrees with it.
+    /// </summary>
+    private const ulong WorldWithBlockEntitiesHashBeforeCrafting = 8435541483743415689UL;
 
     [Fact]
     public void WorldWithoutItems_HashUnchanged() => Assert.Equal(DefaultWorldHashBeforeItems, StateHasher.Hash(WorldFactory.CreateDefault()));
@@ -98,6 +107,10 @@ public sealed class SurvivalHashTests
         Assert.NotEqual(StateHasher.Hash(untouched.State), StateHasher.Hash(harvested.State));
         Assert.NotEqual(StateHasher.Hash(regrown.State), StateHasher.Hash(harvested.State));
     }
+
+    [Fact]
+    public void WorldWithBlockEntitiesWithoutCrafting_HashUnchanged() =>
+        Assert.Equal(WorldWithBlockEntitiesHashBeforeCrafting, StateHasher.Hash(WorldWithChestAndBed()));
 
     [Fact]
     public void BlockEntityChange_ChangesHash()
@@ -224,6 +237,97 @@ public sealed class SurvivalHashTests
         Assert.Equal(variants.Length, hashes.Distinct().Count());
     }
 
+    [Fact]
+    public void Discovery_ChangesHash()
+    {
+        var a = new CraftingFixture(players: 2);
+        var b = new CraftingFixture(players: 2);
+        var c = new CraftingFixture(players: 2);
+        var d = new CraftingFixture(players: 2);
+        var e = new CraftingFixture(players: 2);
+        Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(b.State));
+
+        a.Apply(CraftingFixture.Discover(CraftingFixture.Player1, CraftingFixture.Stone));
+        b.Apply(CraftingFixture.Discover(CraftingFixture.Player1, CraftingFixture.Stone));
+        c.Apply(CraftingFixture.Discover(CraftingFixture.Player1, CraftingFixture.Soil));
+        d.Apply(CraftingFixture.Discover(CraftingFixture.Player2, CraftingFixture.Stone));
+        e.Apply(CraftingFixture.Discover(CraftingFixture.Player1, CraftingFixture.Stone));
+        e.Apply(CraftingFixture.Discover(CraftingFixture.Player1, CraftingFixture.Soil));
+
+        var hashes = new[] { a, c, d, e, new CraftingFixture(players: 2) }.Select(x => StateHasher.Hash(x.State)).ToList();
+        Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(b.State));
+        Assert.Equal(hashes.Count, hashes.Distinct().Count());
+    }
+
+    [Fact]
+    public void ProgressKey_ChangesHash()
+    {
+        var a = new CraftingFixture();
+        var b = new CraftingFixture();
+        var c = new CraftingFixture();
+        var d = new CraftingFixture();
+        var e = new CraftingFixture();
+        a.Apply(CraftingFixture.Grant("test:a"));
+        b.Apply(CraftingFixture.Grant("test:a"));
+        c.Apply(CraftingFixture.Grant("test:b"));
+        d.Apply(CraftingFixture.Grant("test:a"));
+        d.Apply(CraftingFixture.Grant("test:b"));
+        e.Apply(CraftingFixture.Grant("test:b"));
+        e.Apply(CraftingFixture.Grant("test:a"));
+
+        // The keys are a set: the order of granting does not matter.
+        Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(b.State));
+        Assert.Equal(StateHasher.Hash(d.State), StateHasher.Hash(e.State));
+        var hashes = new[] { a, c, d, new CraftingFixture() }.Select(x => StateHasher.Hash(x.State)).ToList();
+        Assert.Equal(hashes.Count, hashes.Distinct().Count());
+    }
+
+    [Fact]
+    public void ProgressKeyOnly_OpensSurvivalSection()
+    {
+        // A world with no item types, containers, states or progress: before the keys the survival section was not hashed at all.
+        var without = new SimFixture();
+        var a = new SimFixture();
+        var b = new SimFixture();
+        Assert.Equal(DefaultWorldHashBeforeItems, StateHasher.Hash(without.State));
+
+        a.Sim.ApplyServerOperation(new ProgressKeyGrantOp("test:a"));
+        b.Sim.ApplyServerOperation(new ProgressKeyGrantOp("test:a"));
+
+        Assert.NotEqual(StateHasher.Hash(without.State), StateHasher.Hash(a.State));
+        Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(b.State));
+        var other = new SimFixture();
+        other.Sim.ApplyServerOperation(new ProgressKeyGrantOp("test:b"));
+        Assert.NotEqual(StateHasher.Hash(a.State), StateHasher.Hash(other.State));
+    }
+
+    [Fact]
+    public void StationStateStarted_ChangesHash()
+    {
+        var states = new (string Recipe, Tick? Started)[]
+        {
+            (string.Empty, null),
+            ("t:a", null),
+            ("t:a", new Tick(100)),
+            ("t:a", new Tick(101)),
+            ("t:b", new Tick(100)),
+
+            // Started = Tick(0) is another state than Started = null: a flag and a tick, not the tick alone (review A1, 4-7).
+            ("t:a", new Tick(0)),
+        };
+        var hashes = states.Select(s =>
+        {
+            var f = new CraftingFixture();
+            f.SetUpStation(CraftingFixture.StationCell, s.Recipe, s.Started);
+            return StateHasher.Hash(f.State);
+        }).ToList();
+
+        Assert.Equal(states.Length, hashes.Distinct().Count());
+        var again = new CraftingFixture();
+        again.SetUpStation(CraftingFixture.StationCell, "t:a", new Tick(100));
+        Assert.Equal(hashes[2], StateHasher.Hash(again.State));
+    }
+
     /// <summary>
     /// The K6-29W world of the survival tests: two players with their containers, the start kit of <see cref="SurvivalContentFactory"/>, stone and soil
     /// moved around the bags and a shared chest container hosted by a player. No block with state, no respawn point.
@@ -260,6 +364,19 @@ public sealed class SurvivalHashTests
         f.Give(chest, 2, 10);
         f.SetUpBed(FunctionalBlocks.BedCell, FunctionalBlockFixture.Player1);
         f.Apply(FunctionalBlockFixture.SetFunctionState(FunctionalBlocks.DoorLowCell, FunctionalBlocks.DoorType, 1));
+        return f.State;
+    }
+
+    /// <summary>
+    /// The K6-30 world of the functional block tests: a chest block with a container holding stone and a bed block with the respawn point of
+    /// player 1. No discoveries, no progress keys, no station.
+    /// </summary>
+    private static WorldState WorldWithChestAndBed()
+    {
+        var f = new FunctionalBlockFixture(players: 2);
+        var chest = f.SetUpChest(FunctionalBlocks.ChestCell);
+        f.Give(chest, 1, 7);
+        f.SetUpBed(FunctionalBlocks.BedCell, FunctionalBlockFixture.Player1);
         return f.State;
     }
 

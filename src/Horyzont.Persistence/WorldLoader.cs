@@ -172,6 +172,13 @@ public static class WorldLoader
             ReadBlockEntities(connection, builder);
             ReadPlayerProgress(connection, builder);
             ReadHarvestedProps(connection, builder);
+
+            // K6-32: the progress keys of the world; worlds saved before have no row and no keys.
+            if (meta.TryGetValue(Sql.MetaProgressKeys, out var keys))
+            {
+                builder.SetProgressKeys(StateCodec.DecodeProgressKeysBlob(keys as byte[] ?? throw new InvalidDataException("Meta key 'progress_keys' is not a blob.")));
+            }
+
             ReadTerrainVersions(connection, builder);
             ReadShipStates(connection, builder, orphanShipStates);
             var state = builder.Build();

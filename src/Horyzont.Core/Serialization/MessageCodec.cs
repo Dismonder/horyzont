@@ -7,6 +7,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Progress;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Ships;
@@ -517,6 +518,10 @@ public static class MessageCodec
                 WritePropStates(w, ps);
                 break;
 
+            case PlayerProgressState progress:
+                WritePlayerProgressState(w, progress);
+                break;
+
             case ItemRegistry ireg:
                 if (ireg.Entries.Count > ProtocolConstants.MaxItemTypes)
                 {
@@ -941,6 +946,9 @@ public static class MessageCodec
             case MessageType.PropStates:
                 return ReadPropStates(ref r);
 
+            case MessageType.PlayerProgressState:
+                return ReadPlayerProgressState(ref r);
+
             case MessageType.ItemRegistry:
                 ulong entryCount = r.ReadVarUInt();
                 if (entryCount > ProtocolConstants.MaxItemTypes)
@@ -959,6 +967,68 @@ public static class MessageCodec
             default:
                 throw new ProtocolViolationException($"Unhandled message type {type}.");
         }
+    }
+
+    private static void WritePlayerProgressState(ByteWriter w, PlayerProgressState state)
+    {
+        ArgumentNullException.ThrowIfNull(state.Discovered);
+        ArgumentNullException.ThrowIfNull(state.WorldProgressKeys);
+        if (state.WorldProgressKeys.Count > ProtocolConstants.MaxProgressKeys)
+        {
+            throw new ArgumentException(
+                $"PlayerProgressState keys count {state.WorldProgressKeys.Count} exceeds limit {ProtocolConstants.MaxProgressKeys}.", nameof(state));
+        }
+
+        w.WriteBytes(state.Discovered.Bytes, ProtocolConstants.MaxDiscoveredBytes);
+        w.WriteVarUInt((ulong)state.WorldProgressKeys.Count);
+        for (var i = 0; i < state.WorldProgressKeys.Count; i++)
+        {
+            var key = state.WorldProgressKeys[i];
+            if (string.IsNullOrEmpty(key))
+            {
+                throw new ArgumentException("A progress key cannot be empty.", nameof(state));
+            }
+
+            if (i > 0 && string.CompareOrdinal(state.WorldProgressKeys[i - 1], key) >= 0)
+            {
+                throw new ArgumentException("PlayerProgressState keys must be strictly ascending in ordinal order.", nameof(state));
+            }
+
+            w.WriteString(key, ProtocolConstants.MaxRegistryKeyBytes);
+        }
+    }
+
+    private static PlayerProgressState ReadPlayerProgressState(ref ByteReader r)
+    {
+        ItemTypeBitSet discovered;
+        try
+        {
+            discovered = ItemTypeBitSet.FromBytes(r.ReadBytes(ProtocolConstants.MaxDiscoveredBytes));
+        }
+        catch (ArgumentException ex)
+        {
+            throw new ProtocolViolationException("The discovered item types are not canonical: " + ex.Message);
+        }
+
+        var count = r.ReadCount(ProtocolConstants.MaxProgressKeys);
+        var keys = new string[count];
+        for (var i = 0; i < count; i++)
+        {
+            var key = r.ReadString(ProtocolConstants.MaxRegistryKeyBytes);
+            if (key.Length == 0)
+            {
+                throw new ProtocolViolationException("A progress key cannot be empty.");
+            }
+
+            if (i > 0 && string.CompareOrdinal(keys[i - 1], key) >= 0)
+            {
+                throw new ProtocolViolationException("PlayerProgressState keys must be strictly ascending in ordinal order.");
+            }
+
+            keys[i] = key;
+        }
+
+        return new PlayerProgressState(discovered, keys);
     }
 
     private static void WriteBlockEntityStates(ByteWriter w, BlockEntityStates states)

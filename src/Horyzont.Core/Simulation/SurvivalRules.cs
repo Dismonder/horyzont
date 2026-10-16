@@ -55,13 +55,20 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
                         return RejectReason.InvalidParameters;
                     }
 
-                    return CheckContainer(player, move.To.Container, allowChests: true, out _);
+                    var anyTarget = CheckContainer(player, move.To.Container, allowChests: true, out var anyContainer);
+                    return anyTarget == RejectReason.None && anyContainer!.Kind == ContainerKind.StationOutput ? RejectReason.InvalidParameters : anyTarget;
                 }
 
-                var target = CheckSlot(player, move.To.SlotRef, allowChests: true, out _);
+                var target = CheckSlot(player, move.To.SlotRef, allowChests: true, out var targetContainer);
                 if (target != RejectReason.None)
                 {
                     return target;
+                }
+
+                // The output of a station is taken from, never put into (K6-32 D17).
+                if (targetContainer!.Kind == ContainerKind.StationOutput)
+                {
+                    return RejectReason.InvalidParameters;
                 }
 
                 return move.To.SlotRef == move.From ? RejectReason.InvalidParameters : RejectReason.None;
@@ -78,13 +85,13 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
                     return RejectReason.ContainerLocked;
                 }
 
-                if (chest.Kind != ContainerKind.Chest || chest.Host.Kind != ContainerHostKind.ConstructBlock)
+                if (!IsBlockContainer(chest))
                 {
                     // The own bag and hotbar are not something to take all from; the containers of others are locked.
                     return chest.Owner == player && chest.Host.Kind == ContainerHostKind.Player ? RejectReason.InvalidParameters : RejectReason.ContainerLocked;
                 }
 
-                return CheckChest(player, chest);
+                return CheckBlockContainer(player, chest);
 
             default:
                 return RejectReason.InvalidParameters;
@@ -163,7 +170,7 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
             return RejectReason.None;
         }
 
-        if (move.Count != source.Count)
+        if (sourceContainer.Kind == ContainerKind.StationOutput || move.Count != source.Count)
         {
             return RejectReason.InvalidParameters;
         }
@@ -382,9 +389,9 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
             return RejectReason.ContainerLocked;
         }
 
-        if (container.Kind == ContainerKind.Chest && container.Host.Kind == ContainerHostKind.ConstructBlock)
+        if (IsBlockContainer(container))
         {
-            return allowChests ? CheckChest(player, container) : RejectReason.ContainerLocked;
+            return allowChests ? CheckBlockContainer(player, container) : RejectReason.ContainerLocked;
         }
 
         if (container.Owner != player || container.Host.Kind != ContainerHostKind.Player || container.Host.PlayerId != player)
@@ -395,8 +402,16 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
         return container.Kind is ContainerKind.PlayerBag or ContainerKind.Hotbar ? RejectReason.None : RejectReason.InvalidParameters;
     }
 
-    /// <summary>A shared chest or the player's own, with the eye within <see cref="GameRules.ContainerKeepRangeMeters"/> of its block.</summary>
-    private RejectReason CheckChest(PlayerId player, Container chest)
+    /// <summary>True for the containers of a block: a chest and the input and the output of a station (K6-32 D17).</summary>
+    private static bool IsBlockContainer(Container container) =>
+        container.Host.Kind == ContainerHostKind.ConstructBlock
+        && container.Kind is ContainerKind.Chest or ContainerKind.StationInput or ContainerKind.StationOutput;
+
+    /// <summary>True when the content has recipes (K6-32): the crafting, the stations with time and the discoveries are on.</summary>
+    internal bool HasRecipes => content.Recipes.Count > 0;
+
+    /// <summary>A shared container of a block or the player's own, with the eye within <see cref="GameRules.ContainerKeepRangeMeters"/> of its block.</summary>
+    private RejectReason CheckBlockContainer(PlayerId player, Container chest)
     {
         if (chest.Access != ContainerAccess.Shared && chest.Owner != player)
         {

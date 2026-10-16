@@ -18,6 +18,7 @@ using Horyzont.Persistence;
 using Horyzont.Persistence.Faults;
 using Horyzont.Persistence.Terrain;
 using Horyzont.Server;
+using Horyzont.Server.Crafting;
 using Horyzont.Server.Inventory;
 using Horyzont.Server.Replication;
 using Horyzont.Testing;
@@ -73,7 +74,14 @@ internal sealed class FunctionalBlocksRig : IAsyncDisposable
     private readonly RigCharacters _characters = new();
     private readonly List<RigPlayer> _players = [];
 
-    public FunctionalBlocksRig(string directory, ArmedFaults? faults = null)
+    /// <summary>Initializes a new instance of the <see cref="FunctionalBlocksRig"/> class.</summary>
+    /// <param name="directory">The data directory of the world.</param>
+    /// <param name="faults">Faults of the persistence layer to inject.</param>
+    /// <param name="crafting">
+    /// The rig of K6-32: the block types of <see cref="CraftingBlocks"/>, the twelve item types and the test recipes, with the station service and the
+    /// progress replication registered after the inventory service.
+    /// </param>
+    public FunctionalBlocksRig(string directory, ArmedFaults? faults = null, bool crafting = false)
     {
         Directory = directory;
         Time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 16, 12, 0, 0, TimeSpan.Zero));
@@ -87,15 +95,23 @@ internal sealed class FunctionalBlocksRig : IAsyncDisposable
             PersistenceOptions = new PersistenceOptions { GameVersion = "k6-30-test", BackupInterval = Timeout.InfiniteTimeSpan },
             Listen = [new InMemoryEndpoint("server")],
             LocalClientEndpoint = new InMemoryEndpoint("local"),
-            BlockTypeKeys = FunctionalBlocks.BlockKeys,
-            BlockDefinitions = FunctionalBlocks.DefinitionsFor(ChestSlots),
+            BlockTypeKeys = crafting ? CraftingBlocks.BlockKeys : FunctionalBlocks.BlockKeys,
+            BlockDefinitions = crafting ? CraftingBlocks.DefinitionsFor(ChestSlots) : FunctionalBlocks.DefinitionsFor(ChestSlots),
             MaterialKeys = ["stone", "dirt"],
-            Content = SurvivalContentFactory.CreateTest(),
-            ItemTypeKeys = SurvivalContentFactory.ItemKeys,
+            Content = crafting ? SurvivalContentFactory.CreateTestWithRecipes() : SurvivalContentFactory.CreateTest(),
+            ItemTypeKeys = crafting ? SurvivalContentFactory.CraftingItemKeys : SurvivalContentFactory.ItemKeys,
             Faults = (IPersistenceFaults?)faults ?? NoFaults.Instance,
         };
-        Runtime = new ServerRuntime(ProcessMode.Solo, options, _serverTransport, Terrain, NewWorld, Time, NullLoggerFactory.Instance);
-        InventoryService.Register(Runtime, NullLoggerFactory.Instance);
+        Func<WorldState> newWorld = crafting ? NewCraftingWorld : NewWorld;
+        Runtime = new ServerRuntime(ProcessMode.Solo, options, _serverTransport, Terrain, newWorld, Time, NullLoggerFactory.Instance);
+        var inventory = InventoryService.Register(Runtime, NullLoggerFactory.Instance);
+        if (crafting)
+        {
+            // After the inventory: the containers exist (and the start kit is discovered) before the progress is sent.
+            StationService.Register(Runtime, inventory, NullLoggerFactory.Instance);
+            ProgressReplication.Register(Runtime);
+        }
+
         new EntityReplicationBinder(runtime => new ServerReplicationSource(runtime.State, _characters), Time, NullLoggerFactory.Instance).Register(Runtime);
     }
 
@@ -118,6 +134,10 @@ internal sealed class FunctionalBlocksRig : IAsyncDisposable
 
     public static WorldState NewWorld() => WorldState.CreateNew(
         WorldFactory.DefaultWorldId, 42, [WorldFactory.HomePlanetParams], FunctionalBlocks.BlockKeys, ["stone", "dirt"], SurvivalContentFactory.ItemKeys);
+
+    /// <summary>A fresh world of the crafting rig: the block types of <see cref="CraftingBlocks"/> and the twelve item types.</summary>
+    public static WorldState NewCraftingWorld() => WorldState.CreateNew(
+        WorldFactory.DefaultWorldId, 42, [WorldFactory.HomePlanetParams], CraftingBlocks.BlockKeys, ["stone", "dirt"], SurvivalContentFactory.CraftingItemKeys);
 
     public async Task StartAsync() =>
         Assert.IsType<WorldStartResult.Started>(await Runtime.StartAsync(TestContext.Current.CancellationToken));

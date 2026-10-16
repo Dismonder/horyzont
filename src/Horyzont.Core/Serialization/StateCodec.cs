@@ -21,6 +21,9 @@ public static class StateCodec
 {
     private const byte CurrentFormatVersion = 1;
 
+    /// <summary>Blob 22 is written in version 2 (K6-32: discoveries); version 1 (K6-30) is still read.</summary>
+    private const byte PlayerProgressVersion = 2;
+
     /// <summary>Length of a <see cref="BlobKind.ShipState"/> blob.</summary>
     public const int ShipStateBlobLength = 39;
     private const int ChunkCellCount = 4096;
@@ -862,7 +865,7 @@ public static class StateCodec
         return new BlockEntityRecord(construct, cell, state);
     }
 
-    /// <summary>Encodes the progress of a player as a SQLite blob (kind 22, version 1; K6-30).</summary>
+    /// <summary>Encodes the progress of a player as a SQLite blob (kind 22, always written in version 2; K6-32). Version 1 (K6-30) is still read.</summary>
     /// <param name="record">Record.</param>
     /// <returns>The blob.</returns>
     public static byte[] EncodePlayerProgressBlob(PlayerProgressRecord record)
@@ -870,19 +873,87 @@ public static class StateCodec
         ArgumentNullException.ThrowIfNull(record);
         var w = new ByteWriter();
         w.WriteByte((byte)BlobKind.PlayerProgress);
-        w.WriteByte(CurrentFormatVersion);
+        w.WriteByte(PlayerProgressVersion);
         w.WriteVarUInt(record.Player.Value);
+        var hasBed = record.RespawnBed is not null;
+        var discovered = record.Discovered;
+        var hasDiscoveries = discovered is { IsEmpty: false };
+
+        // Bit 0: a respawn point follows. Bit 1: the discovered item types follow after it.
+        w.WriteByte((byte)((hasBed ? 1 : 0) | (hasDiscoveries ? 2 : 0)));
         if (record.RespawnBed is { } bed)
         {
-            w.WriteByte(1);
             CoreCodecPrimitives.WriteBedRef(w, bed);
         }
-        else
+
+        if (hasDiscoveries)
         {
-            w.WriteByte(0);
+            w.WriteBytes(discovered!.Bytes, ProtocolConstants.MaxDiscoveredBytes);
         }
 
         return w.WrittenSpan.ToArray();
+    }
+
+    /// <summary>Encodes the progress keys of a world as a SQLite blob (kind 25, version 1; K6-32).</summary>
+    /// <param name="keys">Keys in ordinal order, at most 256, 1 to 64 bytes each.</param>
+    /// <returns>The blob.</returns>
+    public static byte[] EncodeProgressKeysBlob(IReadOnlyList<string> keys)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        if (keys.Count > ProtocolConstants.MaxProgressKeys)
+        {
+            throw new ArgumentException($"A world has at most {ProtocolConstants.MaxProgressKeys} progress keys.", nameof(keys));
+        }
+
+        var w = new ByteWriter();
+        w.WriteByte((byte)BlobKind.ProgressKeys);
+        w.WriteByte(CurrentFormatVersion);
+        w.WriteVarUInt((ulong)keys.Count);
+        for (var i = 0; i < keys.Count; i++)
+        {
+            if (string.IsNullOrEmpty(keys[i]))
+            {
+                throw new ArgumentException("A progress key cannot be empty.", nameof(keys));
+            }
+
+            if (i > 0 && string.CompareOrdinal(keys[i - 1], keys[i]) >= 0)
+            {
+                throw new ArgumentException("Progress keys must be strictly ascending in ordinal order.", nameof(keys));
+            }
+
+            w.WriteString(keys[i], ProtocolConstants.MaxRegistryKeyBytes);
+        }
+
+        return w.WrittenSpan.ToArray();
+    }
+
+    /// <summary>Decodes a progress keys blob (kind 25).</summary>
+    /// <param name="blob">Blob bytes.</param>
+    /// <returns>The keys in ordinal order.</returns>
+    public static IReadOnlyList<string> DecodeProgressKeysBlob(ReadOnlySpan<byte> blob)
+    {
+        ValidateBlobHeader(blob, BlobKind.ProgressKeys);
+        var r = new ByteReader(blob.Slice(2));
+        var count = r.ReadCount(ProtocolConstants.MaxProgressKeys);
+        var keys = new string[count];
+        for (var i = 0; i < count; i++)
+        {
+            var key = r.ReadString(ProtocolConstants.MaxRegistryKeyBytes);
+            if (key.Length == 0)
+            {
+                throw new ProtocolViolationException("A progress key cannot be empty.");
+            }
+
+            if (i > 0 && string.CompareOrdinal(keys[i - 1], key) >= 0)
+            {
+                throw new ProtocolViolationException("Progress keys must be strictly ascending in ordinal order.");
+            }
+
+            keys[i] = key;
+        }
+
+        r.EnsureEnd();
+        return keys;
     }
 
     /// <summary>Decodes a player progress blob (kind 22).</summary>
@@ -890,23 +961,44 @@ public static class StateCodec
     /// <returns>The record.</returns>
     public static PlayerProgressRecord DecodePlayerProgressBlob(ReadOnlySpan<byte> blob)
     {
-        ValidateBlobHeader(blob, BlobKind.PlayerProgress);
+        ValidateBlobHeader(blob, BlobKind.PlayerProgress, PlayerProgressVersion);
+        var version = blob[1];
         var r = new ByteReader(blob.Slice(2));
         var player = new PlayerId(r.ReadVarUInt());
         byte flags = r.ReadByte();
 
-        // Bit 0: there is a respawn point. Other bits are reserved for the fields of later versions and make version 1 refuse the blob.
-        if (flags > 1)
+        // Bit 0: there is a respawn point; in version 2 bit 1: there are discovered item types. Other bits are reserved and make the blob invalid.
+        var known = version == 1 ? 1 : 3;
+        if ((flags & ~known) != 0)
         {
             throw new ProtocolViolationException($"Unknown player progress flags {flags}.");
         }
 
-        BedRef? bed = flags == 1 ? CoreCodecPrimitives.ReadBedRef(ref r) : null;
+        BedRef? bed = (flags & 1) != 0 ? CoreCodecPrimitives.ReadBedRef(ref r) : null;
+        ItemTypeBitSet? discovered = null;
+        if ((flags & 2) != 0)
+        {
+            var bytes = r.ReadBytes(ProtocolConstants.MaxDiscoveredBytes);
+            if (bytes.Length == 0)
+            {
+                throw new ProtocolViolationException("The discovered item types are present but empty.");
+            }
+
+            try
+            {
+                discovered = ItemTypeBitSet.FromBytes(bytes);
+            }
+            catch (ArgumentException ex)
+            {
+                throw new ProtocolViolationException("The discovered item types are not canonical: " + ex.Message);
+            }
+        }
+
         r.EnsureEnd();
-        return new PlayerProgressRecord(player, bed);
+        return new PlayerProgressRecord(player, bed, discovered);
     }
 
-    private static void ValidateBlobHeader(ReadOnlySpan<byte> blob, BlobKind expectedKind)
+    private static void ValidateBlobHeader(ReadOnlySpan<byte> blob, BlobKind expectedKind, byte highestVersion = CurrentFormatVersion)
     {
         if (blob.Length < 2)
         {
@@ -918,7 +1010,7 @@ public static class StateCodec
             throw new ProtocolViolationException($"Blob kind {blob[0]} does not match expected {(byte)expectedKind}.");
         }
 
-        if (blob[1] != CurrentFormatVersion)
+        if (blob[1] < CurrentFormatVersion || blob[1] > highestVersion)
         {
             throw new ProtocolViolationException($"Unsupported blob format version {blob[1]}.");
         }

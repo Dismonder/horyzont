@@ -62,8 +62,14 @@ public enum OperationKind : byte
     /// <summary><see cref="ContainerConfigureOp"/>.</summary>
     ContainerConfigure = 37,
 
+    /// <summary><see cref="ItemDiscoverOp"/> (K6-32).</summary>
+    ItemDiscover = 43,
+
     /// <summary><see cref="BlockEntitySetOp"/>.</summary>
     BlockEntitySet = 40,
+
+    /// <summary><see cref="ProgressKeyGrantOp"/> (K6-32).</summary>
+    ProgressKeyGrant = 45,
 
     /// <summary><see cref="RespawnPointSetOp"/>.</summary>
     RespawnPointSet = 44,

@@ -68,6 +68,15 @@ internal sealed class IntentValidator(
             return RejectReason.InvalidParameters;
         }
 
+        if (intent is CraftIntent craft)
+        {
+            var craftReason = ValidateCraftParameters(craft);
+            if (craftReason != RejectReason.None)
+            {
+                return craftReason;
+            }
+        }
+
         // Item intents (K6-29W): parameters and container access before the rate limit; without content they are invalid (D8).
         if (intent is ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent)
         {
@@ -107,6 +116,9 @@ internal sealed class IntentValidator(
 
             // The content checks of item intents (source content, counts, target room) are part of their resolution.
             ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent => RejectReason.None,
+
+            // Crafting: the content checks (recipe, station, sources) are part of its resolution (K6-32).
+            CraftIntent => RejectReason.None,
             _ => RejectReason.InvalidParameters,
         };
     }
@@ -117,7 +129,7 @@ internal sealed class IntentValidator(
         TerrainToolIntent => buckets.Terrain,
         PlaceBlockIntent or RemoveBlockIntent or ShipModeIntent or RefuelIntent or BlockInteractIntent or BlockConfigIntent => buckets.Blocks,
         MarkerSetIntent or MarkerRemoveIntent => buckets.Markers,
-        ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent => buckets.Items,
+        ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent or CraftIntent => buckets.Items,
         PropHitIntent => buckets.Props,
         _ => null,
     };
@@ -149,7 +161,7 @@ internal sealed class IntentValidator(
             case RefuelIntent refuel:
                 rayOrigin = refuel.RayOrigin;
                 return Geometry.IsFinite(refuel.RayOrigin) && Geometry.IsDirection(refuel.RayDirection);
-            case ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent:
+            case ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent or CraftIntent:
                 bucket = buckets.Items;
                 return true;
             case PropHitIntent:
@@ -162,6 +174,23 @@ internal sealed class IntentValidator(
             default:
                 return false;
         }
+    }
+
+    /// <summary>The parameters of a craft intent (K6-32): the content has recipes, the key and the count are in range, the cell of the station is in bounds.</summary>
+    private RejectReason ValidateCraftParameters(CraftIntent craft)
+    {
+        if (survival is not { HasRecipes: true } || craft.Recipe is null)
+        {
+            return RejectReason.InvalidParameters;
+        }
+
+        var keyBytes = System.Text.Encoding.UTF8.GetByteCount(craft.Recipe);
+        if (keyBytes is 0 or > ProtocolConstants.MaxRecipeKeyBytes || craft.Count == 0 || craft.Count > rules.MaxCraftCount)
+        {
+            return RejectReason.InvalidParameters;
+        }
+
+        return craft.Station is { } station && !station.Cell.IsInBounds ? RejectReason.CellOutOfBounds : RejectReason.None;
     }
 
     private RejectReason ValidateTerrainTool(TerrainToolIntent tool, bool hasPlanet, PlanetId playerPlanet, Vector3 eye, out IntentFacts facts)
@@ -577,7 +606,19 @@ internal sealed class IntentValidator(
     /// <summary>A chest or a bed needs the survival content and a free block state of the construct (K6-30 D21, D23).</summary>
     private RejectReason CheckFunctionalPlacement(PlaceBlockIntent place, EntityId? construct)
     {
-        if (content.Get(place.BlockTypeId).Function.Kind is not (BlockFunctionKind.Chest or BlockFunctionKind.Bed))
+        var function = content.Get(place.BlockTypeId).Function;
+        if (function.Kind == BlockFunctionKind.Station && Crafting.StationKinds.IsTimed(function.Station))
+        {
+            // A station with time has a state and two containers: it needs recipes, a free block state and a free place among the stations (K6-32 D18, D26).
+            return survival is { HasRecipes: true }
+                && !(construct is { } built
+                    && (state.BlockEntities.CountOf(built) >= ProtocolConstants.MaxBlockEntitiesPerConstruct
+                        || state.BlockEntities.StationsOf(built) >= rules.MaxTimedStationsPerConstruct))
+                ? RejectReason.None
+                : RejectReason.InvalidParameters;
+        }
+
+        if (function.Kind is not (BlockFunctionKind.Chest or BlockFunctionKind.Bed))
         {
             return RejectReason.None;
         }

@@ -53,6 +53,7 @@ public sealed class WorldState
         BlockEntities = new BlockEntityStore(_tracker);
         Progress = new PlayerProgressStore(_tracker);
         HarvestedProps = new HarvestedPropStore(_tracker);
+        ProgressKeys = new ProgressKeyStore(_tracker);
     }
 
     /// <summary>World id.</summary>
@@ -126,6 +127,8 @@ public sealed class WorldState
 
     /// <summary>Harvested props (K6-31).</summary>
     public HarvestedPropStore HarvestedProps { get; }
+    /// <summary>Progress keys of the world (K6-32).</summary>
+    public ProgressKeyStore ProgressKeys { get; }
 
     /// <summary>True between <see cref="CaptureCheckpoint"/> and its completion or requeue.</summary>
     public bool IsCheckpointInFlight => _inFlight is not null;
@@ -483,7 +486,7 @@ public sealed class WorldState
         {
             if (Progress.TryGet(id, out var progress))
             {
-                upsertedProgress.Add(new PlayerProgressRecord(id, progress.RespawnBed));
+                upsertedProgress.Add(new PlayerProgressRecord(id, progress.RespawnBed, progress.Discovered));
             }
             else
             {
@@ -507,6 +510,7 @@ public sealed class WorldState
             }
         }
 
+        var progressKeys = _tracker.ProgressKeys ? ProgressKeys.Sorted.ToArray() : null;
         _tracker.Clear();
         _inFlight = new WorldCheckpoint(
             LastOpId, CurrentTick, EntityIds.NextValue, PlayerIds.NextValue,
@@ -522,6 +526,7 @@ public sealed class WorldState
             RemovedProgress = removedProgress,
             UpsertedHarvestedProps = upsertedProps,
             RemovedHarvestedProps = removedProps,
+            ProgressKeys = progressKeys,
         };
         return _inFlight;
     }
@@ -630,6 +635,11 @@ public sealed class WorldState
         foreach (var key in failed.RemovedHarvestedProps)
         {
             _tracker.MarkHarvestedProp(key);
+        }
+
+        if (failed.ProgressKeys is not null)
+        {
+            _tracker.MarkProgressKeys();
         }
 
         _inFlight = null;

@@ -87,7 +87,7 @@ public sealed partial class GameComposition
         var mirror = Server is null ? new ConstructMirror(_env.Time) : null;
         var blockEntities = new ClientBlockEntities();
         var propStates = mirror is not null ? new ClientPropStates() : null;
-        var replication = new ClientReplication(Client.Session.Send, mirror, _env.Time, blockEntities, propStates);
+        var replication = new ClientReplication(Client.Session.Send, mirror, _env.Time, blockEntities, propStates, Inventory?.Progress);
         BlockEntities = blockEntities;
         PropStates = propStates ?? PropStates;
         replication.Decoder.AddSink(LocalPlayer);

@@ -241,7 +241,9 @@ public sealed partial class ToolNode : Node, IClientSessionListener
             : null;
         _ship = new ShipModeSwitch(_view, new SessionIntentSender(_client.Session), Pending, content, _rules);
         _interaction = Inventory is { Chests: { } chests } && BlockEntities is { } entities
-            ? new BlockInteraction(_view, new SessionIntentSender(_client.Session), Pending, content, entities, chests, hello.YourPlayer, _rules)
+            ? new BlockInteraction(
+                _view, new SessionIntentSender(_client.Session), Pending, content, entities, chests, hello.YourPlayer, _rules, Inventory.Crafting,
+                Inventory.Stations)
             : null;
         LastBlockInteraction = null;
         LastShipToggle = null;

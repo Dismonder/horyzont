@@ -1,5 +1,7 @@
 using Godot;
 
+using Horyzont.Client.Blocks;
+using Horyzont.Client.Crafting;
 using Horyzont.Client.Inventory;
 using Horyzont.Client.Session;
 using Horyzont.Client.Tools;
@@ -9,6 +11,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
+using Horyzont.Core.Simulation;
 using Horyzont.Net.Session;
 
 using Microsoft.Extensions.Logging;
@@ -23,6 +26,12 @@ namespace Horyzont.Game.Client.Inventory;
 public sealed partial class InventoryNode : Node, IClientSessionListener
 {
     private readonly Dictionary<ushort, string> _names = [];
+    private readonly SwitchableBlockEntityView _stationView = new();
+    private ServerTickReader _serverTick = static (out ulong tick) =>
+    {
+        tick = 0;
+        return false;
+    };
     private ClientRuntime? _client;
     private SurvivalContent? _content;
     private ILoggerFactory? _loggers;
@@ -53,6 +62,18 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
 
     /// <summary>Gets the chest that is open on the screen (K6-30): E on a chest opens the screen with its panel.</summary>
     public ChestSession Chests { get; private set; } = null!;
+
+    /// <summary>Gets the discoveries and the progress keys the server told (K6-32); the replication feeds it.</summary>
+    public ClientProgress Progress { get; private set; } = null!;
+
+    /// <summary>Gets the recipes the player knows.</summary>
+    public RecipeList Recipes { get; private set; } = null!;
+
+    /// <summary>Gets the crafting of the screen: the hands, or a workbench-like station that E opened (K6-32).</summary>
+    public CraftingSession Crafting { get; private set; } = null!;
+
+    /// <summary>Gets the furnace or refinery that is open on the screen (K6-32): E on one opens the screen with its panel.</summary>
+    public StationSession Stations { get; private set; } = null!;
 
     /// <summary>Gets the toasts.</summary>
     public PickupToastFeed Feed { get; } = new();
@@ -132,11 +153,25 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
         ToolMap = visuals.ToolMap();
         Inventory = new ClientInventory(content.Items, requestState, loggers.CreateLogger<ClientInventory>());
         Chests = new ChestSession(Inventory, sender, send ?? (static _ => { }), loggers.CreateLogger<ChestSession>());
-        Interaction = new InventoryInteraction(Inventory, sender, loggers.CreateLogger<InventoryInteraction>(), Chests);
+        var rules = new GameRules();
+        Progress = new ClientProgress();
+        Recipes = new RecipeList(content, Inventory, Progress);
+        Crafting = new CraftingSession(sender, rules, loggers.CreateLogger<CraftingSession>());
+        Stations = new StationSession(
+            Inventory, _stationView, content, sender, send ?? (static _ => { }), (out ulong tick) => _serverTick(out tick), rules,
+            loggers.CreateLogger<StationSession>());
+        Interaction = new InventoryInteraction(Inventory, sender, loggers.CreateLogger<InventoryInteraction>(), Chests, Stations);
         Inventory.Changed += Refresh;
         Chests.Changed += Refresh;
         Chests.Opened += OnChestOpened;
         Chests.Closed += OnChestClosed;
+        Progress.Changed += Refresh;
+        Crafting.Changed += Refresh;
+        Crafting.Opened += OnStationOpened;
+        Crafting.Closed += OnChestClosed;
+        Stations.Changed += Refresh;
+        Stations.Opened += OnStationOpened;
+        Stations.Closed += OnChestClosed;
         Inventory.OwnedCountChanged += (type, delta) => Feed.OnOwnedCountChanged(type, delta, Clock());
     }
 
@@ -165,6 +200,8 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
             _client.AddListener(Inventory);
             _client.AddListener(Interaction);
             _client.AddListener(Chests);
+            _client.AddListener(Crafting);
+            _client.AddListener(Stations);
             _client.AddListener(this);
         }
     }
@@ -177,6 +214,8 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
             _client.RemoveListener(Inventory);
             _client.RemoveListener(Interaction);
             _client.RemoveListener(Chests);
+            _client.RemoveListener(Crafting);
+            _client.RemoveListener(Stations);
             _client.RemoveListener(this);
         }
     }
@@ -268,6 +307,8 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
         Interaction.Cancel();
         IsOpen = false;
         Chests.Close();
+        Crafting.Close();
+        Stations.Close();
         if (ModalGate?.IsBlocked != true)
         {
             _recaptureMouse?.Invoke();
@@ -285,6 +326,31 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
             // The screen cannot open now (a modal screen has focus, the bag is unknown): do not keep following the chest.
             Chests.Close();
         }
+    }
+
+    private void OnStationOpened()
+    {
+        Open();
+        if (!IsOpen)
+        {
+            // The screen cannot open now (a modal screen has focus, the bag is unknown): do not keep following the station.
+            Crafting.Close();
+            Stations.Close();
+        }
+    }
+
+    /// <summary>
+    /// Tells the screen where the states of the station blocks and the tick of the server come from (K6-32). The composition calls it
+    /// once it knows them: a host reads them from the world it shares with the server, a remote client from the replication.
+    /// </summary>
+    /// <param name="entities">The states of the functional blocks.</param>
+    /// <param name="serverTick">The tick of the server, from the same source as the HUD.</param>
+    public void ConfigureStations(IBlockEntityView entities, ServerTickReader serverTick)
+    {
+        ArgumentNullException.ThrowIfNull(entities);
+        ArgumentNullException.ThrowIfNull(serverTick);
+        _stationView.Inner = entities;
+        _serverTick = serverTick;
     }
 
     private void OnChestClosed()
