@@ -349,12 +349,12 @@ Każdy krok kończy się zielonym budowaniem i testami; commity w formacie Conve
 
 - [x] A0. Zapisz `StateHasher.Hash` świata K6-29W z przedmiotami (`WorldFactory.CreateWithPlayerContainers()` + zestaw startowy) z bieżącego commita jako stałą testu `WorldWithItemsWithoutBlockEntities_HashUnchanged`; zanotuj commit startowy etapu (do `git diff` korpusu).
 - [x] A1 (testy napisane, czerwone; **czeka na przegląd Opus 5.5 przed A2**). Testy z tabeli etapu A (czerwone, budowa może nie przechodzić do A2). **Przegląd Opus 5.5 przed kodem:** kontrakty operacji 36, 37, 40, 44, 49, D12, D13, D19, bloby 21/22, D22 oraz rozstrzygnięcie DO USTALENIA-1, 3, 5, 6, 7, 9. Commit `test(core): add functional block contract tests`.
-- [ ] A2. Typy: `BlockRef`, `BlockEntityKind`, `BlockEntityState` z rodzajami, `BlockEntityStore`, `PlayerProgress`, `BedRef`, `PlayerProgressStore`; magazyny w `WorldState`; indeks gospodarz × rodzaj i `Remove` w `ContainerStore`. Commit `feat(core): add block entity and player progress state`.
-- [ ] A3. Operacje 36, 37, 40, 44, 49 w applierze z `UndoLog`; reguły złożonej D12 (widok efektywny, składowa ostatnia, wersja budowli raz w `Finish`); D13; `ContainerChange.Removed`. Testy applier i złożonej zielone. Commit `feat(core): add block entity, respawn and function state operations`.
-- [ ] A4. Kodeki operacji, bloby 21 i 22, rekordy checkpointu, `ChangeTracker`, `WorldStateBuilder`, `CaptureCheckpoint`/`Requeue`. Commit `feat(core): encode and checkpoint block entities`.
-- [ ] A5. `StateHasher` (D22) i test A0 zielony. Commit `feat(core): hash block entities and respawn points`.
-- [ ] A6. `OperationConstructs` (D14), `ConstructReplica.TrySetFunctionState`. Commit `feat(core): project compound operations for construct views`.
-- [ ] A7. Testy właściwości zielone; sprawdzenie mutacją (usunięty warunek D13 → `BlockClear_WithHostedContainer_Fails` i test właściwości czerwone); korpus i `DeterminismTests` bez zmian w plikach.
+- [x] A2. Typy: `BlockRef`, `BlockEntityKind`, `BlockEntityState` z rodzajami, `BlockEntityStore`, `PlayerProgress`, `BedRef`, `PlayerProgressStore`; magazyny w `WorldState`; indeks gospodarz × rodzaj i `Remove` w `ContainerStore`. Commit `feat(core): add block entity and player progress state`.
+- [x] A3. Operacje 36, 37, 40, 44, 49 w applierze z `UndoLog`; reguły złożonej D12 (widok efektywny, składowa ostatnia, wersja budowli raz w `Finish`); D13; `ContainerChange.Removed`. Testy applier i złożonej zielone. Commit `feat(core): add block entity, respawn and function state operations`.
+- [x] A4. Kodeki operacji, bloby 21 i 22, rekordy checkpointu, `ChangeTracker`, `WorldStateBuilder`, `CaptureCheckpoint`/`Requeue`. Commit `feat(core): encode and checkpoint block entities`.
+- [x] A5. `StateHasher` (D22) i test A0 zielony. Commit `feat(core): hash block entities and respawn points`.
+- [x] A6. `OperationConstructs` (D14), `ConstructReplica.TrySetFunctionState`. Commit `feat(core): project compound operations for construct views`.
+- [x] A7. Testy właściwości zielone; sprawdzenie mutacją (usunięty warunek D13 → `BlockClear_WithHostedContainer_Fails` i test właściwości czerwone); korpus i `DeterminismTests` bez zmian w plikach.
 
 ### Etap B — intencje, treść, protokół
 
@@ -457,7 +457,45 @@ Odstępstwa od spec 03 (do opisu PR):
 
 ## Odstępstwa i uwagi z realizacji
 
-(uzupełnia wykonawca po każdym etapie)
+### Przegląd A1 (Opus 5.5, 2026-10-16) — werdykt: GO z poprawkami
+
+Przejrzane commity c3e6230 i 8ac8e0b (od b5e427e): testy w `tests/Horyzont.Core.Tests/{BlockEntities,Items,Checkpoints,Serialization,Hashing,Replication}/` i szkielety w `src/Horyzont.Core/{BlockEntities,Progress,Operations,Checkpoints,Serialization}/`. Przegląd był tylko odczytem plików (bez uruchamiania testów i bez `git diff`); czerwień testów zgłosił wykonawca. Poprawki z listy (4) wykonawca wprowadza w osobnym commicie `test(core): apply the A1 review` **przed** A2; nie wymagają ponownego przeglądu, chyba że zmienią kontrakt.
+
+**(1) Zgodność z D0–D25 i kontraktami.** Testy odpowiadają kontraktom operacji 36, 37, 40, 44, 49 (warunki z tabeli, w tym ostrzejsze: `ContainerRemove_PlayerContainer_Fails`, `BlockEntitySet_KindChange_Fails`, `BlockEntitySet_EmptyStateWithoutEntity_Fails`, `ContainerConfigure_NoChange_Fails`), D12 (składowa nieodwracalna ostatnia, terenu i budowli razem nie wolno, 49 bez składowej budowli, cofanie przy błędzie z zachowaniem `ContainerIds.NextValue`, widok efektywny w `PlaceChestOnTerrain` i `PlaceChestOnFace`), D13 (`BlockClear_WithBlockEntity_Fails`, `BlockClear_WithHostedContainer_Fails`, ostatni blok budowli), D22 (stała `WorldWithItemsHashBeforeBlockEntities` i trzy testy zmiany skrótu) oraz blobom 21 i 22. D19 jest spełnione pośrednio: żaden test appliera nie oczekuje odmowy 37 z powodu aktora — zostaje tak. Braki są drobne i wymienione w (4): właściciel łóżka nieznany graczowi, `State` ≥ 8 w applierze, złożona z 49 na dwóch budowlach, łóżko ustawione w tej samej złożonej co punkt odrodzenia (widok efektywny dla 44), integralność stanu `Chest` przy wczytaniu, wsadowe przełączenie kolumny drzwi w lustrze.
+
+**(2) Sygnatury dobrane przez wykonawcę — zatwierdzone, z doprecyzowaniem:**
+
+- `WorldCheckpoint`: `UpsertedBlockEntities` (`BlockEntityRecord`), `RemovedBlockEntities` (`BlockRef`), `UpsertedProgress` (`PlayerProgressRecord`), `RemovedProgress` (`PlayerId`), wszystkie `init` z pustą wartością domyślną — **zatwierdzone**. Kolejność list: po `BlockRef` (budowla, potem `CellPos`) i po graczu, jak pozostałe listy checkpointu.
+- `WorldStateBuilder.AddBlockEntity(BlockEntityRecord)` i `AddPlayerProgress(PlayerProgressRecord)`, błędy jako `InvalidDataException` — **zatwierdzone**. Doprecyzowanie walidacji: `AddBlockEntity` — budowla istnieje, komórka niepusta, klucz unikalny; w `Build()` (po wszystkich kontenerach) stan `Chest` wskazuje istniejący kontener rodzaju `Chest` z gospodarzem tej komórki, a liczba stanów budowli ≤ 4096. `AddPlayerProgress` — gracz istnieje, `RespawnBed` **nie jest** `null` (rekord bez punktu nie istnieje, D11), gracz unikalny; łóżka, na które wskazuje punkt, builder **nie** sprawdza (zerwany punkt nie może blokować startu świata; K6-35 przy braku łóżka odradza w miejscu startu).
+- `StateCodec.EncodeBlockEntityBlob` / `DecodeBlockEntityBlob` i `EncodePlayerProgressBlob` / `DecodePlayerProgressBlob` — **zatwierdzone**; błędy dekodowania jako `ProtocolViolationException` (Persistence zamienia je na `WorldCorruptedException`, jak dla bloba 20). Kodek bloba 22 przyjmuje bit „brak punktu” (format na przyszłe pola wersji 2), ale zapis checkpointu nigdy go nie tworzy.
+- `ConstructReplica.TrySetFunctionState(CellPos cell, ushort expectedType, byte state, uint version)` — **zatwierdzone** dla pojedynczej komórki (wersja dokładnie +1, zły typ, pusta komórka i `state` ≥ 8 → `false`). **Poprawka:** kolumna drzwi to jedna wersja dla kilku komórek, więc potrzebny jest też `TrySetFunctionStates(IReadOnlyList<BlockFunctionStateSetOp> ops, uint version)` — wszystko albo nic, wersja +1 raz; `ConstructMirror` używa go dla złożonej z 49.
+- Bajty złote — **zatwierdzone** (zgodne z `WriteCellPos` = trzy varinty zygzak i z nagłówkiem blobów „rodzaj, wersja” jak blob 20): op 36 `24 01 03`; op 37 `25 01 03 08 02`; op 40 `28 01 05 02 01 00 02 01 07` (`Chest`), `… 03 02 09` (`Bed`), `… 03 00` (brak stanu); op 44 `2C 01 04 01 05 02 01 00 03` i `2C 01 04 00`; op 49 `31 01 05 02 01 00 09 01`; blob 21 `15 01 05 02 01 00 01 07` i `15 01 05 02 01 00 02 09`; blob 22 `16 01 04 01 05 02 01 00 03` i `16 01 04 00`. Uwaga zapisana w formacie: blob 21 nie niesie typu bloku (niesie go tylko operacja 40) — tak ma zostać.
+
+**(3) Rozstrzygnięcia (DECYZJA, implementacja rusza autonomicznie):**
+
+- **DO USTALENIA-1 → DECYZJA:** propozycja zatwierdzona — K6-30 dodaje operacje 36, 37 i blob 22 w wersji 1 tylko z punktem odrodzenia (D0, D11).
+- **DO USTALENIA-3 → DECYZJA:** propozycja zatwierdzona — kolumna drzwi do 3 komórek wzdłuż osi Y budowli, jedna wersja budowli; otwarte drzwi bez kolizji. Wygląd panelu `builtin:door_open` przechodzi bramkę wyglądu (zrzut, akceptacja Dismonda w D4/C5); zmiana wyglądu nie zmienia formatu ani testów Core.
+- **DO USTALENIA-5 → DECYZJA:** propozycja zatwierdzona — nowa skrzynia `Shared`; skrzynię prywatną rozbiera tylko właściciel (`NotOwner`).
+- **DO USTALENIA-6 → DECYZJA:** propozycja zatwierdzona — łóżko zajmuje `Sleep` albo `SetRespawn`, jedno łóżko na gracza (zajęcie nowego zwalnia stare), łóżko innego gracza → `NotOwner`, rozebrać może każdy (czyści punkt właściciela), `Sleep` = `SetRespawn` do K6-33.
+- **DO USTALENIA-7 → DECYZJA:** propozycja zatwierdzona — komunikat 48 nie powstaje w K6-30; klient zna swoje łóżko z właściciela w komunikacie 46.
+- **DO USTALENIA-9 → DECYZJA:** propozycja zatwierdzona — nowa fikstura `world-v3-blocks.db` (`FixtureGenerator.Generate_WorldV3Blocks`, `Manual`), `world-v3.db` bez zmian.
+
+DO USTALENIA-2, 4, 8, 10, 11 rozstrzyga przegląd B1 (dotyczą intencji, treści i gry, nie kontraktów etapu A).
+
+**(4) Poprawki testów (przed A2):**
+
+| Plik | Test | Zmiana |
+| --- | --- | --- |
+| `tests/Horyzont.Core.Tests/BlockEntities/BlockEntityOpsApplierTests.cs` | nowy `BlockEntitySet_BedWithUnknownOwner_Fails` | `BedBlockState(new PlayerId(99))` na łóżku → odmowa; `PlayerId.None` przechodzi |
+| `tests/Horyzont.Core.Tests/BlockEntities/FunctionStateOpsTests.cs` | nowy `FunctionStateSet_StateAbove7_Fails` | rekord z `State = 8` zbudowany wprost → `AssertFails` (applier, nie tylko kodek) |
+| `tests/Horyzont.Core.Tests/BlockEntities/RespawnPointOpsTests.cs` | nowy `RespawnPointSet_WrongExpectedType_Fails` | `BedRef` z typem drzwi na komórce łóżka ze stanem → odmowa |
+| `tests/Horyzont.Core.Tests/Items/CompoundConstructTests.cs` | nowy `PlaceBedWithOwnerAndRespawn_OneCompound_UsesEffectiveView` | `[BlockEntitySetOp(FreeCell, Bed(Player1)), RespawnPointSetOp(Player1, BedRef(FreeCell)), BlockSetOp(FreeCell, BedType)]` → przyjęte; punkt i stan istnieją (D12: 40 i 44 czytają komórkę składowej ostatniej) |
+| `tests/Horyzont.Core.Tests/Items/CompoundConstructTests.cs` | nowy `FunctionStatesOnTwoConstructs_OneChangePerConstruct` | złożona z 49 na dwóch budowlach → dwa `ConstructChange`, każda wersja +1 (wymaga drugiej budowli w `WorldFactory.CreateWithFunctionalBlocks` albo budowli utworzonej w teście) |
+| `tests/Horyzont.Core.Tests/Checkpoints/BlockEntityCheckpointTests.cs` | nowe `Builder_ChestStateWithoutContainer_Throws`, `Builder_ProgressWithoutRespawn_Throws`, `Builder_ProgressOfUnknownPlayer_Throws` | doprecyzowanie z (2); każdy → `InvalidDataException` |
+| `tests/Horyzont.Core.Tests/Replication/ConstructReplicaFunctionStateTests.cs` | nowy `TrySetFunctionStates_DoorColumn_OneVersion_AllOrNothing` | dwie komórki drzwi z wersją +1 → `true`, obie zmienione; jedna z nich z błędnym typem → `false`, żadna niezmieniona, wersja bez zmian |
+| `tests/Horyzont.Core.Tests/Items/CompoundConstructTests.cs` | `RemoveChest_Compound_ClearsContainerEntityAndBlock` | bez zmian; potwierdzone: `ContainerChange.Removed` jest jedyną zmianą kontenera, `ConstructChange.Removed = false` |
+
+Bez zmian w plikach: korpus złoty, `TerrainJournalGoldenCorpusTests`, `DeterminismTests` — do sprawdzenia `git diff b5e427e..HEAD` na tych ścieżkach przy każdym kroku A.
 
 ### Etap A, kroki A0 i A1 (2026-10-16)
 
@@ -470,3 +508,18 @@ Odstępstwa od spec 03 (do opisu PR):
 - **Różnice względem tabeli testów:** `OperationConstructsTests` leży w `BlockEntities/` (przestrzeń `Horyzont.Core.Tests.Operations` przesłaniałaby `Operations.…` w `EntityIdAllocatorTests`); testy repliki w nowym pliku `Replication/ConstructReplicaFunctionStateTests.cs` (istniejącego `ConstructReplicaTests` nie ruszano); dodatkowe testy: `BlockEntitySet_SameKindOtherFields_Replaces`, `GoldenBytes_NewOperations`, `BlockEntityBlob_GoldenBytes` (bajty kontraktu: 36 `24 01 03`, 37 `25 01 03 08 02`, 40 `28 01 05 02 01 00 02 01 07`, 44 `2C 01 04 01 05 02 01 00 03`, 49 `31 01 05 02 01 00 09 01`, blob 21 `15 01 …`, blob 22 `16 01 …`), `Generator_ProducesAcceptedPlacementsAndRemovalsAndRefusedOperations` (bez niego test właściwości jest pusty, dopóki wszystkie postawienia są odrzucane).
 - **Testy odmów** zaczynają od wykonania poprawnego odpowiednika (kontrola), więc są czerwone z powodu braku zachowania, a nie dlatego, że szkielet odrzuca wszystko.
 - **Uwaga:** `AllocationTests.SubmitPlaceOnFaceOverlappingOtherConstruct_Rejected_DoesNotAllocate` wyłożył się raz w pełnym przebiegu (480 B, zimny JIT; osobno i w dwóch kolejnych pełnych przebiegach zielony) — znana klasa flaków, nie związana z pakietem.
+
+### Etap A, kroki A1 (poprawki przeglądu), A2–A7 (2026-10-16)
+
+- **Commity:** `d4312b0` (poprawki przeglądu A1), `0ed81f3` (A2), `6d10de5` (A3), `1edc07a` (A4), `40e43da` (A5), `dba39b1` (A6). A7 to sprawdzenia bez zmian w kodzie. Korpus złoty, `TerrainJournalGoldenCorpusTests`, `DeterminismTests` i `Migrations/`: `git diff b5e427e..HEAD` pusty.
+- **Poprawki przeglądu** dodane dokładnie z listy (4); w teście `BlockEntitySet_Over4096PerConstruct_Fails` poprawiono generator komórek (4097. komórka zderzała się z pierwszą, `BlockSet` na zajętą komórkę przerywał test przed sprawdzeniem limitu): trzecia współrzędna `2 + i / 4096`. Dodany szkielet `ConstructReplica.TrySetFunctionStates`.
+- **Kolejność porównania `BlockRef`:** budowla, potem kolumna `CellPos.Chunk` i `LocalIndex` (jak chunki w checkpoincie). Porządek zapisany w `BlockRef.CompareTo` i używany przez `BlockEntityStore` (`SortedDictionary`) oraz przez skrót.
+- **Undo (D12):** `UndoLog` zapisuje kroki w jednej liście i cofa je w odwrotnej kolejności (sloty, utworzone, zmienione ustawienia, usunięte kontenery, stany bloków, punkty odrodzenia); usunięty kontener wraca ten sam obiekt (`ContainerStore.Restore`), więc wcześniejsze wpisy slotów pozostają ważne. Składowe 49 nie mają undo: warunki sprawdza się przy składowej, a zmiany stosuje na końcu (`ApplyPendingFunctionStates`), z jedną podwyżką wersji na budowlę. Usunięcie kontenera utworzonego w tej samej operacji jest odmawiane.
+- **`ContainerChange` dla zmian bez slotu:** kontener po 37 i usunięty (36) trafiają do `ContainerChange` ze znacznikiem `NoSlot` w liście dotkniętych; zmieniony ma pustą listę slotów i wersję +1, usunięty ma `Removed = true`, pustą listę i wersję sprzed usunięcia (bez podwyżki).
+- **Kolejność błędów złożonej:** warunki składowej budowli (2–4) sprawdza się przed pozostałymi (widok efektywny), warunki terenu po przedmiotach (jak w K6-29W, więc stare dzienniki bez zmian). Składowa 49 w złożonej ze składową 2–4 jest odrzucana ze wskazaniem ostatniej składowej.
+- **Odstępstwo od A3 w planie:** `ProtocolConstants.MaxBlockEntitiesPerConstruct = 4096` dodane już w A3 (applier go potrzebuje); reszta limitów D23 w B2.
+- **Skrót (D22):** podsekcje `0x42` i `0x50` dopisane po kontenerach tylko gdy niepuste; sekcja Przetrwania powstaje też dla świata ze stanem bloku albo punktem odrodzenia. `WorldWithItemsWithoutBlockEntities_HashUnchanged` zielony.
+- **Builder:** `AddBlockEntity`/`AddPlayerProgress` tylko zbierają rekordy; wszystkie kontrole (budowla, niepusta komórka, unikalność, `Chest` ↔ kontener gospodarza, właściciel łóżka, limit 4096, gracz, brak rekordu bez punktu) są w `Build()` po wczytaniu kontenerów. `LoadContainer` przyjmuje teraz gospodarza `ConstructBlock` (budowla i niepusta komórka, jeden kontener danego rodzaju na blok).
+- **`CodecGen` i enumy:** `OperationKind` 36/37/40/44/49 i `BlobKind` 21/22 dopisane razem z wpisami w `Enums_GoldenValues` (A3 i A4); `CodecGen.Operation` losuje nowe operacje (rozmiar `ContainerConfigureOp` w 1…256).
+- **A7, mutacja:** usunięcie całego warunku D13 (`CheckBlockClearOrphans` zwraca zawsze `null`) czerwieni `BlockClear_WithBlockEntity_Fails`, `BlockClear_WithHostedContainer_Fails` i test właściwości. Usunięcie samej części „gospodarz kontenera” czerwieni tylko `BlockClear_WithHostedContainer_Fails`: generator właściwości zawsze zakłada stan `Chest` razem z kontenerem, więc stan zasłania brak drugiego warunku (do rozważenia w B1: akcja generatora, która zdejmuje stan skrzyni przed `BlockClearOp`).
+- **Znane czerwone/flaki:** `AllocationTests.SubmitPlaceOnFaceOverlappingOtherConstruct_Rejected_DoesNotAllocate` (480 B) pada w pełnym przebiegu `Core.Tests` (zimny JIT, jak w notatce z A1), osobno zielony.
