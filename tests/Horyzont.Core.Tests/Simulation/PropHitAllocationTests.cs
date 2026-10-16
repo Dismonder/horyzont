@@ -34,7 +34,7 @@ public sealed class PropHitAllocationTests
             (new PropHitIntent(PropWorldFixture.Planet, unknown, 0), RejectReason.InvalidParameters, 1),
             (new PropHitIntent(PropWorldFixture.Planet, tree.Id, 40), RejectReason.InvalidParameters, 1),
             (new PropHitIntent(new PlanetId(2), tree.Id, 0), RejectReason.UnknownPlanet, 1),
-            (new PropHitIntent(PropWorldFixture.Planet, tree.Id, Hand), PropProtocol.ToolTierTooLow, 2),
+            (new PropHitIntent(PropWorldFixture.Planet, tree.Id, Hand), RejectReason.ToolTierTooLow, 2),
         };
         foreach (var (intent, reason, player) in refused)
         {

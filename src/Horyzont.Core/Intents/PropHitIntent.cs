@@ -9,4 +9,4 @@ namespace Horyzont.Core.Intents;
 /// <param name="Planet">Planet of the prop.</param>
 /// <param name="Prop">The prop.</param>
 /// <param name="ToolSlot">Hotbar slot of the tool (below 256); an empty slot or an item that is not a tool is the bare hand.</param>
-public sealed record PropHitIntent(PlanetId Planet, PropId Prop, ushort ToolSlot) : Intent; // K6-31 B2: IntentCodec code 27.
+public sealed record PropHitIntent(PlanetId Planet, PropId Prop, ushort ToolSlot) : Intent;

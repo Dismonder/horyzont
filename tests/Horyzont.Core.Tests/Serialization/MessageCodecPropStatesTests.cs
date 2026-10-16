@@ -53,8 +53,8 @@ public sealed class MessageCodecPropStatesTests
     {
         var message = new PropStates(new PlanetId(1), [Region(_tree)]);
 
-        Assert.Equal(PropProtocol.PropStatesType, message.Type);
-        Assert.Equal(DeliveryChannel.ReliableOrdered, MessageChannels.For(PropProtocol.PropStatesType));
+        Assert.Equal(MessageType.PropStates, message.Type);
+        Assert.Equal(DeliveryChannel.ReliableOrdered, MessageChannels.For(MessageType.PropStates));
         Assert.Equal(45, Kit.Encode(message)[0]);
     }
 
@@ -217,13 +217,14 @@ public sealed class MessageCodecPropStatesTests
     [Fact]
     public void IntentReply_ToolTierTooLow_RoundTrips()
     {
-        var reply = new IntentReply(3, PropProtocol.ToolTierTooLow, OpId.None);
+        var reply = new IntentReply(3, RejectReason.ToolTierTooLow, OpId.None);
 
         Assert.Equal(reply, MessageCodec.Read(Kit.Encode(reply)));
         Assert.Equal("0C 01 03 35 00", Kit.ToHex(Kit.Encode(reply)));
 
-        // Neighbouring codes of the survival range that no package defines.
+        // Neighbouring codes of the survival range that no package defines (52 and 55; 54 is NotOwner and 57 ContainerNotEmpty since K6-30).
         Kit.AssertMessageViolation("0C 01 03 34 00");
-        Kit.AssertMessageViolation("0C 01 03 36 00");
+        Kit.AssertMessageViolation("0C 01 03 37 00");
+        Assert.Equal(RejectReason.NotOwner, ((IntentReply)MessageCodec.Read(Kit.Hex("0C 01 03 36 00"))).Reason);
     }
 }

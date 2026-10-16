@@ -311,7 +311,7 @@ public sealed class IntentValidationTests
         f.StandBeside(tree, 3f);
         Assert.True(f.Hit(tree.Id, 0).IsAccepted);
 
-        Assert.Equal(PropProtocol.ToolTierTooLow, f.Hit(tree.Id, 9).Reason);
+        Assert.Equal(RejectReason.ToolTierTooLow, f.Hit(tree.Id, 9).Reason);
     }
 
     private static RejectReason NotOwnerScenario(FunctionalBlockFixture f)

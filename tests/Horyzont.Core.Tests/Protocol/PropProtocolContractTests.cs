@@ -1,13 +1,13 @@
+using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Props;
+using Horyzont.Core.Protocol;
 using Horyzont.Core.Simulation;
-using Horyzont.Core.Tests.Props;
 
 namespace Horyzont.Core.Tests.Protocol;
 
 /// <summary>
-/// The codes of K6-31 and its limits, pinned by number. <see cref="ProtocolContractTests.Enums_GoldenValues"/> takes the new members in step
-/// B2 (it counts all members of an enum, so it cannot name them before they exist); until then these tests do it by number.
+/// The codes of K6-31 and its limits, pinned by number and name next to <see cref="ProtocolContractTests.Enums_GoldenValues"/>.
 /// </summary>
 public sealed class PropProtocolContractTests
 {
@@ -16,17 +16,16 @@ public sealed class PropProtocolContractTests
     [Fact]
     public void Enums_PropValues_GoldenNumbersAndNames()
     {
-        // The operations and the kinds of layout V1 exist since stage A; the reason and the message arrive in B2.
         Assert.Equal(47, (int)OperationKind.PropRegrow);
         Assert.Equal(48, (int)OperationKind.PropHarvest);
         Assert.Equal(
             _kindNumbers,
             Enum.GetValues<PropKindV1>().Where(k => k != PropKindV1.None).Select(k => (int)k));
 
-        Assert.True(Enum.IsDefined(PropProtocol.ToolTierTooLow), "RejectReason 53 is not defined.");
-        Assert.Equal("ToolTierTooLow", PropProtocol.ToolTierTooLow.ToString());
-        Assert.True(Enum.IsDefined(PropProtocol.PropStatesType), "MessageType 45 is not defined.");
-        Assert.Equal("PropStates", PropProtocol.PropStatesType.ToString());
+        Assert.Equal(53, (int)RejectReason.ToolTierTooLow);
+        Assert.Equal("ToolTierTooLow", RejectReason.ToolTierTooLow.ToString());
+        Assert.Equal(45, (int)MessageType.PropStates);
+        Assert.Equal("PropStates", MessageType.PropStates.ToString());
     }
 
     [Fact]

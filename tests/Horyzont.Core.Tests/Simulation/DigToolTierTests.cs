@@ -28,7 +28,7 @@ public sealed class DigToolTierTests
 
     private static void AssertRefusedUnchanged(PropWorldFixture f, IntentResult result)
     {
-        Assert.Equal(PropProtocol.ToolTierTooLow, result.Reason);
+        Assert.Equal(RejectReason.ToolTierTooLow, result.Reason);
         Assert.Null(result.Applied);
         Assert.Empty(f.Terrain.AppliedEdits);
     }

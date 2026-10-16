@@ -45,7 +45,7 @@ public sealed class ProtocolContractTests
             (RejectReason.NoLineOfSight, 19), (RejectReason.WrongPlanet, 20), (RejectReason.ServerReadOnly, 21),
             (RejectReason.NoCockpit, 30), (RejectReason.ShipAnchored, 31), (RejectReason.NoEngine, 37), (RejectReason.MarkerLimit, 36), (RejectReason.ShipNotParked, 39),
             (RejectReason.InventoryFull, 40), (RejectReason.NotEnoughItems, 41), (RejectReason.ContainerChanged, 42), (RejectReason.ContainerLocked, 43),
-            (RejectReason.NotOwner, 54), (RejectReason.ContainerNotEmpty, 57));
+            (RejectReason.ToolTierTooLow, 53), (RejectReason.NotOwner, 54), (RejectReason.ContainerNotEmpty, 57));
         AssertValues((MessageType.ClientHello, 1), (MessageType.ServerHello, 2), (MessageType.HandshakeReject, 3), (MessageType.ClientReady, 4),
             (MessageType.TerrainCacheReport, 5), (MessageType.TerrainBlockData, 6), (MessageType.TerrainChecksums, 7), (MessageType.ConstructState, 8),
             (MessageType.ConstructRemoved, 9), (MessageType.OperationApplied, 10), (MessageType.IntentSubmit, 11), (MessageType.IntentReply, 12),
@@ -54,7 +54,7 @@ public sealed class ProtocolContractTests
             (MessageType.ShipStatus, 31), (MessageType.StarSystemState, 32),
             (MessageType.MarkersState, 33),
             (MessageType.ContainerState, 40), (MessageType.ContainerDelta, 41), (MessageType.ContainerSubscribe, 42),
-            (MessageType.ContainerUnsubscribe, 43), (MessageType.BlockEntityStates, 46), (MessageType.ItemRegistry, 49));
+            (MessageType.ContainerUnsubscribe, 43), (MessageType.PropStates, 45), (MessageType.BlockEntityStates, 46), (MessageType.ItemRegistry, 49));
         AssertValues((DeliveryChannel.ReliableOrdered, 0), (DeliveryChannel.Unreliable, 1));
         AssertValues((HandshakeRejectCode.WrongProtocol, 1), (HandshakeRejectCode.WrongBuild, 2), (HandshakeRejectCode.ServerFull, 3),
             (HandshakeRejectCode.BadPassword, 4), (HandshakeRejectCode.Banned, 5), (HandshakeRejectCode.AlreadyConnected, 6),
@@ -233,6 +233,7 @@ public sealed class ProtocolContractTests
             new ContainerDelta(new ContainerId(1), 1, []),
             new ContainerSubscribe(new ContainerId(1)),
             new ContainerUnsubscribe(new ContainerId(1)),
+            new PropStates(new PlanetId(1), []),
             new BlockEntityStates(new EntityId(1), []),
             new ItemRegistry([]),
         ];

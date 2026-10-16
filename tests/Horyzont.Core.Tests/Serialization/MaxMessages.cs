@@ -184,6 +184,7 @@ public static class MaxMessages
             new ContainerSubscribe(new ContainerId(ulong.MaxValue)),
             new ContainerUnsubscribe(new ContainerId(ulong.MaxValue)),
             MaxBlockEntityStates(),
+            MaxPropStates(),
             // 4096 entries of 64-byte keys would need 268 KiB; the registry fits the reliable channel with keys of up to 60 bytes
             // (K6-29W stage B deviation), and the writer refuses a larger frame.
             new ItemRegistry(Enumerable.Range(1, ProtocolConstants.MaxItemTypes).Select(i => new RegistryEntry((ushort)i, Text(60))).ToArray()),
@@ -203,6 +204,30 @@ public static class MaxMessages
         }
 
         return new BlockEntityStates(construct, entries.OrderBy(e => new BlockRef(construct, e.Cell)).ToArray());
+    }
+
+    /// <summary>
+    /// 4096 harvested props (K6-31): 64 regions of the last face with the largest region numbers, 64 entries each, ids of nine bytes and the
+    /// largest ticks; about 19 bytes an entry, about 78 KiB of the 256 KiB channel.
+    /// </summary>
+    public static PropStates MaxPropStates()
+    {
+        const int face = 5;
+        var regions = new List<PropRegionState>(ProtocolConstants.MaxPropRegionsPerMessage);
+        for (var i = 0; i < ProtocolConstants.MaxPropRegionsPerMessage; i++)
+        {
+            var regionU = (1 << 17) - ProtocolConstants.MaxPropRegionsPerMessage + i;
+            var entries = new List<HarvestedPropEntry>();
+            for (var cell = 0; entries.Count < ProtocolConstants.MaxPropEntriesPerMessage / ProtocolConstants.MaxPropRegionsPerMessage; cell++)
+            {
+                entries.Add(new HarvestedPropEntry(
+                    PropId.Create(face, (regionU * 8) + (cell >> 3), ((1 << 17) - 1) * 8 + (cell & 7), 3), new Tick(ulong.MaxValue)));
+            }
+
+            regions.Add(new PropRegionState(entries[0].Prop.Region, entries));
+        }
+
+        return new PropStates(new PlanetId(ulong.MaxValue), regions);
     }
 
     /// <summary>512 markers with the largest ids, owners and 32-byte names (about 37 KB, K5-27 decision 6).</summary>

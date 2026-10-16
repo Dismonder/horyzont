@@ -97,7 +97,7 @@ public sealed class PropHitIntentTests
         var f = Near(PropKindV1.Pine, out var tree);
         var result = f.Hit(tree.Id, Hand);
 
-        Assert.Equal(PropProtocol.ToolTierTooLow, result.Reason);
+        Assert.Equal(RejectReason.ToolTierTooLow, result.Reason);
         Assert.Null(result.Applied);
         Assert.Equal(0, f.State.HarvestedProps.Count);
         Assert.Equal(0, f.Count(Wood));
@@ -140,8 +140,8 @@ public sealed class PropHitIntentTests
         AssertAcceptedWithoutOperation(f.Hit(tree.Id, 0));
 
         // An empty slot is the bare hand (tier 0), not an invalid slot: the tier 1 tree refuses it with the tier reason.
-        Assert.Equal(PropProtocol.ToolTierTooLow, f.Hit(tree.Id, 5).Reason);
-        Assert.Equal(PropProtocol.ToolTierTooLow, f.Hit(tree.Id, Hand).Reason);
+        Assert.Equal(RejectReason.ToolTierTooLow, f.Hit(tree.Id, 5).Reason);
+        Assert.Equal(RejectReason.ToolTierTooLow, f.Hit(tree.Id, Hand).Reason);
     }
 
     [Fact]
@@ -151,7 +151,7 @@ public sealed class PropHitIntentTests
         AssertAcceptedWithoutOperation(f.Hit(tree.Id, 0));
 
         // Slot 1 holds gems, which have no tool flag: the hand again.
-        Assert.Equal(PropProtocol.ToolTierTooLow, f.Hit(tree.Id, 1).Reason);
+        Assert.Equal(RejectReason.ToolTierTooLow, f.Hit(tree.Id, 1).Reason);
 
         var rock = Near(PropKindV1.Rock, out var stone);
         AssertHarvest(rock, rock.Hit(stone.Id, 1), stone);
@@ -233,7 +233,7 @@ public sealed class PropHitIntentTests
         AssertAcceptedWithoutOperation(f.Hit(tree.Id));
 
         // Refusals between the hits (reach, tool tier, line of sight) leave the hit points as they are.
-        Assert.Equal(PropProtocol.ToolTierTooLow, f.Hit(tree.Id, Hand).Reason);
+        Assert.Equal(RejectReason.ToolTierTooLow, f.Hit(tree.Id, Hand).Reason);
         f.StandBeside(tree, 14f);
         Assert.Equal(RejectReason.OutOfReach, f.Hit(tree.Id).Reason);
         f.StandUnderground(tree, 3f);

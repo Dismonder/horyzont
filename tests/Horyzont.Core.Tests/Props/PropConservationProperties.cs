@@ -59,7 +59,7 @@ public sealed class PropConservationProperties
             }
         }
 
-        foreach (var kind in new[] { OperationKind.Compound, (OperationKind)47, (OperationKind)48 })
+        foreach (var kind in new[] { OperationKind.Compound, OperationKind.PropRegrow, OperationKind.PropHarvest })
         {
             Assert.True(accepted.GetValueOrDefault(kind) >= 10, $"{kind} accepted {accepted.GetValueOrDefault(kind)} times");
             Assert.True(refused.GetValueOrDefault(kind) >= 10, $"{kind} refused {refused.GetValueOrDefault(kind)} times");

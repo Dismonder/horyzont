@@ -5,13 +5,13 @@ namespace Horyzont.Net.Tests;
 
 /// <summary>
 /// Routing of <c>PropStates</c> (message 45, K6-31 D17): the server sends it in the states in which it sends
-/// <c>BlockEntityStates</c>; a client never sends it. The enum member arrives with the protocol (step B2), so the test names the type by number.
+/// <c>BlockEntityStates</c>; a client never sends it.
 /// </summary>
 public sealed class PropStatesRouterTests
 {
-    private const MessageType PropStatesType = (MessageType)45;
+    private const MessageType PropStatesType = MessageType.PropStates;
 
-    private const MessageType BlockEntityStatesType = (MessageType)46;
+    private const MessageType BlockEntityStatesType = MessageType.BlockEntityStates;
 
     [Fact]
     public void MessageRouter_PropStates_AllowedFromServerLikeBlockEntityStates()

@@ -116,7 +116,7 @@ public sealed class DigRemovesPropsTests
 
         var result = f.DigAt(tree.Anchor, Radius);
 
-        Assert.NotEqual(PropProtocol.ToolTierTooLow, result.Reason);
+        Assert.NotEqual(RejectReason.ToolTierTooLow, result.Reason);
         var components = Components(result);
         Assert.DoesNotContain(components, c => c is ItemCreateOp);
         Assert.Contains(tree.Id, AssertHarvestsOfEdit(f, components).Select(h => h.Prop));

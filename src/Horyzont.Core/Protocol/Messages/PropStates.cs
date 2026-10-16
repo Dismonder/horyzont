@@ -11,5 +11,5 @@ namespace Horyzont.Core.Protocol.Messages;
 public sealed record PropStates(PlanetId Planet, IReadOnlyList<PropRegionState> Regions) : Message
 {
     /// <inheritdoc />
-    public override MessageType Type => (MessageType)45; // K6-31 B2: MessageType.PropStates.
+    public override MessageType Type => MessageType.PropStates;
 }
