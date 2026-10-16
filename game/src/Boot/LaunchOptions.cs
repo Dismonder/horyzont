@@ -1,5 +1,6 @@
 using System.Globalization;
 
+using Horyzont.Client.Settings;
 using Horyzont.Client.Steam;
 using Horyzont.Server;
 
@@ -29,6 +30,7 @@ public sealed record LaunchOptions
     [
         "--connect", "--world", "--port", "--bind", "--password", "--config", "--data-dir", "--profile", "--seed", "--write-default-config",
         "--dev-speed", "--screenshot", "--screenshot-after", "--steam-app-id", "--lobby-visibility",
+        "--upscale", "--render-scale", "--fsr-sharpness",
     ];
 
     /// <summary>Gets the mode of the process.</summary>
@@ -96,6 +98,15 @@ public sealed record LaunchOptions
 
     /// <summary>Gets the Steam application id (<c>--steam-app-id</c>).</summary>
     public uint SteamAppId { get; init; } = DefaultSteamAppId;
+
+    /// <summary>Gets the upscaling mode that overrides <c>user://graphics.cfg</c> for this run (<c>--upscale</c>); null keeps the file value.</summary>
+    public UpscaleMode? Upscale { get; init; }
+
+    /// <summary>Gets the render scale that overrides the file for this run (<c>--render-scale</c>, 0.5 to 1.0); null keeps the file value.</summary>
+    public float? RenderScale { get; init; }
+
+    /// <summary>Gets the FSR sharpness that overrides the file for this run (<c>--fsr-sharpness</c>, 0 to 2); null keeps the file value.</summary>
+    public float? FsrSharpness { get; init; }
 
     /// <summary>Gets the path to write a default server configuration to; the process then exits.</summary>
     public string? WriteDefaultConfig { get; init; }
@@ -298,6 +309,9 @@ public sealed record LaunchOptions
             EnableSteam = reader.Has("--steam") || connectLobby is not null,
             LobbyVisibility = ParseVisibility(reader.ValueOf("--lobby-visibility")),
             SteamAppId = ParseAppId(reader.ValueOf("--steam-app-id")),
+            Upscale = ParseUpscale(reader.ValueOf("--upscale")),
+            RenderScale = reader.Number("--render-scale", GraphicsSettings.MinRenderScale, GraphicsSettings.MaxRenderScale),
+            FsrSharpness = reader.Number("--fsr-sharpness", 0f, GraphicsSettings.MaxSharpness),
         };
     }
 
@@ -349,6 +363,16 @@ public sealed record LaunchOptions
         }
 
         return id;
+    }
+
+    private static UpscaleMode? ParseUpscale(string? text)
+    {
+        if (text is null)
+        {
+            return null;
+        }
+
+        return GraphicsSettings.TryParseMode(text, out var mode) ? mode : throw new ArgumentException("--upscale must be off, fsr1 or fsr2.");
     }
 
     private static LobbyVisibility ParseVisibility(string? text) => text switch
