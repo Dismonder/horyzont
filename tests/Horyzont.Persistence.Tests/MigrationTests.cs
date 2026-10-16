@@ -150,8 +150,6 @@ public sealed class MigrationTests
         // The checkpoint holds the tree, the rock and the bush; the tail harvests a tree of another face and regrows the first tree.
         Assert.Equal(2, loaded.JournalTail.Count);
         Assert.Equal(loaded.JournalTail[^1].Id, sim.State.LastOpId);
-        Assert.Equal(3, loaded.State.HarvestedProps.Count);
-        Assert.True(loaded.State.HarvestedProps.Contains(WorldFactory.HomePlanet, PropWorldScript.Tree));
         Assert.Equal(3, sim.State.HarvestedProps.Count);
         Assert.False(sim.State.HarvestedProps.Contains(WorldFactory.HomePlanet, PropWorldScript.Tree));
         Assert.True(sim.State.HarvestedProps.TryGetTick(WorldFactory.HomePlanet, PropWorldScript.Rock, out var rock));

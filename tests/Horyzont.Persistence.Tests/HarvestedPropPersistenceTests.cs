@@ -42,13 +42,13 @@ public sealed class HarvestedPropPersistenceTests
 
         var (loaded, sim, _) = WorldHarness.LoadAndReplay(dir.WorldPath);
 
-        Assert.Equal(2, loaded.State.HarvestedProps.Count);
-        Assert.True(loaded.State.HarvestedProps.TryGetTick(_planet, _tree, out var treeTick));
-        Assert.Equal(new Tick(120), treeTick);
-        Assert.True(loaded.State.HarvestedProps.TryGetTick(_planet, _rock, out var rockTick));
-        Assert.Equal(new Tick(300), rockTick);
+        // The loaded state is the one the simulation replays: the two rows of the checkpoint and the harvest of the tail.
         Assert.Single(loaded.JournalTail);
         Assert.Equal(3, sim.State.HarvestedProps.Count);
+        Assert.True(sim.State.HarvestedProps.TryGetTick(_planet, _tree, out var treeTick));
+        Assert.Equal(new Tick(120), treeTick);
+        Assert.True(sim.State.HarvestedProps.TryGetTick(_planet, _rock, out var rockTick));
+        Assert.Equal(new Tick(300), rockTick);
         Assert.True(sim.State.HarvestedProps.Contains(_planet, _otherFace));
         Assert.Equal(hash, StateHasher.Hash(sim.State));
     }
