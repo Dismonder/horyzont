@@ -18,7 +18,7 @@ public sealed class VitalsStepProperties
     private const int SequenceCases = 1000;
     private const int RestCases = 100;
     private const int StepsPerSequence = 200;
-    private const int CoverageCases = 40;
+    private const int CoverageCases = 200;
 
     /// <summary>The health regeneration is at least 0.5 per second and the largest maximum is 200, so 199 / 0.5 = 398 s = 23880 ticks suffice.</summary>
     private const int RestTicks = 25000;
@@ -32,19 +32,29 @@ public sealed class VitalsStepProperties
         select new FoodBonus(health, stamina, regen / 4f);
 
     /// <summary>
-    /// What happens in one tick. Six in ten ticks are idle, so the regeneration and the recovery from exhaustion are reached; a rare heavy tick (damage
-    /// 400, a cost of 40) reaches the floor of the health and the exhaustion at once.
+    /// What happens in one tick, by the weights of a profile (idle : ordinary : heavy). The heavy tick (damage 400, a cost of 40) reaches the floor of the
+    /// health and the exhaustion at once.
     /// </summary>
-    private static Gen<TickEvent> EventGen { get; } = Gen.Frequency(
-        (6, Gen.Constant(new TickEvent(false, false, 0f, 0f))),
-        (3, from sprinting in Gen.Elements(false, true)
+    private static Gen<TickEvent> EventGen(int idle, int ordinary, int heavy) => Gen.Frequency(
+        (idle, Gen.Constant(new TickEvent(false, false, 0f, 0f))),
+        (ordinary, from sprinting in Gen.Elements(false, true)
             from jumped in Gen.Elements(false, false, true)
             from extra in Gen.Elements(0f, 0f, 4f, 4f, 12f)
             from damage in Gen.Elements(0f, 0f, 0f, 0.5f, 8f, 60f)
             select new TickEvent(sprinting, jumped, extra, damage)),
-        (1, from extra in Gen.Elements(0f, 40f)
+        (heavy, from extra in Gen.Elements(0f, 40f)
             from damage in Gen.Elements(0f, 400f)
             select new TickEvent(false, false, extra, damage)));
+
+    /// <summary>
+    /// A whole case has one profile: a calm one (long idle stretches, so the regeneration and the recovery from exhaustion are reached and the maxima are
+    /// held), an ordinary one and a wild one (the floor of the health and exhaustion all the time). Mixing them per tick would leave the player exhausted
+    /// almost always, because an idle tick regenerates 0.25 and an ordinary one costs about 7 (review A1, P1-2).
+    /// </summary>
+    private static Gen<TickEvent[]> EventsGen { get; } = Gen.Frequency(
+        (3, EventGen(30, 1, 0).ArrayOf(StepsPerSequence)),
+        (3, EventGen(6, 3, 1).ArrayOf(StepsPerSequence)),
+        (1, EventGen(1, 4, 1).ArrayOf(StepsPerSequence)));
 
     private static Gen<PlayerVitals> StartGen { get; } =
         from health in Gen.Choose(1, 300)
@@ -56,7 +66,7 @@ public sealed class VitalsStepProperties
     private static Gen<Case> CaseGen { get; } =
         from start in StartGen
         from bonus in BonusGen
-        from events in EventGen.ArrayOf(StepsPerSequence)
+        from events in EventsGen
         select new Case(start, bonus, events);
 
     [Fact]
@@ -65,17 +75,21 @@ public sealed class VitalsStepProperties
         Kit.ForAll(CaseGen, Check, SequenceCases);
 
         // The generator must reach the interesting states: an exhausted player, damage that hits the floor, a player at the maxima, and above all the way
-        // back from exhaustion (the point of D16). The thresholds are tuned to the generator, never lowered below what proves the states are reached.
+        // back from exhaustion (the point of D16). Measured on 200 cases of 200 steps (40000 steps): about 21000 exhausted steps, 5700 at the floor, 2100 at
+        // full stamina and 90 recoveries. The thresholds sit at about a quarter of that, a margin for the random cases, and are never lowered below what
+        // proves that the states are reached.
         var coverage = new Coverage();
-        foreach (var sample in CaseGen.Sample(StepsPerSequence, CoverageCases))
+        var samples = CaseGen.Sample(CoverageCases, 10).ToArray();
+        Assert.Equal(CoverageCases, samples.Length);
+        foreach (var sample in samples)
         {
             Check(sample, coverage);
         }
 
-        Assert.True(coverage.ExhaustedSteps >= 200, $"{coverage.ExhaustedSteps} exhausted steps");
-        Assert.True(coverage.HealthAtFloor >= 50, $"{coverage.HealthAtFloor} steps at the health floor");
-        Assert.True(coverage.StaminaAtMax >= 200, $"{coverage.StaminaAtMax} steps at full stamina");
-        Assert.True(coverage.RecoveredFromExhaustion >= 20, $"{coverage.RecoveredFromExhaustion} recoveries from exhaustion");
+        Assert.True(coverage.ExhaustedSteps >= 5000, $"{coverage.ExhaustedSteps} exhausted steps");
+        Assert.True(coverage.HealthAtFloor >= 1000, $"{coverage.HealthAtFloor} steps at the health floor");
+        Assert.True(coverage.StaminaAtMax >= 500, $"{coverage.StaminaAtMax} steps at full stamina");
+        Assert.True(coverage.RecoveredFromExhaustion >= 30, $"{coverage.RecoveredFromExhaustion} recoveries from exhaustion");
     }
 
     [Fact]

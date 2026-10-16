@@ -7,5 +7,9 @@ public static class FallDamage
     /// <param name="impactSpeed">The impact speed in m/s.</param>
     /// <param name="rules">The rules.</param>
     /// <returns><c>max(0, (impactSpeed - FallSafeSpeed) * FallDamagePerMetrePerSecond)</c>; 0 for a speed that is not finite.</returns>
-    public static float Compute(float impactSpeed, VitalsRules rules) => throw new NotImplementedException("K6-33 A6");
+    public static float Compute(float impactSpeed, VitalsRules rules)
+    {
+        ArgumentNullException.ThrowIfNull(rules);
+        return float.IsFinite(impactSpeed) ? MathF.Max(0f, (impactSpeed - rules.FallSafeSpeed) * rules.FallDamagePerMetrePerSecond) : 0f;
+    }
 }

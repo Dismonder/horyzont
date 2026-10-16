@@ -9,5 +9,11 @@ public static class RestRules
     /// <param name="tickRate">Ticks per second.</param>
     /// <returns><c>(RestBaseMinutes + comfort * RestMinutesPerComfort) * 60 * tickRate</c> ticks.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="tickRate"/> is not positive.</exception>
-    public static ulong DurationTicks(int comfort, VitalsRules rules, int tickRate) => throw new NotImplementedException("K6-33 A6");
+    public static ulong DurationTicks(int comfort, VitalsRules rules, int tickRate)
+    {
+        ArgumentNullException.ThrowIfNull(rules);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(tickRate);
+        var level = Math.Clamp(comfort, 0, rules.MaxComfort);
+        return (ulong)(rules.RestBaseMinutes + (level * rules.RestMinutesPerComfort)) * 60UL * (ulong)tickRate;
+    }
 }

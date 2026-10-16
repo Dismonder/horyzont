@@ -17,6 +17,28 @@ public readonly record struct FoodBonus(float Health, float Stamina, float Healt
     /// <param name="rules">The rules.</param>
     /// <returns>The bonus; empty slots, expired food and types that are not food add nothing.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="tickRate"/> is not positive.</exception>
-    public static FoodBonus Compute(in FoodSlots slots, FoodTable table, Tick now, int tickRate, VitalsRules rules) =>
-        throw new NotImplementedException("K6-33 A6");
+    public static FoodBonus Compute(in FoodSlots slots, FoodTable table, Tick now, int tickRate, VitalsRules rules)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+        ArgumentNullException.ThrowIfNull(rules);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(tickRate);
+        double health = 0;
+        double stamina = 0;
+        double regen = 0;
+        for (var i = 0; i < FoodSlots.Count; i++)
+        {
+            var slot = slots[i];
+            if (slot.IsEmpty || !table.TryGet(slot.Type, out var food))
+            {
+                continue;
+            }
+
+            var strength = FoodCurve.Strength(FoodCurve.Remaining(slot.Eaten, now, food.DurationSeconds * (ulong)tickRate), rules);
+            health += food.Health * strength;
+            stamina += food.Stamina * strength;
+            regen += food.HealthRegenPerSecond * strength;
+        }
+
+        return new FoodBonus((float)health, (float)stamina, (float)regen);
+    }
 }

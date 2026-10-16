@@ -10,5 +10,6 @@ public static class StaminaGate
     /// <param name="input">The input.</param>
     /// <param name="exhausted">Whether the player is exhausted.</param>
     /// <returns>The input without <see cref="InputButtons.Sprint"/> and <see cref="InputButtons.Jump"/> when exhausted, else unchanged.</returns>
-    public static MotorInput Filter(in MotorInput input, bool exhausted) => throw new NotImplementedException("K6-33 A6");
+    public static MotorInput Filter(in MotorInput input, bool exhausted) =>
+        exhausted ? input with { Buttons = input.Buttons & ~(InputButtons.Sprint | InputButtons.Jump) } : input;
 }
