@@ -78,7 +78,7 @@ internal sealed class IntentValidator(
         }
 
         // Item intents (K6-29W): parameters and container access before the rate limit; without content they are invalid (D8).
-        if (intent is ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent)
+        if (intent is ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent or EatIntent)
         {
             var itemReason = survival is null ? RejectReason.InvalidParameters : survival.CheckItemParameters(playerId, intent);
             if (itemReason != RejectReason.None)
@@ -115,7 +115,7 @@ internal sealed class IntentValidator(
             PropHitIntent hit => props is null ? RejectReason.InvalidParameters : props.Validate(playerId, hit, hasPlanet, playerPlanet, eye, buckets, out facts),
 
             // The content checks of item intents (source content, counts, target room) are part of their resolution.
-            ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent => RejectReason.None,
+            ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent or EatIntent => RejectReason.None,
 
             // Crafting: the content checks (recipe, station, sources) are part of its resolution (K6-32).
             CraftIntent => RejectReason.None,
@@ -129,7 +129,7 @@ internal sealed class IntentValidator(
         TerrainToolIntent => buckets.Terrain,
         PlaceBlockIntent or RemoveBlockIntent or ShipModeIntent or RefuelIntent or BlockInteractIntent or BlockConfigIntent => buckets.Blocks,
         MarkerSetIntent or MarkerRemoveIntent => buckets.Markers,
-        ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent or CraftIntent => buckets.Items,
+        ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent or CraftIntent or EatIntent => buckets.Items,
         PropHitIntent => buckets.Props,
         _ => null,
     };
@@ -161,7 +161,7 @@ internal sealed class IntentValidator(
             case RefuelIntent refuel:
                 rayOrigin = refuel.RayOrigin;
                 return Geometry.IsFinite(refuel.RayOrigin) && Geometry.IsDirection(refuel.RayDirection);
-            case ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent or CraftIntent:
+            case ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent or CraftIntent or EatIntent:
                 bucket = buckets.Items;
                 return true;
             case PropHitIntent:

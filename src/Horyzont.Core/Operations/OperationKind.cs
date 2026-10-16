@@ -68,6 +68,9 @@ public enum OperationKind : byte
     /// <summary><see cref="BlockEntitySetOp"/>.</summary>
     BlockEntitySet = 40,
 
+    /// <summary><see cref="FoodSetOp"/> (K6-33).</summary>
+    FoodSet = 41,
+
     /// <summary><see cref="ProgressKeyGrantOp"/> (K6-32).</summary>
     ProgressKeyGrant = 45,
 

@@ -125,7 +125,14 @@ public static class CodecCases
                 CodecGen.ConstructHeader,
                 StateCodec.EncodeConstructHeaderBlob,
                 d => StateCodec.DecodeConstructHeaderBlob(d)),
-            Blob("PlayerBlob", BlobKind.Player, CodecGen.PlayerRecord, StateCodec.EncodePlayerBlob, d => StateCodec.DecodePlayerBlob(d)),
+            Blob("PlayerBlob", BlobKind.Player, CodecGen.PlayerRecordWithVitals, StateCodec.EncodePlayerBlob, d => StateCodec.DecodePlayerBlob(d), 2),
+            Blob(
+                "PlayerProgressBlob",
+                BlobKind.PlayerProgress,
+                CodecGen.PlayerProgressRecord,
+                StateCodec.EncodePlayerProgressBlob,
+                d => StateCodec.DecodePlayerProgressBlob(d),
+                3),
             Blob("PlanetBlob", BlobKind.PlanetParams, CodecGen.Planet, StateCodec.EncodePlanetBlob, d => StateCodec.DecodePlanetBlob(d)),
             Blob(
                 "ChunkBlob",
@@ -156,7 +163,7 @@ public static class CodecCases
             v => Kit.Write(w => write(w, (T)v)),
             d => Kit.ReadAll(d, read));
 
-    private static CodecCase Blob<T>(string name, BlobKind kind, Gen<T> gen, Func<T, byte[]> encode, SpanDecode<T> decode)
+    private static CodecCase Blob<T>(string name, BlobKind kind, Gen<T> gen, Func<T, byte[]> encode, SpanDecode<T> decode, byte highestVersion = 1)
         where T : notnull =>
         new(
             name,
@@ -165,6 +172,6 @@ public static class CodecCases
             d => decode(d))
         {
             RejectsTrailingBytes = true,
-            Headers = [[(byte)kind, 1]],
+            Headers = [.. Enumerable.Range(1, highestVersion).Select(v => new[] { (byte)kind, (byte)v })],
         };
 }

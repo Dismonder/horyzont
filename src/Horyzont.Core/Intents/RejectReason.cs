@@ -108,6 +108,9 @@ public enum RejectReason : byte
     /// <summary>The eye of the player is farther than the use range from the station, or the station is on another planet (K6-32).</summary>
     TooFarFromStation = 46,
 
+    /// <summary>The food cannot be eaten now: the same food still has more than 20 percent of its time, or all three slots hold different active food (K6-33).</summary>
+    FoodAlreadyActive = 49,
+
     /// <summary>The block or its container belongs to another player: a private chest, the bed of another player (K6-30).</summary>
     NotOwner = 54,
 

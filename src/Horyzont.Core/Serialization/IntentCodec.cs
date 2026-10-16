@@ -31,6 +31,7 @@ public static class IntentCodec
         QuickStack = 22,
         TakeAll = 23,
         Craft = 24,
+        Eat = 25,
         PropHit = 27,
         BlockInteract = 28,
         BlockConfig = 29,
@@ -190,6 +191,13 @@ public static class IntentCodec
                 w.WriteVarUInt(drop.Count);
                 w.WriteVarUInt(drop.ExpectedType.Value);
                 w.WriteVarUInt(drop.ExpectedCount);
+                break;
+
+            case EatIntent eat:
+                w.WriteByte((byte)IntentCode.Eat);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(eat.Container.Value);
+                w.WriteVarUInt(eat.Slot);
                 break;
 
             case QuickStackIntent:
@@ -400,6 +408,10 @@ public static class IntentCodec
                 var dropType = new ItemTypeId(r.ReadVarUInt16());
                 ushort dropExpected = r.ReadVarUInt16();
                 return new ItemDropIntent(slot, dropCount, dropType, dropExpected);
+
+            case IntentCode.Eat:
+                var eatContainer = new ContainerId(r.ReadVarUInt());
+                return new EatIntent(eatContainer, r.ReadVarUInt16());
 
             case IntentCode.QuickStack:
                 return new QuickStackIntent();

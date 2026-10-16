@@ -42,7 +42,7 @@ public sealed class StateCodecCraftingTests
     }
 
     [Fact]
-    public void PlayerProgressBlob_V2_RoundTrip()
+    public void PlayerProgressBlob_Discoveries_RoundTrip()
     {
         var five = ItemTypeBitSet.Empty.With(new ItemTypeId(5));
         var many = ItemTypeBitSet.Empty.With(new ItemTypeId(1)).With(new ItemTypeId(9)).With(new ItemTypeId(4095)).With(new ItemTypeId(4096));
@@ -56,7 +56,7 @@ public sealed class StateCodecCraftingTests
         })
         {
             var blob = StateCodec.EncodePlayerProgressBlob(record);
-            Assert.Equal(2, blob[1]);
+            Assert.Equal(3, blob[1]);
             DeepAssert.Equal(record, StateCodec.DecodePlayerProgressBlob(blob));
             Assert.Equal(blob, StateCodec.EncodePlayerProgressBlob(StateCodec.DecodePlayerProgressBlob(blob)));
         }
@@ -72,7 +72,7 @@ public sealed class StateCodecCraftingTests
 
         var blob = StateCodec.EncodePlayerProgressBlob(empty);
 
-        Assert.Equal("16 02 04 01 05 02 01 00 03", Kit.ToHex(blob));
+        Assert.Equal("16 03 04 01 05 02 01 00 03", Kit.ToHex(blob));
         Assert.Null(StateCodec.DecodePlayerProgressBlob(blob).Discovered);
         Assert.Null(new PlayerProgress(new PlayerId(4), _bed, ItemTypeBitSet.Empty).Discovered);
     }
@@ -99,11 +99,11 @@ public sealed class StateCodecCraftingTests
         Assert.Equal(new PlayerId(4), StateCodec.DecodePlayerProgressBlob(Kit.Hex("16 02 04 02 01 20")).Player);
         Assert.Equal(new PlayerId(4), StateCodec.DecodePlayerProgressBlob(Kit.Hex("16 02 04 03 05 02 01 00 03 01 20")).Player);
 
-        // Bit 2 is unknown in version 2; version 1 has no bit 1; a version above 2 is unknown.
+        // Bit 2 (food) is unknown in version 2; version 1 has no bit 1; a version above 3 is unknown (K6-33 writes version 3).
         Kit.AssertViolation(d => StateCodec.DecodePlayerProgressBlob(d), Kit.Hex("16 02 04 04"));
         Kit.AssertViolation(d => StateCodec.DecodePlayerProgressBlob(d), Kit.Hex("16 02 04 06 01 20"));
         Kit.AssertViolation(d => StateCodec.DecodePlayerProgressBlob(d), Kit.Hex("16 01 04 02 01 20"));
-        Kit.AssertViolation(d => StateCodec.DecodePlayerProgressBlob(d), Kit.Hex("16 03 04 00"));
+        Kit.AssertViolation(d => StateCodec.DecodePlayerProgressBlob(d), Kit.Hex("16 04 04 00"));
     }
 
     [Fact]
@@ -215,12 +215,12 @@ public sealed class StateCodecCraftingTests
             "15 01 05 02 01 00 03 07 08 03 74 3A 61 01 64",
             Kit.ToHex(StateCodec.EncodeBlockEntityBlob(new BlockEntityRecord(_construct, _cell, new StationBlockState(new ContainerId(7), new ContainerId(8), "t:a", new Tick(100))))));
         Assert.Equal(
-            "16 02 04 02 01 20",
+            "16 03 04 02 01 20",
             Kit.ToHex(StateCodec.EncodePlayerProgressBlob(new PlayerProgressRecord(new PlayerId(4), null, ItemTypeBitSet.Empty.With(new ItemTypeId(5))))));
         Assert.Equal(
-            "16 02 04 03 05 02 01 00 03 01 20",
+            "16 03 04 03 05 02 01 00 03 01 20",
             Kit.ToHex(StateCodec.EncodePlayerProgressBlob(new PlayerProgressRecord(new PlayerId(4), _bed, ItemTypeBitSet.Empty.With(new ItemTypeId(5))))));
-        Assert.Equal("16 02 04 01 05 02 01 00 03", Kit.ToHex(StateCodec.EncodePlayerProgressBlob(new PlayerProgressRecord(new PlayerId(4), _bed))));
+        Assert.Equal("16 03 04 01 05 02 01 00 03", Kit.ToHex(StateCodec.EncodePlayerProgressBlob(new PlayerProgressRecord(new PlayerId(4), _bed))));
         Assert.Equal("19 01 01 06 74 3A 62 6F 73 73", Kit.ToHex(StateCodec.EncodeProgressKeysBlob(["t:boss"])));
         Assert.Equal("19 01 00", Kit.ToHex(StateCodec.EncodeProgressKeysBlob([])));
     }

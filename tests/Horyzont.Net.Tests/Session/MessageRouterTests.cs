@@ -43,7 +43,7 @@ public sealed class MessageRouterTests
     [InlineData(20, true)]
     [InlineData(21, true)]
     [InlineData(39, false)]
-    [InlineData(44, false)]
+    [InlineData(44, true)]
     [InlineData(48, true)]
     [InlineData(47, false)]
     [InlineData(50, false)]

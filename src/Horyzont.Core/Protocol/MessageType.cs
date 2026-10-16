@@ -100,6 +100,9 @@ public enum MessageType : byte
     /// <summary>Client → server, reliable: unsubscribe from a container (K6-29).</summary>
     ContainerUnsubscribe = 43,
 
+    /// <summary>Server → client, unreliable: the health, stamina and rest of the receiving player, about 10 times a second (K6-33).</summary>
+    PlayerVitals = 44,
+
     /// <summary>Server → client, reliable ordered: the full set of harvested props of some regions of a planet (K6-31).</summary>
     PropStates = 45,
 

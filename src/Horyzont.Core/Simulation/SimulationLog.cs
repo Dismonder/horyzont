@@ -18,4 +18,7 @@ internal static partial class SimulationLog
 
     [LoggerMessage(EventId = 4, Level = LogLevel.Warning, Message = "Kinematics of construct {ConstructId} rejected: non-finite or non-normalized values")]
     internal static partial void ConstructKinematicsRejected(ILogger logger, ulong constructId);
+
+    [LoggerMessage(EventId = 5, Level = LogLevel.Warning, Message = "Vitals of player {PlayerId} rejected: non-finite, negative or above the largest value")]
+    internal static partial void VitalsRejected(ILogger logger, ulong playerId);
 }

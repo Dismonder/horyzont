@@ -22,6 +22,9 @@ public sealed partial class BlockTypeCatalog
     /// <summary>Key of the built-in material of <c>core:missing</c>.</summary>
     public const string MissingMaterialKey = "core:missing";
 
+    /// <summary>Highest comfort a block can add to the rest (K6-33 D9); the sum of the different types is capped by <c>VitalsRules.MaxComfort</c>.</summary>
+    private const int MaxBlockComfort = 10;
+
     private const uint MissingColor = 0xFF00FFFFu;
 
     private readonly Dictionary<string, BlockTypeContent> _byKey;
@@ -181,9 +184,28 @@ public sealed partial class BlockTypeCatalog
             function = ParseFunction(functionElement, $"{path}.function", out light);
         }
 
+        // Optional fields of the rest (K6-33 D9): the comfort of the block, 0 to 10, and whether it is a source of heat.
+        byte comfort = 0;
+        if (element.TryGetProperty("comfort", out var comfortElement))
+        {
+            var comfortValue = -1;
+            Require(
+                comfortElement.ValueKind == JsonValueKind.Number && comfortElement.TryGetInt32(out comfortValue) && comfortValue is >= 0 and <= MaxBlockComfort,
+                $"{path}.comfort",
+                $"must be an integer in 0..{MaxBlockComfort}");
+            comfort = (byte)comfortValue;
+        }
+
+        var heat = false;
+        if (element.TryGetProperty("heat", out var heatElement))
+        {
+            Require(heatElement.ValueKind is JsonValueKind.True or JsonValueKind.False, $"{path}.heat", "must be a boolean");
+            heat = heatElement.GetBoolean();
+        }
+
         var local = key[(key.IndexOf(':', StringComparison.Ordinal) + 1)..];
         var nameKey = "BLOCK_" + local.Replace('/', '_').ToUpperInvariant();
-        return new BlockTypeContent(new BlockTypeDef(key, shape, materialId, collision, mass, function), nameKey, mesh, light);
+        return new BlockTypeContent(new BlockTypeDef(key, shape, materialId, collision, mass, function, comfort, heat), nameKey, mesh, light);
     }
 
     private static uint ParseColor(string text, string path)

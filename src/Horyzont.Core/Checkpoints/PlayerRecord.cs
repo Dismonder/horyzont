@@ -18,9 +18,10 @@ namespace Horyzont.Core.Checkpoints;
 /// <param name="BodyRotation">Body rotation in the parent frame.</param>
 /// <param name="Pitch">Camera pitch.</param>
 /// <param name="IsOnline">Whether the player was online.</param>
+/// <param name="Vitals">Health and stamina (K6-33, blob 2 version 2), null for a player whose vitals were never set (version 1).</param>
 public sealed record PlayerRecord(
     PlayerId Player, PlatformIdentity Identity, string DisplayName, EntityId Entity, FrameRef Frame, uint ParentSeq,
-    CellPos? Seat, Vector3 Position, Quaternion BodyRotation, float Pitch, bool IsOnline)
+    CellPos? Seat, Vector3 Position, Quaternion BodyRotation, float Pitch, bool IsOnline, PlayerVitals? Vitals = null)
 {
     /// <summary>Record of a live player.</summary>
     /// <param name="player">The player.</param>
@@ -30,6 +31,6 @@ public sealed record PlayerRecord(
         ArgumentNullException.ThrowIfNull(player);
         return new(
             player.Player, player.Identity, player.DisplayName, player.Entity, player.Frame, player.ParentSeq, player.Seat,
-            player.Position, player.BodyRotation, player.Pitch, player.IsOnline);
+            player.Position, player.BodyRotation, player.Pitch, player.IsOnline, player.Vitals);
     }
 }

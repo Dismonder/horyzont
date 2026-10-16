@@ -186,6 +186,9 @@ public static class MaxMessages
             new ContainerUnsubscribe(new ContainerId(ulong.MaxValue)),
             MaxBlockEntityStates(),
             MaxPlayerProgressState(),
+            new PlayerVitalsMessage(
+                ProtocolConstants.MaxVitalValue, ProtocolConstants.MaxVitalValue, ProtocolConstants.MaxVitalValue, ProtocolConstants.MaxVitalValue, true, true, true,
+                ProtocolConstants.MaxRestWarmupTicks, ProtocolConstants.MaxRestRemainingTicks, 10),
             MaxPropStates(),
             // 4096 entries of 64-byte keys would need 268 KiB; the registry fits the reliable channel with keys of up to 60 bytes
             // (K6-29W stage B deviation), and the writer refuses a larger frame.
@@ -224,7 +227,10 @@ public static class MaxMessages
         return new BlockEntityStates(construct, entries);
     }
 
-    /// <summary>The largest message 48 (K6-32): all 4096 item types (bits 1 to 4096) and 256 keys of 64 UTF-8 bytes, ascending.</summary>
+    /// <summary>
+    /// The largest message 48 (K6-32, K6-33): all 4096 item types (bits 1 to 4096), 256 keys of 64 UTF-8 bytes, ascending, and three food slots with the
+    /// largest type (two bytes) and the largest tick (ten bytes), 36 bytes in all.
+    /// </summary>
     public static PlayerProgressState MaxPlayerProgressState()
     {
         var bytes = new byte[ProtocolConstants.MaxDiscoveredBytes];
@@ -232,7 +238,8 @@ public static class MaxMessages
         bytes[0] = 0xFE;
         bytes[^1] = 0x01;
         var keys = Enumerable.Range(0, ProtocolConstants.MaxProgressKeys).Select(i => $"{i:D3}" + Text(ProtocolConstants.MaxRegistryKeyBytes - 3)).ToArray();
-        return new PlayerProgressState(ItemTypeBitSet.FromBytes(bytes), keys);
+        var food = new FoodSlot(new ItemTypeId(ProtocolConstants.MaxItemTypes), new Tick(ulong.MaxValue));
+        return new PlayerProgressState(ItemTypeBitSet.FromBytes(bytes), keys, new FoodSlots(food, food, food));
     }
 
     /// <summary>

@@ -4,6 +4,7 @@ using Horyzont.Core.Hashing;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Serialization;
 using Horyzont.Core.Simulation;
@@ -77,6 +78,50 @@ public sealed class GameServerHooksTests
         Assert.Equal(42u, rejected.ClientSeq);
         Assert.Equal(RejectReason.InvalidParameters, rejected.Reason);
         Assert.Equal(OpId.None, rejected.AppliedOpId);
+    }
+
+    [Fact]
+    public void OnIntent_Accepted_NotifiesObservers()
+    {
+        var first = new IntentRecorder();
+        var second = new IntentRecorder();
+        var hooks = new GameServerHooks(_sim, () => true, NullLogger<GameServerHooks>.Instance, observers: [first, second]);
+        var player = hooks.OnPlayerJoining(_alice, "alice");
+
+        var intent = Dig(player, 5f);
+        hooks.OnIntent(player, 1, intent);
+
+        Assert.Equal([(player, (Intent)intent)], first.Accepted);
+        Assert.Equal([(player, (Intent)intent)], second.Accepted);
+    }
+
+    [Fact]
+    public void OnIntent_Rejected_DoesNotNotify()
+    {
+        var observer = new IntentRecorder();
+        var hooks = new GameServerHooks(_sim, () => true, NullLogger<GameServerHooks>.Instance, observers: [observer]);
+        var player = hooks.OnPlayerJoining(_alice, "alice");
+
+        // The twin above is accepted; the same dig with a radius that is too small is refused and nobody hears of it.
+        var reply = hooks.OnIntent(player, 2, Dig(player, 5f) with { Radius = 0.1f });
+
+        Assert.Equal(RejectReason.InvalidParameters, reply.Reason);
+        Assert.Empty(observer.Accepted);
+    }
+
+    private sealed class IntentRecorder : IServerPlayerObserver
+    {
+        public List<(PlayerId Player, Intent Intent)> Accepted { get; } = [];
+
+        public void OnPlayerReady(PlayerId player)
+        {
+        }
+
+        public void OnPlayerLeaving(PlayerId player, DisconnectCode reason)
+        {
+        }
+
+        public void OnIntentAccepted(PlayerId player, Intent intent) => Accepted.Add((player, intent));
     }
 
     [Fact]

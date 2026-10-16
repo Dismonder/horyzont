@@ -17,6 +17,9 @@ public sealed class ClientProgress
     /// <summary>Gets the item types the player discovered.</summary>
     public ItemTypeBitSet Discovered { get; private set; } = ItemTypeBitSet.Empty;
 
+    /// <summary>Gets the food slots the server told about (K6-33 D6); expired food stays in a slot until the next meal, the HUD counts the time.</summary>
+    public FoodSlots Food { get; private set; }
+
     /// <summary>Gets the progress keys of the world.</summary>
     public IReadOnlySet<string> WorldKeys => _keys;
 
@@ -26,6 +29,7 @@ public sealed class ClientProgress
     {
         ArgumentNullException.ThrowIfNull(message);
         Discovered = message.Discovered;
+        Food = message.Food;
         _keys = new HashSet<string>(message.WorldProgressKeys, StringComparer.Ordinal);
         Changed?.Invoke();
     }
@@ -34,6 +38,7 @@ public sealed class ClientProgress
     public void Clear()
     {
         Discovered = ItemTypeBitSet.Empty;
+        Food = FoodSlots.Empty;
         _keys = new HashSet<string>(StringComparer.Ordinal);
         Changed?.Invoke();
     }

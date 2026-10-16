@@ -21,8 +21,11 @@ public static class StateCodec
 {
     private const byte CurrentFormatVersion = 1;
 
-    /// <summary>Blob 22 is written in version 2 (K6-32: discoveries); version 1 (K6-30) is still read.</summary>
-    private const byte PlayerProgressVersion = 2;
+    /// <summary>Blob 22 is written in version 3 (K6-33: food); versions 1 (K6-30) and 2 (K6-32: discoveries) are still read.</summary>
+    private const byte PlayerProgressVersion = 3;
+
+    /// <summary>Blob 2 is written in version 2 (K6-33: the vitals after the record); version 1 is still read.</summary>
+    private const byte PlayerBlobVersion = 2;
 
     /// <summary>Length of a <see cref="BlobKind.ShipState"/> blob.</summary>
     public const int ShipStateBlobLength = 39;
@@ -72,7 +75,7 @@ public static class StateCodec
         return new ConstructHeaderRecord(id, parent, parentSeq, (ConstructMode)modeByte, origin, rotation, version);
     }
 
-    /// <summary>Writes a player record without a prefix.</summary>
+    /// <summary>Writes a player record without a prefix: the bytes of version 1 of blob 2; <see cref="PlayerRecord.Vitals"/> is not written (only <see cref="EncodePlayerBlob"/> does).</summary>
     /// <param name="w">Target writer.</param>
     /// <param name="p">Record.</param>
     public static void WritePlayer(ByteWriter w, PlayerRecord p)
@@ -344,15 +347,36 @@ public static class StateCodec
         return result;
     }
 
-    /// <summary>Encodes a player record as a SQLite blob.</summary>
+    /// <summary>
+    /// Encodes a player record as a SQLite blob, always in version 2 (K6-33): the bytes of version 1, then a flag byte (bit 0 the vitals follow, bit 1
+    /// exhausted, which needs bit 0) and, with bit 0, float32 health, float32 stamina and a varuint tick the rested bonus ends at (0 for none).
+    /// </summary>
     /// <param name="p">Record.</param>
     /// <returns>The blob.</returns>
     public static byte[] EncodePlayerBlob(PlayerRecord p)
     {
+        ArgumentNullException.ThrowIfNull(p);
+        if (p.Vitals is { IsValid: false })
+        {
+            throw new ArgumentException("The vitals must be finite and within 0 to the largest vital value.", nameof(p));
+        }
+
         var w = new ByteWriter();
         w.WriteByte((byte)BlobKind.Player);
-        w.WriteByte(CurrentFormatVersion);
+        w.WriteByte(PlayerBlobVersion);
         WritePlayer(w, p);
+        if (p.Vitals is not { } vitals)
+        {
+            w.WriteByte(0);
+            return w.WrittenSpan.ToArray();
+        }
+
+        w.WriteByte((byte)(vitals.Exhausted ? 3 : 1));
+
+        // -0 equals 0 and passes the validity check; the bytes of the value stay canonical.
+        w.WriteSingle(vitals.Health == 0f ? 0f : vitals.Health);
+        w.WriteSingle(vitals.Stamina == 0f ? 0f : vitals.Stamina);
+        w.WriteVarUInt(vitals.RestedUntil.Value);
         return w.WrittenSpan.ToArray();
     }
 
@@ -361,11 +385,39 @@ public static class StateCodec
     /// <returns>The record.</returns>
     public static PlayerRecord DecodePlayerBlob(ReadOnlySpan<byte> blob)
     {
-        ValidateBlobHeader(blob, BlobKind.Player);
+        ValidateBlobHeader(blob, BlobKind.Player, PlayerBlobVersion);
+        var version = blob[1];
         var r = new ByteReader(blob.Slice(2));
         var result = ReadPlayer(ref r);
+        if (version >= 2)
+        {
+            result = result with { Vitals = ReadVitals(ref r) };
+        }
+
         r.EnsureEnd();
         return result;
+    }
+
+    private static PlayerVitals? ReadVitals(ref ByteReader r)
+    {
+        byte flags = r.ReadByte();
+        if ((flags & ~3) != 0 || (flags & 3) == 2)
+        {
+            throw new ProtocolViolationException($"Unknown or inconsistent player vitals flags {flags}.");
+        }
+
+        if ((flags & 1) == 0)
+        {
+            return null;
+        }
+
+        var vitals = new PlayerVitals(r.ReadSingle(), r.ReadSingle(), new Tick(r.ReadVarUInt()), (flags & 2) != 0);
+        if (!vitals.IsValid)
+        {
+            throw new ProtocolViolationException("The vitals are not finite or outside 0 to the largest vital value.");
+        }
+
+        return vitals;
     }
 
     /// <summary>Encodes chunk blocks as a SQLite blob; the chunk key lives in table columns.</summary>
@@ -865,7 +917,7 @@ public static class StateCodec
         return new BlockEntityRecord(construct, cell, state);
     }
 
-    /// <summary>Encodes the progress of a player as a SQLite blob (kind 22, always written in version 2; K6-32). Version 1 (K6-30) is still read.</summary>
+    /// <summary>Encodes the progress of a player as a SQLite blob (kind 22, always written in version 3; K6-33). Versions 1 (K6-30) and 2 (K6-32) are still read.</summary>
     /// <param name="record">Record.</param>
     /// <returns>The blob.</returns>
     public static byte[] EncodePlayerProgressBlob(PlayerProgressRecord record)
@@ -879,8 +931,9 @@ public static class StateCodec
         var discovered = record.Discovered;
         var hasDiscoveries = discovered is { IsEmpty: false };
 
-        // Bit 0: a respawn point follows. Bit 1: the discovered item types follow after it.
-        w.WriteByte((byte)((hasBed ? 1 : 0) | (hasDiscoveries ? 2 : 0)));
+        // Bit 0: a respawn point follows. Bit 1: the discovered item types follow after it. Bit 2: the three food slots follow after them.
+        var hasFood = !record.Food.IsEmpty;
+        w.WriteByte((byte)((hasBed ? 1 : 0) | (hasDiscoveries ? 2 : 0) | (hasFood ? 4 : 0)));
         if (record.RespawnBed is { } bed)
         {
             CoreCodecPrimitives.WriteBedRef(w, bed);
@@ -889,6 +942,11 @@ public static class StateCodec
         if (hasDiscoveries)
         {
             w.WriteBytes(discovered!.Bytes, ProtocolConstants.MaxDiscoveredBytes);
+        }
+
+        if (hasFood)
+        {
+            CoreCodecPrimitives.WriteFoodSlots(w, record.Food);
         }
 
         return w.WrittenSpan.ToArray();
@@ -967,8 +1025,9 @@ public static class StateCodec
         var player = new PlayerId(r.ReadVarUInt());
         byte flags = r.ReadByte();
 
-        // Bit 0: there is a respawn point; in version 2 bit 1: there are discovered item types. Other bits are reserved and make the blob invalid.
-        var known = version == 1 ? 1 : 3;
+        // Bit 0: there is a respawn point; in version 2 bit 1: there are discovered item types; in version 3 bit 2: there is food. Other bits are
+        // reserved and make the blob invalid.
+        var known = version == 1 ? 1 : version == 2 ? 3 : 7;
         if ((flags & ~known) != 0)
         {
             throw new ProtocolViolationException($"Unknown player progress flags {flags}.");
@@ -994,8 +1053,18 @@ public static class StateCodec
             }
         }
 
+        var food = default(FoodSlots);
+        if ((flags & 4) != 0)
+        {
+            food = CoreCodecPrimitives.ReadFoodSlots(ref r);
+            if (food.IsEmpty)
+            {
+                throw new ProtocolViolationException("The food flag is set but all three slots are empty.");
+            }
+        }
+
         r.EnsureEnd();
-        return new PlayerProgressRecord(player, bed, discovered);
+        return new PlayerProgressRecord(player, bed, discovered, food);
     }
 
     private static void ValidateBlobHeader(ReadOnlySpan<byte> blob, BlobKind expectedKind, byte highestVersion = CurrentFormatVersion)

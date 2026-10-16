@@ -5,6 +5,7 @@ using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.Tests.Crafting;
+using Horyzont.Core.Tests.Survival;
 using Horyzont.Core.World.Constructs;
 
 namespace Horyzont.Core.Tests.Simulation;
@@ -205,6 +206,45 @@ public sealed class AllocationTests
         }
 
         Assert.Equal(1000, refused);
+        Assert.Equal(0, allocated);
+    }
+
+    [Fact]
+    public void SubmitEat_Refused_DoesNotAllocate()
+    {
+        // K6-33 core review 6: the refusals of eating cost no token, so a client can flood them; they must not allocate (a dictionary lookup, comparisons, three slots).
+        var w = new FoodWorld(survival: true);
+        w.GiveFood(FoodWorld.Player1, FoodWorld.Berries, 3, bagSlot: 0);
+        var eat = new EatIntent(FoodWorld.BagOf(FoodWorld.Player1), 0);
+        var empty = new EatIntent(FoodWorld.BagOf(FoodWorld.Player1), 7);
+
+        // The accepted counterpart; the same intent is then refused because the berries are active (49), and the empty slot gives NotEnoughItems.
+        Assert.True(w.Simulation.Submit(FoodWorld.Player1, eat).IsAccepted);
+        Assert.Equal((RejectReason)49, w.Simulation.Submit(FoodWorld.Player1, eat).Reason);
+        Assert.Equal(RejectReason.NotEnoughItems, w.Simulation.Submit(FoodWorld.Player1, empty).Reason);
+        for (var i = 0; i < 100; i++)
+        {
+            w.Simulation.Submit(FoodWorld.Player1, eat);
+            w.Simulation.Submit(FoodWorld.Player1, empty);
+        }
+
+        // Steady state is reached when a round allocates nothing (tier-up of the JIT in the first rounds); a per-call allocation never reaches zero.
+        var allocated = long.MaxValue;
+        var refused = 0;
+        for (var round = 0; round < 60 && allocated != 0; round++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            refused = 0;
+            for (var i = 0; i < 200; i++)
+            {
+                refused += w.Simulation.Submit(FoodWorld.Player1, eat).Reason == (RejectReason)49 ? 1 : 0;
+                refused += w.Simulation.Submit(FoodWorld.Player1, empty).Reason == RejectReason.NotEnoughItems ? 1 : 0;
+            }
+
+            allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+
+        Assert.Equal(400, refused);
         Assert.Equal(0, allocated);
     }
 

@@ -1,4 +1,5 @@
 using Horyzont.Core.Ids;
+using Horyzont.Core.Intents;
 using Horyzont.Core.Protocol;
 
 namespace Horyzont.Server;
@@ -21,4 +22,14 @@ public interface IServerPlayerObserver
     /// <param name="player">The player.</param>
     /// <param name="reason">Why the session ended.</param>
     void OnPlayerLeaving(PlayerId player, DisconnectCode reason);
+
+    /// <summary>
+    /// An intent of the player was accepted (K6-33 D15), after the simulation applied it; an intent that was refused is not announced. The default does nothing, so existing observers do
+    /// not change. An exception is logged and does not stop the other observers.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <param name="intent">The accepted intent.</param>
+    void OnIntentAccepted(PlayerId player, Intent intent)
+    {
+    }
 }

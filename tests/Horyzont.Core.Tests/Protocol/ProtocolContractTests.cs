@@ -35,7 +35,7 @@ public sealed class ProtocolContractTests
             (OperationKind.ShipModeSet, 20), (OperationKind.ShipFuelAdd, 21), (OperationKind.MarkerSet, 22), (OperationKind.MarkerRemove, 23),
             (OperationKind.Compound, 30), (OperationKind.ItemTransfer, 31), (OperationKind.ItemSwap, 32), (OperationKind.ItemCreate, 33),
             (OperationKind.ItemDestroy, 34), (OperationKind.ContainerCreate, 35),
-            (OperationKind.ContainerRemove, 36), (OperationKind.ContainerConfigure, 37), (OperationKind.BlockEntitySet, 40), (OperationKind.ItemDiscover, 43), (OperationKind.RespawnPointSet, 44), (OperationKind.ProgressKeyGrant, 45),
+            (OperationKind.ContainerRemove, 36), (OperationKind.ContainerConfigure, 37), (OperationKind.BlockEntitySet, 40), (OperationKind.FoodSet, 41), (OperationKind.ItemDiscover, 43), (OperationKind.RespawnPointSet, 44), (OperationKind.ProgressKeyGrant, 45),
             (OperationKind.PropRegrow, 47), (OperationKind.PropHarvest, 48), (OperationKind.BlockFunctionStateSet, 49));
         AssertValues((RejectReason.None, 0), (RejectReason.UnknownPlayer, 1), (RejectReason.PlayerOffline, 2), (RejectReason.RateLimited, 3),
             (RejectReason.InvalidParameters, 4), (RejectReason.RayOriginMismatch, 5), (RejectReason.NoHit, 6), (RejectReason.OutOfReach, 7),
@@ -45,7 +45,7 @@ public sealed class ProtocolContractTests
             (RejectReason.NoLineOfSight, 19), (RejectReason.WrongPlanet, 20), (RejectReason.ServerReadOnly, 21),
             (RejectReason.NoCockpit, 30), (RejectReason.ShipAnchored, 31), (RejectReason.NoEngine, 37), (RejectReason.MarkerLimit, 36), (RejectReason.ShipNotParked, 39),
             (RejectReason.InventoryFull, 40), (RejectReason.NotEnoughItems, 41), (RejectReason.ContainerChanged, 42), (RejectReason.ContainerLocked, 43),
-            (RejectReason.StationRequired, 44), (RejectReason.RecipeLocked, 45), (RejectReason.TooFarFromStation, 46),
+            (RejectReason.StationRequired, 44), (RejectReason.RecipeLocked, 45), (RejectReason.TooFarFromStation, 46), (RejectReason.FoodAlreadyActive, 49),
             (RejectReason.ToolTierTooLow, 53), (RejectReason.NotOwner, 54), (RejectReason.ContainerNotEmpty, 57));
         AssertValues((MessageType.ClientHello, 1), (MessageType.ServerHello, 2), (MessageType.HandshakeReject, 3), (MessageType.ClientReady, 4),
             (MessageType.TerrainCacheReport, 5), (MessageType.TerrainBlockData, 6), (MessageType.TerrainChecksums, 7), (MessageType.ConstructState, 8),
@@ -55,7 +55,7 @@ public sealed class ProtocolContractTests
             (MessageType.ShipStatus, 31), (MessageType.StarSystemState, 32),
             (MessageType.MarkersState, 33),
             (MessageType.ContainerState, 40), (MessageType.ContainerDelta, 41), (MessageType.ContainerSubscribe, 42),
-            (MessageType.ContainerUnsubscribe, 43), (MessageType.PropStates, 45), (MessageType.BlockEntityStates, 46), (MessageType.PlayerProgressState, 48), (MessageType.ItemRegistry, 49));
+            (MessageType.ContainerUnsubscribe, 43), (MessageType.PlayerVitals, 44), (MessageType.PropStates, 45), (MessageType.BlockEntityStates, 46), (MessageType.PlayerProgressState, 48), (MessageType.ItemRegistry, 49));
         AssertValues((StationKind.Hands, 0), (StationKind.Workbench, 1), (StationKind.Furnace, 2), (StationKind.Refinery, 3), (StationKind.Kitchen, 4),
             (StationKind.Fabricator, 5));
         AssertValues((DeliveryChannel.ReliableOrdered, 0), (DeliveryChannel.Unreliable, 1));
@@ -96,7 +96,7 @@ public sealed class ProtocolContractTests
     }
 
     /// <summary>
-    /// K2-10 adds reject reason 21 (and raised the protocol version from 1 to 2; K2-11 raises it to 3, K6-29W to 14, K6-30 to 15, K6-31 to 16, K6-32 to 17, see <see cref="ProtocolVersion_MatchesDocumentedMergeValue"/>).
+    /// K2-10 adds reject reason 21 (and raised the protocol version from 1 to 2; K2-11 raises it to 3, K6-29W to 14, K6-30 to 15, K6-31 to 16, K6-32 to 17, K6-33 to 18, see <see cref="ProtocolVersion_MatchesDocumentedMergeValue"/>).
     /// </summary>
     [Fact]
     public void RejectReason_ServerReadOnly_RoundTrips()
@@ -152,19 +152,20 @@ public sealed class ProtocolContractTests
     /// K6-30 adds operations 36, 37, 40, 44, 49, intents 22, 23, 28, 29, reject reasons 54 and 57, message 46 and blobs 21, 22 after K6-29W (main 14): 15.
     /// K6-31 adds operations 47, 48, intent 27, reject reason 53 and message 45 after K6-30 (main 15): 16.
     /// K6-32 adds operations 43, 45, station state 3, intent 24, reject reasons 44 to 46, message 48, blob 22 version 2 and blob 25 after K6-31 (main 16): 17.
+    /// K6-33 adds operation 41, intent 25, reject reason 49, message 44, the food tail of message 48, blob 22 version 3 and blob 2 version 2 after K6-32 (main 17): 18.
     /// A rebase onto a newer main updates this value, the constant and the package plan together.
     /// </summary>
     [Fact]
     public void ProtocolVersion_MatchesDocumentedMergeValue()
     {
-        Assert.Equal(17, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(18, ProtocolConstants.ProtocolVersion);
         Assert.Equal(0x3F, ProtocolConstants.InputButtonsMask);
     }
 
     [Fact]
     public void Constants_GoldenValues()
     {
-        Assert.Equal(17, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(18, ProtocolConstants.ProtocolVersion);
         Assert.Equal(262144, ProtocolConstants.MaxReliableMessageBytes);
         Assert.Equal(1150, ProtocolConstants.MaxUnreliableMessageBytes);
         Assert.Equal(32, ProtocolConstants.MaxDisplayNameBytes);
@@ -189,7 +190,7 @@ public sealed class ProtocolContractTests
     [Fact]
     public void MessageChannels_MapsEveryType()
     {
-        var unreliable = new[] { MessageType.InputBatch, MessageType.Snapshot, MessageType.SnapshotAck, MessageType.Ping, MessageType.Pong, MessageType.ShipStatus };
+        var unreliable = new[] { MessageType.InputBatch, MessageType.Snapshot, MessageType.SnapshotAck, MessageType.Ping, MessageType.Pong, MessageType.ShipStatus, MessageType.PlayerVitals };
         foreach (var type in Enum.GetValues<MessageType>())
         {
             var expected = unreliable.Contains(type) ? DeliveryChannel.Unreliable : DeliveryChannel.ReliableOrdered;
@@ -243,22 +244,26 @@ public sealed class ProtocolContractTests
             new ContainerUnsubscribe(new ContainerId(1)),
             new PropStates(new PlanetId(1), []),
             new BlockEntityStates(new EntityId(1), []),
-            new PlayerProgressState(Horyzont.Core.Progress.ItemTypeBitSet.Empty, []),
+            new PlayerProgressState(Horyzont.Core.Progress.ItemTypeBitSet.Empty, [], Horyzont.Core.Progress.FoodSlots.Empty),
+            new PlayerVitalsMessage(100f, 100f, 100f, 100f, false, false, false, 0, 0, 0),
             new ItemRegistry([]),
         ];
 
         foreach (var message in messages)
         {
-            Assert.Equal(Enum.Parse<MessageType>(message.GetType().Name), message.Type);
+            Assert.Equal(Enum.Parse<MessageType>(EnumNameOf(message.GetType())), message.Type);
         }
 
         var recordNames = typeof(Message).Assembly.GetTypes()
             .Where(t => t.IsSubclassOf(typeof(Message)) && !t.IsAbstract)
-            .Select(t => t.Name)
+            .Select(EnumNameOf)
             .Order(StringComparer.Ordinal);
         Assert.Equal(Enum.GetNames<MessageType>().Order(StringComparer.Ordinal), recordNames);
         Assert.Equal(Enum.GetValues<MessageType>().Order(), messages.Select(m => m.Type).Order());
     }
+
+    /// <summary>The name of the enum member of a message record: the type name, except <c>PlayerVitalsMessage</c> (K6-33), which avoids the world type <c>PlayerVitals</c>.</summary>
+    private static string EnumNameOf(Type record) => record.Name == "PlayerVitalsMessage" ? "PlayerVitals" : record.Name;
 
     [Fact]
     public void Operations_EachRecordReturnsItsKind_AndEveryKindHasARecord()

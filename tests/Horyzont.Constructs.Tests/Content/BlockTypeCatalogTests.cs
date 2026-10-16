@@ -170,6 +170,73 @@ public sealed class BlockTypeCatalogTests
         Assert.All(["core:chest_wood", "core:chest_metal", "core:bed", "core:lamp", "core:wood_door"], key => Assert.Contains(Shipped(catalog, key).NameKey, names));
     }
 
+    private static string Fire(string extra) =>
+        Block("{ \"key\": \"a:fire\", \"shape\": \"cube\", \"mass\": 50, \"material\": \"stone\"" + extra + " }");
+
+    [Fact]
+    public void Comfort_And_Heat_Parsed()
+    {
+        var catalog = Parse(Block(
+            "{ \"key\": \"a:fire\", \"shape\": \"cube\", \"mass\": 50, \"material\": \"stone\", \"comfort\": 3, \"heat\": true }, "
+            + "{ \"key\": \"a:plain\", \"shape\": \"cube\", \"mass\": 50, \"material\": \"stone\" }, "
+            + "{ \"key\": \"a:cold\", \"shape\": \"cube\", \"mass\": 50, \"material\": \"stone\", \"comfort\": 10, \"heat\": false }"));
+
+        // The fields are optional (0 and false), and the format version of the file stays 2 (K6-33 D9).
+        Assert.True(catalog.TryGet("a:fire", out var fire));
+        Assert.Equal(((byte)3, true), (fire.Def.Comfort, fire.Def.Heat));
+        Assert.True(catalog.TryGet("a:plain", out var plain));
+        Assert.Equal(((byte)0, false), (plain.Def.Comfort, plain.Def.Heat));
+        Assert.True(catalog.TryGet("a:cold", out var cold));
+        Assert.Equal(((byte)10, false), (cold.Def.Comfort, cold.Def.Heat));
+    }
+
+    [Theory]
+    [InlineData("-1")]
+    [InlineData("11")]
+    [InlineData("1.5")]
+    [InlineData("\"warm\"")]
+    [InlineData("null")]
+    public void Comfort_OutOfRange_Throws(string comfort)
+    {
+        Assert.True(Parse(Fire(", \"comfort\": 10")).TryGet("a:fire", out _));
+
+        AssertInvalid(Fire(", \"comfort\": " + comfort), "$.blocks[0].comfort");
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("\"yes\"")]
+    [InlineData("null")]
+    [InlineData("[]")]
+    public void Heat_NotBool_Throws(string heat)
+    {
+        Assert.True(Parse(Fire(", \"heat\": true")).TryGet("a:fire", out _));
+
+        AssertInvalid(Fire(", \"heat\": " + heat), "$.blocks[0].heat");
+    }
+
+    [Fact]
+    public void RepoContent_CampfireHeatsBedAndLampComfort()
+    {
+        var catalog = BlockTypeCatalog.Parse(File.ReadAllBytes(Path.Combine(RepoRoot(), "game", "content", "blocks", "blocks.json")), new FakeResolver());
+
+        // The numbers are data; the test pins the shape of D9: the campfire is the heat source with comfort, the bed and the lamp give comfort but no
+        // heat, so a bed, a lamp and a campfire in one room (three different types) make at least 3 comfort.
+        var campfire = Shipped(catalog, "core:campfire").Def;
+        var bed = Shipped(catalog, "core:bed").Def;
+        var lamp = Shipped(catalog, "core:lamp").Def;
+
+        Assert.True(campfire.Heat);
+        Assert.Equal(BlockShape.Cube, campfire.Shape);
+        Assert.True(campfire.HasCollision);
+        Assert.True(campfire.MassKg > 0f && float.IsFinite(campfire.MassKg));
+        Assert.All([campfire, bed, lamp], def => Assert.InRange((int)def.Comfort, 1, 10));
+        Assert.False(bed.Heat);
+        Assert.False(lamp.Heat);
+        Assert.True(campfire.Comfort + bed.Comfort + lamp.Comfort >= 3);
+        Assert.Equal(0, Shipped(catalog, "core:wood_door").Def.Comfort);
+    }
+
     private static BlockTypeContent Shipped(BlockTypeCatalog catalog, string key) =>
         catalog.TryGet(key, out var block) ? block : throw new InvalidOperationException($"{key} is not in blocks.json");
 

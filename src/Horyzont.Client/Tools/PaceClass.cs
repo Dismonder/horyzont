@@ -11,4 +11,7 @@ public enum PaceClass : byte
 
     /// <summary>Hits on props: token bucket.</summary>
     Prop = 2,
+
+    /// <summary>Item intents, eating among them: token bucket of the item intents.</summary>
+    Item = 3,
 }

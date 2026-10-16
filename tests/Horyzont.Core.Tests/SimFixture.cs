@@ -5,6 +5,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Simulation;
+using Horyzont.Core.Survival;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -22,13 +23,13 @@ internal sealed class SimFixture
 {
     public SimFixture(
         GameRules? rules = null, FakeTerrainService? terrain = null, WorldState? state = null, IJournalSink? journal = null,
-        BlockContentTable? content = null, SurvivalContent? survival = null)
+        BlockContentTable? content = null, SurvivalContent? survival = null, VitalsRules? vitals = null)
     {
         Rules = rules ?? new GameRules();
         Terrain = terrain ?? new FakeTerrainService();
         State = state ?? WorldFactory.CreateDefault();
         Journal = new InMemoryJournal();
-        Sim = new ServerSimulation(State, Terrain, journal ?? Journal, Rules, NullLogger<ServerSimulation>.Instance, content ?? BlockContentTable.Empty, survival);
+        Sim = new ServerSimulation(State, Terrain, journal ?? Journal, Rules, NullLogger<ServerSimulation>.Instance, content ?? BlockContentTable.Empty, survival, vitals);
         State.BlockTypes.TryGetId(WorldFactory.StoneBlockKey, out var stone);
         Stone = stone;
     }

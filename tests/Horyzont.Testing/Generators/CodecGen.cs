@@ -9,6 +9,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Progress;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Serialization;
@@ -216,6 +217,7 @@ public static class CodecGen
         ProgressKeyGrantOp.Select(o => (Operation)o),
         RespawnPointSetOp.Select(o => (Operation)o),
         BlockFunctionStateSetOp.Select(o => (Operation)o),
+        FoodSetOp.Select(o => (Operation)o),
         PropHarvestOp.Select(o => (Operation)o),
         PropRegrowOp.Select(o => (Operation)o));
 
@@ -418,6 +420,25 @@ public static class CodecGen
         from type in Gen.Choose(1, ProtocolConstants.MaxItemTypes)
         select new ItemDiscoverOp(player, new ItemTypeId((ushort)type));
 
+    /// <summary>Food slots (K6-33): each slot empty or a type 1 to 4096 with any tick; the codec does not check that the types differ (the applier does).</summary>
+    public static Gen<FoodSlots> FoodSlots =>
+        from a in FoodSlotGen
+        from b in FoodSlotGen
+        from c in FoodSlotGen
+        select new FoodSlots(a, b, c);
+
+    private static Gen<FoodSlot> FoodSlotGen => Gen.Frequency(
+        (1, Gen.Constant(default(FoodSlot))),
+        (3, from type in Gen.Choose(1, ProtocolConstants.MaxItemTypes)
+            from tick in Gen.Frequency((3, Gen.Choose(0, 100_000).Select(t => (ulong)t)), (1, Gen.Elements(ulong.MaxValue)))
+            select new FoodSlot(new ItemTypeId((ushort)type), new Tick(tick))));
+
+    /// <summary>Food set operations (K6-33).</summary>
+    public static Gen<FoodSetOp> FoodSetOp =>
+        from player in PlayerId
+        from slots in FoodSlots
+        select new FoodSetOp(player, slots);
+
     /// <summary>Progress key grants (K6-32).</summary>
     public static Gen<ProgressKeyGrantOp> ProgressKeyGrantOp { get; } = RegistryKey.Select(k => new ProgressKeyGrantOp(k));
 
@@ -501,7 +522,14 @@ public static class CodecGen
         BlockInteractIntent.Select(i => (Intent)i),
         BlockConfigIntent.Select(i => (Intent)i),
         CraftIntent.Select(i => (Intent)i),
-        PropHitIntent.Select(i => (Intent)i));
+        PropHitIntent.Select(i => (Intent)i),
+        EatIntent.Select(i => (Intent)i));
+
+    /// <summary>Eat intents (K6-33): any container and slot of 0 to 65535 (the codec checks the shape only).</summary>
+    public static Gen<EatIntent> EatIntent { get; } =
+        from container in ContainerId
+        from slot in VarU16
+        select new EatIntent(container, slot);
 
     /// <summary>Craft intents: a recipe key, 1 to 65535 pieces, a station block or none (K6-32).</summary>
     public static Gen<CraftIntent> CraftIntent { get; } =
@@ -518,9 +546,36 @@ public static class CodecGen
         from types in Gen.Choose(1, ProtocolConstants.MaxItemTypes).ArrayOf(typeCount)
         from keyCount in Gen.Choose(0, 5)
         from keys in RegistryKey.ArrayOf(keyCount)
+        from food in FoodSlots
         select new PlayerProgressState(
             types.Aggregate(Horyzont.Core.Progress.ItemTypeBitSet.Empty, (set, type) => set.With(new ItemTypeId((ushort)type))),
-            keys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
+            keys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
+            food);
+
+    private static Gen<float> VitalValue { get; } = Gen.Frequency(
+        (3, Gen.Choose(0, 10_000).Select(v => (float)v)),
+        (3, Gen.Choose(0, 20_000).Select(v => v / 2f)),
+        (1, Gen.Elements(0f, 1f, ProtocolConstants.MaxVitalValue)));
+
+    /// <summary>
+    /// Player vitals messages (K6-33 D22): values of 0 to the largest vital value, any flags, a warm-up only while the conditions hold and the rested flag
+    /// exactly with ticks remaining.
+    /// </summary>
+    public static Gen<PlayerVitalsMessage> PlayerVitalsMessage { get; } =
+        from health in VitalValue
+        from healthMax in VitalValue
+        from stamina in VitalValue
+        from staminaMax in VitalValue
+        from exhausted in Gen.Elements(false, true)
+        from conditions in Gen.Elements(false, true)
+        from warmup in Gen.Choose(0, ProtocolConstants.MaxRestWarmupTicks)
+        from remaining in Gen.Frequency(
+            (1, Gen.Constant(0)),
+            (1, Gen.Choose(1, ProtocolConstants.MaxRestRemainingTicks)),
+            (1, Gen.Elements(1, ProtocolConstants.MaxRestRemainingTicks)))
+        from comfort in Gen.Choose(0, 10)
+        select new PlayerVitalsMessage(
+            health, healthMax, stamina, staminaMax, exhausted, conditions, remaining > 0, (ushort)(conditions ? warmup : 0), (uint)remaining, (byte)comfort);
 
     /// <summary>Prop hit intents (K6-31): any planet and prop, a hotbar slot of 0 to 255.</summary>
     public static Gen<PropHitIntent> PropHitIntent { get; } =
@@ -710,6 +765,40 @@ public static class CodecGen
         from online in Gen.Elements(true, false)
         select new PlayerRecord(player, identity, name, entity, frame, parentSeq, seat, position, rotation, pitch, online);
 
+    /// <summary>
+    /// Vitals of a player (K6-33): health and stamina in 0 to 10000 in steps of a quarter, a rested-until tick, the exhausted flag. Only the player blob
+    /// carries them; <c>WritePlayer</c> and <c>ReadPlayer</c> are the bytes of version 1 and drop them, so the record case uses <see cref="PlayerRecord"/>.
+    /// </summary>
+    public static Gen<PlayerVitals> Vitals { get; } =
+        from health in Gen.Choose(0, 40_000)
+        from stamina in Gen.Choose(0, 40_000)
+        from rested in VarU64
+        from exhausted in Gen.Elements(true, false)
+        select new PlayerVitals(health / 4f, stamina / 4f, new Tick(rested), exhausted);
+
+    /// <summary>Player records with vitals or without (K6-33), for the player blob.</summary>
+    public static Gen<PlayerRecord> PlayerRecordWithVitals { get; } =
+        from record in PlayerRecord
+        from vitals in Optional(Vitals)
+        select record with { Vitals = vitals };
+
+    /// <summary>Progress records of a player (K6-33): any combination of a respawn point, discovered item types and food; the codec does not check repeated food types.</summary>
+    public static Gen<PlayerProgressRecord> PlayerProgressRecord { get; } =
+        from player in PlayerId
+        from bed in Optional(
+            from construct in EntityId
+            from cell in Cell
+            from type in VarU16
+            select new Horyzont.Core.Progress.BedRef(construct, cell, type))
+        from typeCount in Gen.Choose(0, 6)
+        from types in Gen.Choose(1, ProtocolConstants.MaxItemTypes).ArrayOf(typeCount)
+        from food in FoodSlots
+        select new PlayerProgressRecord(
+            player,
+            bed,
+            types.Aggregate(Horyzont.Core.Progress.ItemTypeBitSet.Empty, (set, type) => set.With(new ItemTypeId((ushort)type))),
+            food);
+
     /// <summary>Planet parameters.</summary>
     public static Gen<PlanetParams> Planet { get; } =
         from id in PlanetId
@@ -829,6 +918,7 @@ public static class CodecGen
         BlockEntityStatesMessage.Select(m => (Message)m),
         PropStatesMessage.Select(m => (Message)m),
         PlayerProgressStateMessage.Select(m => (Message)m),
+        PlayerVitalsMessage.Select(m => (Message)m),
         ListUpTo(RegistryEntry(ProtocolConstants.MaxItemTypes), ProtocolConstants.MaxItemTypes, 12).Select(e => (Message)new ItemRegistry(e)));
 
     /// <summary>Ship status messages (K5-26): any ship and tick, non-negative finite values, any flags, a defined launch block.</summary>

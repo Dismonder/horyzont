@@ -10,7 +10,7 @@ public static class MessageChannels
     public static DeliveryChannel For(MessageType type) => type switch
     {
         MessageType.InputBatch or MessageType.Snapshot or MessageType.SnapshotAck or MessageType.Ping or MessageType.Pong
-            or MessageType.ShipStatus
+            or MessageType.ShipStatus or MessageType.PlayerVitals
             => DeliveryChannel.Unreliable,
         MessageType.ClientHello or MessageType.ServerHello or MessageType.HandshakeReject or MessageType.ClientReady
             or MessageType.TerrainCacheReport or MessageType.TerrainBlockData or MessageType.TerrainChecksums

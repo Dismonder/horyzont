@@ -44,6 +44,18 @@ public static class ContentLoader
     public const int MaxRecipeSeconds = 3600;
 
     private const int MaxStackLimit = 999;
+
+    /// <summary>Largest extra maximum health or stamina of a food, in points (K6-33 D8).</summary>
+    private const int MaxFoodPoints = 500;
+
+    /// <summary>Largest extra health regeneration per second of a food (K6-33 D8).</summary>
+    private const double MaxFoodRegen = 50;
+
+    /// <summary>Shortest duration of a food in seconds (K6-33 D8).</summary>
+    private const int MinFoodSeconds = 30;
+
+    /// <summary>Longest duration of a food in seconds (K6-33 D8).</summary>
+    private const int MaxFoodSeconds = 7200;
     private const int MaxPropHitPoints = 1000;
     private const int MaxPropYieldEntries = 8;
 
@@ -261,7 +273,8 @@ public static class ContentLoader
                 slot = RequiredEnum<EquipmentSlot>(element, "equipmentSlot", path, ItemsFile);
             }
 
-            items.Add(new ItemDef(key, category, maxStack, flags, (byte)toolTier, slot));
+            var food = ParseFood(element, path, flags);
+            items.Add(new ItemDef(key, category, maxStack, flags, (byte)toolTier, slot, food));
             index++;
         }
 
@@ -271,6 +284,45 @@ public static class ContentLoader
         }
 
         return [.. items];
+    }
+
+    // The "food" object of an item (K6-33 D8): present exactly when the flag Food is, never on a retired item; four required fields.
+    private static FoodDef? ParseFood(JsonElement item, string path, ItemFlags flags)
+    {
+        var hasObject = item.TryGetProperty("food", out var food);
+        var hasFlag = (flags & ItemFlags.Food) != 0;
+        var foodPath = path + ".food";
+        if (hasFlag != hasObject)
+        {
+            throw Invalid(ItemsFile, foodPath, hasFlag ? "an item with the flag 'food' needs a \"food\" object" : "a \"food\" object needs the flag 'food'");
+        }
+
+        if (!hasObject)
+        {
+            return null;
+        }
+
+        if ((flags & ItemFlags.Retired) != 0)
+        {
+            throw Invalid(ItemsFile, foodPath, "a retired item cannot be food");
+        }
+
+        RequireObject(food, foodPath, ItemsFile);
+        var health = RequiredInt(food, "health", foodPath, ItemsFile, 0, MaxFoodPoints);
+        var stamina = RequiredInt(food, "stamina", foodPath, ItemsFile, 0, MaxFoodPoints);
+        if (!food.TryGetProperty("regen", out var regenElement) || regenElement.ValueKind != JsonValueKind.Number
+            || !regenElement.TryGetDouble(out var regen) || !double.IsFinite(regen) || regen < 0 || regen > MaxFoodRegen)
+        {
+            throw Invalid(ItemsFile, foodPath + ".regen", $"must be a finite number in 0..{MaxFoodRegen}");
+        }
+
+        var seconds = RequiredInt(food, "durationSeconds", foodPath, ItemsFile, MinFoodSeconds, MaxFoodSeconds);
+        if (health == 0 && stamina == 0)
+        {
+            throw Invalid(ItemsFile, foodPath, "health and stamina cannot both be 0");
+        }
+
+        return new FoodDef((ushort)health, (ushort)stamina, (float)regen, (uint)seconds);
     }
 
     private static TerrainYieldDef[] ParseYields(JsonElement root, ItemCatalog catalog)

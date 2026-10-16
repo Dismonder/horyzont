@@ -138,10 +138,10 @@ public sealed class CraftingPersistenceTests
             Assert.True(await h.CheckpointAndPump());
         }
 
-        // A world saved by K6-30 has the version 1 blob of a player with a respawn point only: the bytes of version 2 without discoveries, version byte 1.
+        // A world saved by K6-30 has the version 1 blob of a player with a respawn point only: the bytes of version 3 without discoveries and food, version byte 1.
         dir.ReleasePools();
         var blob = (byte[])RawDb.Scalar(dir.WorldPath, $"SELECT data FROM player_progress WHERE player_id = {built.Player.Value};")!;
-        Assert.Equal(new byte[] { 0x16, 0x02 }, blob[..2]);
+        Assert.Equal(new byte[] { 0x16, 0x03 }, blob[..2]);
         Assert.Equal(0, blob[3] & 0x02);
         blob[1] = 0x01;
         RawDb.Execute(dir.WorldPath, $"UPDATE player_progress SET data = $data WHERE player_id = {built.Player.Value};", ("$data", blob));

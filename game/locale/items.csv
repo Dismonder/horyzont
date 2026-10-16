@@ -14,6 +14,9 @@ ITEM_CORE_IRON_INGOT,Iron ingot,Sztabka żelaza
 ITEM_CORE_GLASS,Glass,Szkło
 ITEM_CORE_FUEL_CELL,Fuel cell,Ogniwo paliwowe
 ITEM_CORE_MULTITOOL_T2,Terrain manipulator II,Manipulator terenu II
+ITEM_CORE_BERRIES,Berries,Jagody
+ITEM_CORE_BERRY_JAM,Berry jam,Dżem jagodowy
+ITEM_CORE_HERBAL_BROTH,Herbal broth,Bulion ziołowy
 ITEM_UNKNOWN,Unknown item,Nieznany przedmiot
 INV_TITLE,Inventory,Ekwipunek
 INV_BAG,Backpack,Plecak

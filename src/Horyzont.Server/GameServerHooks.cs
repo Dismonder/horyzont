@@ -139,6 +139,14 @@ public sealed class GameServerHooks : IServerGameHooks
         }
 
         var result = _simulation.Submit(player, intent);
+        if (result.IsAccepted)
+        {
+            for (var i = 0; i < _observers.Count; i++)
+            {
+                NotifyAccepted(_observers[i], player, intent);
+            }
+        }
+
         return new IntentReply(clientSeq, result.Reason, result.Applied?.Id ?? OpId.None);
     }
 
@@ -179,6 +187,20 @@ public sealed class GameServerHooks : IServerGameHooks
             // The leave op is serialized with a strict length check; normalize what physics left slightly off (lesson 3c).
             var rotation = Quaternion.Normalize(state.BodyRotation);
             _simulation.ApplyServerOperation(new PlayerLeaveOp(player, state.Frame, state.ParentSeq, state.Position, rotation, state.Pitch));
+        }
+    }
+
+    private void NotifyAccepted(IServerPlayerObserver observer, PlayerId player, Intent intent)
+    {
+#pragma warning disable CA1031 // An observer that fails must not turn an accepted intent into an error for the client; the failure is logged.
+        try
+        {
+            observer.OnIntentAccepted(player, intent);
+        }
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _logger.ObserverFailed(player.Value, ex);
         }
     }
 

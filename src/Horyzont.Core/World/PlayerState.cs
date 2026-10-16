@@ -60,6 +60,9 @@ public sealed class PlayerState
     /// <summary>True while the player is connected.</summary>
     public bool IsOnline { get; internal set; }
 
+    /// <summary>Health and stamina (K6-33, D5); null until the first tick of the vitals. Outside the journal and the state hash, changed only by <c>ServerSimulation.UpdatePlayerVitals</c>.</summary>
+    public PlayerVitals? Vitals { get; internal set; }
+
     /// <summary>Eye position in the planet frame (subproject 1). From K5-20 "up" in every frame comes from FrameMath.</summary>
     /// <param name="rules">Game rules with the eye height.</param>
     /// <returns>The eye position.</returns>

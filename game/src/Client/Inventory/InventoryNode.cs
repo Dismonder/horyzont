@@ -353,6 +353,11 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
         _serverTick = serverTick;
     }
 
+    /// <summary>Reads the tick of the server from the source the composition configured (the HUD source); false before that or while it is unknown.</summary>
+    /// <param name="tick">The tick when available.</param>
+    /// <returns>True when the tick is known.</returns>
+    public bool TryGetServerTick(out ulong tick) => _serverTick(out tick);
+
     private void OnChestClosed()
     {
         // The server ended the subscription (the player walked away, the chest became private or was removed): the screen goes with it.

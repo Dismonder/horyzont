@@ -13,6 +13,10 @@ public static class SurvivalContentFactory
     public const string GemKey = "test:gem";
     public const string StoneKey = "test:stone";
     public const string SoilKey = "test:soil";
+    public const string BerriesKey = "test:berries";
+    public const string JamKey = "test:jam";
+    public const string BrothKey = "test:broth";
+    public const string BreadKey = "test:bread";
 
     public const string ItemsJson = """
         {
@@ -47,8 +51,55 @@ public static class SurvivalContentFactory
     /// <summary>Item keys in the order of <see cref="ItemsJson"/>; a world created with them gets ids 1..4 in this order.</summary>
     public static IReadOnlyList<string> ItemKeys { get; } = [ToolKey, GemKey, StoneKey, SoilKey];
 
+    /// <summary>
+    /// <see cref="ItemKeys"/> and four food types (K6-33): a world created with them gets ids 1..8, berries 5, jam 6, broth 7, bread 8. The statistics of the
+    /// food are in <c>FoodContent</c> of the Core tests (the content loader reads the <c>food</c> field in step B3 of K6-33).
+    /// </summary>
+    public static IReadOnlyList<string> FoodItemKeys { get; } = [.. ItemKeys, BerriesKey, JamKey, BrothKey, BreadKey];
+
     /// <summary>Parses the test content.</summary>
     public static SurvivalContent CreateTest() => ContentLoader.Parse(ItemsJson, YieldsJson, StartJson);
+
+    /// <summary>
+    /// The content of <see cref="CreateTest"/> plus the four foods of <see cref="FoodItemKeys"/> (K6-33): berries 10 health, 20 stamina, 0.5/s, 600 s; jam 25, 35,
+    /// 1.0/s, 1200 s; broth 15, 0, 1.5/s, 900 s; bread 20, 10, 0.25/s, 1800 s.
+    /// </summary>
+    /// <returns>The content.</returns>
+    public static SurvivalContent CreateTestWithFood() => ContentLoader.Parse(FoodItemsJson, YieldsJson, FoodStartJson);
+
+    // The loader wants a source for every item; the foods come from the start kit here (the Core and server tests create worlds without applying it).
+    private const string FoodStartJson = """
+        {
+          "containers": { "playerBag": 40, "hotbar": 10, "equipment": 7 },
+          "items": [
+            { "item": "test:tool", "count": 1, "container": "hotbar", "slot": 0 },
+            { "item": "test:gem", "count": 3, "container": "hotbar", "slot": 1 },
+            { "item": "test:berries", "count": 1, "container": "playerBag", "slot": 30 },
+            { "item": "test:jam", "count": 1, "container": "playerBag", "slot": 31 },
+            { "item": "test:broth", "count": 1, "container": "playerBag", "slot": 32 },
+            { "item": "test:bread", "count": 1, "container": "playerBag", "slot": 33 }
+          ]
+        }
+        """;
+
+    private const string FoodItemsJson = """
+        {
+          "items": [
+            { "key": "test:tool", "category": "tool", "flags": ["tool"], "toolTier": 1, "visual": { "glyph": "T" } },
+            { "key": "test:gem", "category": "component", "maxStack": 5, "maxStackOverride": true },
+            { "key": "test:stone", "category": "resource", "flags": ["bulk"] },
+            { "key": "test:soil", "category": "resource", "flags": ["bulk"] },
+            { "key": "test:berries", "category": "food", "flags": ["food"], "maxStack": 20, "maxStackOverride": true,
+              "food": { "health": 10, "stamina": 20, "regen": 0.5, "durationSeconds": 600 } },
+            { "key": "test:jam", "category": "food", "flags": ["food"], "maxStack": 20, "maxStackOverride": true,
+              "food": { "health": 25, "stamina": 35, "regen": 1.0, "durationSeconds": 1200 } },
+            { "key": "test:broth", "category": "food", "flags": ["food"], "maxStack": 20, "maxStackOverride": true,
+              "food": { "health": 15, "stamina": 0, "regen": 1.5, "durationSeconds": 900 } },
+            { "key": "test:bread", "category": "food", "flags": ["food"], "maxStack": 20, "maxStackOverride": true,
+              "food": { "health": 20, "stamina": 10, "regen": 0.25, "durationSeconds": 1800 } }
+          ]
+        }
+        """;
 
     public const string OreKey = "test:ore";
     public const string PeatKey = "test:peat";

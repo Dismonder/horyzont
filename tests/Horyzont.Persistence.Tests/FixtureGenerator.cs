@@ -201,6 +201,33 @@ public sealed class FixtureGenerator
         File.Copy(dir.WorldPath, target);
     }
 
+    /// <summary>
+    /// Writes <c>Fixtures/world-v3-food.db</c> (schema version 3, K6-33 D19): Alice online with a bed, discoveries, two meals and her vitals, Bob offline with one meal
+    /// (a record without a bed and without discoveries) and his vitals, in the checkpoint; the broth eaten into the third slot (two operations) in the journal tail.
+    /// Same rules as <see cref="Generate_WorldV1"/>.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "Manual")]
+    public async Task Generate_WorldV3Food()
+    {
+        var target = Path.Combine(RepoRoot(), "tests", "Horyzont.Persistence.Tests", "Fixtures", FoodPersistenceTests.FixtureName);
+        Assert.False(File.Exists(target), $"{target} exists; delete it first if it really must be regenerated.");
+        using var dir = new TempDirectory();
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 16, 16, 0, 0, TimeSpan.Zero));
+        await using (var h = WorldHarness.CreateNew(dir.WorldPath, world: FoodWorldScript.NewWorld(), time: time))
+        {
+            var built = FoodWorldScript.Build(h);
+            Assert.True(await h.CheckpointAndPump());
+            FoodWorldScript.BuildTail(h, built);
+            await h.FlushAndPump();
+        }
+
+        dir.ReleasePools();
+        RawDb.Execute(dir.WorldPath, "PRAGMA journal_mode = DELETE;");
+        Assert.False(File.Exists(dir.WorldPath + "-wal"));
+        File.Copy(dir.WorldPath, target);
+    }
+
     private static string RepoRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);

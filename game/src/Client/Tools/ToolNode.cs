@@ -236,6 +236,12 @@ public sealed partial class ToolNode : Node, IClientSessionListener
             _rules, _view, new RecordingSender(new SessionIntentSender(_client!.Session), _sent), Pending, Blocks, Materials,
             _loggers!.CreateLogger<ToolController>());
         var content = BlockContentTable.Create(hello.BlockTypes, BlockDefinitions ?? new Dictionary<string, BlockTypeDef>());
+        if (Inventory is { } eater)
+        {
+            // K6-33 D21: with food in the selected slot and no tool, a fresh press eats it (a prop under the crosshair has priority in the controller).
+            Controller.Food = new Horyzont.Client.Survival.FoodUse(eater.Inventory, eater.Selection, eater.ToolMap, eater.Progress, eater.TryGetServerTick, tickRate: _rules.TickRate);
+        }
+
         Controller.Props = Inventory is { } held && PropStates is { } propStates && PropSource is { } propSource && PropContent is { Props.Count: > 0 } propContent
             ? new PropInteraction(new PropPicker(propSource, propStates), propStates, propContent, new HotbarHeldTool(held.Inventory, held.Selection), _rules)
             : null;

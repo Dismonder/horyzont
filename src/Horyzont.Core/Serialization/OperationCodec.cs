@@ -204,6 +204,13 @@ public static class OperationCodec
                 w.WriteVarUInt(disc.Type.Value);
                 break;
 
+            case FoodSetOp food:
+                w.WriteByte((byte)OperationKind.FoodSet);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(food.Player.Value);
+                CoreCodecPrimitives.WriteFoodSlots(w, food.Slots);
+                break;
+
             case ProgressKeyGrantOp grant:
                 if (string.IsNullOrEmpty(grant.Key))
                 {
@@ -386,7 +393,7 @@ public static class OperationCodec
             || (kindByte >= (byte)OperationKind.Compound && kindByte <= (byte)OperationKind.ContainerConfigure)
             || kindByte is (byte)OperationKind.BlockEntitySet or (byte)OperationKind.ItemDiscover or (byte)OperationKind.RespawnPointSet
                 or (byte)OperationKind.ProgressKeyGrant or (byte)OperationKind.PropRegrow or (byte)OperationKind.PropHarvest
-                or (byte)OperationKind.BlockFunctionStateSet;
+                or (byte)OperationKind.BlockFunctionStateSet or (byte)OperationKind.FoodSet;
         if (!known)
         {
             throw new ProtocolViolationException($"Unknown operation kind {kindByte}.");
@@ -481,6 +488,10 @@ public static class OperationCodec
                 }
 
                 return new ItemDiscoverOp(discPlayer, new ItemTypeId(discType));
+
+            case OperationKind.FoodSet:
+                var foodPlayer = new PlayerId(r.ReadVarUInt());
+                return new FoodSetOp(foodPlayer, CoreCodecPrimitives.ReadFoodSlots(ref r));
 
             case OperationKind.ProgressKeyGrant:
                 var grantKey = r.ReadString(ProtocolConstants.MaxRegistryKeyBytes);

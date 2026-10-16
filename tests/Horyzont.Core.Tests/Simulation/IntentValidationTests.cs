@@ -9,6 +9,7 @@ using Horyzont.Core.Tests.BlockEntities;
 using Horyzont.Core.Tests.Crafting;
 using Horyzont.Core.Tests.Items;
 using Horyzont.Core.Tests.Props;
+using Horyzont.Core.Tests.Survival;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Testing;
 
@@ -349,6 +350,26 @@ public sealed class IntentValidationTests
             44 => f.SubmitAs(FunctionalBlockFixture.Player1, CraftingWorld.Craft("t:bench1")).Reason,
             45 => f.SubmitAs(FunctionalBlockFixture.Player1, CraftingWorld.Craft("t:hand")).Reason,
             46 => TooFar(f),
+            _ => throw new ArgumentOutOfRangeException(nameof(number)),
+        };
+
+        Assert.Equal((RejectReason)number, actual);
+    }
+
+    /// <summary>The reason of K6-33 (49): the same food eaten twice. The member name of the enum arrives with the protocol (step B2).</summary>
+    [Theory]
+    [InlineData((byte)49)]
+    public void Submit_FoodScenario_ReturnsNewReason(byte number)
+    {
+        var w = new FoodWorld(survival: true);
+        w.GiveFood(FoodWorld.Player1, FoodWorld.Berries, 2);
+        var bag = new EatIntent(FoodWorld.BagOf(FoodWorld.Player1), 0);
+
+        // The valid twin: the first berry is eaten; the second one is refused, the food still being at full strength.
+        w.Blocks.Accept(FoodWorld.Player1, bag);
+        var actual = number switch
+        {
+            49 => w.Blocks.SubmitAs(FoodWorld.Player1, bag).Reason,
             _ => throw new ArgumentOutOfRangeException(nameof(number)),
         };
 

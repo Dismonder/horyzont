@@ -150,6 +150,16 @@ public static class WorldFactory
         return state;
     }
 
+    /// <summary>
+    /// <see cref="CreateWithFunctionalBlocks"/> with the item types of <see cref="SurvivalContentFactory.FoodItemKeys"/> (K6-33): the four test types of
+    /// the other worlds and four food types (ids 5..8), the construct with a bed, the block types of <see cref="FoodBlocks"/> (a campfire as id 6) and the bag, hotbar and equipment of every player.
+    /// With <paramref name="secondPlanet"/> the world has <see cref="SecondPlanet"/> too.
+    /// </summary>
+    public static WorldState CreateWithFood(int players = 1, bool secondPlanet = false) =>
+        CreateBlockWorld(
+            players, true, FoodBlocks.BlockKeys, SurvivalContentFactory.FoodItemKeys,
+            secondPlanet ? [HomePlanetParams, SecondPlanetParams] : [HomePlanetParams]);
+
     private static WorldState WithPlayers(WorldState state, int players)
     {
         var sim = new ServerSimulation(state, new FakeTerrainService(), new InMemoryJournal(), new GameRules(), NullLogger<ServerSimulation>.Instance);
@@ -163,12 +173,20 @@ public static class WorldFactory
         return state;
     }
 
-    /// <summary>Item type id of a key of <see cref="SurvivalContentFactory.CraftingItemKeys"/> (its first four are <see cref="SurvivalContentFactory.ItemKeys"/>) in a world of <see cref="CreateWithPlayerContainers"/> or <see cref="CreateWithCrafting"/>.</summary>
+    /// <summary>Item type id of a key of <see cref="SurvivalContentFactory.CraftingItemKeys"/> (its first four are <see cref="SurvivalContentFactory.ItemKeys"/>) in a world of <see cref="CreateWithPlayerContainers"/> or <see cref="CreateWithCrafting"/>, or of a food key of <see cref="SurvivalContentFactory.FoodItemKeys"/> (ids 5..8) in a world of <see cref="CreateWithFood"/>.</summary>
     public static ItemTypeId Item(string key)
     {
         for (var i = 0; i < SurvivalContentFactory.CraftingItemKeys.Count; i++)
         {
             if (SurvivalContentFactory.CraftingItemKeys[i] == key)
+            {
+                return new ItemTypeId((ushort)(i + 1));
+            }
+        }
+
+        for (var i = 0; i < SurvivalContentFactory.FoodItemKeys.Count; i++)
+        {
+            if (SurvivalContentFactory.FoodItemKeys[i] == key)
             {
                 return new ItemTypeId((ushort)(i + 1));
             }

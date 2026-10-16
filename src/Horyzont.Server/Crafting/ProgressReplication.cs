@@ -136,7 +136,7 @@ public sealed class ProgressReplication : IServerPlayerObserver
     {
         var state = _attached!.State;
         var discovered = state.Progress.TryGet(player, out var progress) ? progress.DiscoveredItems : ItemTypeBitSet.Empty;
-        _send(player, new PlayerProgressState(discovered, [.. state.ProgressKeys.Sorted]));
+        _send(player, new PlayerProgressState(discovered, [.. state.ProgressKeys.Sorted], progress?.Food ?? FoodSlots.Empty));
         StatesSent++;
         _logger.ProgressSent(player.Value, discovered.Count, state.ProgressKeys.Count);
     }
