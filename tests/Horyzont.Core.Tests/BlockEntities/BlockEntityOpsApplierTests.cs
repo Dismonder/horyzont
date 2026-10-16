@@ -56,10 +56,14 @@ public sealed class BlockEntityOpsApplierTests
     {
         var f = new FunctionalBlockFixture();
         f.Apply(SetBedState(_bedCell, PlayerId.None));
-        var hostedByBed = f.CreateChestContainer(_bedCell);
+        var hostedByBed = f.State.ContainerIds.PeekNext();
 
-        // A bed keeps its kind: a chest state on the same cell is another kind.
-        f.AssertFails(new BlockEntitySetOp(ConstructId, _bedCell, FunctionalBlocks.BedType, new ChestBlockState(hostedByBed)));
+        // A bed keeps its kind: a chest state on the same cell is another kind (the container is created in the same compound).
+        f.AssertFails(new CompoundOp(
+        [
+            ChestContainer(hostedByBed, ConstructId, _bedCell),
+            new BlockEntitySetOp(ConstructId, _bedCell, FunctionalBlocks.BedType, new ChestBlockState(hostedByBed)),
+        ]));
         Assert.True(f.HasState(_bedCell, out var state));
         Assert.Equal(new BedBlockState(PlayerId.None), state);
     }
@@ -84,7 +88,7 @@ public sealed class BlockEntityOpsApplierTests
         f.SetUpChest(_chestCell);
         f.Apply(PlaceBlock(FunctionalBlocks.FreeCell, FunctionalBlocks.ChestType));
         f.Apply(PlaceBlock(FunctionalBlocks.FreeCell2, FunctionalBlocks.ChestType));
-        var elsewhere = f.CreateChestContainer(FunctionalBlocks.FreeCell2);
+        var elsewhere = f.SetUpChest(FunctionalBlocks.FreeCell2);
 
         // The container hosted by the player, a container hosted by another block, a container that does not exist.
         f.AssertFails(SetChestState(FunctionalBlocks.FreeCell, Bag));
@@ -158,6 +162,38 @@ public sealed class BlockEntityOpsApplierTests
 
         f.AssertFails(new CompoundOp([ClearState(_chestCell, FunctionalBlocks.ChestType), Stone(id, 1, 1)]));
         Assert.True(f.HasState(_chestCell, out _));
+    }
+
+    [Fact]
+    public void ContainerCreate_ChestAloneWithoutState_Fails()
+    {
+        var f = new FunctionalBlockFixture();
+
+        f.AssertFails(ChestContainer(f.State.ContainerIds.PeekNext(), ConstructId, _chestCell));
+        Assert.Empty(f.HostedBy(_chestCell));
+    }
+
+    [Fact]
+    public void ContainerRemove_ChestAloneStateStays_Fails()
+    {
+        var f = new FunctionalBlockFixture();
+        var id = f.SetUpChest(_chestCell);
+
+        f.AssertFails(new ContainerRemoveOp(id));
+        Assert.True(f.HasState(_chestCell, out _));
+        Assert.Single(f.HostedBy(_chestCell));
+    }
+
+    [Fact]
+    public void Compound_ChestContainerThenState_IsApplied()
+    {
+        var f = new FunctionalBlockFixture();
+        var id = f.State.ContainerIds.PeekNext();
+
+        f.Apply(new CompoundOp([ChestContainer(id, ConstructId, _chestCell), SetChestState(_chestCell, id)]));
+
+        Assert.True(f.HasState(_chestCell, out _));
+        Assert.Single(f.HostedBy(_chestCell));
     }
 
     [Fact]

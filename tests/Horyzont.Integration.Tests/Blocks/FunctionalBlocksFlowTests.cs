@@ -46,9 +46,11 @@ public sealed class FunctionalBlocksFlowTests
         var sim = rig.Runtime.Simulation;
         sim.ApplyServerOperation(new BlockSetOp(construct, cell, BlockState.Create(FunctionalBlocks.ChestType, 0)));
         var container = rig.Runtime.State.ContainerIds.PeekNext();
-        sim.ApplyServerOperation(new ContainerCreateOp(
-            container, ContainerKind.Chest, ContainerHost.ConstructBlock(construct, cell), PlayerId.None, ContainerAccess.Shared, size));
-        sim.ApplyServerOperation(new BlockEntitySetOp(construct, cell, FunctionalBlocks.ChestType, new ChestBlockState(container)));
+        sim.ApplyServerOperation(new CompoundOp(
+        [
+            new ContainerCreateOp(container, ContainerKind.Chest, ContainerHost.ConstructBlock(construct, cell), PlayerId.None, ContainerAccess.Shared, size),
+            new BlockEntitySetOp(construct, cell, FunctionalBlocks.ChestType, new ChestBlockState(container)),
+        ]));
         return container;
     }
 

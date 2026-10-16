@@ -53,9 +53,11 @@ internal static class FunctionalWorldScript
         h.Sim.ApplyServerOperation(new BlockSetOp(construct, FunctionalBlocks.DoorHighCell, BlockState.Create(FunctionalBlocks.DoorType, 0, 0, 1)));
 
         var chest = h.State.ContainerIds.PeekNext();
-        h.Sim.ApplyServerOperation(new ContainerCreateOp(
-            chest, ContainerKind.Chest, ContainerHost.ConstructBlock(construct, FunctionalBlocks.ChestCell), player, ContainerAccess.Shared, 20));
-        h.Sim.ApplyServerOperation(new BlockEntitySetOp(construct, FunctionalBlocks.ChestCell, FunctionalBlocks.ChestType, new ChestBlockState(chest)));
+        h.Sim.ApplyServerOperation(new CompoundOp(
+        [
+            new ContainerCreateOp(chest, ContainerKind.Chest, ContainerHost.ConstructBlock(construct, FunctionalBlocks.ChestCell), player, ContainerAccess.Shared, 20),
+            new BlockEntitySetOp(construct, FunctionalBlocks.ChestCell, FunctionalBlocks.ChestType, new ChestBlockState(chest)),
+        ]));
         h.Sim.ApplyServerOperation(new ItemCreateOp(
             new SlotRef(chest, 3), WorldFactory.Item(SurvivalContentFactory.StoneKey), 40, 500, ItemSource.Admin));
         h.Sim.ApplyServerOperation(new BlockEntitySetOp(construct, FunctionalBlocks.BedCell, FunctionalBlocks.BedType, new BedBlockState(player)));

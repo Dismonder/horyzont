@@ -47,10 +47,12 @@ public sealed class ChestSubscriptionTests
     private ContainerId SetUpChest(ContainerAccess access = ContainerAccess.Shared, ushort size = 8)
     {
         var chest = _sim.State.ContainerIds.PeekNext();
-        _sim.ApplyServerOperation(new ContainerCreateOp(
-            chest, ContainerKind.Chest, ContainerHost.ConstructBlock(FunctionalBlocks.Construct, FunctionalBlocks.ChestCell), _owner, access, size));
-        _sim.ApplyServerOperation(new BlockEntitySetOp(
-            FunctionalBlocks.Construct, FunctionalBlocks.ChestCell, FunctionalBlocks.ChestType, new ChestBlockState(chest)));
+        _sim.ApplyServerOperation(new CompoundOp(
+        [
+            new ContainerCreateOp(
+                chest, ContainerKind.Chest, ContainerHost.ConstructBlock(FunctionalBlocks.Construct, FunctionalBlocks.ChestCell), _owner, access, size),
+            new BlockEntitySetOp(FunctionalBlocks.Construct, FunctionalBlocks.ChestCell, FunctionalBlocks.ChestType, new ChestBlockState(chest)),
+        ]));
         _sim.ApplyServerOperation(new ItemCreateOp(new SlotRef(chest, 0), _stone, 40, 500, ItemSource.Admin));
         _sent.Clear();
         return chest;

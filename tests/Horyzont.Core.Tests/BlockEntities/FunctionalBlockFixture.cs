@@ -100,8 +100,7 @@ internal sealed class FunctionalBlockFixture
     {
         EnsureBlock(cell, FunctionalBlocks.ChestType);
         var id = State.ContainerIds.PeekNext();
-        Apply(ChestContainer(id, ConstructId, cell, size, access, owner));
-        Apply(SetChestState(cell, id));
+        Apply(new CompoundOp([ChestContainer(id, ConstructId, cell, size, access, owner), SetChestState(cell, id)]));
         return id;
     }
 
@@ -172,21 +171,17 @@ internal sealed class FunctionalBlockFixture
         ContainerId id, EntityId construct, CellPos cell, ushort size = 4, ContainerAccess access = ContainerAccess.Shared, PlayerId owner = default) =>
         new(id, ContainerKind.Chest, ContainerHost.ConstructBlock(construct, cell), owner.IsNone ? Player1 : owner, access, size);
 
-    /// <summary>Creates a chest container hosted by the block in <paramref name="cell"/> (a plain chest block of the construct).</summary>
-    public ContainerId CreateChestContainer(CellPos cell, ushort size = 4, ContainerAccess access = ContainerAccess.Shared)
+    /// <summary>Creates a chest container and the state that refers to it for the chest block in <paramref name="cell"/>, in one compound (the applier keeps the two together).</summary>
+    public ContainerId SetUpChest(CellPos cell, ushort size = 4, ContainerAccess access = ContainerAccess.Shared)
     {
         var id = State.ContainerIds.PeekNext();
-        Apply(ChestContainer(id, ConstructId, cell, size, access));
+        Apply(new CompoundOp([ChestContainer(id, ConstructId, cell, size, access), SetChestState(cell, id)]));
         return id;
     }
 
-    /// <summary>Creates a chest container and the state that refers to it for the chest block in <paramref name="cell"/>.</summary>
-    public ContainerId SetUpChest(CellPos cell, ushort size = 4, ContainerAccess access = ContainerAccess.Shared)
-    {
-        var id = CreateChestContainer(cell, size, access);
-        Apply(SetChestState(cell, id));
-        return id;
-    }
+    /// <summary>Removes the empty chest container and the state that refers to it in one compound (the applier keeps the two together).</summary>
+    public void RemoveChest(CellPos cell, ContainerId container) =>
+        Apply(new CompoundOp([new ContainerRemoveOp(container), ClearState(cell, FunctionalBlocks.ChestType)]));
 
     public static BlockEntitySetOp SetChestState(CellPos cell, ContainerId container) =>
         new(ConstructId, cell, FunctionalBlocks.ChestType, new ChestBlockState(container));
