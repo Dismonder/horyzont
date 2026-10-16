@@ -70,8 +70,8 @@ public sealed class SuitStepProperties
     {
         Kit.ForAll(CaseGen, Check, SequenceCases);
 
-        // The generator must reach the interesting states: steps that hurt, steps with a resource at its capacity and steps in which a resource regenerates. The thresholds are the first
-        // approximation (no implementation to measure yet at A1); A6 measures them and raises them to about a quarter of the measured values, never below what proves the states are reached.
+        // The generator must reach the interesting states: steps that hurt, steps with a resource at its capacity and steps in which a resource regenerates. The thresholds are about a quarter of
+        // the typical values measured in A6 over 11 runs of 100 cases (steps with damage 28 to 423, at the capacity 10140 to 16891, regenerating 25838 to 37757, at zero 202 to 1320).
         var coverage = new Coverage();
         var samples = CaseGen.Sample(CoverageCases, 10).ToArray();
         Assert.Equal(CoverageCases, samples.Length);
@@ -80,10 +80,10 @@ public sealed class SuitStepProperties
             Check(sample, coverage);
         }
 
-        Assert.True(coverage.HurtSteps >= 500, $"{coverage.HurtSteps} steps with damage");
-        Assert.True(coverage.AtCapacitySteps >= 500, $"{coverage.AtCapacitySteps} resource-steps at the capacity");
-        Assert.True(coverage.RegeneratingSteps >= 500, $"{coverage.RegeneratingSteps} resource-steps that regenerated");
-        Assert.True(coverage.EmptySteps >= 500, $"{coverage.EmptySteps} resource-steps at zero");
+        Assert.True(coverage.HurtSteps >= 10, $"{coverage.HurtSteps} steps with damage");
+        Assert.True(coverage.AtCapacitySteps >= 2500, $"{coverage.AtCapacitySteps} resource-steps at the capacity");
+        Assert.True(coverage.RegeneratingSteps >= 6000, $"{coverage.RegeneratingSteps} resource-steps that regenerated");
+        Assert.True(coverage.EmptySteps >= 50, $"{coverage.EmptySteps} resource-steps at zero");
     }
 
     [Fact]

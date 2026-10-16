@@ -97,8 +97,9 @@ public sealed class SuitLoadoutTests
         Assert.Equal(1f, three.Drain.Oxygen);
         Assert.Equal(new SuitResources(100f, 100f, 100f, 100f, 100f), three.Capacity);
 
-        // The floor is a rule.
-        Assert.Equal(0.1f, SuitLoadout.Compute(Equipment((4, HazardWorld.Thermal), (5, HazardWorld.Thermal), (6, HazardWorld.Thermal)), _modules, _rules with { MinDrainMultiplier = 0.1f }).Drain.Heating, 5);
+        // The floor is a rule: a floor of 0.3 lifts the product 0.216, and a floor of 0.1 below it leaves the product.
+        Assert.Equal(0.3f, SuitLoadout.Compute(Equipment((4, HazardWorld.Thermal), (5, HazardWorld.Thermal), (6, HazardWorld.Thermal)), _modules, _rules with { MinDrainMultiplier = 0.3f }).Drain.Heating, 5);
+        Assert.Equal(0.216f, SuitLoadout.Compute(Equipment((4, HazardWorld.Thermal), (5, HazardWorld.Thermal), (6, HazardWorld.Thermal)), _modules, _rules with { MinDrainMultiplier = 0.1f }).Drain.Heating, 5);
     }
 
     [Fact]

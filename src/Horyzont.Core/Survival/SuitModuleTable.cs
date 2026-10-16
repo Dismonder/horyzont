@@ -3,12 +3,15 @@ using System.Diagnostics.CodeAnalysis;
 using Horyzont.Core.Content;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
+using Horyzont.Core.Protocol;
 
 namespace Horyzont.Core.Survival;
 
 /// <summary>The suit modules by item type id, built once from the content and the world registry (K6-34, D10).</summary>
 public sealed class SuitModuleTable
 {
+    private readonly SuitModuleDef?[] _byType = new SuitModuleDef?[ProtocolConstants.MaxItemTypes + 1];
+
     private SuitModuleTable()
     {
     }
@@ -17,11 +20,29 @@ public sealed class SuitModuleTable
     /// <param name="content">The survival content.</param>
     /// <param name="registry">The item types of the world.</param>
     /// <returns>The table.</returns>
-    public static SuitModuleTable Build(SurvivalContent content, ItemTypeRegistry registry) => throw new NotImplementedException("K6-34 A6");
+    public static SuitModuleTable Build(SurvivalContent content, ItemTypeRegistry registry)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        ArgumentNullException.ThrowIfNull(registry);
+        var table = new SuitModuleTable();
+        foreach (var entry in registry.Entries)
+        {
+            if (entry.Id is not 0 and <= ProtocolConstants.MaxItemTypes && content.Items.TryGet(entry.Key, out var item) && item.SuitModule is { } module)
+            {
+                table._byType[entry.Id] = module;
+            }
+        }
+
+        return table;
+    }
 
     /// <summary>Looks up the module statistics of an item type; allocates nothing.</summary>
     /// <param name="type">The item type.</param>
     /// <param name="module">The statistics when the type is a module.</param>
     /// <returns>True when the type is a module.</returns>
-    public bool TryGet(ItemTypeId type, [NotNullWhen(true)] out SuitModuleDef? module) => throw new NotImplementedException("K6-34 A6");
+    public bool TryGet(ItemTypeId type, [NotNullWhen(true)] out SuitModuleDef? module)
+    {
+        module = type.Value <= ProtocolConstants.MaxItemTypes ? _byType[type.Value] : null;
+        return module is not null;
+    }
 }

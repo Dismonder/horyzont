@@ -9,5 +9,18 @@ public static class HazardProtection
     /// <param name="generator">Whether a running oxygen generator covers the player.</param>
     /// <param name="lifeSupport">Whether the player sits in the seat of a ship.</param>
     /// <returns>The effective rates.</returns>
-    public static HazardRates Apply(in HazardRates present, bool sheltered, bool generator, bool lifeSupport) => throw new NotImplementedException("K6-34 A6");
+    public static HazardRates Apply(in HazardRates present, bool sheltered, bool generator, bool lifeSupport)
+    {
+        if (lifeSupport)
+        {
+            return default;
+        }
+
+        return new HazardRates(
+            sheltered ? 0f : present.Cold,
+            sheltered ? 0f : present.Heat,
+            sheltered ? 0f : present.Toxins,
+            present.Radiation,
+            generator ? 0f : present.Vacuum);
+    }
 }
