@@ -13,6 +13,23 @@ public static class RecipeBook
     /// <param name="discovered">Item types the player discovered.</param>
     /// <param name="worldKeys">Progress keys of the world.</param>
     /// <returns>True when the recipe is known.</returns>
-    public static bool IsKnown(RecipeDef recipe, ItemTypeRegistry registry, ItemTypeBitSet discovered, IReadOnlySet<string> worldKeys) =>
-        throw new NotImplementedException("K6-32 A6");
+    public static bool IsKnown(RecipeDef recipe, ItemTypeRegistry registry, ItemTypeBitSet discovered, IReadOnlySet<string> worldKeys)
+    {
+        ArgumentNullException.ThrowIfNull(recipe);
+        if (recipe.ProgressKey is not null && !worldKeys.Contains(recipe.ProgressKey))
+        {
+            return false;
+        }
+
+        var ingredients = recipe.Ingredients;
+        for (var i = 0; i < ingredients.Count; i++)
+        {
+            if (registry.TryGetId(ingredients[i].ItemKey, out var type) && discovered.Contains(type))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

@@ -12,6 +12,37 @@ public static class OperationProgress
     /// <param name="operation">The operation.</param>
     /// <param name="discoveredBy">Receives each player with a discovery once, in order of first appearance.</param>
     /// <param name="keysChanged">True when the operation grants a progress key.</param>
-    public static void Collect(Operation operation, List<PlayerId> discoveredBy, out bool keysChanged) =>
-        throw new NotImplementedException("K6-32 A6");
+    public static void Collect(Operation operation, List<PlayerId> discoveredBy, out bool keysChanged)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        ArgumentNullException.ThrowIfNull(discoveredBy);
+        discoveredBy.Clear();
+        keysChanged = false;
+        Visit(operation, discoveredBy, ref keysChanged);
+    }
+
+    private static void Visit(Operation operation, List<PlayerId> discoveredBy, ref bool keysChanged)
+    {
+        switch (operation)
+        {
+            case ItemDiscoverOp discover:
+                if (!discoveredBy.Contains(discover.Player))
+                {
+                    discoveredBy.Add(discover.Player);
+                }
+
+                break;
+            case ProgressKeyGrantOp:
+                keysChanged = true;
+                break;
+            case CompoundOp compound:
+                var components = compound.Components;
+                for (var i = 0; i < components.Count; i++)
+                {
+                    Visit(components[i], discoveredBy, ref keysChanged);
+                }
+
+                break;
+        }
+    }
 }
