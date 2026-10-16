@@ -21,8 +21,12 @@ public sealed class SurvivalHashTests
     /// <summary>Hash of <see cref="WorldWithItems"/> recorded at commit b5e427e (start of K6-30, before the block entities and the respawn points).</summary>
     private const ulong WorldWithItemsHashBeforeBlockEntities = 15528921043589756334UL;
 
-    /// <summary>Hash of <see cref="WorldWithBlockEntities"/> recorded at the start of K6-31 (commit a1781ee, before the harvested props).</summary>
-    private const ulong WorldWithBlockEntitiesHashBeforeProps = 17678442467951482955UL;
+    /// <summary>
+    /// Hash of <see cref="WorldWithBlockEntities"/> before the harvested props. Recorded at the start of K6-31 (17678442467951482955) and re-recorded
+    /// after the K6-30 review fixes, which build the chest of the fixture in one compound instead of two operations; the new value was measured
+    /// on the K6-30 branch itself (commit 2fa618b), so it does not depend on any prop code.
+    /// </summary>
+    private const ulong WorldWithBlockEntitiesHashBeforeProps = 12927208767499692UL;
 
     [Fact]
     public void WorldWithoutItems_HashUnchanged() => Assert.Equal(DefaultWorldHashBeforeItems, StateHasher.Hash(WorldFactory.CreateDefault()));
