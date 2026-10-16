@@ -172,7 +172,8 @@ public sealed class EatIntentTests
         w.Blocks.Accept(Player1, EatBag(Player1));
 
         // 20.003 percent remain one tick before the boundary (the strict limit of D11), exactly 20 percent at 80 percent of the duration.
-        var boundary = (ulong)(_berryTicks * 0.8);
+        Assert.Equal(0ul, _berryTicks % 5);
+        var boundary = _berryTicks * 4 / 5;
         w.AdvanceTicks((int)boundary - 1);
         w.Blocks.AssertRejected(Player1, EatBag(Player1), FoodAlreadyActive);
         w.AdvanceTicks(1);
@@ -264,19 +265,40 @@ public sealed class EatIntentTests
     }
 
     [Fact]
-    public void Eat_Bucket_IsItems()
+    public void Eat_RefusalsDoNotSpendTheItemsBucket()
     {
         var w = Stocked();
 
-        // 40 refused intents use the burst of the Items bucket (20 per second); the rate limit comes before the content checks (D10), so the 41st
-        // refusal is RateLimited and not NotEnoughItems, and a valid eating is refused for the same reason until the bucket refills (3 ticks).
-        for (var i = 0; i < 40; i++)
+        // The token is spent only by an accepted intent (K1-03; K6-32 DO USTALENIA-15): refusals of the resolver leave the bucket untouched, so
+        // 45 refusals (more than the burst of 40) are all NotEnoughItems and a valid eating is still accepted afterwards.
+        for (var i = 0; i < 45; i++)
         {
             Assert.Equal(RejectReason.NotEnoughItems, w.Blocks.Submit(EatBag(Player1, 5)).Reason);
         }
 
+        Assert.True(w.Blocks.Submit(EatBag(Player1)).IsAccepted);
+    }
+
+    [Fact]
+    public void Eat_Bucket_IsItems()
+    {
+        var w = Stocked();
+        w.Apply(Create(BagOf(Player1), 1, Stone, 20));
+        var chest = w.Blocks.SetUpChestAt(FunctionalBlocks.ChestCell, Player1);
+
+        // 40 accepted item moves (the same bucket class, Items: burst 40, 20 per second) empty the bucket: the whole stack goes between bag slots 1 and 2.
+        for (var i = 0; i < 40; i++)
+        {
+            var (from, to) = i % 2 == 0 ? (1, 2) : (2, 1);
+            var move = new ItemMoveIntent(BagSlot(Player1, from), ItemMoveTarget.ToSlot(BagSlot(Player1, to)), 20, Stone, 20);
+            Assert.True(w.Blocks.Submit(move).IsAccepted, $"move {i}");
+        }
+
+        // The rate limit comes before the content checks (D10): a refusal that would be NotEnoughItems and a valid eating are both RateLimited, while a
+        // parameter error (the chest) comes before the limit.
         w.Blocks.AssertRejected(Player1, EatBag(Player1, 5), RejectReason.RateLimited);
         w.Blocks.AssertRejected(Player1, EatBag(Player1), RejectReason.RateLimited);
+        w.Blocks.AssertRejected(Player1, new EatIntent(chest, 0), RejectReason.InvalidParameters);
         w.AdvanceTicks(3);
         Assert.True(w.Blocks.Submit(EatBag(Player1)).IsAccepted);
     }

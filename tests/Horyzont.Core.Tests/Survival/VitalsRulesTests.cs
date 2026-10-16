@@ -1,3 +1,4 @@
+using Horyzont.Core.Protocol;
 using Horyzont.Core.Survival;
 
 namespace Horyzont.Core.Tests.Survival;
@@ -40,6 +41,16 @@ public sealed class VitalsRulesTests
         Assert.Equal(0.5f, rules.RestStillnessMeters);
         Assert.Equal(30, rules.RestEvaluateEveryTicks);
         Assert.Equal(6, rules.VitalsSendEveryTicks);
+    }
+
+    [Fact]
+    public void Defaults_FitTheProtocol()
+    {
+        // The limits of message 44 are the defaults at 60 ticks per second; the server clamps for any other rate (B1 review P2-5).
+        var rules = VitalsRules.Default;
+
+        Assert.True(rules.RestWarmupTicks <= ProtocolConstants.MaxRestWarmupTicks);
+        Assert.Equal((ulong)ProtocolConstants.MaxRestRemainingTicks, RestRules.DurationTicks(rules.MaxComfort, rules, 60));
     }
 
     [Fact]

@@ -9,6 +9,18 @@ public static class ProtocolConstants
     /// <summary>Most records in a <see cref="Messages.MarkersState"/>: 256 shared and 256 own private markers (K5-27).</summary>
     public const int MaxMarkersInState = 512;
 
+    /// <summary>
+    /// Largest warm-up progress of the rest in message 44, in ticks: <c>RestWarmupTicks</c> of 20 s at 60 ticks per second (K6-33 D22). The server clamps
+    /// the values to the maxima before sending.
+    /// </summary>
+    public const int MaxRestWarmupTicks = 1200;
+
+    /// <summary>
+    /// Largest remaining time of the rest in message 44, in ticks: (8 + 10) minutes at 60 ticks per second (K6-33 D22). The server clamps the values to
+    /// the maxima before sending.
+    /// </summary>
+    public const int MaxRestRemainingTicks = 64_800;
+
     /// <summary>Maximum entries per terrain manifest page (K3-16).</summary>
     public const int MaxTerrainSyncEntries = 1024;
 

@@ -244,7 +244,7 @@ public sealed class ProtocolContractTests
             new ContainerUnsubscribe(new ContainerId(1)),
             new PropStates(new PlanetId(1), []),
             new BlockEntityStates(new EntityId(1), []),
-            new PlayerProgressState(Horyzont.Core.Progress.ItemTypeBitSet.Empty, []),
+            new PlayerProgressState(Horyzont.Core.Progress.ItemTypeBitSet.Empty, [], Horyzont.Core.Progress.FoodSlots.Empty),
             new ItemRegistry([]),
         ];
 

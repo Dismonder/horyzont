@@ -232,7 +232,7 @@ public static class MaxMessages
         bytes[0] = 0xFE;
         bytes[^1] = 0x01;
         var keys = Enumerable.Range(0, ProtocolConstants.MaxProgressKeys).Select(i => $"{i:D3}" + Text(ProtocolConstants.MaxRegistryKeyBytes - 3)).ToArray();
-        return new PlayerProgressState(ItemTypeBitSet.FromBytes(bytes), keys);
+        return new PlayerProgressState(ItemTypeBitSet.FromBytes(bytes), keys, FoodSlots.Empty);
     }
 
     /// <summary>

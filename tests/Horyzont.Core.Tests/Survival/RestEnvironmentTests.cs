@@ -23,6 +23,9 @@ public sealed class RestEnvironmentTests
 
     private static readonly CellPos _campfireNear = new(4, 1, 0);
 
+    /// <summary>The point at the height of the block centres: the distances to the centres of the cells in the row of the bed are exact in float.</summary>
+    private static readonly Vector3 _level = new(1.5f, 4001.5f, 0.5f);
+
     private static RestConditions Evaluate(FoodWorld w, PlanetId? planet = null, Vector3? point = null, VitalsRules? rules = null) =>
         RestEnvironment.Evaluate(
             w.State, FoodBlocks.ContentFor(w.State), w.Blocks.Sim.Terrain, planet ?? WorldFactory.HomePlanet, point ?? _point, rules ?? VitalsRules.Default);
@@ -104,6 +107,64 @@ public sealed class RestEnvironmentTests
         Place(far, new CellPos(7, 1, 0), FoodBlocks.CampfireType);
 
         Assert.False(Evaluate(far).Heated);
+    }
+
+    [Fact]
+    public void Evaluate_CampfireExactly5m_Heated()
+    {
+        // The limits are inclusive (distance of the cell centre to the point <= range, like StationLevels): the cell 6 is 5 m away, the cell 7 is 6 m.
+        var far = new FoodWorld();
+        Place(far, new CellPos(7, 1, 0), FoodBlocks.CampfireType);
+        Assert.False(Evaluate(far, point: _level).Heated);
+
+        var w = new FoodWorld();
+        Place(w, new CellPos(6, 1, 0), FoodBlocks.CampfireType);
+
+        Assert.True(Evaluate(w, point: _level).Heated);
+    }
+
+    [Fact]
+    public void Evaluate_ComfortExactly10m_Counted()
+    {
+        // The cell 12 is 11 m away (bed and lamp only); the cell 11 is exactly 10 m away and counts.
+        var far = new FoodWorld();
+        Place(far, new CellPos(12, 1, 0), FoodBlocks.CampfireType);
+        Assert.Equal(2, Evaluate(far, point: _level).Comfort);
+
+        var w = new FoodWorld();
+        Place(w, new CellPos(11, 1, 0), FoodBlocks.CampfireType);
+
+        Assert.Equal(3, Evaluate(w, point: _level).Comfort);
+    }
+
+    [Fact]
+    public void Evaluate_Warm_DoesNotAllocate()
+    {
+        // The evaluation runs every 30 ticks for each resting player (ZASADY 6): the set of different comfort types is a stack bitset, not a HashSet.
+        var w = new FoodWorld();
+        Place(w, _campfireNear, FoodBlocks.CampfireType);
+        var content = FoodBlocks.ContentFor(w.State);
+        var terrain = w.Blocks.Sim.Terrain;
+        var rules = VitalsRules.Default;
+        for (var i = 0; i < 50; i++)
+        {
+            RestEnvironment.Evaluate(w.State, content, terrain, WorldFactory.HomePlanet, _point, rules);
+        }
+
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 200; i++)
+            {
+                RestEnvironment.Evaluate(w.State, content, terrain, WorldFactory.HomePlanet, _point, rules);
+            }
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        Assert.Equal(0, smallest);
     }
 
     [Fact]

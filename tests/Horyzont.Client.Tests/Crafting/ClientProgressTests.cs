@@ -20,13 +20,13 @@ public sealed class ClientProgressTests
         Assert.True(progress.Discovered.IsEmpty);
         Assert.Empty(progress.WorldKeys);
 
-        progress.Apply(new PlayerProgressState(Bits(3, 5), ["a", "b"]));
+        progress.Apply(new PlayerProgressState(Bits(3, 5), ["a", "b"], FoodSlots.Empty));
 
         Assert.Equal(Bits(3, 5), progress.Discovered);
         Assert.Equal(["a", "b"], progress.WorldKeys.Order(StringComparer.Ordinal));
         Assert.Equal(1, changed);
 
-        progress.Apply(new PlayerProgressState(Bits(7), ["c"]));
+        progress.Apply(new PlayerProgressState(Bits(7), ["c"], FoodSlots.Empty));
 
         Assert.Equal(Bits(7), progress.Discovered);
         Assert.False(progress.Discovered.Contains(new ItemTypeId(3)));
@@ -38,7 +38,7 @@ public sealed class ClientProgressTests
     public void Disconnect_Clears()
     {
         var progress = new ClientProgress();
-        progress.Apply(new PlayerProgressState(Bits(3), ["a"]));
+        progress.Apply(new PlayerProgressState(Bits(3), ["a"], FoodSlots.Empty));
         var changed = 0;
         progress.Changed += () => changed++;
 
@@ -56,7 +56,7 @@ public sealed class ClientProgressTests
         var replication = new ClientReplication(_ => { }, null, null, null, progress: progress);
         Assert.Same(progress, replication.Progress);
 
-        replication.OnMessage(new PlayerProgressState(Bits(4), ["k"]));
+        replication.OnMessage(new PlayerProgressState(Bits(4), ["k"], FoodSlots.Empty));
 
         Assert.Equal(Bits(4), progress.Discovered);
         Assert.Equal(["k"], progress.WorldKeys);
@@ -72,7 +72,7 @@ public sealed class ClientProgressTests
     {
         var replication = new ClientReplication(_ => { }, null);
 
-        replication.OnMessage(new PlayerProgressState(Bits(4), ["k"]));
+        replication.OnMessage(new PlayerProgressState(Bits(4), ["k"], FoodSlots.Empty));
 
         Assert.Null(replication.Progress);
     }

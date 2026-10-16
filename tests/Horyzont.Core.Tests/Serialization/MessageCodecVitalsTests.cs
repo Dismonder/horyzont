@@ -86,7 +86,7 @@ public sealed class MessageCodecVitalsTests
     [Fact]
     public void PlayerVitals_AboveMax_Throws()
     {
-        // 10 000 is the largest value (46 1C 40 00), 10 001 is not; a negative value is refused; -0 is not negative.
+        // 10 000 is the largest value (46 1C 40 00), 10 001 is not; a negative value is refused (-0 is pinned in PlayerVitals_NegativeZero_...).
         AssertSame(new PlayerVitalsMessage(10_000f, 120f, 55.5f, 100f, false, true, false, 600, 0, 3),
             MessageCodec.Read(Kit.Hex("2C 01 00 40 1C 46 00 00 F0 42 00 00 5E 42 00 00 C8 42 02 58 02 00 03")));
 
@@ -99,6 +99,39 @@ public sealed class MessageCodecVitalsTests
     }
 
     [Fact]
+    public void PlayerVitals_NegativeZero_ReadAndWrittenAsPositiveZero()
+    {
+        // -0 (00 00 00 80) is not negative: it is read as 0 and written back as +0 (00 00 00 00), like the player blob (A1 P3-14).
+        var message = Assert.IsType<PlayerVitalsMessage>(
+            MessageCodec.Read(Kit.Hex("2C 01 00 00 00 80 00 00 F0 42 00 00 5E 42 00 00 C8 42 02 58 02 00 03")));
+        Assert.Equal(0f, message.Health);
+
+        Assert.Equal(
+            "2C 01 00 00 00 00 00 00 F0 42 00 00 5E 42 00 00 C8 42 02 58 02 00 03",
+            Kit.ToHex(Kit.Encode(message with { Health = -0f })));
+    }
+
+    [Fact]
+    public void PlayerVitals_InconsistentRestFields_Throws()
+    {
+        // The twins: a rested frame with remaining ticks, an unrested one without, and a warm-up with the conditions holding.
+        AssertSame(
+            new PlayerVitalsMessage(80f, 120f, 55.5f, 100f, false, true, true, 0, 3_600, 3),
+            MessageCodec.Read(Kit.Hex("2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 06 00 00 90 1C 03")));
+        AssertSame(_warming, MessageCodec.Read(Kit.Hex(Valid)));
+
+        // Rested with nothing remaining, not rested with ticks remaining, a warm-up without the conditions of rest: states that cannot exist.
+        Kit.AssertMessageViolation("2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 04 00 00 00 00");
+        Kit.AssertMessageViolation("2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 00 00 00 90 1C 00");
+        Kit.AssertMessageViolation("2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 00 58 02 00 00");
+
+        // The writer refuses them too.
+        Assert.Throws<ArgumentException>(() => Kit.Encode(_warming with { Rested = true, RestRemainingTicks = 0 }));
+        Assert.Throws<ArgumentException>(() => Kit.Encode(_warming with { RestRemainingTicks = 60 }));
+        Assert.Throws<ArgumentException>(() => Kit.Encode(_warming with { RestConditionsMet = false }));
+    }
+
+    [Fact]
     public void PlayerVitals_Write_InvalidValues_Throws()
     {
         AssertSame(_warming, MessageCodec.Read(Kit.Encode(_warming)));
@@ -107,8 +140,8 @@ public sealed class MessageCodecVitalsTests
         Assert.Throws<ArgumentException>(() => Kit.Encode(_warming with { HealthMax = float.PositiveInfinity }));
         Assert.Throws<ArgumentException>(() => Kit.Encode(_warming with { Stamina = -1f }));
         Assert.Throws<ArgumentException>(() => Kit.Encode(_warming with { StaminaMax = 10_001f }));
-        Assert.Throws<ArgumentException>(() => Kit.Encode(_warming with { RestWarmupTicks = 1201 }));
-        Assert.Throws<ArgumentException>(() => Kit.Encode(_warming with { RestRemainingTicks = 64_801 }));
+        Assert.Throws<ArgumentException>(() => Kit.Encode(_warming with { RestWarmupTicks = ProtocolConstants.MaxRestWarmupTicks + 1 }));
+        Assert.Throws<ArgumentException>(() => Kit.Encode(_warming with { Rested = true, RestRemainingTicks = ProtocolConstants.MaxRestRemainingTicks + 1 }));
         Assert.Throws<ArgumentException>(() => Kit.Encode(_warming with { Comfort = 11 }));
     }
 
@@ -117,13 +150,13 @@ public sealed class MessageCodecVitalsTests
     {
         AssertSame(_warming, MessageCodec.Read(Kit.Hex(Valid)));
         AssertSame(
-            new PlayerVitalsMessage(80f, 120f, 55.5f, 100f, true, true, true, 600, 0, 3),
-            MessageCodec.Read(Kit.Hex("2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 07 58 02 00 03")));
+            new PlayerVitalsMessage(80f, 120f, 55.5f, 100f, true, true, true, 600, 3_600, 3),
+            MessageCodec.Read(Kit.Hex("2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 07 58 02 90 1C 03")));
 
         // Bit 3, bit 7 and all bits.
-        Kit.AssertMessageViolation("2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 0A 58 02 00 03");
-        Kit.AssertMessageViolation("2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 82 58 02 00 03");
-        Kit.AssertMessageViolation("2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 FF 58 02 00 03");
+        Kit.AssertMessageViolation("2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 0A 58 02 90 1C 03");
+        Kit.AssertMessageViolation("2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 82 58 02 90 1C 03");
+        Kit.AssertMessageViolation("2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 FF 58 02 90 1C 03");
     }
 
     [Fact]

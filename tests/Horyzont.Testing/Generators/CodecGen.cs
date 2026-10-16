@@ -541,7 +541,7 @@ public static class CodecGen
         from keys in RegistryKey.ArrayOf(keyCount)
         select new PlayerProgressState(
             types.Aggregate(Horyzont.Core.Progress.ItemTypeBitSet.Empty, (set, type) => set.With(new ItemTypeId((ushort)type))),
-            keys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
+            keys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(), Horyzont.Core.Progress.FoodSlots.Empty);
 
     /// <summary>Prop hit intents (K6-31): any planet and prop, a hotbar slot of 0 to 255.</summary>
     public static Gen<PropHitIntent> PropHitIntent { get; } =
