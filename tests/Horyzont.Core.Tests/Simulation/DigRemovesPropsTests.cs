@@ -100,7 +100,7 @@ public sealed class DigRemovesPropsTests
         var firstProp = Array.FindIndex(components, c => c is PropHarvestOp);
         Assert.True(firstProp > 0, "A dig with a yield and a prop has item components, then prop components.");
         Assert.All(components[..firstProp], c => Assert.IsType<ItemCreateOp>(c));
-        Assert.Contains(tree.Id, AssertHarvestsOfEdit(f, components).Select(h => h.Prop));
+        Assert.Contains(tree.Id, AssertHarvestsOfEdit(f, components[firstProp..]).Select(h => h.Prop));
     }
 
     [Fact]

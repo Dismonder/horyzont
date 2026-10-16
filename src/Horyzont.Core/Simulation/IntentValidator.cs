@@ -18,7 +18,8 @@ namespace Horyzont.Core.Simulation;
 /// (docs/plans/K1-03-core-stan-i-operacje.md, "Walidacja i rozwiązanie"). Never throws for bad input.
 /// </summary>
 internal sealed class IntentValidator(
-    WorldState state, ITerrainService terrain, GameRules rules, BlockContentTable content, SurvivalRules? survival, FunctionalBlockRules functional)
+    WorldState state, ITerrainService terrain, GameRules rules, BlockContentTable content, SurvivalRules? survival, FunctionalBlockRules functional,
+    PropRules? props = null)
 {
     /// <summary>Distance from a cell centre to its corner, rounded up.</summary>
     private const float CellReachSlack = 0.87f;
@@ -101,6 +102,9 @@ internal sealed class IntentValidator(
             BlockInteractIntent interact => ValidateBlockInteract(playerId, interact, hasPlanet, playerPlanet, eye, out facts),
             BlockConfigIntent config => ValidateBlockConfig(playerId, config, hasPlanet, playerPlanet, eye, out facts),
 
+            // Without the content of props the intent is not valid (K6-31 D21).
+            PropHitIntent hit => props is null ? RejectReason.InvalidParameters : props.Validate(playerId, hit, hasPlanet, playerPlanet, eye, out facts),
+
             // The content checks of item intents (source content, counts, target room) are part of their resolution.
             ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent => RejectReason.None,
             _ => RejectReason.InvalidParameters,
@@ -114,6 +118,7 @@ internal sealed class IntentValidator(
         PlaceBlockIntent or RemoveBlockIntent or ShipModeIntent or RefuelIntent or BlockInteractIntent or BlockConfigIntent => buckets.Blocks,
         MarkerSetIntent or MarkerRemoveIntent => buckets.Markers,
         ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent => buckets.Items,
+        PropHitIntent => buckets.Props,
         _ => null,
     };
 
@@ -146,6 +151,9 @@ internal sealed class IntentValidator(
                 return Geometry.IsFinite(refuel.RayOrigin) && Geometry.IsDirection(refuel.RayDirection);
             case ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent:
                 bucket = buckets.Items;
+                return true;
+            case PropHitIntent:
+                bucket = buckets.Props;
                 return true;
             case BlockInteractIntent interact:
                 return Enum.IsDefined(interact.Action);

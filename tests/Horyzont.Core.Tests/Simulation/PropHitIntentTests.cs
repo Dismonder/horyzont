@@ -161,8 +161,10 @@ public sealed class PropHitIntentTests
     public void Hit_SlotOutOfHotbar_InvalidParameters()
     {
         var f = Near(PropKindV1.Pine, out var tree);
-        AssertAcceptedWithoutOperation(f.Hit(tree.Id, 9));
+        AssertAcceptedWithoutOperation(f.Hit(tree.Id, 0));
 
+        // Slot 9 is the last of the hotbar (an empty one, the bare hand: the tier reason shows that the slot passed); 10 and above are not.
+        Assert.Equal(RejectReason.ToolTierTooLow, f.Hit(tree.Id, 9).Reason);
         Assert.Equal(RejectReason.InvalidParameters, f.Hit(tree.Id, 10).Reason);
         Assert.Equal(RejectReason.InvalidParameters, f.Hit(tree.Id, 255).Reason);
         Assert.Equal(RejectReason.InvalidParameters, f.Hit(tree.Id, ushort.MaxValue).Reason);

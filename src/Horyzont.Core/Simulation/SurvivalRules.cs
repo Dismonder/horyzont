@@ -3,6 +3,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Props;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Terrain;
@@ -15,7 +16,7 @@ namespace Horyzont.Core.Simulation;
 /// value they depend on. Chests are reachable for item moves (K6-30 D9): a shared one or the player's own, within
 /// <see cref="GameRules.ContainerKeepRangeMeters"/> of the eye. Order of the checks: docs/plans/K6-29W-ekwipunek-i-wydobycie.md, "Walidacja i rozwiązanie intencji przedmiotów".
 /// </summary>
-internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, SurvivalContent content, GameRules rules)
+internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, SurvivalContent content, GameRules rules, PropField? props = null)
 {
     private const int MaterialCount = 256;
 
@@ -24,6 +25,7 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
     private readonly ItemStack[] _bag = new ItemStack[ProtocolConstants.MaxContainerSlots];
     private readonly List<Operation> _components = [];
     private readonly YieldLedger _ledger = new();
+    private readonly List<PropInstance> _propsInSphere = [];
 
     /// <summary>
     /// The parameter step of an item intent: zero numbers, slots outside the container, the equipment container and a target equal to the
@@ -211,10 +213,17 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
         _components.Clear();
         if (edit.Mode == TerrainEditMode.Remove)
         {
-            // Nothing measurable (no terrain, area not loaded) or no containers: a plain edit as in K2.
+            // Nothing measurable (no terrain, area not loaded) or no containers: a plain edit as in K2, plus the props the edit removes.
             if (!measured || !hasContainers)
             {
-                return RejectReason.None;
+                AddPropHarvests(edit);
+                return Compose(edit, out operation);
+            }
+
+            // The tool tier of the player must reach every material that yields something (K6-31 D9); only with the content of props (D21).
+            if (props is not null && !ToolsReach(player))
+            {
+                return RejectReason.ToolTierTooLow;
             }
 
             var hotbar = Copy(hotbarContainer!, _hotbar);
@@ -235,6 +244,7 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
                 ItemPlacement.Create(hotbarContainer!.Id, hotbar, bagContainer!.Id, bag, type, whole, def.MaxStack, ItemSource.Harvest, _components);
             }
 
+            AddPropHarvests(edit);
             return Compose(edit, out operation);
         }
 
@@ -276,7 +286,61 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
             ItemPlacement.Destroy(hotbarContainer!.Id, hotbarSlots, fillType, left, ItemSink.BuildCost, _components);
         }
 
+        AddPropHarvests(edit);
         return Compose(edit, out operation);
+    }
+
+    /// <summary>
+    /// True when the tools in the hotbar of the player reach the tier of every material with a yield in the measured sphere. A material
+    /// without a yield entry has no requirement.
+    /// </summary>
+    private bool ToolsReach(PlayerId player)
+    {
+        var tier = -1;
+        for (var material = 1; material < MaterialCount; material++)
+        {
+            if (_solidByMaterial[material] <= 0 || !state.Materials.TryGetKey((byte)material, out var key) || !content.TryGetYield(key, out var yield))
+            {
+                continue;
+            }
+
+            tier = tier < 0 ? ToolTiers.Best(state, content, player) : tier;
+            if (yield.ToolTier > tier)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Appends a harvest, without items, of every prop that has not been harvested yet whose anchor lies in the sphere of the edit plus
+    /// <see cref="GameRules.PropAnchorMarginMeters"/>: the ground under it was dug or buried (K6-31 D12). In the order of the identifiers,
+    /// after the item components and before the terrain edit, which stays last.
+    /// </summary>
+    private void AddPropHarvests(TerrainEditOp edit)
+    {
+        if (props is null)
+        {
+            return;
+        }
+
+        _propsInSphere.Clear();
+        props.CollectInSphere(edit.Planet, edit.Center, edit.Radius + rules.PropAnchorMarginMeters, _propsInSphere);
+        foreach (var prop in _propsInSphere)
+        {
+            // The edit itself is one more component of the compound.
+            if (_components.Count + 1 >= ProtocolConstants.MaxCompoundComponents)
+            {
+                break;
+            }
+
+            if (!state.HarvestedProps.Contains(edit.Planet, prop.Id))
+            {
+                _components.Add(new PropHarvestOp(edit.Planet, prop.Id, state.CurrentTick));
+            }
+        }
     }
 
     /// <summary>The edit alone when there are no item components, else a compound with the edit last (D4).</summary>
