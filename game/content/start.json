@@ -1,0 +1,8 @@
+{
+  "formatVersion": 1,
+  "containers": { "playerBag": 40, "hotbar": 10, "equipment": 7 },
+  "items": [
+    { "item": "core:multitool", "count": 1, "container": "hotbar", "slot": 0 },
+    { "item": "core:build_tool", "count": 1, "container": "hotbar", "slot": 1 }
+  ]
+}

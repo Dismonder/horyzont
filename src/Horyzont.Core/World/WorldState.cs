@@ -3,6 +3,7 @@ using System.Numerics;
 
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
+using Horyzont.Core.Items;
 using Horyzont.Core.Space;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -27,7 +28,7 @@ public sealed class WorldState
     private readonly ChangeTracker _tracker = new();
     private WorldCheckpoint? _inFlight;
 
-    internal WorldState(WorldId id, ulong galaxySeed, OpId lastOpId, Tick tick, ulong nextEntityId, ulong nextPlayerId, ulong nextMarkerId = 1)
+    internal WorldState(WorldId id, ulong galaxySeed, OpId lastOpId, Tick tick, ulong nextEntityId, ulong nextPlayerId, ulong nextMarkerId = 1, ulong nextContainerId = 1)
     {
         Id = id;
         GalaxySeed = galaxySeed;
@@ -36,6 +37,7 @@ public sealed class WorldState
         EntityIds = new EntityIdAllocator(nextEntityId);
         PlayerIds = new PlayerIdAllocator(nextPlayerId);
         MarkerIds = new MarkerIdAllocator(nextMarkerId);
+        ContainerIds = new ContainerIdAllocator(nextContainerId);
         Planets = new PlanetRegistry();
         BlockTypes = new BlockTypeRegistry();
         Materials = new MaterialRegistry();
@@ -43,6 +45,8 @@ public sealed class WorldState
         Players = new PlayerStore(_tracker);
         TerrainVersions = new TerrainVersionTable(_tracker);
         Markers = new MarkerStore(_tracker);
+        ItemTypes = new ItemTypeRegistry();
+        Containers = new ContainerStore(_tracker);
     }
 
     /// <summary>World id.</summary>
@@ -99,6 +103,15 @@ public sealed class WorldState
     /// <summary>Map markers (K5-27).</summary>
     public MarkerStore Markers { get; }
 
+    /// <summary>Item types (<c>item_types</c>).</summary>
+    public ItemTypeRegistry ItemTypes { get; }
+
+    /// <summary>Item containers.</summary>
+    public ContainerStore Containers { get; }
+
+    /// <summary>Container ids (<c>next_container_id</c>).</summary>
+    public ContainerIdAllocator ContainerIds { get; }
+
     /// <summary>True between <see cref="CaptureCheckpoint"/> and its completion or requeue.</summary>
     public bool IsCheckpointInFlight => _inFlight is not null;
 
@@ -141,14 +154,15 @@ public sealed class WorldState
     /// <param name="planets">Planets.</param>
     /// <param name="blockTypeKeys">Block type keys.</param>
     /// <param name="materialKeys">Material keys.</param>
+    /// <param name="itemTypeKeys">Item type keys (K6-29W); none when null.</param>
     /// <returns>The new world.</returns>
     /// <exception cref="ArgumentException">The system is invalid or a body is not among the planets.</exception>
     public static WorldState CreateNew(
         WorldId id, ulong galaxySeed, StarSystemParams system, IEnumerable<PlanetParams> planets, IEnumerable<string> blockTypeKeys,
-        IEnumerable<string> materialKeys)
+        IEnumerable<string> materialKeys, IEnumerable<string>? itemTypeKeys = null)
     {
         ArgumentNullException.ThrowIfNull(system);
-        var state = CreateNew(id, galaxySeed, planets, blockTypeKeys, materialKeys);
+        var state = CreateNew(id, galaxySeed, planets, blockTypeKeys, materialKeys, itemTypeKeys ?? []);
         try
         {
             state.SetStarSystem(system);
@@ -174,9 +188,25 @@ public sealed class WorldState
     /// <returns>The new world.</returns>
     public static WorldState CreateNew(
         WorldId id, ulong galaxySeed, IEnumerable<PlanetParams> planets, IEnumerable<string> blockTypeKeys,
-        IEnumerable<string> materialKeys)
+        IEnumerable<string> materialKeys) => CreateNew(id, galaxySeed, planets, blockTypeKeys, materialKeys, []);
+
+    /// <summary>
+    /// Creates a new world like <see cref="CreateNew(WorldId, ulong, IEnumerable{PlanetParams}, IEnumerable{string}, IEnumerable{string})"/>;
+    /// item types get numbers from 1 in the given order. NextContainerId = 1.
+    /// </summary>
+    /// <param name="id">World id.</param>
+    /// <param name="galaxySeed">Galaxy seed.</param>
+    /// <param name="planets">Planets.</param>
+    /// <param name="blockTypeKeys">Block type keys.</param>
+    /// <param name="materialKeys">Material keys.</param>
+    /// <param name="itemTypeKeys">Item type keys.</param>
+    /// <returns>The new world.</returns>
+    public static WorldState CreateNew(
+        WorldId id, ulong galaxySeed, IEnumerable<PlanetParams> planets, IEnumerable<string> blockTypeKeys,
+        IEnumerable<string> materialKeys, IEnumerable<string> itemTypeKeys)
     {
         ArgumentNullException.ThrowIfNull(planets);
+        ArgumentNullException.ThrowIfNull(itemTypeKeys);
         ArgumentNullException.ThrowIfNull(blockTypeKeys);
         ArgumentNullException.ThrowIfNull(materialKeys);
         var state = new WorldState(id, galaxySeed, OpId.None, default, 1, 1);
@@ -208,6 +238,16 @@ public sealed class WorldState
             }
 
             state.Materials.GetOrAssign(key);
+        }
+
+        foreach (var key in itemTypeKeys)
+        {
+            if (state.ItemTypes.TryGetId(key, out _))
+            {
+                throw new ArgumentException($"Duplicate item type key '{key}'.", nameof(itemTypeKeys));
+            }
+
+            state.ItemTypes.GetOrAssign(key);
         }
 
         return state;
@@ -388,11 +428,32 @@ public sealed class WorldState
             }
         }
 
+        var containerIds = _tracker.Containers.ToArray();
+        Array.Sort(containerIds, static (a, b) => a.Value.CompareTo(b.Value));
+        var upsertedContainers = new List<ContainerRecord>();
+        var removedContainers = new List<ContainerId>();
+        foreach (var id in containerIds)
+        {
+            if (Containers.TryGet(id, out var container))
+            {
+                upsertedContainers.Add(ContainerRecord.From(container));
+            }
+            else
+            {
+                removedContainers.Add(id);
+            }
+        }
+
         _tracker.Clear();
         _inFlight = new WorldCheckpoint(
             LastOpId, CurrentTick, EntityIds.NextValue, PlayerIds.NextValue,
             upsertedConstructs, removedConstructs, upsertedChunks, removedChunks, players, terrain,
-            upsertedMarkers, removedMarkers, MarkerIds.NextValue, upsertedShips, removedShips);
+            upsertedMarkers, removedMarkers, MarkerIds.NextValue, upsertedShips, removedShips)
+        {
+            NextContainerId = ContainerIds.NextValue,
+            UpsertedContainers = upsertedContainers,
+            RemovedContainers = removedContainers,
+        };
         return _inFlight;
     }
 
@@ -460,6 +521,16 @@ public sealed class WorldState
         foreach (var id in failed.ShipStatesToDelete)
         {
             _tracker.MarkShipState(id);
+        }
+
+        foreach (var container in failed.UpsertedContainers)
+        {
+            _tracker.MarkContainer(container.Id);
+        }
+
+        foreach (var id in failed.RemovedContainers)
+        {
+            _tracker.MarkContainer(id);
         }
 
         _inFlight = null;

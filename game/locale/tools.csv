@@ -1,12 +1,14 @@
 keys,en,pl
 TOOL_TERRAIN,Terrain manipulator,Manipulator terenu
 TOOL_BUILD,Builder,Budowanie
-TOOL_HINT_TERRAIN,"LMB dig   RMB fill   Wheel radius   M material","LPM kop   PPM zasyp   Kółko promień   M materiał"
-TOOL_HINT_BUILD,"LMB remove block   RMB place block   Wheel block type   R/T rotate","LPM usuń blok   PPM postaw blok   Kółko typ bloku   R/T obrót"
+TOOL_HINT_TERRAIN,"LMB dig   RMB fill   Shift+wheel radius   M material","LPM kop   PPM zasyp   Shift+kółko promień   M materiał"
+TOOL_HINT_BUILD,"LMB remove block   RMB place block   Shift+wheel block type   R/T rotate","LPM usuń blok   PPM postaw blok   Shift+kółko typ bloku   R/T obrót"
 TOOL_RADIUS,Radius,Promień
 TOOL_MATERIAL,Material,Materiał
 TOOL_BLOCK,Block,Blok
 TOOL_ORIENTATION,Orientation,Orientacja
+TOOL_NONE,No tool in this slot,Brak narzędzia w tym slocie
+TOOL_STOCK,In stock,W zapasie
 TOOL_WAITING,Waiting for the server,Czekam na serwer
 TOOL_LAST_REFUSAL,Last refusal,Ostatnia odmowa
 REJECT_NONE,OK,OK
@@ -54,3 +56,7 @@ FLIGHT_BLOCKED_RESERVE,Launch blocked: fuel reserve,Start zablokowany: rezerwa p
 FLIGHT_BLOCKED_PERSON,Launch blocked: person in hull,Start zablokowany: osoba w kadłubie
 FLIGHT_TERRAIN_UNAVAILABLE,Terrain unavailable,Teren niedostępny
 FLIGHT_TERRAIN_HOLD,Holding above terrain,Zawis nad terenem
+REJECT_INVENTORY_FULL,Inventory full,Ekwipunek pełny
+REJECT_NOT_ENOUGH_ITEMS,Not enough items,Za mało przedmiotów
+REJECT_CONTAINER_CHANGED,The slot changed,Slot się zmienił
+REJECT_CONTAINER_LOCKED,Container locked,Pojemnik zablokowany

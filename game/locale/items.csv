@@ -1,0 +1,36 @@
+keys,en,pl
+ITEM_CORE_MULTITOOL,Terrain manipulator,Manipulator terenu
+ITEM_CORE_BUILD_TOOL,Builder,Narzędzie budowy
+ITEM_CORE_STONE,Stone,Kamień
+ITEM_CORE_SOIL,Soil,Ziemia
+ITEM_CORE_SAND,Sand,Piasek
+ITEM_CORE_ORE,Ore,Ruda
+ITEM_UNKNOWN,Unknown item,Nieznany przedmiot
+INV_TITLE,Inventory,Ekwipunek
+INV_BAG,Backpack,Plecak
+INV_HOTBAR,Hotbar,Pasek
+INV_EQUIPMENT,Equipment,Wyposażenie
+INV_SOON,Coming soon,Wkrótce
+INV_FULL,Inventory full,Ekwipunek pełny
+INV_DISCARD,Discard - it is lost,Wyrzuć - przepada
+INV_DISCARD_CONFIRM,Discard {0} x{1}? It is lost for good.,Wyrzucić {0} x{1}? Przepadnie bezpowrotnie.
+INV_YES,Discard,Wyrzuć
+INV_NO,Keep,Zostaw
+INV_CATEGORY,Category,Kategoria
+INV_STACK,Stack,Stos
+INV_COUNT,Count,Liczba
+INV_HELP,"LMB take / place   RMB half / one   Shift+LMB move   Esc or Tab close","LPM weź / połóż   PPM połowa / jedna   Shift+LPM przenieś   Esc lub Tab zamknij"
+INV_HOTBAR_HINT,"1-0 or wheel: hotbar   Tab: inventory","1-0 lub kółko: pasek   Tab: ekwipunek"
+INV_CATEGORY_RESOURCE,Resource,Surowiec
+INV_CATEGORY_TOOL,Tool,Narzędzie
+INV_CATEGORY_FOOD,Food,Jedzenie
+INV_CATEGORY_WEAPON,Weapon,Broń
+INV_CATEGORY_ARMOR,Armor,Pancerz
+INV_CATEGORY_AMMO,Ammunition,Amunicja
+INV_CATEGORY_PLACEABLE,Placeable,Do postawienia
+INV_CATEGORY_COMPONENT,Component,Komponent
+INV_SLOT_HEAD,Head,Głowa
+INV_SLOT_BODY,Body,Tułów
+INV_SLOT_LEGS,Legs,Nogi
+INV_SLOT_BACK,Backpack slot,Plecak
+INV_SLOT_MODULE,Suit module,Moduł kombinezonu

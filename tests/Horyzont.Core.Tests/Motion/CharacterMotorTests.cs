@@ -417,12 +417,19 @@ public sealed class CharacterMotorTests
             body.Step(inputs[i % inputs.Length], devFlightAllowed: true, Dt);
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 10_000; i++)
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
         {
-            body.Step(inputs[i % inputs.Length], devFlightAllowed: true, Dt);
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 10_000; i++)
+            {
+                body.Step(inputs[i % inputs.Length], devFlightAllowed: true, Dt);
+            }
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, smallest);
     }
 }

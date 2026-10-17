@@ -10,6 +10,7 @@ internal static class Sql
     internal const string MetaNextEntityId = "next_entity_id";
     internal const string MetaNextPlayerId = "next_player_id";
     internal const string MetaNextMarkerId = "next_marker_id";
+    internal const string MetaNextContainerId = "next_container_id";
     internal const string MetaLastCheckpointOpId = "last_checkpoint_op_id";
     internal const string MetaLastCheckpointTick = "last_checkpoint_tick";
     internal const string MetaGameVersion = "game_version";

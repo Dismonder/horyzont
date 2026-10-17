@@ -38,4 +38,21 @@ public enum OperationKind : byte
 
     /// <summary><see cref="ShipFuelAddOp"/>.</summary>
     ShipFuelAdd = 21,
+    /// <summary><see cref="CompoundOp"/>.</summary>
+    Compound = 30,
+
+    /// <summary><see cref="ItemTransferOp"/>.</summary>
+    ItemTransfer = 31,
+
+    /// <summary><see cref="ItemSwapOp"/>.</summary>
+    ItemSwap = 32,
+
+    /// <summary><see cref="ItemCreateOp"/>.</summary>
+    ItemCreate = 33,
+
+    /// <summary><see cref="ItemDestroyOp"/>.</summary>
+    ItemDestroy = 34,
+
+    /// <summary><see cref="ContainerCreateOp"/>.</summary>
+    ContainerCreate = 35,
 }

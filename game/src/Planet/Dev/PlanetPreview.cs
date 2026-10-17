@@ -27,6 +27,9 @@ public sealed partial class PlanetPreview : Node
     private (string Name, Vector3 Position, Vector3 Target, Vector3 Up, uint ViewDistance)[] _points = [];
     private Camera3D? _camera;
     private VoxelViewer? _viewer;
+    private PlanetSky? _sky;
+    private PlanetParams? _planet;
+    private Vector3 _sunDirection;
     private bool _interactive;
 
     /// <summary>Creates the mode node.</summary>
@@ -86,11 +89,16 @@ public sealed partial class PlanetPreview : Node
         var surface = FindSurfaceRadius(planet);
         GD.Print($"PLANET PREVIEW seed=0x{_galaxySeed:X16} id=0x{planet.Id.Value:X16} surface_x={surface.ToString("F1", CultureInfo.InvariantCulture)}");
 
-        var environment = new WorldEnvironment { Environment = CreateEnvironment() };
-        AddChild(environment);
-        var sun = new SunLight { ShadowEnabled = false };
+        // Afternoon sun over the preview points (the day turns about +Y, the points look down +X).
+        const ulong previewTick = 15000;
+        _planet = planet;
+        _sky = new PlanetSky();
+        AddChild(new WorldEnvironment { Environment = _sky.Environment });
+        var sun = new SunLight { ShadowEnabled = true, DirectionalShadowMaxDistance = 300f };
         AddChild(sun);
-        sun.Apply(0, 60, planet);
+        sun.Apply(previewTick, 60, planet);
+        var sunDirection = DayNightCycle.SunDirection(previewTick, 60, planet);
+        _sunDirection = new Vector3(sunDirection.X, sunDirection.Y, sunDirection.Z);
 
         var terrain = PlanetTerrainFactory.Create(planet, PlanetTerrainOptions.Preview, PlanetTerrainMaterial.Create());
         if (_lodDistance is { } lodDistance)
@@ -166,6 +174,8 @@ public sealed partial class PlanetPreview : Node
         _viewer!.ViewDistance = viewDistance;
         _camera!.Position = position;
         _camera.LookAt(target, pointUp);
+        var altitude = (float)position.Length() - _planet!.RadiusMeters;
+        _sky?.Update(position.Normalized(), _sunDirection, altitude, _planet);
     }
 
     /// <summary>Radius of the surface above +X (outermost solid voxel), found with the generator itself.</summary>
@@ -182,18 +192,6 @@ public sealed partial class PlanetPreview : Node
 
         throw new InvalidOperationException("No surface found above +X.");
     }
-
-    private static Godot.Environment CreateEnvironment() => new()
-    {
-        // A flat colour instead of a procedural sky: the planet frame has its up on +X at the preview points, which
-        // a sky oriented along +Y would not match.
-        BackgroundMode = Godot.Environment.BGMode.Color,
-        BackgroundColor = new Color(0.42f, 0.58f, 0.80f),
-        AmbientLightSource = Godot.Environment.AmbientSource.Color,
-        AmbientLightColor = new Color(0.62f, 0.66f, 0.74f),
-        AmbientLightEnergy = 0.8f,
-        TonemapMode = Godot.Environment.ToneMapper.Filmic,
-    };
 
     /// <summary>Waits until the voxel engine has no pending work for a number of frames (or the timeout passes).</summary>
     private async Task<TimeSpan> WaitForTerrainAsync()

@@ -1,0 +1,9 @@
+{
+  "formatVersion": 1,
+  "yields": [
+    { "material": "core:stone", "item": "core:stone", "itemsPerCubicMeter": 2, "toolTier": 1 },
+    { "material": "core:dirt", "item": "core:soil", "itemsPerCubicMeter": 3, "toolTier": 1 },
+    { "material": "core:sand", "item": "core:sand", "itemsPerCubicMeter": 3, "toolTier": 1 },
+    { "material": "core:ore", "item": "core:ore", "itemsPerCubicMeter": 1, "toolTier": 1 }
+  ]
+}

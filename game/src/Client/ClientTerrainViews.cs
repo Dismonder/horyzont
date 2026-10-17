@@ -1,5 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 
+using Godot;
+
 using Horyzont.Core.Ids;
 using Horyzont.Game.Terrain;
 
@@ -24,7 +26,8 @@ internal sealed class ClientTerrainViews
 
     internal bool TryViewOf(PlanetId planet, PlanetTerrain? node, [NotNullWhen(true)] out IClientTerrainView? view)
     {
-        view = node is null ? null : ViewOf(planet, node);
+        // The server frees the terrain node before the client's last frames at shutdown; a freed node has no view.
+        view = node is null || !GodotObject.IsInstanceValid(node) ? null : ViewOf(planet, node);
         return view is not null;
     }
 
