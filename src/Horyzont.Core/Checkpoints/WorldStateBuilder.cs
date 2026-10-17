@@ -48,6 +48,8 @@ public sealed class WorldStateBuilder
     private readonly List<PlayerProgressRecord> _progress = [];
     private readonly List<HarvestedPropRecord> _harvestedProps = [];
     private IReadOnlyList<string>? _progressKeys;
+    private readonly List<PersistentEntity> _persistentEntities = [];
+    private WorldSettings? _settings;
     private bool _built;
 
     /// <summary>Starts a world.</summary>
@@ -117,6 +119,22 @@ public sealed class WorldStateBuilder
     {
         ArgumentNullException.ThrowIfNull(keys);
         _progressKeys = keys;
+    }
+
+    /// <summary>Adds a persistent entity (K6-35); its owner and its container must be added too. Checked in Build.</summary>
+    /// <param name="entity">The entity.</param>
+    public void AddPersistentEntity(PersistentEntity entity)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        _persistentEntities.Add(entity);
+    }
+
+    /// <summary>Sets the settings of the world (K6-35); a world without them has the defaults. Checked in Build.</summary>
+    /// <param name="settings">The settings.</param>
+    public void SetWorldSettings(WorldSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        _settings = settings;
     }
 
     /// <summary>Adds a planet.</summary>
@@ -297,9 +315,34 @@ public sealed class WorldStateBuilder
             LoadPlayer(state, record);
         }
 
+        foreach (var entity in _persistentEntities)
+        {
+            LoadPersistentEntity(state, entity);
+        }
+
         foreach (var container in _containers)
         {
             LoadContainer(state, container);
+        }
+
+        // An entity hosts exactly one container (the other direction is checked in LoadContainer): a tombstone without one is a world that lost its items.
+        for (var i = 0; i < state.PersistentEntities.Count; i++)
+        {
+            var entity = state.PersistentEntities.All[i];
+            if (!state.Containers.TryGetOfEntity(entity.Id, out _))
+            {
+                throw new InvalidDataException($"Persistent entity {entity.Id.Value} has no container.");
+            }
+        }
+
+        if (_settings is not null)
+        {
+            if (!_settings.IsValid)
+            {
+                throw new InvalidDataException("The settings of the world are out of range.");
+            }
+
+            state.ReplaceSettings(_settings);
         }
 
         foreach (var record in _blockEntities)
@@ -471,6 +514,19 @@ public sealed class WorldStateBuilder
         });
     }
 
+    /// <summary>A persistent entity (K6-35): an unused id, a known kind, a planet frame (D12), a finite pose and a known player as owner.</summary>
+    private static void LoadPersistentEntity(WorldState state, PersistentEntity record)
+    {
+        CheckEntity(state, record.Id);
+        if (!Enum.IsDefined(record.Kind) || record.Frame.Kind != FrameKind.Planet || !state.FrameExists(record.Frame)
+            || !IsFinite(record.Position) || !Geometry.IsRotation(record.Rotation) || record.Owner.IsNone || !state.Players.TryGet(record.Owner, out _))
+        {
+            throw new InvalidDataException($"Persistent entity {record.Id.Value} has an invalid kind, frame, pose or owner.");
+        }
+
+        state.PersistentEntities.Load(record);
+    }
+
     private static void LoadContainer(WorldState state, ContainerRecord record)
     {
         var id = record.Id;
@@ -494,6 +550,22 @@ public sealed class WorldStateBuilder
                 || state.Containers.TryGetOfBlock(construct, record.Host.Cell, record.Kind, out _))
             {
                 throw new InvalidDataException($"Container {id.Value} is hosted by a missing block or duplicates a container of its block.");
+            }
+        }
+        else if (record.Host.Kind == ContainerHostKind.PersistentEntity)
+        {
+            var entityId = new EntityId(record.Host.Id);
+            if (record.Host != ContainerHost.PersistentEntity(entityId) || !state.PersistentEntities.TryGet(entityId, out var hostEntity)
+                || state.Containers.TryGetOfEntity(entityId, out _))
+            {
+                throw new InvalidDataException($"Container {id.Value} is hosted by a missing persistent entity or duplicates the container of its entity.");
+            }
+
+            var kindMatches = (hostEntity.Kind == PersistentEntityKind.Tombstone && record.Kind == ContainerKind.Tombstone)
+                || (hostEntity.Kind == PersistentEntityKind.DroppedItem && record.Kind == ContainerKind.DroppedItem);
+            if (!kindMatches || record.Owner != hostEntity.Owner || (record.Kind == ContainerKind.Tombstone && record.Access != ContainerAccess.Private))
+            {
+                throw new InvalidDataException($"Container {id.Value} does not match its persistent entity in kind, owner or access.");
             }
         }
         else if (record.Host.Kind != ContainerHostKind.Player

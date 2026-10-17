@@ -518,6 +518,24 @@ public sealed class WorldState
         }
 
         var progressKeys = _tracker.ProgressKeys ? ProgressKeys.Sorted.ToArray() : null;
+
+        var persistentIds = _tracker.PersistentEntities.ToArray();
+        Array.Sort(persistentIds, static (a, b) => a.Value.CompareTo(b.Value));
+        var upsertedPersistent = new List<PersistentEntity>();
+        var removedPersistent = new List<EntityId>();
+        foreach (var id in persistentIds)
+        {
+            if (PersistentEntities.TryGet(id, out var persistent))
+            {
+                upsertedPersistent.Add(persistent);
+            }
+            else
+            {
+                removedPersistent.Add(id);
+            }
+        }
+
+        var settings = _tracker.Settings ? Settings : null;
         _tracker.Clear();
         _inFlight = new WorldCheckpoint(
             LastOpId, CurrentTick, EntityIds.NextValue, PlayerIds.NextValue,
@@ -534,6 +552,9 @@ public sealed class WorldState
             UpsertedHarvestedProps = upsertedProps,
             RemovedHarvestedProps = removedProps,
             ProgressKeys = progressKeys,
+            UpsertedPersistentEntities = upsertedPersistent,
+            RemovedPersistentEntities = removedPersistent,
+            Settings = settings,
         };
         return _inFlight;
     }
@@ -647,6 +668,21 @@ public sealed class WorldState
         if (failed.ProgressKeys is not null)
         {
             _tracker.MarkProgressKeys();
+        }
+
+        foreach (var persistent in failed.UpsertedPersistentEntities)
+        {
+            _tracker.MarkPersistentEntity(persistent.Id);
+        }
+
+        foreach (var id in failed.RemovedPersistentEntities)
+        {
+            _tracker.MarkPersistentEntity(id);
+        }
+
+        if (failed.Settings is not null)
+        {
+            _tracker.MarkSettings();
         }
 
         _inFlight = null;
