@@ -62,6 +62,12 @@ public enum OperationKind : byte
     /// <summary><see cref="ContainerConfigureOp"/>.</summary>
     ContainerConfigure = 37,
 
+    /// <summary><see cref="PersistentEntityCreateOp"/> (K6-35).</summary>
+    PersistentEntityCreate = 38,
+
+    /// <summary><see cref="PersistentEntityRemoveOp"/> (K6-35).</summary>
+    PersistentEntityRemove = 39,
+
     /// <summary><see cref="ItemDiscoverOp"/> (K6-32).</summary>
     ItemDiscover = 43,
 
@@ -79,6 +85,9 @@ public enum OperationKind : byte
 
     /// <summary><see cref="RespawnPointSetOp"/>.</summary>
     RespawnPointSet = 44,
+
+    /// <summary><see cref="WorldSettingsSetOp"/> (K6-35).</summary>
+    WorldSettingsSet = 46,
 
     /// <summary><see cref="PropRegrowOp"/>.</summary>
     PropRegrow = 47,

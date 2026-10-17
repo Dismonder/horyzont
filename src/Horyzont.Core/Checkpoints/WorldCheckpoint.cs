@@ -1,5 +1,6 @@
 using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Ids;
+using Horyzont.Core.World;
 using Horyzont.Core.World.Markers;
 using Horyzont.Core.World.Ships;
 using Horyzont.Core.World.Terrain;
@@ -91,4 +92,13 @@ public sealed record WorldCheckpoint(
     public IReadOnlyList<HarvestedPropKey> RemovedHarvestedProps { get; init; } = [];
     /// <summary>All progress keys of the world in ordinal order (K6-32, <c>meta.progress_keys</c>) when they changed since the last checkpoint, else null.</summary>
     public IReadOnlyList<string>? ProgressKeys { get; init; }
+
+    /// <summary>Persistent entities that exist and changed (K6-35), by id.</summary>
+    public IReadOnlyList<PersistentEntity> UpsertedPersistentEntities { get; init; } = [];
+
+    /// <summary>Persistent entities removed (K6-35), by id.</summary>
+    public IReadOnlyList<EntityId> RemovedPersistentEntities { get; init; } = [];
+
+    /// <summary>The settings of the world (K6-35) when they changed since the last checkpoint, else null.</summary>
+    public WorldSettings? Settings { get; init; }
 }

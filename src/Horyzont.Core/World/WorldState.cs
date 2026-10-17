@@ -54,6 +54,7 @@ public sealed class WorldState
         Progress = new PlayerProgressStore(_tracker);
         HarvestedProps = new HarvestedPropStore(_tracker);
         ProgressKeys = new ProgressKeyStore(_tracker);
+        PersistentEntities = new PersistentEntityStore(_tracker);
     }
 
     /// <summary>World id.</summary>
@@ -129,6 +130,12 @@ public sealed class WorldState
     public HarvestedPropStore HarvestedProps { get; }
     /// <summary>Progress keys of the world (K6-32).</summary>
     public ProgressKeyStore ProgressKeys { get; }
+
+    /// <summary>Persistent entities that are neither constructs nor players: tombstones (K6-35).</summary>
+    public PersistentEntityStore PersistentEntities { get; }
+
+    /// <summary>Settings of the world (K6-35 D4); <see cref="WorldSettings.Default"/> until an operation or the loader sets others.</summary>
+    public WorldSettings Settings { get; private set; } = WorldSettings.Default;
 
     /// <summary>True between <see cref="CaptureCheckpoint"/> and its completion or requeue.</summary>
     public bool IsCheckpointInFlight => _inFlight is not null;
@@ -687,6 +694,16 @@ public sealed class WorldState
         seated = null;
         return false;
     }
+
+    /// <summary>Replaces the settings and marks them changed for the next checkpoint.</summary>
+    internal void SetSettings(WorldSettings settings)
+    {
+        Settings = settings;
+        _tracker.MarkSettings();
+    }
+
+    /// <summary>Replaces the settings without marking them changed (world loader).</summary>
+    internal void LoadSettings(WorldSettings settings) => Settings = settings;
 
     internal void SetLastOpId(OpId id) => LastOpId = id;
 
