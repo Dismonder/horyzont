@@ -254,15 +254,22 @@ public sealed class OwnStateValidatorTests
             }
         }
 
-        validator.Reset();
-        validator.NoteSent(100);
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        foreach (var snapshot in snapshots)
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
         {
-            validator.Validate(snapshot, out _);
+            validator.Reset();
+            validator.NoteSent(100);
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            foreach (var snapshot in snapshots)
+            {
+                validator.Validate(snapshot, out _);
+            }
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, smallest);
     }
 
     [Fact]

@@ -48,15 +48,22 @@ public sealed class DistanceFormatterTests
         Span<char> buffer = stackalloc char[16];
         Assert.True(DistanceFormatter.TryFormat(12_345, buffer, out _, ','));
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        var ok = true;
-        for (var i = 0; i < 10_000; i++)
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
         {
-            ok &= DistanceFormatter.TryFormat(i * 37.5, buffer, out _, ',');
+            var ok = true;
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 10_000; i++)
+            {
+                ok &= DistanceFormatter.TryFormat(i * 37.5, buffer, out _, ',');
+            }
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
+            Assert.True(ok);
         }
 
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.True(ok);
+        var allocated = smallest;
         Assert.Equal(0, allocated);
     }
 }

@@ -131,6 +131,12 @@ public sealed partial class GameComposition
             () => new CompositeEditPrediction(prediction, TerrainPrediction),
             LocalPlayer!, new GameRules(), _env.Loggers);
         tools.BlockDefinitions = ShipBlockDefinitions(BlockContentLoader.Load());
+        if (Inventory is { } inventory)
+        {
+            tools.Inventory = inventory;
+            tools.DigAccepted += inventory.OnDigAccepted;
+        }
+
         if (_env.Render)
         {
             tools.AddChild(new TerrainToolPreview(tools));

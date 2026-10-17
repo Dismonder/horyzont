@@ -215,7 +215,7 @@ public sealed class ServerTerrainReplicator : IServerClientMessageHandler, IServ
     public void OnOperationApplied(AppliedOperation applied)
     {
         ArgumentNullException.ThrowIfNull(applied);
-        if (applied.Operation is not TerrainEditOp edit || applied.TerrainVersions.Count == 0 || !_state.Planets.TryGet(edit.Planet, out var planet))
+        if (!OperationTerrain.TryGetTerrainEdit(applied.Operation, out var edit) || applied.TerrainVersions.Count == 0 || !_state.Planets.TryGet(edit.Planet, out var planet))
         {
             return;
         }

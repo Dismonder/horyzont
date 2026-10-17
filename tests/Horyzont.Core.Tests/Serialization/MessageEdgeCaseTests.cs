@@ -645,9 +645,17 @@ public sealed class MessageEdgeCaseTests
         var warm = Record.Exception(() => MessageCodec.Read(data));
         Assert.IsType<ProtocolViolationException>(warm);
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        Kit.AssertViolation(d => MessageCodec.Read(d), data);
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            Kit.AssertViolation(d => MessageCodec.Read(d), data);
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        var allocated = smallest;
 
         Assert.True(allocated < 32 * 1024, $"allocated {allocated} bytes for a {data.Length}-byte frame");
     }
@@ -658,9 +666,17 @@ public sealed class MessageEdgeCaseTests
         var data = Kit.Hex(State(chunks: "0C"));
         Assert.IsType<ProtocolViolationException>(Record.Exception(() => MessageCodec.Read(data)));
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        Kit.AssertViolation(d => MessageCodec.Read(d), data);
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            Kit.AssertViolation(d => MessageCodec.Read(d), data);
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        var allocated = smallest;
 
         Assert.True(allocated < 32 * 1024, $"allocated {allocated} bytes");
     }

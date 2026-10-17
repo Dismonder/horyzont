@@ -244,14 +244,35 @@ public sealed class ReplicationConvergenceTests
         }
 
         var id = rig.AddConstruct(new Vector3(10, 4000, 10), cells);
-        var slowest = TimeSpan.Zero;
+
+        // Hold bulk traffic while the construct is captured and planned. Tick and snapshot progress must
+        // not depend on finishing the transfer, regardless of scheduler pauses or concurrent test load.
+        gate.Open = false;
+        alice.Client.Received.Clear();
+        var before = rig.Runtime.State.CurrentTick.Value;
+        rig.Step(120);
+        Assert.True(rig.Runtime.State.CurrentTick.Value >= before + 100);
+        Assert.True(rig.Replication.Constructs.StagedBytes(alice.Client.Player) > 0);
+        Assert.False(alice.Constructs.TryGetConstruct(id, out _));
+        Assert.Equal(0, gate.BulkBytes);
+        var snapshots = alice.Client.Received.OfType<Snapshot>().ToArray();
+        Assert.True(snapshots.Length >= 30, "Own-entity snapshots must continue while bulk traffic is blocked.");
+        Assert.All(snapshots, snapshot => Assert.Equal(rig.EntityOf(alice.Client.Player), snapshot.Entities[0].Entity));
+        for (var i = 1; i < snapshots.Length; i++)
+        {
+            Assert.Equal(3ul, snapshots[i].ServerTick.Value - snapshots[i - 1].ServerTick.Value);
+        }
+
+        gate.Open = true;
         var ticks = 0;
         while (ticks < 1200 && !alice.Constructs.TryGetConstruct(id, out _))
         {
-            var started = System.Diagnostics.Stopwatch.GetTimestamp();
+            var messagesBefore = alice.Client.Received.Count;
+            var tickBefore = rig.Runtime.State.CurrentTick.Value;
             rig.Step();
-            var took = System.Diagnostics.Stopwatch.GetElapsedTime(started);
-            slowest = took > slowest ? took : slowest;
+            var parts = alice.Client.Received.Skip(messagesBefore).OfType<ConstructState>().Count();
+            var advanced = rig.Runtime.State.CurrentTick.Value - tickBefore;
+            Assert.InRange((ulong)parts, 0ul, advanced * ConstructStateSender.MaxPartsPerPump);
             ticks++;
         }
 
@@ -259,7 +280,7 @@ public sealed class ReplicationConvergenceTests
         Assert.True(alice.Constructs.TryGetConstruct(id, out var copy));
         Assert.Equal(Digest(rig.Runtime.State.Constructs.All.Single(c => c.Id == id)), Digest(copy!));
         Assert.Equal(0, alice.Resyncs);
-        Assert.InRange(slowest.TotalMilliseconds, 0, 100);
+        Assert.Equal(0, rig.Replication.Constructs.StagedBytes(alice.Client.Player));
         Assert.True(gate.BulkBytes > 0);
     }
 

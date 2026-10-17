@@ -38,6 +38,19 @@ public interface ITerrainService
     bool TrySampleSolid(PlanetId planet, Vector3 position, out bool solid);
 
     /// <summary>
+    /// Counts the LOD 0 voxels whose centre lies inside a sphere: solid ones (SDF &lt; 0) by world material id and empty ones. Called only
+    /// by intent resolution on the main thread, never by the applier or replay (its result goes into the operation), so it need not be
+    /// deterministic across runs (K6-29W D9). Must not allocate.
+    /// </summary>
+    /// <param name="planet">Planet.</param>
+    /// <param name="center">Sphere centre in the planet frame.</param>
+    /// <param name="radius">Sphere radius in metres.</param>
+    /// <param name="solidVoxelsByMaterial">256 counters indexed by material id; the method clears them first (index 0 stays unused).</param>
+    /// <param name="airVoxels">Number of empty voxels.</param>
+    /// <returns>False when the voxels cannot be read (area not loaded, no terrain); the counters are then zero.</returns>
+    bool MeasureSphere(PlanetId planet, Vector3 center, float radius, Span<int> solidVoxelsByMaterial, out int airVoxels);
+
+    /// <summary>
     /// Applies an edit; deterministic for the same inputs. Called after the block versions were bumped, so an implementation
     /// that stores block data can pair every block it changes with its new version.
     /// </summary>

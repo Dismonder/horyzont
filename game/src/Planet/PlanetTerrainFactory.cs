@@ -69,8 +69,14 @@ public static class PlanetTerrainFactory
 
         if (options.Render)
         {
-            terrain.SetMaterial(material ?? PlanetTerrainMaterial.Create());
+            terrain.SetMaterial(PlanetTerrainMaterial.ForPlanet(material ?? PlanetTerrainMaterial.Create(), planet));
             terrain.SetShadowCasting(GeometryInstance3D.ShadowCastingSetting.On);
+
+            // Visual dressing only (no state, no collisions): the sea, the scattered flora, the glow of the atmosphere and the clouds.
+            terrain.AddChild(PlanetOcean.Create(planet));
+            terrain.AddChild(PlanetFlora.Create(planet));
+            terrain.AddChild(PlanetAtmosphere.Create(planet));
+            terrain.AddChild(PlanetClouds.Create(planet));
         }
         else
         {

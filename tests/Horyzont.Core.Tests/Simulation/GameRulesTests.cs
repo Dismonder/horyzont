@@ -9,4 +9,13 @@ public sealed class GameRulesTests
     {
         Assert.True(new GameRules().MaxToolRadius <= TerrainRules.MaxEditRadiusMeters);
     }
+
+    [Fact]
+    public void ItemIntentBucket_TwentyPerSecondBurstForty()
+    {
+        var rules = new GameRules();
+
+        Assert.Equal(20, rules.ItemIntentsPerSecond);
+        Assert.Equal(40, rules.ItemIntentBurst);
+    }
 }

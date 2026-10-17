@@ -13,9 +13,11 @@ using Horyzont.Core.Simulation;
 using Horyzont.Core.World;
 using Horyzont.Game.Client;
 using Horyzont.Game.Client.Character;
+using Horyzont.Game.Client.Inventory;
 using Horyzont.Game.Client.Sky;
 using Horyzont.Game.Client.Tools;
 using Horyzont.Game.Constructs;
+using Horyzont.Game.Content;
 using Horyzont.Game.Frames;
 using Horyzont.Game.Planet;
 using Horyzont.Game.Planet.Generators;
@@ -30,6 +32,7 @@ using Horyzont.Persistence.Backup;
 using Horyzont.Server;
 using Horyzont.Server.Console;
 using Horyzont.Server.Frames;
+using Horyzont.Server.Inventory;
 
 using Microsoft.Extensions.Logging;
 
@@ -151,6 +154,9 @@ public sealed partial class GameComposition
     /// <summary>Gets the tools of the local player (K2-13); null in dedicated server mode, in client mode and with characters off.</summary>
     public ToolNode? Tools { get; }
 
+    /// <summary>Gets the inventory of the local player (K6-29W): the hotbar, the inventory screen and the toasts; null with characters off and on a server.</summary>
+    public InventoryNode? Inventory { get; private init; }
+
     /// <summary>Gets the movement rules the server characters and the local player share in this process.</summary>
     public MovementRules Movement { get; private init; } = new();
 
@@ -221,6 +227,7 @@ public sealed partial class GameComposition
         ClientDayNight? dayNight = null;
         HostConstructs? constructs = null;
         ToolNode? tools = null;
+        InventoryNode? inventory = null;
         ServerRuntime? server = null;
         ClientRuntime? client = null;
         ITransport? serverTransport = null;
@@ -292,6 +299,8 @@ public sealed partial class GameComposition
             serverTransport = new ReleaseTrackedTransport(transports.Count == 1 ? transports[0] : new CompositeTransport(transports));
 
             var catalog = BlockContentLoader.Load();
+            var survival = SurvivalContentLoader.Load();
+            var itemKeys = SurvivalContentLoader.ItemKeys(survival);
             var runtimeOptions = new ServerRuntimeOptions
             {
                 WorldPath = worldPath,
@@ -308,6 +317,8 @@ public sealed partial class GameComposition
                 BlockTypeKeys = catalog.BlockTypeKeys,
                 BlockDefinitions = ShipBlockDefinitions(catalog),
                 MaterialKeys = TerrainMaterials.Keys,
+                ItemTypeKeys = itemKeys,
+                Content = survival,
                 RecoverFromCheckpoint = launch.RecoverFromCheckpoint,
                 Rules = rules,
                 NewPlayerSpawn = env.Characters ? SpawnLocator.ForNewPlayer : null,
@@ -315,9 +326,10 @@ public sealed partial class GameComposition
             serverCapacity = runtimeOptions.ServerOptions.MaxPlayers;
             var seed = launch.GalaxySeed;
             server = new ServerRuntime(
-                launch.Mode, runtimeOptions, serverTransport, factory, () => NewWorld(worldId, seed, catalog.BlockTypeKeys), env.Time, loggers);
+                launch.Mode, runtimeOptions, serverTransport, factory, () => NewWorld(worldId, seed, catalog.BlockTypeKeys, itemKeys), env.Time, loggers);
             constructs = new HostConstructs(serverNode!, catalog, env.Render, loggers, env.Time);
             constructs.Register(server);
+            InventoryService.Register(server, loggers);
 
             (serverFrames, serverFrameNodes) = RegisterServerFrames(server, serverNode!);
             if (env.Characters)
@@ -354,10 +366,10 @@ public sealed partial class GameComposition
             clientNode!.Initialize(client, loggers.CreateLogger<ClientNode>());
             if (env.Characters)
             {
-                (localPlayer, dayNight) = CreateClientCharacter(clientNode, client, server, env, rules, movement, devFlight);
+                (localPlayer, dayNight, inventory) = CreateClientCharacter(clientNode, client, server, env, rules, movement, devFlight);
                 if (isHostLocal)
                 {
-                    tools = CreateTools(clientNode, client, server!, factory!, localPlayer, rules, env, launch.DevToolsDemo);
+                    tools = CreateTools(clientNode, client, server!, factory!, localPlayer, rules, env, launch.DevToolsDemo, inventory);
                 }
             }
 
@@ -377,6 +389,7 @@ public sealed partial class GameComposition
             worldId, fromConfig, characters, localPlayer, dayNight, constructs, tools, platform, serverCapacity)
         {
             Movement = movement,
+            Inventory = inventory,
         };
         if (client is not null && localPlayer is not null)
         {
@@ -443,7 +456,7 @@ public sealed partial class GameComposition
             };
     }
 
-    private static (LocalPlayer Player, ClientDayNight Sky) CreateClientCharacter(
+    private static (LocalPlayer Player, ClientDayNight Sky, InventoryNode Inventory) CreateClientCharacter(
         ClientNode clientNode, ClientRuntime client, ServerRuntime? server, GameEnvironment env, GameRules rules, MovementRules movement,
         bool devFlight)
     {
@@ -466,12 +479,23 @@ public sealed partial class GameComposition
 
         clientNode.AddChild(player);
         clientNode.AddChild(sky);
+
+        // The content is read locally on every client: the server sends only the keys of the item types (K6-29W D16).
+        var inventory = new InventoryNode { Name = "Inventory" };
+        inventory.Initialize(client, SurvivalContentLoader.Load(), ItemVisuals.Load(), env.Loggers, env.Render, reader.CaptureMouse);
+        if (env.Render)
+        {
+            inventory.AddChild(new InventoryInputReader { Name = "Input" });
+        }
+
+        reader.Blocked = () => inventory.IsOpen;
+        clientNode.AddChild(inventory);
         if (env.Render)
         {
             clientNode.AddChild(new HelpOverlay(player, sky, dev));
         }
 
-        return (player, sky);
+        return (player, sky, inventory);
     }
 
     /// <summary>
@@ -480,12 +504,14 @@ public sealed partial class GameComposition
     /// </summary>
     private static ToolNode CreateTools(
         ClientNode clientNode, ClientRuntime client, ServerRuntime server, VoxelServerTerrainFactory factory, LocalPlayer player, GameRules rules,
-        GameEnvironment env, bool demo)
+        GameEnvironment env, bool demo, InventoryNode inventory)
     {
         var scene = GD.Load<PackedScene>(ToolsScene) ?? throw new InvalidOperationException($"Scene {ToolsScene} not found.");
         var tools = scene.Instantiate<ToolNode>();
         tools.Initialize(client, server, () => factory.Terrain!.Service, player, rules, env.Loggers);
         tools.BlockDefinitions = ShipBlockDefinitions(BlockContentLoader.Load());
+        tools.Inventory = inventory;
+        tools.DigAccepted += inventory.OnDigAccepted;
         if (env.Render)
         {
             tools.AddChild(new TerrainToolPreview(tools));
@@ -495,7 +521,7 @@ public sealed partial class GameComposition
 
         if (demo)
         {
-            var script = new ToolsDemo(tools, player.InputSource);
+            var script = new ToolsDemo(tools, player.InputSource) { Inventory = inventory };
             player.InputSource = script;
             tools.InputSource = script;
             tools.AddChild(script);
@@ -702,12 +728,13 @@ public sealed partial class GameComposition
 
     private static string WorldPathOf(string savesDir, Guid id) => Path.Combine(savesDir, id.ToString("D"), "world.db");
 
-    private static WorldState NewWorld(Guid id, ulong seed, IReadOnlyList<string> blockTypeKeys) =>
-        NewWorld(id, seed, Horyzont.Core.Space.StarSystemGenesis.CreateWorldBodies(seed, GeneratorProfiles.Current), blockTypeKeys);
+    private static WorldState NewWorld(Guid id, ulong seed, IReadOnlyList<string> blockTypeKeys, IReadOnlyList<string> itemTypeKeys) =>
+        NewWorld(id, seed, Horyzont.Core.Space.StarSystemGenesis.CreateWorldBodies(seed, GeneratorProfiles.Current), blockTypeKeys, itemTypeKeys);
 
     // K5-21: a new world gets its star system (home planet of PlanetGenesis and the bodies of StarSystemLayout.V1).
-    private static WorldState NewWorld(Guid id, ulong seed, Horyzont.Core.Space.GeneratedStarSystem created, IReadOnlyList<string> blockTypeKeys) =>
-        WorldState.CreateNew(new Horyzont.Core.Ids.WorldId(id), seed, created.System, created.Bodies, blockTypeKeys, TerrainMaterials.Keys);
+    private static WorldState NewWorld(
+        Guid id, ulong seed, Horyzont.Core.Space.GeneratedStarSystem created, IReadOnlyList<string> blockTypeKeys, IReadOnlyList<string> itemTypeKeys) =>
+        WorldState.CreateNew(new Horyzont.Core.Ids.WorldId(id), seed, created.System, created.Bodies, blockTypeKeys, TerrainMaterials.Keys, itemTypeKeys);
 
     private async Task<int?> StartServerAsync(CancellationToken ct)
     {

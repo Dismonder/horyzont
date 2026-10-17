@@ -12,6 +12,7 @@ namespace Horyzont.Persistence.Tests;
 public sealed class MigrationTests
 {
     public const string FixtureName = "world-v1.db";
+    public const string FixtureV3Name = "world-v3.db";
 
     // Newest production schema; the test migrations come right after it (K5-21 added M0002).
     private static int Latest => MigrationRunner.All.Count;
@@ -51,7 +52,54 @@ public sealed class MigrationTests
     }
 
     [Fact]
-    public void TestMigration2_MakesPreMigrationCopy_AndRaisesUserVersion()
+    public void FixtureWorldV1_MigratesToLatest_CreatesSurvivalTables()
+    {
+        var fixture = Path.Combine(AppContext.BaseDirectory, "Fixtures", FixtureName);
+        using var dir = new TempDirectory();
+        File.Copy(fixture, dir.WorldPath);
+        Assert.Equal(1L, RawDb.Long(dir.WorldPath, "PRAGMA user_version;"));
+
+        var loaded = WorldLoader.Load(
+            dir.WorldPath, WorldHarness.LoadOptions(dir.WorldPath), new FakeTimeProvider(_now), NullLogger.Instance);
+
+        Assert.Equal(Latest + 0L, RawDb.Long(dir.WorldPath, "PRAGMA user_version;"));
+        foreach (var table in new[] { "item_types", "containers", "block_entities", "player_progress", "harvested_props" })
+        {
+            Assert.Equal(1L, RawDb.Long(dir.WorldPath, $"SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = '{table}';"));
+            Assert.Equal(0L, RawDb.Long(dir.WorldPath, $"SELECT COUNT(*) FROM {table};"));
+        }
+
+        var copy = Assert.Single(Directory.GetFiles(dir.BackupsPath));
+        Assert.Equal(1L, RawDb.Long(copy, "PRAGMA user_version;"));
+        Assert.Equal(0, loaded.State.Containers.Count);
+        Assert.Equal(1UL, loaded.State.ContainerIds.NextValue);
+        Assert.Empty(loaded.State.ItemTypes.Entries);
+    }
+
+    [Fact]
+    public void FixtureWorldV3_CopiedToTemp_LoadsAndReplays()
+    {
+        var fixture = Path.Combine(AppContext.BaseDirectory, "Fixtures", FixtureV3Name);
+        Assert.True(File.Exists(fixture), $"Missing {fixture}; generate it once with FixtureGenerator (Category=Manual) and commit it.");
+        using var dir = new TempDirectory();
+        File.Copy(fixture, dir.WorldPath);
+        Assert.Equal(3L, RawDb.Long(dir.WorldPath, "PRAGMA user_version;"));
+
+        var (loaded, sim, _) = WorldHarness.LoadAndReplay(dir.WorldPath);
+
+        Assert.Equal(WorldFactory.DefaultWorldId, loaded.State.Id);
+        Assert.NotEmpty(loaded.JournalTail);
+        Assert.Equal(SurvivalContentFactory.ItemKeys, sim.State.ItemTypes.Entries.Select(e => e.Key));
+        Assert.Equal(3, sim.State.Containers.Count);
+        Assert.Equal(4UL, sim.State.ContainerIds.NextValue);
+        Assert.True(sim.State.Containers.TryGet(WorldFactory.HotbarOf(1), out var hotbar));
+        Assert.Equal(WorldFactory.Item(SurvivalContentFactory.GemKey), hotbar.GetSlot(1).Type);
+        Assert.Equal(loaded.JournalTail[^1].Id, sim.State.LastOpId);
+        Assert.False(Directory.Exists(dir.BackupsPath) && Directory.GetFiles(dir.BackupsPath).Length > 0);
+    }
+
+    [Fact]
+    public void TestMigration3_MakesPreMigrationCopy_AndRaisesUserVersion()
     {
         using var dir = new TempDirectory();
         var path = CreatePlanetless(dir);
@@ -59,7 +107,7 @@ public sealed class MigrationTests
         Load(path, [.. MigrationRunner.All, new TestMigrationNext()]);
 
         Assert.Equal(Latest + 1L, RawDb.Long(path, "PRAGMA user_version;"));
-        Assert.Equal(1L, RawDb.Long(path, "SELECT COUNT(*) FROM test_m2;"));
+        Assert.Equal(1L, RawDb.Long(path, "SELECT COUNT(*) FROM test_m3;"));
         var copy = Assert.Single(Directory.GetFiles(dir.BackupsPath));
         Assert.Equal("20261008-093015-000001-pre-migration.db", Path.GetFileName(copy));
         Assert.Equal(Latest, RawDb.Long(copy, "PRAGMA user_version;"));
@@ -127,7 +175,7 @@ public sealed class MigrationTests
         {
             using var command = connection.CreateCommand();
             command.Transaction = transaction;
-            command.CommandText = "CREATE TABLE test_m2 (x INTEGER); INSERT INTO test_m2 VALUES (1);";
+            command.CommandText = "CREATE TABLE test_m3 (x INTEGER); INSERT INTO test_m3 VALUES (1);";
             command.ExecuteNonQuery();
         }
     }

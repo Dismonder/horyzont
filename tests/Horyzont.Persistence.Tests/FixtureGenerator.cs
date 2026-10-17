@@ -1,3 +1,6 @@
+using Horyzont.Core.Items;
+using Horyzont.Core.Operations;
+using Horyzont.Core.World;
 using Horyzont.Persistence.Tests.Support;
 using Horyzont.Testing;
 
@@ -37,6 +40,54 @@ public sealed class FixtureGenerator
         }
 
         // Fold the WAL into the main file (the repository ignores *-wal files); pooled terrain readers must close first.
+        dir.ReleasePools();
+        RawDb.Execute(dir.WorldPath, "PRAGMA journal_mode = DELETE;");
+        Assert.False(File.Exists(dir.WorldPath + "-wal"));
+        File.Copy(dir.WorldPath, target);
+    }
+
+    /// <summary>
+    /// Writes <c>Fixtures/world-v3.db</c> (schema version 3, K6-29W D1): a world with item types, the three containers of a player,
+    /// start-kit items in the checkpoint and an item transfer in the journal tail. Same rules as <see cref="Generate_WorldV1"/>.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "Manual")]
+    public async Task Generate_WorldV3()
+    {
+        var target = Path.Combine(RepoRoot(), "tests", "Horyzont.Persistence.Tests", "Fixtures", MigrationTests.FixtureV3Name);
+        Assert.False(File.Exists(target), $"{target} exists; delete it first if it really must be regenerated.");
+        using var dir = new TempDirectory();
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 10, 12, 0, 0, TimeSpan.Zero));
+        var world = WorldState.CreateNew(
+            WorldFactory.DefaultWorldId, 42, [WorldFactory.HomePlanetParams], [WorldFactory.StoneBlockKey], ["stone", "dirt"],
+            SurvivalContentFactory.ItemKeys);
+        await using (var h = WorldHarness.CreateNew(dir.WorldPath, world: world, time: time))
+        {
+            var player = h.Join(33);
+            h.Sim.ApplyServerOperation(WorldFactory.PlayerContainers(player, 1));
+            var tool = WorldFactory.Item(SurvivalContentFactory.ToolKey);
+            var gem = WorldFactory.Item(SurvivalContentFactory.GemKey);
+            h.Sim.ApplyServerOperation(new CompoundOp(
+            [
+                new ItemCreateOp(new SlotRef(WorldFactory.HotbarOf(1), 0), tool, 1, 1, ItemSource.Starter),
+                new ItemCreateOp(new SlotRef(WorldFactory.HotbarOf(1), 1), gem, 3, 5, ItemSource.Starter),
+            ]));
+            var script = new WorldScript(2027);
+            for (var i = 0; i < 40; i++)
+            {
+                script.Step(h.Sim);
+            }
+
+            Assert.True(await h.CheckpointAndPump());
+            for (var i = 0; i < 20; i++)
+            {
+                script.Step(h.Sim);
+            }
+
+            h.Sim.ApplyServerOperation(new ItemTransferOp(new SlotRef(WorldFactory.HotbarOf(1), 1), new SlotRef(WorldFactory.BagOf(1), 0), gem, 1, 5));
+            await h.FlushAndPump();
+        }
+
         dir.ReleasePools();
         RawDb.Execute(dir.WorldPath, "PRAGMA journal_mode = DELETE;");
         Assert.False(File.Exists(dir.WorldPath + "-wal"));

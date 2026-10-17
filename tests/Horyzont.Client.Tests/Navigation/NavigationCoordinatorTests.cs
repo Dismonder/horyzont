@@ -230,16 +230,23 @@ public sealed class NavigationCoordinatorTests
         rig.Viewpoint.PlaceAt(rig.ShipFrame, rig.WorldOf(rig.Home, 1, 4015, 1));
         Assert.True(rig.Coordinator.TryGetGuidance(RenderTick, out _));
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        var ok = true;
-        for (var i = 0; i < 10_000; i++)
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
         {
-            ok &= rig.Coordinator.TryGetGuidance(RenderTick, out _);
+            var ok = true;
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 10_000; i++)
+            {
+                ok &= rig.Coordinator.TryGetGuidance(RenderTick, out _);
+            }
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
+            Assert.True(ok);
         }
 
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = smallest;
 
-        Assert.True(ok);
         Assert.Equal(0, allocated);
     }
 }
