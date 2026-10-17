@@ -108,6 +108,9 @@ public enum RejectReason : byte
     /// <summary>The eye of the player is farther than the use range from the station, or the station is on another planet (K6-32).</summary>
     TooFarFromStation = 46,
 
+    /// <summary>The player is dead or waits for the new body: intents, subscriptions and input are refused until the respawn is done (K6-35 D19; K6-37 shares it for the teleport).</summary>
+    InTransition = 48,
+
     /// <summary>The food cannot be eaten now: the same food still has more than 20 percent of its time, or all three slots hold different active food (K6-33).</summary>
     FoodAlreadyActive = 49,
 

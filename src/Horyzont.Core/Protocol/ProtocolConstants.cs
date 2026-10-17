@@ -118,6 +118,9 @@ public static class ProtocolConstants
     /// <summary>Longest recipe key in UTF-8 bytes (K6-32).</summary>
     public const int MaxRecipeKeyBytes = MaxRegistryKeyBytes;
 
+    /// <summary>Most tombstones in one page of the list of message 48 (K6-35 D21).</summary>
+    public const int MaxTombstonesPerPage = 64;
+
     /// <summary>Most slots of one container.</summary>
     public const int MaxContainerSlots = 256;
 

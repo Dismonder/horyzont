@@ -1084,6 +1084,26 @@ public static class StateCodec
         return new PlayerProgressRecord(player, bed, discovered, food);
     }
 
+    /// <summary>Encodes the settings of a world as a SQLite blob (kind 23, version 1; K6-35).</summary>
+    /// <param name="settings">Settings; every value in range.</param>
+    /// <returns>The blob.</returns>
+    public static byte[] EncodeWorldSettingsBlob(WorldSettings settings) => throw new NotImplementedException("K6-35 B2.");
+
+    /// <summary>Decodes a world settings blob (kind 23).</summary>
+    /// <param name="blob">Blob bytes.</param>
+    /// <returns>The settings.</returns>
+    public static WorldSettings DecodeWorldSettingsBlob(ReadOnlySpan<byte> blob) => throw new NotImplementedException("K6-35 B2.");
+
+    /// <summary>Encodes a persistent entity as a SQLite blob (kind 24, version 1; K6-35).</summary>
+    /// <param name="entity">Entity.</param>
+    /// <returns>The blob.</returns>
+    public static byte[] EncodePersistentEntityBlob(PersistentEntity entity) => throw new NotImplementedException("K6-35 B2.");
+
+    /// <summary>Decodes a persistent entity blob (kind 24).</summary>
+    /// <param name="blob">Blob bytes.</param>
+    /// <returns>The entity.</returns>
+    public static PersistentEntity DecodePersistentEntityBlob(ReadOnlySpan<byte> blob) => throw new NotImplementedException("K6-35 B2.");
+
     private static void ValidateBlobHeader(ReadOnlySpan<byte> blob, BlobKind expectedKind, byte highestVersion = CurrentFormatVersion)
     {
         if (blob.Length < 2)

@@ -26,6 +26,12 @@ public enum BlobKind : byte
 
     /// <summary>The flight state of a ship (K5-24): fuel, velocities and flags.</summary>
     ShipState = 12,
+    /// <summary>The settings of a world (K6-35); the content of operation 46. Absent in a world that never left the defaults.</summary>
+    WorldSettings = 23,
+
+    /// <summary>A persistent entity (K6-35): a tombstone or an item lying in the world; the content of operation 38.</summary>
+    PersistentEntity = 24,
+
     /// <summary>A container record (K6-29).</summary>
     Container = 20,
 
