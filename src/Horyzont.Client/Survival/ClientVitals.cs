@@ -1,4 +1,5 @@
 using Horyzont.Core.Protocol.Messages;
+using Horyzont.Core.Survival;
 
 namespace Horyzont.Client.Survival;
 
@@ -41,6 +42,15 @@ public sealed class ClientVitals
 
     /// <summary>Gets the comfort level of the surroundings, 0 to 10.</summary>
     public int Comfort => _message?.Comfort ?? 0;
+
+    /// <summary>Gets the resources of the suit (K6-34); the plain suit before the first message.</summary>
+    public SuitResources Suit => _message?.Suit ?? PlayerVitalsMessage.DefaultSuit;
+
+    /// <summary>Gets the capacity of every resource of the suit (K6-34); the plain suit before the first message.</summary>
+    public SuitResources SuitCapacity => _message?.Capacity ?? PlayerVitalsMessage.DefaultSuit;
+
+    /// <summary>Gets the environment of the player (K6-34): the shelter, the generator, the life support, the hazards and the rays.</summary>
+    public VitalsEnvironment Environment => _message?.Environment ?? VitalsEnvironment.None;
 
     /// <summary>Gets the server tick the latest message was received at.</summary>
     public ulong ReceivedAtTick => _receivedAtTick;

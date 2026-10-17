@@ -17,6 +17,15 @@ ITEM_CORE_MULTITOOL_T2,Terrain manipulator II,Manipulator terenu II
 ITEM_CORE_BERRIES,Berries,Jagody
 ITEM_CORE_BERRY_JAM,Berry jam,Dżem jagodowy
 ITEM_CORE_HERBAL_BROTH,Herbal broth,Bulion ziołowy
+ITEM_CORE_HEAT_CELL,Heat cell,Ogniwo grzewcze
+ITEM_CORE_COOLANT_CELL,Coolant cell,Ogniwo chłodzące
+ITEM_CORE_FILTER_CARTRIDGE,Filter cartridge,Wkład filtra
+ITEM_CORE_SHIELD_CELL,Shield cell,Ogniwo osłony
+ITEM_CORE_OXYGEN_CANISTER,Oxygen canister,Butla z tlenem
+ITEM_CORE_MODULE_O2_TANK,Oxygen tank module,Moduł zbiornika tlenu
+ITEM_CORE_MODULE_THERMAL,Thermal module,Moduł termiczny
+ITEM_CORE_MODULE_FILTER,Filter module,Moduł filtra
+ITEM_CORE_MODULE_SHIELDING,Shielding module,Moduł ekranowania
 ITEM_UNKNOWN,Unknown item,Nieznany przedmiot
 INV_TITLE,Inventory,Ekwipunek
 INV_BAG,Backpack,Plecak

@@ -95,3 +95,26 @@ HUD_RESTING,Resting,Odpoczywasz
 HUD_RESTED,Rested,Wypoczęty
 HUD_COMFORT,Comfort,Komfort
 HUD_FOOD_REMAINING,left,pozostało
+HUD_SUIT_HEATING,Heating,Ogrzewanie
+HUD_SUIT_COOLING,Cooling,Chłodzenie
+HUD_SUIT_FILTER,Filter,Filtr
+HUD_SUIT_SHIELD,Shield,Osłona
+HUD_SUIT_OXYGEN,Oxygen,Tlen
+HUD_HAZARD_COLD,Cold,Zimno
+HUD_HAZARD_HEAT,Heat,Upał
+HUD_HAZARD_TOXINS,Toxins,Toksyny
+HUD_HAZARD_RADIATION,Radiation,Promieniowanie
+HUD_HAZARD_VACUUM,Vacuum,Próżnia
+HUD_SHELTER,Shelter,Schronienie
+HUD_OXYGEN_GENERATOR,Oxygen generator,Generator tlenu
+HUD_LIFE_SUPPORT,Life support,Podtrzymywanie życia
+HUD_SUIT_FULL,The suit is full,Kombinezon jest pełny
+HUD_GENERATOR_REMAINING,Runs for,Pracuje jeszcze
+EQ_HEAD,Helmet,Hełm
+EQ_TORSO,Suit,Kombinezon
+EQ_LEGS,Legs,Nogi
+EQ_BACKPACK,Backpack,Plecak
+EQ_MODULE,Module,Moduł
+SUIT_PANEL_TITLE,Suit,Kombinezon
+SUIT_DRAIN,value / capacity  drain,wartość / pojemność  zużycie
+PROMPT_GENERATOR_OPEN,[E] Oxygen generator,[E] Generator tlenu

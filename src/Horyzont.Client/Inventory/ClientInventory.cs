@@ -78,6 +78,9 @@ public sealed class ClientInventory : IClientSessionListener, IItemTypeKeys
         }
     }
 
+    /// <summary>Gets a counter that changes whenever the item registry is replaced or dropped; lets a cache built from the registry know when to rebuild.</summary>
+    public int RegistryVersion { get; private set; }
+
     /// <summary>The content key of an item type id.</summary>
     /// <param name="type">Item type id.</param>
     /// <returns>The key, or null when the registry does not know the id.</returns>
@@ -155,6 +158,7 @@ public sealed class ClientInventory : IClientSessionListener, IItemTypeKeys
         switch (message)
         {
             case ItemRegistry registry:
+                RegistryVersion++;
                 _keys.Clear();
                 _ids.Clear();
                 ushort max = 0;
@@ -179,6 +183,7 @@ public sealed class ClientInventory : IClientSessionListener, IItemTypeKeys
     /// <inheritdoc />
     public void OnDisconnected(DisconnectCode code)
     {
+        RegistryVersion++;
         _containers.Clear();
         _awaitingState.Clear();
         _keys.Clear();

@@ -22,6 +22,8 @@ public sealed class FoodUse
     private readonly ServerTickReader _serverTick;
     private readonly VitalsRules _rules;
     private readonly int _tickRate;
+    private FoodTable? _table;
+    private int _tableVersion;
 
     /// <summary>Initializes a new instance of the <see cref="FoodUse"/> class.</summary>
     /// <param name="inventory">The inventory of the local player.</param>
@@ -68,7 +70,13 @@ public sealed class FoodUse
 
         if (_serverTick(out var now))
         {
-            var table = FoodTable.Build(type => _inventory.TryGetDef(type, out var other) ? other.Food : null);
+            if (_table is null || _tableVersion != _inventory.RegistryVersion)
+            {
+                _tableVersion = _inventory.RegistryVersion;
+                _table = FoodTable.Build(type => _inventory.TryGetDef(type, out var other) ? other.Food : null);
+            }
+
+            var table = _table;
             var verdict = FoodSlotRules.TryPlace(_progress.Food, stack.Type, table, new Tick(now), _rules, _tickRate, out _);
             if (verdict != RejectReason.None)
             {

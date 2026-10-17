@@ -227,7 +227,16 @@ public sealed class ChestSession : IClientSessionListener
 
     private void OnState(ClientContainer container)
     {
-        if (container.Kind != ContainerKind.Chest)
+        if (container.Kind == ContainerKind.StationInput)
+        {
+            // The input of an oxygen generator (K6-34 D20) is shown by the same panel: a station input counts only when it is the very container that was asked for; the inputs of the stations
+            // with time belong to the station session and are left alone.
+            if (_phase == Phase.Closed || container.Id != _container)
+            {
+                return;
+            }
+        }
+        else if (container.Kind != ContainerKind.Chest)
         {
             return;
         }

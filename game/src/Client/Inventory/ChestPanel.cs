@@ -1,6 +1,7 @@
 using Godot;
 
 using Horyzont.Client.Inventory;
+using Horyzont.Client.Survival;
 using Horyzont.Core.Items;
 
 namespace Horyzont.Game.Client.Inventory;
@@ -18,6 +19,9 @@ public sealed partial class ChestPanel : PanelContainer
     private readonly List<SlotView> _slots = [];
     private Label? _title;
     private Label? _access;
+    private Label? _time;
+    private bool _generator;
+    private long _shownSeconds = -1;
     private GridContainer? _grid;
     private Button? _takeAll;
     private Button? _quickStack;
@@ -44,6 +48,12 @@ public sealed partial class ChestPanel : PanelContainer
 
     /// <summary>Gets the text that names the access of the open chest.</summary>
     public string AccessText => _access?.Text ?? string.Empty;
+
+    /// <summary>Gets the line with the time the open oxygen generator still runs, empty for a chest (K6-34).</summary>
+    public string TimeText => _time?.Text ?? string.Empty;
+
+    /// <summary>Gets a value indicating whether the panel shows an oxygen generator (K6-34).</summary>
+    public bool IsGenerator => _generator;
 
     /// <summary>Gets a value indicating whether the access switch is on offer (the player may be the owner).</summary>
     public bool AccessSwitchVisible => _accessSwitch?.Visible ?? false;
@@ -74,6 +84,9 @@ public sealed partial class ChestPanel : PanelContainer
         _access = new Label();
         HudTheme.StyleLabel(_access, 13, HudTheme.AccentTool);
         column.AddChild(_access);
+        _time = new Label { Visible = false };
+        HudTheme.StyleLabel(_time, 14, HudTheme.Accent);
+        column.AddChild(_time);
 
         _grid = new GridContainer { Name = "Chest", Columns = InventoryScreen.Columns };
         _grid.AddThemeConstantOverride("h_separation", 4);
@@ -123,13 +136,50 @@ public sealed partial class ChestPanel : PanelContainer
             view.Set(stack, visual, -1, selected: false, dim: interaction.IsPending(slotRef) || held?.Source == slotRef, disabled: false);
         }
 
+        // K6-34: the input of an oxygen generator is shown like a chest, under its own heading and with the time it still runs; it has no access to switch.
+        _generator = chest.Kind == ContainerKind.StationInput;
         var isPrivate = chest.Access == ContainerAccess.Private;
-        _title!.Text = Tr("INV_CHEST");
-        _access!.Text = Tr(isPrivate ? "INV_CHEST_PRIVATE" : "INV_CHEST_SHARED");
+        _title!.Text = Tr(_generator ? "HUD_OXYGEN_GENERATOR" : "INV_CHEST");
+        _access!.Visible = !_generator;
+        _access.Text = _generator ? string.Empty : Tr(isPrivate ? "INV_CHEST_PRIVATE" : "INV_CHEST_SHARED");
         _takeAll!.Text = Tr("INV_TAKE_ALL");
         _quickStack!.Text = Tr("INV_QUICK_STACK");
+        _quickStack.Visible = !_generator; // quick stacking sends to the chests nearby, nothing to do with a generator (review C-D, P3-11)
         _accessSwitch!.Text = Tr(isPrivate ? "INV_ACCESS_TO_SHARED" : "INV_ACCESS_TO_PRIVATE");
-        _accessSwitch.Visible = _node.Chests.CanConfigureAccess;
+        _accessSwitch.Visible = !_generator && _node.Chests.CanConfigureAccess;
+        UpdateTime(force: true);
+    }
+
+    /// <summary>Refreshes the time line of a generator; the time moves with the tick of the server, not with the version of the screen.</summary>
+    /// <param name="force">Set the text even when the second is the same (the panel was rebuilt, the language may have changed).</param>
+    public void UpdateTime(bool force = false)
+    {
+        if (_time is null)
+        {
+            return;
+        }
+
+        var chests = _node.Chests;
+        if (!_generator || !Visible || _node.GeneratorTime is not { } generatorTime || !_node.TryGetServerTick(out var tick)
+            || !generatorTime.TryGetRemaining(chests.Construct, chests.Cell, tick, out var ticks))
+        {
+            _time.Visible = false;
+            _time.Text = string.Empty;
+            _shownSeconds = -1;
+            return;
+        }
+
+        // The text moves by whole seconds: build it only then (review C-D, P3-4).
+        var rate = (ulong)Horyzont.Server.GameServerHooks.TickRate;
+        var seconds = (long)((ticks / rate) + (ticks % rate == 0 ? 0UL : 1UL));
+        if (!force && _time.Visible && seconds == _shownSeconds)
+        {
+            return;
+        }
+
+        _shownSeconds = seconds;
+        _time.Text = string.Concat(Tr("HUD_GENERATOR_REMAINING"), " ", SuitHudText.GeneratorRemaining(ticks, Horyzont.Server.GameServerHooks.TickRate));
+        _time.Visible = true;
     }
 
     private Button NewButton(Godot.Container parent, Color accent, Action pressed)

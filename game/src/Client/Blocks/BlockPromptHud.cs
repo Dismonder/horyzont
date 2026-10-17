@@ -44,6 +44,7 @@ public sealed partial class BlockPromptHud : CanvasLayer
         BlockPromptKind.OwnBed => "PROMPT_OWN_BED",
         BlockPromptKind.BedOccupied => "PROMPT_BED_OCCUPIED",
         BlockPromptKind.OpenStation => "PROMPT_STATION_OPEN",
+        BlockPromptKind.OpenGenerator => "PROMPT_GENERATOR_OPEN",
         _ => "PROMPT_UNKNOWN",
     };
 

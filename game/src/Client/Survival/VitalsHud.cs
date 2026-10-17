@@ -20,8 +20,10 @@ public sealed partial class VitalsHud : CanvasLayer
     private const double BlinkSeconds = 0.6;
 
     private readonly Func<VitalsHudData>? _source;
+    private readonly Func<SuitHudData>? _suitSource;
     private readonly FoodSlotView[] _food = new FoodSlotView[3];
     private HBoxContainer? _row;
+    private SuitHud? _suit;
     private VitalsBarView? _health;
     private VitalsBarView? _stamina;
     private Label? _rest;
@@ -31,12 +33,17 @@ public sealed partial class VitalsHud : CanvasLayer
 
     /// <summary>Initializes a new instance of the <see cref="VitalsHud"/> class.</summary>
     /// <param name="source">Builds the data of each frame; null when the data are set with <see cref="Apply"/>.</param>
-    public VitalsHud(Func<VitalsHudData>? source = null)
+    /// <param name="suitSource">Builds the data of the suit row (K6-34); null when the world has no hazards, then no suit row is shown.</param>
+    public VitalsHud(Func<VitalsHudData>? source = null, Func<SuitHudData>? suitSource = null)
     {
         _source = source;
+        _suitSource = suitSource;
         Name = "VitalsHud";
         Layer = 8;
     }
+
+    /// <summary>Gets the suit row above the bars, or null before the HUD is ready (tests).</summary>
+    public SuitHud? Suit => _suit;
 
     /// <summary>Gets the text on the health bar, for example <c>85 / 110</c> (tests).</summary>
     public string HealthText => _health?.Text ?? string.Empty;
@@ -77,6 +84,9 @@ public sealed partial class VitalsHud : CanvasLayer
         HudTheme.StyleLabel(_rest, 14, HudTheme.AccentTool);
         root.AddChild(_rest);
 
+        _suit = new SuitHud();
+        root.AddChild(_suit);
+
         _row = new HBoxContainer { Name = "Row", Alignment = BoxContainer.AlignmentMode.Center, MouseFilter = Control.MouseFilterEnum.Ignore };
         _row.AddThemeConstantOverride("separation", 14);
         root.AddChild(_row);
@@ -115,6 +125,11 @@ public sealed partial class VitalsHud : CanvasLayer
     public override void _Process(double delta)
     {
         _clock += delta;
+        if (_suitSource is { } suitSource && _suit is not null)
+        {
+            _suit.Apply(suitSource());
+        }
+
         if (_source is { } source)
         {
             Apply(source());

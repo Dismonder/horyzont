@@ -1,3 +1,5 @@
+using Horyzont.Core.Survival;
+
 namespace Horyzont.Core.Protocol.Messages;
 
 /// <summary>
@@ -17,6 +19,9 @@ namespace Horyzont.Core.Protocol.Messages;
 /// <param name="RestWarmupTicks">Progress of the warm-up in ticks, 0 to 1200.</param>
 /// <param name="RestRemainingTicks">Remaining ticks of the rest, 0 to 64 800.</param>
 /// <param name="Comfort">Comfort level of the surroundings, 0 to 10.</param>
+/// <param name="Environment">The protections and the hazards around the player (K6-34 tail, D18).</param>
+/// <param name="Suit">The resources of the suit, each 0 to its capacity (K6-34 tail).</param>
+/// <param name="Capacity">The capacities of the resources, each 1 to <c>ProtocolConstants.MaxSuitValue</c> (K6-34 tail).</param>
 public sealed record PlayerVitalsMessage(
     float Health,
     float HealthMax,
@@ -27,8 +32,21 @@ public sealed record PlayerVitalsMessage(
     bool Rested,
     ushort RestWarmupTicks,
     uint RestRemainingTicks,
-    byte Comfort) : Message
+    byte Comfort,
+    VitalsEnvironment Environment,
+    SuitResources Suit,
+    SuitResources Capacity) : Message
 {
+    /// <summary>The suit of a server without hazard content: every resource full at the base capacity (D18).</summary>
+    public static readonly SuitResources DefaultSuit = new(100f, 100f, 100f, 100f, 100f);
+
+    /// <summary>Creates the message of a server without hazard content: no environment, the suit and the capacities at <see cref="DefaultSuit"/>.</summary>
+    public PlayerVitalsMessage(
+        float health, float healthMax, float stamina, float staminaMax, bool exhausted, bool restConditionsMet, bool rested, ushort restWarmupTicks, uint restRemainingTicks, byte comfort)
+        : this(health, healthMax, stamina, staminaMax, exhausted, restConditionsMet, rested, restWarmupTicks, restRemainingTicks, comfort, VitalsEnvironment.None, DefaultSuit, DefaultSuit)
+    {
+    }
+
     /// <inheritdoc />
     public override MessageType Type => MessageType.PlayerVitals;
 }

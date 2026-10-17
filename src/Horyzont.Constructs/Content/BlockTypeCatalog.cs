@@ -298,6 +298,10 @@ public sealed partial class BlockTypeCatalog
                 function = BlockFunction.CreateStationUpgrade(upgraded);
                 allowed = ["station"];
                 break;
+            case "oxygen_generator":
+                function = BlockFunction.CreateOxygenGenerator(ReadSlots(element, path, "inputSlots"));
+                allowed = ["inputSlots"];
+                break;
             case "light":
                 function = BlockFunction.Light;
                 light = new BlockLightDef(

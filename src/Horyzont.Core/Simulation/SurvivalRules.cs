@@ -17,7 +17,8 @@ namespace Horyzont.Core.Simulation;
 /// value they depend on. Chests are reachable for item moves (K6-30 D9): a shared one or the player's own, within
 /// <see cref="GameRules.ContainerKeepRangeMeters"/> of the eye. Order of the checks: docs/plans/K6-29W-ekwipunek-i-wydobycie.md, "Walidacja i rozwiązanie intencji przedmiotów".
 /// </summary>
-internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, SurvivalContent content, GameRules rules, PropField? props = null, VitalsRules? vitals = null)
+internal sealed class SurvivalRules(
+    WorldState state, ITerrainService terrain, SurvivalContent content, GameRules rules, PropField? props, VitalsRules vitals, HazardRules hazards)
 {
     private const int MaterialCount = 256;
 
@@ -27,12 +28,14 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
     private readonly List<Operation> _components = [];
     private readonly YieldLedger _ledger = new();
     private readonly List<PropInstance> _propsInSphere = [];
-    private readonly FoodRules _food = new(state, content, rules, vitals ?? VitalsRules.Default);
+    private readonly FoodRules _food = new(state, content, rules, vitals ?? throw new ArgumentNullException(nameof(vitals)));
+    private readonly SuitRules? _suit = content.HasHazards ? new SuitRules(state, content, hazards ?? throw new ArgumentNullException(nameof(hazards))) : null;
 
     /// <summary>
     /// The parameter step of an item intent: zero numbers, slots outside the container, the equipment container and a target equal to the
     /// source give <see cref="RejectReason.InvalidParameters"/>; a container that is neither the player's own nor a chest the player may use
-    /// gives <see cref="RejectReason.ContainerLocked"/>, a chest beyond the keep range <see cref="RejectReason.OutOfReach"/>.
+    /// gives <see cref="RejectReason.ContainerLocked"/>, a chest beyond the keep range <see cref="RejectReason.OutOfReach"/>. With the hazard content (K6-34 D13) the own equipment container is a valid
+    /// source and target of a move and a valid source of a drop; eating and refilling take from the own bag and hotbar only.
     /// </summary>
     internal RejectReason CheckItemParameters(PlayerId player, Intent intent)
     {
@@ -44,7 +47,7 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
                     return RejectReason.InvalidParameters;
                 }
 
-                var source = CheckSlot(player, move.From, allowChests: true, out _);
+                var source = CheckSlot(player, move.From, allowChests: true, out _, content.HasHazards);
                 if (source != RejectReason.None)
                 {
                     return source;
@@ -57,11 +60,11 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
                         return RejectReason.InvalidParameters;
                     }
 
-                    var anyTarget = CheckContainer(player, move.To.Container, allowChests: true, out var anyContainer);
+                    var anyTarget = CheckContainer(player, move.To.Container, allowChests: true, out var anyContainer, content.HasHazards);
                     return anyTarget == RejectReason.None && anyContainer!.Kind == ContainerKind.StationOutput ? RejectReason.InvalidParameters : anyTarget;
                 }
 
-                var target = CheckSlot(player, move.To.SlotRef, allowChests: true, out var targetContainer);
+                var target = CheckSlot(player, move.To.SlotRef, allowChests: true, out var targetContainer, content.HasHazards);
                 if (target != RejectReason.None)
                 {
                     return target;
@@ -76,19 +79,18 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
                 return move.To.SlotRef == move.From ? RejectReason.InvalidParameters : RejectReason.None;
 
             case ItemDropIntent drop:
-                return drop.Count == 0 ? RejectReason.InvalidParameters : CheckSlot(player, drop.Slot, allowChests: false, out _);
+                return drop.Count == 0 ? RejectReason.InvalidParameters : CheckSlot(player, drop.Slot, allowChests: false, out _, content.HasHazards);
 
             case QuickStackIntent:
                 return RejectReason.None;
 
             case EatIntent eat:
                 // Eating is from the own bag and hotbar only (K6-33 D10, DO USTALENIA-6); anything else, a missing container or a slot outside it is a parameter error.
-                return state.Containers.TryGet(eat.Container, out var eatContainer)
-                    && eatContainer.Owner == player
-                    && eatContainer.Kind is ContainerKind.PlayerBag or ContainerKind.Hotbar
-                    && eat.Slot < eatContainer.Size
-                    ? RejectReason.None
-                    : RejectReason.InvalidParameters;
+                return IsOwnBagOrHotbarSlot(player, eat.Container, eat.Slot) ? RejectReason.None : RejectReason.InvalidParameters;
+
+            case SuitRefillIntent refill:
+                // The same source as eating (K6-34 D7), and only with the hazard content.
+                return content.HasHazards && IsOwnBagOrHotbarSlot(player, refill.Container, refill.Slot) ? RejectReason.None : RejectReason.InvalidParameters;
 
             case TakeAllIntent takeAll:
                 if (!state.Containers.TryGet(takeAll.Container, out var chest))
@@ -124,6 +126,9 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
                 return ResolveDrop(drop, out operation);
             case EatIntent eat:
                 return _food.Resolve(player, eat, out operation);
+            case SuitRefillIntent refill:
+                operation = null!;
+                return _suit is null ? RejectReason.InvalidParameters : _suit.Resolve(player, refill, out operation);
             case TerrainToolIntent:
                 return ResolveTerrainEdit(player, (TerrainEditOp)IntentResolver.Resolve(state, player, intent, facts), out operation);
             default:
@@ -157,8 +162,14 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
 
         var limit = def.MaxStack;
         GetContainer(move.To.Container, out var targetContainer);
+        var toEquipment = targetContainer.Kind == ContainerKind.Equipment;
         if (move.To.AnySlot)
         {
+            if (toEquipment)
+            {
+                return ResolveMoveIntoEquipment(move, def, targetContainer, out operation);
+            }
+
             var slots = Copy(targetContainer, _bag);
             _components.Clear();
             if (ItemPlacement.MoveAny(move.From, targetContainer.Id, slots, source.Type, move.Count, limit, _components) == 0)
@@ -171,6 +182,17 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
         }
 
         var target = targetContainer.GetSlot(move.To.Slot);
+        if (toEquipment)
+        {
+            // One item to a slot of the layout that accepts it; a stack in the equipment is never larger than one (D13).
+            if (move.Count != 1 || !EquipmentLayout.Accepts(move.To.Slot, def.EquipmentSlot))
+            {
+                return RejectReason.InvalidParameters;
+            }
+
+            limit = 1;
+        }
+
         if (target.IsEmpty || target.Type == source.Type)
         {
             var moved = Math.Min(move.Count, limit - target.Count);
@@ -188,8 +210,43 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
             return RejectReason.InvalidParameters;
         }
 
+        // The item of the target comes to the slot of the source: a slot of the equipment takes only what its place in the layout accepts (D13).
+        if (sourceContainer.Kind == ContainerKind.Equipment && !(TryGetDef(target.Type, out var targetDef) && EquipmentLayout.Accepts(move.From.Slot, targetDef.EquipmentSlot)))
+        {
+            return RejectReason.InvalidParameters;
+        }
+
         operation = new ItemSwapOp(move.From, move.To.SlotRef, source.Type, target.Type);
         return RejectReason.None;
+    }
+
+    /// <summary>A move to "any slot" of the own equipment: one item into the first empty slot of the layout that accepts it (D13); all such slots taken give <see cref="RejectReason.InventoryFull"/>, no slot that accepts it <see cref="RejectReason.InvalidParameters"/>.</summary>
+    private static RejectReason ResolveMoveIntoEquipment(ItemMoveIntent move, ItemDef def, Container equipment, out Operation operation)
+    {
+        operation = null!;
+        if (move.Count != 1)
+        {
+            return RejectReason.InvalidParameters;
+        }
+
+        var fits = false;
+        for (var i = 0; i < equipment.Size; i++)
+        {
+            if (!EquipmentLayout.Accepts(i, def.EquipmentSlot))
+            {
+                continue;
+            }
+
+            fits = true;
+            if (equipment.GetSlot(i).IsEmpty)
+            {
+                operation = new ItemTransferOp(move.From, new SlotRef(equipment.Id, (ushort)i), move.ExpectedType, 1, 1);
+                return RejectReason.None;
+            }
+        }
+
+        // An item that no slot of the layout takes is not "full" but "does not fit" (review B5, P3-4).
+        return fits ? RejectReason.InventoryFull : RejectReason.InvalidParameters;
     }
 
     private RejectReason ResolveDrop(ItemDropIntent drop, out Operation operation)
@@ -380,9 +437,9 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
         return RejectReason.None;
     }
 
-    private RejectReason CheckSlot(PlayerId player, SlotRef slot, bool allowChests, out Container? container)
+    private RejectReason CheckSlot(PlayerId player, SlotRef slot, bool allowChests, out Container? container, bool allowEquipment = false)
     {
-        var reason = CheckContainer(player, slot.Container, allowChests, out container);
+        var reason = CheckContainer(player, slot.Container, allowChests, out container, allowEquipment);
         if (reason != RejectReason.None)
         {
             return reason;
@@ -393,9 +450,9 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
 
     /// <summary>
     /// The player's own bag and hotbar and, when <paramref name="allowChests"/>, a chest block's container the player may use (K6-30 D9);
-    /// the equipment container waits for K6-33/K6-34 (D6).
+    /// the own equipment container when <paramref name="allowEquipment"/> (K6-34 D13: only with the hazard content, only for moves and drops).
     /// </summary>
-    private RejectReason CheckContainer(PlayerId player, ContainerId id, bool allowChests, out Container? container)
+    private RejectReason CheckContainer(PlayerId player, ContainerId id, bool allowChests, out Container? container, bool allowEquipment = false)
     {
         if (!state.Containers.TryGet(id, out container))
         {
@@ -412,8 +469,17 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
             return RejectReason.ContainerLocked;
         }
 
-        return container.Kind is ContainerKind.PlayerBag or ContainerKind.Hotbar ? RejectReason.None : RejectReason.InvalidParameters;
+        return container.Kind is ContainerKind.PlayerBag or ContainerKind.Hotbar || (allowEquipment && container.Kind == ContainerKind.Equipment)
+            ? RejectReason.None
+            : RejectReason.InvalidParameters;
     }
+
+    /// <summary>A slot of the own bag or hotbar: the source of eating and refilling.</summary>
+    private bool IsOwnBagOrHotbarSlot(PlayerId player, ContainerId id, ushort slot) =>
+        state.Containers.TryGet(id, out var container)
+        && container.Owner == player
+        && container.Kind is ContainerKind.PlayerBag or ContainerKind.Hotbar
+        && slot < container.Size;
 
     /// <summary>True for the containers of a block: a chest and the input and the output of a station (K6-32 D17).</summary>
     private static bool IsBlockContainer(Container container) =>
@@ -422,6 +488,9 @@ internal sealed class SurvivalRules(WorldState state, ITerrainService terrain, S
 
     /// <summary>True when the content has recipes (K6-32): the crafting, the stations with time and the discoveries are on.</summary>
     internal bool HasRecipes => content.Recipes.Count > 0;
+
+    /// <summary>True when the content has hazards (K6-34): the suit, the equipment and the oxygen generator are on.</summary>
+    internal bool HasHazards => content.HasHazards;
 
     /// <summary>A shared container of a block or the player's own, with the eye within <see cref="GameRules.ContainerKeepRangeMeters"/> of its block.</summary>
     private RejectReason CheckBlockContainer(PlayerId player, Container chest)

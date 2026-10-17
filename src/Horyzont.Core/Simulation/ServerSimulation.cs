@@ -34,7 +34,9 @@ public sealed class ServerSimulation
     private readonly PropRules? _props;
     private readonly FunctionalBlockRules _functional;
     private readonly CraftingRules _crafting;
+    private readonly GeneratorRules _generators;
     private readonly StationSettlements? _settlements;
+    private readonly HazardContent? _hazardContent;
     private readonly List<BlockRef> _settleBefore = [];
     private readonly List<BlockRef> _settleAfter = [];
     private readonly List<Discovery> _discoveries = [];
@@ -84,9 +86,14 @@ public sealed class ServerSimulation
     /// The vitals rules of the world (K6-33 core review 1): the single source of the food numbers for the resolver of eating and for the
     /// vitals service of the server, which must be given the same instance. Null means <see cref="VitalsRules.Default"/>.
     /// </param>
+    /// <param name="hazards">
+    /// The hazard rules of the world (K6-34, review A1 3): the single source of the suit numbers (the capacity of a refill, the shelter, the generator range) for the resolvers and for the hazard
+    /// tracker of the server, which must be given the same instance. Null means <see cref="Horyzont.Core.Survival.HazardRules.Default"/>.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException">A value of <paramref name="hazards"/> is out of range (<see cref="Horyzont.Core.Survival.HazardRules.Validate"/>).</exception>
     public ServerSimulation(
         WorldState state, ITerrainService terrain, IJournalSink journal, GameRules rules, ILogger<ServerSimulation> logger,
-        BlockContentTable content, SurvivalContent? survival = null, VitalsRules? vitals = null)
+        BlockContentTable content, SurvivalContent? survival = null, VitalsRules? vitals = null, HazardRules? hazards = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(terrain);
@@ -104,15 +111,21 @@ public sealed class ServerSimulation
 
         // The rules of props exist only for content that has props (K6-31 D21): without them digging and hitting behave as in K6-29W and K6-30.
         var propField = survival is { Props.Count: > 0 } ? new PropField(state, terrain, rules) : null;
-        _survival = survival is null ? null : new SurvivalRules(state, terrain, survival, rules, propField, vitals);
+        HazardRules = hazards ?? HazardRules.Default;
+        HazardRules.Validate();
+        VitalsRules = vitals ?? VitalsRules.Default;
+        _survival = survival is null ? null : new SurvivalRules(state, terrain, survival, rules, propField, VitalsRules, HazardRules);
         _props = propField is null ? null : new PropRules(state, terrain, survival!, rules, propField);
         _functional = new FunctionalBlockRules(state, rules, content, survival);
         _crafting = new CraftingRules(state, rules, content, survival);
+        _generators = new GeneratorRules(state, content, survival);
 
         // The settlements and the automatic discoveries are on only when the content has recipes (K6-32 D9b); without them the K6-29W and K6-30 journals stay as they were.
         _settlements = survival is { Recipes.Count: > 0 } ? new StationSettlements(state, rules, survival) : null;
         Survival = survival;
-        VitalsRules = vitals ?? VitalsRules.Default;
+
+        // The generators are settled whenever the content has hazards, with or without recipes (review B1b, P3-7): their burning is a function of ticks and does not need the crafting content.
+        _hazardContent = survival?.Hazards;
         _validator = new IntentValidator(state, terrain, rules, content, _survival, _functional, _props);
     }
 
@@ -127,6 +140,9 @@ public sealed class ServerSimulation
 
     /// <summary>The vitals rules of the world; the vitals service of the server takes them from here so that both agree (K6-33 core review 1).</summary>
     public VitalsRules VitalsRules { get; }
+
+    /// <summary>The hazard rules of the world; the hazard tracker of the server takes them from here so that both agree (K6-34, review A1 3).</summary>
+    public HazardRules HazardRules { get; }
 
     /// <summary>Game rules.</summary>
     public GameRules Rules { get; }
@@ -163,8 +179,8 @@ public sealed class ServerSimulation
             return IntentResult.Rejected(reason);
         }
 
-        // A station the intent touches is settled before the intent is resolved (K6-32 D16a); the settlement stays applied if the intent is refused.
-        if (_settlements is not null)
+        // A station or a generator the intent touches is settled before the intent is resolved (K6-32 D16a); the settlement stays applied if the intent is refused.
+        if (_settlements is not null || _hazardContent is not null)
         {
             CollectStations(player, intent);
             SettleStations(_settleBefore);
@@ -191,7 +207,9 @@ public sealed class ServerSimulation
             operation = harvest;
             propResolved = true;
         }
-        else if (_crafting.TryResolve(player, intent, facts, out operation, out reason, out var refusalCostsToken) || _functional.TryResolve(player, intent, facts, out operation, out reason, out refusalCostsToken))
+        else if (_crafting.TryResolve(player, intent, facts, out operation, out reason, out var refusalCostsToken)
+            || TryResolveGenerator(player, intent, facts, out operation, out reason, out refusalCostsToken)
+            || _functional.TryResolve(player, intent, facts, out operation, out reason, out refusalCostsToken))
         {
             // Crafting and stations (K6-32), functional blocks (K6-30): chests, beds, lamps, doors, quick stack. The operation carries every value from the content.
             if (reason != RejectReason.None)
@@ -245,12 +263,19 @@ public sealed class ServerSimulation
 
         // The journal order of an intent (K6-32 D9, D16): the settlement before, the intent, the discovery of what it brought, the settlement after.
         DiscoverAfter(applied);
-        if (_settlements is not null)
+        if (_settlements is not null || _hazardContent is not null)
         {
             SettleStations(_settleAfter);
         }
 
         return IntentResult.Accepted(applied);
+    }
+
+    // Placing and taking down an oxygen generator (K6-34 D12): after the crafting rules and before the functional blocks.
+    private bool TryResolveGenerator(PlayerId player, Intent intent, IntentFacts facts, out Operation operation, out RejectReason reason, out bool refusalCostsToken)
+    {
+        refusalCostsToken = false;
+        return _generators.TryResolve(player, intent, facts, out operation, out reason);
     }
 
     /// <summary>
@@ -337,10 +362,10 @@ public sealed class ServerSimulation
     }
 
     /// <summary>
-    /// Settles a station with time at the current tick as one server operation (K6-32 D16): the pieces done since the start move from the input to the
-    /// output.
+    /// Settles a station with time (K6-32 D16) or an oxygen generator (K6-34 D12) at the current tick as one server operation: the pieces done since the start move from the input to the
+    /// output; the fuel cells burned since the start leave the input of a generator.
     /// </summary>
-    /// <param name="station">The block with the station state.</param>
+    /// <param name="station">The block with the station or generator state.</param>
     /// <returns>The applied operation, null when nothing changes (no state, no recipe, no piece done and the same start).</returns>
     public AppliedOperation? TrySettleStation(BlockRef station)
     {
@@ -601,7 +626,8 @@ public sealed class ServerSimulation
 
     private void AddStation(List<BlockRef> list, BlockRef block)
     {
-        if (!list.Contains(block) && State.BlockEntities.TryGet(block, out var entity) && entity is StationBlockState)
+        if (!list.Contains(block) && State.BlockEntities.TryGet(block, out var entity)
+            && ((entity is StationBlockState && _settlements is not null) || (entity is OxygenGeneratorBlockState && _hazardContent is not null)))
         {
             list.Add(block);
         }
@@ -618,7 +644,21 @@ public sealed class ServerSimulation
     /// <summary>Applies, journals and announces the settlement of one station, when it changes anything.</summary>
     private AppliedOperation? SettleStation(BlockRef station)
     {
-        if (_settlements is null || !_settlements.TryBuild(station, State.CurrentTick, out var operation))
+        Operation operation = null!;
+        if (!State.BlockEntities.TryGet(station, out var entity))
+        {
+            return null;
+        }
+
+        // The builder follows the kind of the state: a station with time or an oxygen generator.
+        if (entity is OxygenGeneratorBlockState)
+        {
+            if (_hazardContent is null || !GeneratorSettlements.TryBuild(State, _hazardContent, Rules, station, State.CurrentTick, out operation))
+            {
+                return null;
+            }
+        }
+        else if (_settlements is null || !_settlements.TryBuild(station, State.CurrentTick, out operation))
         {
             return null;
         }

@@ -15,7 +15,8 @@ namespace Horyzont.Server.Survival;
 /// it reads the motion of each body, the food and the pending costs and damage, advances <see cref="VitalsStep"/> and stores the result with
 /// <see cref="ServerSimulation.UpdatePlayerVitals"/> (outside the journal and the hash). Every <see cref="VitalsRules.VitalsSendEveryTicks"/> ticks each ready player
 /// gets message 44 about itself. Registered only for a world with survival content. The numbers come from <see cref="ServerSimulation.VitalsRules"/>, the same
-/// instance the resolver of eating uses. Main thread only; the tick path allocates nothing except the message.
+/// instance the resolver of eating uses. With the hazard content (K6-34) it also steps the suit of each player (<see cref="SuitStep"/>, the surroundings from a <see cref="HazardTracker"/>), adds the damage at zero
+/// to the same tick and sends the suit tail of the message. Main thread only; the tick path allocates nothing except the message.
 /// </summary>
 public sealed partial class VitalsService : IServerTickParticipant, IServerPlayerObserver
 {
@@ -27,6 +28,8 @@ public sealed partial class VitalsService : IServerTickParticipant, IServerPlaye
     private readonly Dictionary<PlayerId, PlayerData> _data = [];
     private ServerSimulation? _tableFor;
     private FoodTable? _table;
+    private SuitModuleTable? _modules;
+    private HazardTracker? _hazards;
 
     /// <summary>Initializes a new instance of the <see cref="VitalsService"/> class.</summary>
     /// <param name="simulation">The simulation of the running world (null before the world has started).</param>
@@ -92,7 +95,7 @@ public sealed partial class VitalsService : IServerTickParticipant, IServerPlaye
         }
     }
 
-    /// <summary>Spends stamina at once when the player has enough; otherwise changes nothing.</summary>
+    /// <summary>Spends stamina at once when the player has enough; otherwise changes nothing. Spending down to 0 does not set the exhaustion at once: <c>VitalsStep</c> sets it in the next tick, so <see cref="IsExhausted"/> still answers false for one tick.</summary>
     /// <param name="player">The player.</param>
     /// <param name="amount">Stamina points.</param>
     /// <returns>Whether the stamina was spent.</returns>
@@ -122,7 +125,11 @@ public sealed partial class VitalsService : IServerTickParticipant, IServerPlaye
     public void OnPlayerReady(PlayerId player) => Data(player).Ready = true;
 
     /// <inheritdoc />
-    public void OnPlayerLeaving(PlayerId player, DisconnectCode reason) => _data.Remove(player);
+    public void OnPlayerLeaving(PlayerId player, DisconnectCode reason)
+    {
+        _data.Remove(player);
+        _hazards?.Forget(player);
+    }
 
     /// <inheritdoc />
     public void OnIntentAccepted(PlayerId player, Intent intent)

@@ -23,13 +23,13 @@ internal sealed class SimFixture
 {
     public SimFixture(
         GameRules? rules = null, FakeTerrainService? terrain = null, WorldState? state = null, IJournalSink? journal = null,
-        BlockContentTable? content = null, SurvivalContent? survival = null, VitalsRules? vitals = null)
+        BlockContentTable? content = null, SurvivalContent? survival = null, VitalsRules? vitals = null, HazardRules? hazards = null)
     {
         Rules = rules ?? new GameRules();
         Terrain = terrain ?? new FakeTerrainService();
         State = state ?? WorldFactory.CreateDefault();
         Journal = new InMemoryJournal();
-        Sim = new ServerSimulation(State, Terrain, journal ?? Journal, Rules, NullLogger<ServerSimulation>.Instance, content ?? BlockContentTable.Empty, survival, vitals);
+        Sim = new ServerSimulation(State, Terrain, journal ?? Journal, Rules, NullLogger<ServerSimulation>.Instance, content ?? BlockContentTable.Empty, survival, vitals, hazards);
         State.BlockTypes.TryGetId(WorldFactory.StoneBlockKey, out var stone);
         Stone = stone;
     }

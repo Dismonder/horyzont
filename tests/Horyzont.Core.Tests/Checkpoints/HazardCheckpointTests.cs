@@ -146,10 +146,11 @@ public sealed class HazardCheckpointTests
 
         f.Give(Player1, Canister, 2);
         f.Apply(new CompoundOp([new ItemDestroyOp(BagSlot(Player1, 0), Canister, 1, ItemSink.SuitRefill), Refill(Player1, SuitResource.Oxygen, 50, 100)]));
-        f.Apply(GeneratorState(GeneratorCell, input, f.Now));
+        // The start of the burning (D12, A1 review 1): the cell is destroyed when it starts to burn, in the same operation that sets the start.
+        f.Apply(new CompoundOp([new ItemDestroyOp(new SlotRef(input, 0), Fuel, 1, ItemSink.Fuel), GeneratorState(GeneratorCell, input, f.Now)]));
         f.AdvanceTicks(100);
 
-        // The settlement of the generator (D12): the burned cell is destroyed with the sink Fuel and the start moves, in one operation.
+        // The next settlement: the cell that burned after the start is replaced by the next queued one, the sink Fuel and the moved start, in one operation.
         f.Apply(new CompoundOp([new ItemDestroyOp(new SlotRef(input, 0), Fuel, 1, ItemSink.Fuel), GeneratorState(GeneratorCell, input, f.Now)]));
         f.Apply(Refill(Player1, SuitResource.Filter, 10, 100));
         var tail = f.Blocks.Sim.Journal.Entries.Where(e => e.Id > checkpoint.BarrierOpId).ToList();
@@ -164,7 +165,7 @@ public sealed class HazardCheckpointTests
         }
 
         Assert.Equal(StateHasher.Hash(f.State), StateHasher.Hash(replay.State));
-        Assert.Equal(2, replay.State.Containers.TryGet(input, out var fuel) ? fuel.GetSlot(0).Count : -1);
+        Assert.Equal(1, replay.State.Containers.TryGet(input, out var fuel) ? fuel.GetSlot(0).Count : -1);
 
         // The checkpoint had the oxygen at 30; the refill from the tail brought it to 80 again, and the filter refill from the tail applied too.
         Assert.True(replay.State.Players.TryGet(Player1, out var player));

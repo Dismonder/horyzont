@@ -36,6 +36,21 @@ public sealed class SuitModuleTable
         return table;
     }
 
+    /// <summary>Builds the table from a lookup, for a client that has the content of the items but no registry of the world (K6-34 D20). The lookup is called exactly once for every id 1 to <see cref="ProtocolConstants.MaxItemTypes"/>, ascending.</summary>
+    /// <param name="lookup">The module statistics of an item type id, null for a type that is no module.</param>
+    /// <returns>The table.</returns>
+    public static SuitModuleTable Build(Func<ItemTypeId, SuitModuleDef?> lookup)
+    {
+        ArgumentNullException.ThrowIfNull(lookup);
+        var table = new SuitModuleTable();
+        for (var id = 1; id <= ProtocolConstants.MaxItemTypes; id++)
+        {
+            table._byType[id] = lookup(new ItemTypeId((ushort)id));
+        }
+
+        return table;
+    }
+
     /// <summary>Looks up the module statistics of an item type; allocates nothing.</summary>
     /// <param name="type">The item type.</param>
     /// <param name="module">The statistics when the type is a module.</param>

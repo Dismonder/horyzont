@@ -62,6 +62,12 @@ public sealed class ToolController
     /// <summary>Gets or sets the eating of the food in the selected hotbar slot (K6-33); null leaves the press of a slot without a tool unused.</summary>
     public Horyzont.Client.Survival.FoodUse? Food { get; set; }
 
+    /// <summary>Gets or sets the refilling of the suit from the selected hotbar slot (K6-34); null leaves the press unused.</summary>
+    public Horyzont.Client.Survival.SuitRefillUse? SuitRefill { get; set; }
+
+    /// <summary>Gets the client tick of the latest press on a refill whose resource was full (the HUD shows a local text for a moment), or null.</summary>
+    public long? SuitFullTick { get; private set; }
+
     /// <summary>Gets the current tool and its parameters.</summary>
     public ToolSettings Settings { get; private set; }
 
@@ -126,6 +132,22 @@ public sealed class ToolController
                 else if (refusal != RejectReason.None)
                 {
                     _pending.NoteLocalRefusal(refusal);
+                }
+            }
+
+            // K6-34: a fresh press with a suit refill in the selected slot refills the suit, unless the resource is already full.
+            if (SuitRefill is { } suit)
+            {
+                if (suit.TryBuild(input.PrimaryPressed, Props?.HasTarget ?? false, out var refill, out var full))
+                {
+                    if (Begin(PaceClass.Item, false, clientTick))
+                    {
+                        Send(refill!, clientTick);
+                    }
+                }
+                else if (full)
+                {
+                    SuitFullTick = clientTick;
                 }
             }
 

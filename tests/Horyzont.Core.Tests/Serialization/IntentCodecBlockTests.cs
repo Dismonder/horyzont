@@ -129,8 +129,8 @@ public sealed class IntentCodecBlockTests
         Kit.AssertIntentViolation("17 01");
         Kit.AssertIntentViolation("17 01 07 00");
 
-        // Codes of the survival range that no package defines yet (18 is the craft intent of K6-32, 1B the prop hit of K6-31).
-        foreach (var code in new[] { "19", "1A", "1E" })
+        // Codes of the survival range that no package defines yet (18 is the craft intent of K6-32, 19 the eat intent of K6-33, 1A the suit refill of K6-34, 1B the prop hit of K6-31, 1C and 1D the block intents).
+        foreach (var code in new[] { "1E", "1F" })
         {
             Kit.AssertIntentViolation(code + " 01");
         }

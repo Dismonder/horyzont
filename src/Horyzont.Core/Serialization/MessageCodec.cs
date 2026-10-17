@@ -12,6 +12,7 @@ using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Ships;
 using Horyzont.Core.Ships.Flight;
+using Horyzont.Core.Survival;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Markers;
@@ -28,6 +29,11 @@ public static class MessageCodec
     private const int VitalsFlagExhausted = 1;
     private const int VitalsFlagConditions = 2;
     private const int VitalsFlagRested = 4;
+    private const int EnvironmentFlagSheltered = 1;
+    private const int EnvironmentFlagGenerator = 2;
+    private const int EnvironmentFlagLifeSupport = 4;
+    private const int HazardMaskAll = 0x1F;
+    private const int ShelterRayCount = 26;
 
     /// <summary>Appends the frame of <paramref name="message"/>; throws <see cref="ArgumentException"/> when it exceeds the channel limit.</summary>
     /// <param name="w">Target writer.</param>
@@ -1082,6 +1088,57 @@ public static class MessageCodec
         w.WriteUInt16(m.RestWarmupTicks);
         w.WriteVarUInt(m.RestRemainingTicks);
         w.WriteByte(m.Comfort);
+        WriteSuitTail(w, m);
+    }
+
+    /// <summary>The tail of K6-34 (D18): the protections, three hazard masks, the rays that hit and five (value, capacity) pairs.</summary>
+    private static void WriteSuitTail(ByteWriter w, PlayerVitalsMessage m)
+    {
+        var environment = m.Environment;
+        if ((environment.Present & ~HazardMaskAll) != 0 || (environment.Active & ~HazardMaskAll) != 0 || (environment.Exposed & ~HazardMaskAll) != 0)
+        {
+            throw new ArgumentException("A hazard mask has only the bits 0 to 4.", nameof(m));
+        }
+
+        if ((environment.Active & ~environment.Present) != 0 || (environment.Exposed & ~environment.Active) != 0)
+        {
+            throw new ArgumentException("The active hazards are a subset of the present ones and the exposed ones a subset of the active ones.", nameof(m));
+        }
+
+        if (environment.ShelterHits > ShelterRayCount)
+        {
+            throw new ArgumentException($"At most {ShelterRayCount} rays can hit, not {environment.ShelterHits}.", nameof(m));
+        }
+
+        var capacity = m.Capacity;
+        var suit = m.Suit;
+        for (var i = 0; i < 5; i++)
+        {
+            var resource = (SuitResource)(i + 1);
+            if (!float.IsFinite(capacity[resource]) || capacity[resource] < 1f || capacity[resource] > ProtocolConstants.MaxSuitValue)
+            {
+                throw new ArgumentException($"A capacity is finite and within 1 to {ProtocolConstants.MaxSuitValue}, not {capacity[resource]}.", nameof(m));
+            }
+
+            if (!float.IsFinite(suit[resource]) || suit[resource] < 0f || suit[resource] > capacity[resource])
+            {
+                throw new ArgumentException($"A suit value is finite and within 0 to its capacity {capacity[resource]}, not {suit[resource]}.", nameof(m));
+            }
+        }
+
+        w.WriteByte((byte)((environment.Sheltered ? EnvironmentFlagSheltered : 0) | (environment.Generator ? EnvironmentFlagGenerator : 0) | (environment.LifeSupport ? EnvironmentFlagLifeSupport : 0)));
+        w.WriteByte(environment.Present);
+        w.WriteByte(environment.Active);
+        w.WriteByte(environment.Exposed);
+        w.WriteByte(environment.ShelterHits);
+        for (var i = 0; i < 5; i++)
+        {
+            var resource = (SuitResource)(i + 1);
+
+            // -0 equals 0 and passes the check; the bytes of the value stay canonical.
+            w.WriteSingle(suit[resource] == 0f ? 0f : suit[resource]);
+            w.WriteSingle(capacity[resource]);
+        }
     }
 
     private static void CheckVital(float value, string parameter)
@@ -1129,7 +1186,60 @@ public static class MessageCodec
             throw new ProtocolViolationException("The rest fields contradict each other: rested exactly with ticks remaining, a warm-up only while the conditions hold.");
         }
 
-        return new PlayerVitalsMessage(health, healthMax, stamina, staminaMax, (flags & VitalsFlagExhausted) != 0, conditions, rested, warmup, (uint)remaining, comfort);
+        var environment = ReadEnvironment(ref r);
+        var capacities = new float[5];
+        var values = new float[5];
+        for (var i = 0; i < 5; i++)
+        {
+            var value = r.ReadSingle();
+            var capacity = r.ReadSingle();
+            if (!float.IsFinite(capacity) || capacity < 1f || capacity > ProtocolConstants.MaxSuitValue)
+            {
+                throw new ProtocolViolationException($"A capacity is finite and within 1 to {ProtocolConstants.MaxSuitValue}, not {capacity}.");
+            }
+
+            if (!float.IsFinite(value) || value < 0f || value > capacity)
+            {
+                throw new ProtocolViolationException($"A suit value is finite and within 0 to its capacity {capacity}, not {value}.");
+            }
+
+            values[i] = value == 0f ? 0f : value;
+            capacities[i] = capacity;
+        }
+
+        return new PlayerVitalsMessage(
+            health, healthMax, stamina, staminaMax, (flags & VitalsFlagExhausted) != 0, conditions, rested, warmup, (uint)remaining, comfort,
+            environment, new SuitResources(values[0], values[1], values[2], values[3], values[4]), new SuitResources(capacities[0], capacities[1], capacities[2], capacities[3], capacities[4]));
+    }
+
+    private static VitalsEnvironment ReadEnvironment(ref ByteReader r)
+    {
+        byte flags = r.ReadByte();
+        if ((flags & ~(EnvironmentFlagSheltered | EnvironmentFlagGenerator | EnvironmentFlagLifeSupport)) != 0)
+        {
+            throw new ProtocolViolationException($"Unknown environment flags {flags}.");
+        }
+
+        byte present = r.ReadByte();
+        byte active = r.ReadByte();
+        byte exposed = r.ReadByte();
+        if ((present & ~HazardMaskAll) != 0 || (active & ~HazardMaskAll) != 0 || (exposed & ~HazardMaskAll) != 0)
+        {
+            throw new ProtocolViolationException("A hazard mask has only the bits 0 to 4.");
+        }
+
+        if ((active & ~present) != 0 || (exposed & ~active) != 0)
+        {
+            throw new ProtocolViolationException("The active hazards are a subset of the present ones and the exposed ones a subset of the active ones.");
+        }
+
+        byte hits = r.ReadByte();
+        if (hits > ShelterRayCount)
+        {
+            throw new ProtocolViolationException($"At most {ShelterRayCount} rays can hit, not {hits}.");
+        }
+
+        return new VitalsEnvironment((flags & EnvironmentFlagSheltered) != 0, (flags & EnvironmentFlagGenerator) != 0, (flags & EnvironmentFlagLifeSupport) != 0, present, active, exposed, hits);
     }
 
     private static float ReadVital(ref ByteReader r)

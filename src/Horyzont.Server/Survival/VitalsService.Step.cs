@@ -22,6 +22,13 @@ public sealed partial class VitalsService
         if (!ReferenceEquals(_tableFor, sim))
         {
             _table = FoodTable.Build(sim.Survival, sim.State.ItemTypes);
+            _modules = sim.Survival.HasHazards ? SuitModuleTable.Build(sim.Survival, sim.State.ItemTypes) : null;
+            _hazards = sim.Survival.HasHazards ? new HazardTracker(sim) : null;
+            if (_hazards is { IntensityAdjusted: true })
+            {
+                _logger.HazardIntensityAdjusted(_hazards.RawIntensity, _hazards.Intensity);
+            }
+
             _tableFor = sim;
         }
 
@@ -53,9 +60,14 @@ public sealed partial class VitalsService
         var remaining = vitals.RestedUntil > now ? Math.Min(vitals.RestedUntil.Value - now.Value, (ulong)ProtocolConstants.MaxRestRemainingTicks) : 0UL;
         var met = data.Rest.ConditionsMet;
         var warmup = met ? (ushort)Math.Min(data.Rest.WarmupTicks, (ulong)ProtocolConstants.MaxRestWarmupTicks) : (ushort)0;
-        return new PlayerVitalsMessage(
-            vitals.Health, data.HealthMax, vitals.Stamina, data.StaminaMax, vitals.Exhausted, met, remaining > 0, warmup, (uint)remaining,
-            (byte)Math.Min((int)data.Rest.Comfort, ProtocolConstants.MaxRestComfort));
+        var comfort = (byte)Math.Min((int)data.Rest.Comfort, ProtocolConstants.MaxRestComfort);
+
+        // The suit and its capacity come from the same step, and the value never exceeds the capacity of that step: the codec refuses a value above its capacity (review B5, P2-1).
+        return data.HasSuit
+            ? new PlayerVitalsMessage(
+                vitals.Health, data.HealthMax, vitals.Stamina, data.StaminaMax, vitals.Exhausted, met, remaining > 0, warmup, (uint)remaining, comfort,
+                data.Environment, Clamp(data.Suit, data.Capacity), data.Capacity)
+            : new PlayerVitalsMessage(vitals.Health, data.HealthMax, vitals.Stamina, data.StaminaMax, vitals.Exhausted, met, remaining > 0, warmup, (uint)remaining, comfort);
     }
 
     private bool IsOnline(PlayerId player) =>
@@ -96,6 +108,15 @@ public sealed partial class VitalsService
         public float HealthMax { get; set; }
 
         public float StaminaMax { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether the suit was stepped (the world has hazard content), so the fields below belong to the last step.</summary>
+        public bool HasSuit { get; set; }
+
+        public SuitResources Suit { get; set; }
+
+        public SuitResources Capacity { get; set; }
+
+        public VitalsEnvironment Environment { get; set; }
 
         public RestState Rest { get; } = new();
     }

@@ -18,6 +18,7 @@ namespace Horyzont.Game.Client.Tools;
 public sealed partial class ToolHud : CanvasLayer
 {
     private const int ToggleMessageTicks = 180;
+    private const int SuitFullMessageTicks = 120;
 
     private readonly ToolNode _tools;
     private readonly StringBuilder _text = new();
@@ -106,6 +107,7 @@ public sealed partial class ToolHud : CanvasLayer
         var refusal = _tools.Pending?.LastRejection ?? RejectReason.None;
         var ship = _tools.Ship?.Aimed;
         var toggle = _tools.Ticks - _tools.LastShipToggleTick < ToggleMessageTicks ? _tools.LastShipToggle : null;
+        var suitFull = controller.SuitFullTick is { } fullTick && _tools.Ticks - fullTick < SuitFullMessageTicks;
         var stockCount = -1;
         var stockName = string.Empty;
         if (settings.Tool == ToolKind.TerrainManipulator && _tools.Inventory is { } inventory
@@ -117,7 +119,7 @@ public sealed partial class ToolHud : CanvasLayer
 
         var shown = new Shown(
             settings.Tool, settings.Radius, settings.FillMaterial, settings.BlockType, settings.Orientation, hint, waiting, refusal, ship, toggle,
-            stockCount, stockName);
+            stockCount, stockName, suitFull);
         if (_hasShown && shown.Equals(_shown))
         {
             return;
@@ -160,6 +162,11 @@ public sealed partial class ToolHud : CanvasLayer
         if (ship is not null)
         {
             AppendShip(ship);
+        }
+
+        if (suitFull)
+        {
+            _text.Append('\n').Append(T("HUD_SUIT_FULL"));
         }
 
         if (toggle is ShipModeToggleResult.NotACockpit or ShipModeToggleResult.NoConstruct)
@@ -237,5 +244,5 @@ public sealed partial class ToolHud : CanvasLayer
 
     private readonly record struct Shown(
         ToolKind Tool, float Radius, byte Material, ushort Block, byte Orientation, RejectReason Hint, bool Waiting, RejectReason Refusal,
-        AimedShip? Ship, ShipModeToggleResult? Toggle, int StockCount, string StockName);
+        AimedShip? Ship, ShipModeToggleResult? Toggle, int StockCount, string StockName, bool SuitFull);
 }

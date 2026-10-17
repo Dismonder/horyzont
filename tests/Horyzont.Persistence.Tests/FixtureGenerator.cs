@@ -228,6 +228,33 @@ public sealed class FixtureGenerator
         File.Copy(dir.WorldPath, target);
     }
 
+    /// <summary>
+    /// Generates <c>world-v3-hazards.db</c> (K6-34 D21): Alice online with a tank in the module slot and a suit (blob 2 version 3), Bob offline without a suit, one generator that burns with two fuel packs and an idle one,
+    /// a checkpoint, and in the journal tail a refill and the settlement of the burning generator. Run once, by hand, and commit the file.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "Manual")]
+    public async Task Generate_WorldV3Hazards()
+    {
+        var target = Path.Combine(RepoRoot(), "tests", "Horyzont.Persistence.Tests", "Fixtures", HazardPersistenceTests.FixtureName);
+        Assert.False(File.Exists(target), $"{target} exists; delete it first if it really must be regenerated.");
+        using var dir = new TempDirectory();
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 17, 9, 0, 0, TimeSpan.Zero));
+        await using (var h = WorldHarness.CreateNew(dir.WorldPath, world: HazardWorldScript.NewWorld(), time: time))
+        {
+            var built = HazardWorldScript.Build(h);
+            Assert.True(await h.CheckpointAndPump());
+            HazardWorldScript.BuildTail(h, built);
+            await h.FlushAndPump();
+            Console.WriteLine("HAZARD HASH " + Horyzont.Core.Hashing.StateHasher.Hash(h.State));
+        }
+
+        dir.ReleasePools();
+        RawDb.Execute(dir.WorldPath, "PRAGMA journal_mode = DELETE;");
+        Assert.False(File.Exists(dir.WorldPath + "-wal"));
+        File.Copy(dir.WorldPath, target);
+    }
+
     private static string RepoRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);

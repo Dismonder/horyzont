@@ -540,7 +540,14 @@ public static class CodecGen
         BlockConfigIntent.Select(i => (Intent)i),
         CraftIntent.Select(i => (Intent)i),
         PropHitIntent.Select(i => (Intent)i),
-        EatIntent.Select(i => (Intent)i));
+        EatIntent.Select(i => (Intent)i),
+        SuitRefillIntent.Select(i => (Intent)i));
+
+    /// <summary>Suit refill intents (K6-34): any container and slot of 0 to 65535 (the codec checks the shape only).</summary>
+    public static Gen<SuitRefillIntent> SuitRefillIntent { get; } =
+        from container in ContainerId
+        from slot in VarU16
+        select new SuitRefillIntent(container, slot);
 
     /// <summary>Eat intents (K6-33): any container and slot of 0 to 65535 (the codec checks the shape only).</summary>
     public static Gen<EatIntent> EatIntent { get; } =
@@ -591,8 +598,40 @@ public static class CodecGen
             (1, Gen.Choose(1, ProtocolConstants.MaxRestRemainingTicks)),
             (1, Gen.Elements(1, ProtocolConstants.MaxRestRemainingTicks)))
         from comfort in Gen.Choose(0, 10)
-        select new PlayerVitalsMessage(
-            health, healthMax, stamina, staminaMax, exhausted, conditions, remaining > 0, (ushort)(conditions ? warmup : 0), (uint)remaining, (byte)comfort);
+        from tail in Gen.Frequency((1, Gen.Constant<(VitalsEnvironment, Horyzont.Core.Survival.SuitResources, Horyzont.Core.Survival.SuitResources)?>(null)), (3, SuitTail.Select(t => ((VitalsEnvironment, Horyzont.Core.Survival.SuitResources, Horyzont.Core.Survival.SuitResources)?)t)))
+        select tail is { } t
+            ? new PlayerVitalsMessage(
+                health, healthMax, stamina, staminaMax, exhausted, conditions, remaining > 0, (ushort)(conditions ? warmup : 0), (uint)remaining, (byte)comfort, t.Item1, t.Item2, t.Item3)
+            : new PlayerVitalsMessage(
+                health, healthMax, stamina, staminaMax, exhausted, conditions, remaining > 0, (ushort)(conditions ? warmup : 0), (uint)remaining, (byte)comfort);
+
+    /// <summary>
+    /// The suit tail of message 44 (K6-34 D18): three protection flags, masks that are subsets of each other, 0 to 26 rays, capacities of 1 to 1000 and values of 0 to the capacity,
+    /// all in steps of a quarter.
+    /// </summary>
+    private static Gen<(VitalsEnvironment Environment, Horyzont.Core.Survival.SuitResources Suit, Horyzont.Core.Survival.SuitResources Capacity)> SuitTail { get; } =
+        from sheltered in Gen.Elements(false, true)
+        from generator in Gen.Elements(false, true)
+        from lifeSupport in Gen.Elements(false, true)
+        from present in Gen.Choose(0, 0x1F)
+        from activeBits in Gen.Choose(0, 0x1F)
+        from exposedBits in Gen.Choose(0, 0x1F)
+        from hits in Gen.Choose(0, 26)
+        from capacity in CapacityGen
+        from fractions in Gen.Choose(0, 4).ArrayOf(5)
+        let active = activeBits & present
+        let exposed = exposedBits & active
+        let values = new Horyzont.Core.Survival.SuitResources(
+            capacity.Heating * fractions[0] / 4f, capacity.Cooling * fractions[1] / 4f, capacity.Filter * fractions[2] / 4f, capacity.Shield * fractions[3] / 4f, capacity.Oxygen * fractions[4] / 4f)
+        select (new VitalsEnvironment(sheltered, generator, lifeSupport, (byte)present, (byte)active, (byte)exposed, (byte)hits), values, capacity);
+
+    private static Gen<Horyzont.Core.Survival.SuitResources> CapacityGen =>
+        from heating in Gen.Choose(4, 4000)
+        from cooling in Gen.Choose(4, 4000)
+        from filter in Gen.Choose(4, 4000)
+        from shield in Gen.Choose(4, 4000)
+        from oxygen in Gen.Choose(4, 4000)
+        select new Horyzont.Core.Survival.SuitResources(heating / 4f, cooling / 4f, filter / 4f, shield / 4f, oxygen / 4f);
 
     /// <summary>Prop hit intents (K6-31): any planet and prop, a hotbar slot of 0 to 255.</summary>
     public static Gen<PropHitIntent> PropHitIntent { get; } =

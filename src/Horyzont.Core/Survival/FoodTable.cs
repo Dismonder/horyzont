@@ -36,7 +36,7 @@ public sealed class FoodTable
         return table;
     }
 
-    /// <summary>Builds the table from a lookup, for a client that has the content of the items but no registry of the world (K6-33 D21).</summary>
+    /// <summary>Builds the table from a lookup, for a client that has the content of the items but no registry of the world (K6-33 D21). The lookup is called exactly once for every id 1 to <see cref="ProtocolConstants.MaxItemTypes"/>, ascending; an exception from it propagates; the table is no part of the format or the hash.</summary>
     /// <param name="lookup">The food statistics of an item type id, null for a type that is no food.</param>
     /// <returns>The table.</returns>
     public static FoodTable Build(Func<ItemTypeId, FoodDef?> lookup)
