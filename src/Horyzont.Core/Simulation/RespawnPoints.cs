@@ -48,7 +48,7 @@ public static class RespawnPoints
 {
     // A building tilted more than 120 degrees from the planet up is upside down; a side is dropped when it points more than 45 degrees below the horizon.
     private const double MinUprightDot = -0.5;
-    private static readonly double MaxDownDot = Math.Sqrt(0.5);
+    private static readonly double _maxDownDot = Math.Sqrt(0.5);
 
     // The sides of the bed cell in the axes of the construct, in the fixed order of the candidates: +X, -X, +Z, -Z.
     private static readonly Vector3D[] _sides = [new(1, 0, 0), new(-1, 0, 0), new(0, 0, 1), new(0, 0, -1)];
@@ -109,7 +109,7 @@ public static class RespawnPoints
             var side = _sides[i];
 
             // A side that points more than 45 degrees below the horizon is not a place to stand, whatever lies there.
-            if (Vector3D.Dot(FrameMath.TransformDirection(pose, side), up) < -MaxDownDot)
+            if (Vector3D.Dot(FrameMath.TransformDirection(pose, side), up) < -_maxDownDot)
             {
                 continue;
             }
