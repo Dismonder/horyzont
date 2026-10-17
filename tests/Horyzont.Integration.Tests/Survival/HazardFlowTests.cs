@@ -96,21 +96,24 @@ public sealed class HazardFlowTests
         await rig.StartAsync();
         var player = await rig.JoinAsync(1);
         Assert.True(await rig.WaitForAsync<PlayerVitalsMessage>(m => m.Suit.Oxygen < 100f), "no vitals with the drain arrived");
-        SetOxygen(rig, player, 20f);
+        SetOxygen(rig, player, 0f);
 
-        // Without a generator the oxygen only goes down, and nothing protects against the vacuum.
-        rig.StepMany(30);
-        var drained = rig.Latest<PlayerVitalsMessage>()!;
-        Assert.True(drained.Suit.Oxygen < 20f, "the oxygen should have drained: " + drained.Suit);
-        Assert.False(drained.Environment.Generator);
+        // Without a generator the oxygen is gone, the vacuum is not blocked and it hurts (review C-D, P2-2: the test starts from the empty suit, so "no damage" means something).
+        Assert.True(await rig.WaitForAsync<PlayerVitalsMessage>(m => (m.Environment.Exposed & 0x10) != 0 && m.Health < 100f), "the vacuum did not hurt without the oxygen");
+        var hurt = rig.Latest<PlayerVitalsMessage>()!;
+        Assert.False(hurt.Environment.Generator);
 
-        // A generator that burns for ten seconds, five metres away: the vacuum is blocked, the oxygen restores at 5 a second, the health stays full.
+        // A generator that burns for ten seconds, five metres away: the vacuum is blocked, the oxygen restores at 5 a second and the health no longer falls.
         BuildGenerator(rig, player, queued: 0);
-        Assert.True(await rig.WaitForAsync<PlayerVitalsMessage>(m => m.Environment.Generator && m.Suit.Oxygen > 25f), "the generator did not protect and restore the oxygen");
-        var protectedMessage = rig.Latest<PlayerVitalsMessage>()!;
-        Assert.Equal(100f, protectedMessage.Health, 0.5f);
-        Assert.True((protectedMessage.Environment.Present & 0x10) != 0);
-        Assert.True((protectedMessage.Environment.Active & 0x10) == 0);
+        Assert.True(await rig.WaitForAsync<PlayerVitalsMessage>(m => m.Environment.Generator && m.Environment.Exposed == 0 && m.Suit.Oxygen > 0f), "the generator did not protect and restore the oxygen");
+        var first = rig.Latest<PlayerVitalsMessage>()!;
+        Assert.True((first.Environment.Present & 0x10) != 0);
+        Assert.True((first.Environment.Active & 0x10) == 0);
+        rig.StepMany(30);
+        var second = rig.Latest<PlayerVitalsMessage>()!;
+        Assert.True(second.Health >= first.Health, $"the health fell under the generator: {first.Health} -> {second.Health}");
+        Assert.True(second.Suit.Oxygen > first.Suit.Oxygen, "the oxygen did not rise");
+        Assert.Equal(0, second.Environment.Exposed);
         await rig.DisconnectAndStopAsync();
     }
 

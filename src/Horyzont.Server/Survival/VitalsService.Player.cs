@@ -57,7 +57,7 @@ public sealed partial class VitalsService
         data.PreviousVelocity = motion.Velocity;
         data.PreviousParentSeq = player.ParentSeq;
 
-        var suit = StepSuit(sim, player, data, tickRate, now, ref damage);
+        var suit = StepSuit(sim, player, data, tickRate, now, !attached && motion.Mode == MovementMode.Frozen, ref damage);
         var food = sim.State.Progress.TryGet(player.Player, out var progress) ? progress.Food : default;
         var bonus = FoodBonus.Compute(food, _table!, now, tickRate, rules);
         var current = player.Vitals ?? new PlayerVitals(float.NaN, float.NaN, default, false);

@@ -77,6 +77,29 @@ public sealed class VitalsServiceHazardTests
     }
 
     [Fact]
+    public void FrozenAfterSpawn_SuitSuspended_NoDamage()
+    {
+        var rig = MoonRig();
+        rig.SetSuit(rig.Alice, WithOxygen(0f));
+        rig.Motion.Set(rig.Alice, Horyzont.Core.Motion.MovementMode.Frozen);
+
+        // The body waits for the terrain (after a spawn or a rescue): the suit neither drains nor hurts until it moves again (review C-D, P2-1).
+        rig.Tick(120);
+
+        Assert.Equal(100f, rig.VitalsOf(rig.Alice)!.Value.Health, 0.01f);
+        Assert.Equal(0f, rig.SuitOf(rig.Alice).Oxygen);
+        rig.SetSuit(rig.Alice, WithOxygen(50f));
+        rig.Tick(120);
+        Assert.Equal(50f, rig.SuitOf(rig.Alice).Oxygen);
+
+        // The twin that walks is hurt.
+        rig.SetSuit(rig.Alice, WithOxygen(0f));
+        rig.Motion.Set(rig.Alice, Horyzont.Core.Motion.MovementMode.Walking);
+        rig.Tick(120);
+        Assert.True(rig.VitalsOf(rig.Alice)!.Value.Health < 100f);
+    }
+
+    [Fact]
     public void ModuleRemoved_ResourceClamped()
     {
         var rig = new HazardServerRig();

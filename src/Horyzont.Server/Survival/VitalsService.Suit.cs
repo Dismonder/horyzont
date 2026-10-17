@@ -12,10 +12,10 @@ public sealed partial class VitalsService
     /// <summary>
     /// The suit of one player for one tick (K6-34 D17): the capacity from the modules in the equipment, the surroundings from the tracker, the protection, <see cref="SuitStep"/>. The suit is read from
     /// <c>player.Vitals</c> here, in the call that goes on to write it with <see cref="ServerSimulation.UpdatePlayerVitals"/>: an operation 42 accepted between two steps is part of the value, never overwritten
-    /// by one computed earlier (review B5, P2-2). What the message of this tick shows (the suit, its capacity, the environment) is kept from the same step (P2-1).
+    /// by one computed earlier (review B5, P2-2). While the body is <paramref name="frozen"/> the suit is suspended. What the message of this tick shows (the suit, its capacity, the environment) is kept from the same step (P2-1).
     /// </summary>
     /// <returns>The suit after the tick, or null when the world has no hazard content.</returns>
-    private SuitResources? StepSuit(ServerSimulation sim, PlayerState player, PlayerData data, int tickRate, Tick now, ref float damage)
+    private SuitResources? StepSuit(ServerSimulation sim, PlayerState player, PlayerData data, int tickRate, Tick now, bool frozen, ref float damage)
     {
         if (_hazards is null || _modules is null)
         {
@@ -28,7 +28,11 @@ public sealed partial class VitalsService
         var current = player.Vitals?.Suit ?? stats.Capacity;
         var sample = _hazards.Sample(player, now);
         var effective = HazardProtection.Apply(sample.Present, sample.Sheltered, sample.Generator, sample.LifeSupport);
-        var result = SuitStep.Advance(current, effective, stats, sample.Sheltered || sample.Generator || sample.LifeSupport, rules, tickRate);
+
+        // A frozen body waits for the terrain (after a spawn or a rescue): nothing drains, nothing regenerates, nothing hurts (review C-D, P2-1); the message still shows the state.
+        var result = frozen
+            ? SuitStep.Advance(current, default, stats, false, rules, tickRate)
+            : SuitStep.Advance(current, effective, stats, sample.Sheltered || sample.Generator || sample.LifeSupport, rules, tickRate);
         damage += result.Damage;
 
         data.HasSuit = true;
