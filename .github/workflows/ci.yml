@@ -28,7 +28,9 @@ jobs:
         # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
         # os: [windows-latest, ubuntu-latest]
         os: [windows-latest]
-    runs-on: [self-hosted, Windows, X64]
+    # GitHub-hosted (owner decision 2026-10-11): this job needs no engine, and on the shared self-hosted runner it queued
+    # behind the game jobs and its builds starved their Godot process. The game job below stays self-hosted.
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
