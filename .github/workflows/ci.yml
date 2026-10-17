@@ -25,8 +25,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
-        # os: [windows-latest, ubuntu-latest]
         os: [windows-latest]
     # Public repo: GitHub-hosted runners are free, and this keeps the self-hosted runner free for the Godot jobs.
     runs-on: ${{ matrix.os }}
@@ -65,10 +63,6 @@ jobs:
           - os: windows-latest
             editor-artifact: engine-windows-editor
             editor: godot.windows.editor.double.x86_64.mono.console.exe
-          # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
-          # - os: ubuntu-latest
-          #   editor-artifact: engine-linux-editor
-          #   editor: godot.linuxbsd.editor.double.x86_64.mono
     # Public repo: never run fork pull requests on the self-hosted runner (it is the owner's PC).
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Windows, X64]
@@ -124,14 +118,6 @@ jobs:
           # upload-artifact drops the executable bit.
           chmod +x "engine-ci/editor/${{ matrix.editor }}" || true
 
-      # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
-      # - name: Prepare the Linux editor
-      #   if: runner.os == 'Linux'
-      #   run: |
-      #     chmod +x engine-ci/editor/${{ matrix.editor }}
-      #     sudo apt-get update
-      #     sudo apt-get install -y libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 libgl1 libasound2t64 libpulse0 libudev1 libfontconfig1
-
       - name: Activate engine packages
         run: python tools/engine/build.py activate --from engine-ci/nupkgs
 
@@ -183,23 +169,9 @@ jobs:
           grep -Eq "ENGINE TESTS passed=[1-9][0-9]* failed=0" engine-tests-slow.log
 
       # Dedicated server smoke (K2-10): console commands, restart with the same state hash, signal, damaged world and backup restore.
-      # The Windows runner runs the project with the editor; the exported server is checked on Linux (preset server-linux) below.
+      # The Windows runner runs the project with the editor.
       - name: Dedicated server smoke (editor)
         run: python tools/server_smoke.py --godot engine-ci/editor/${{ matrix.editor }}
-
-      # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
-      # - name: Dedicated server smoke (Linux, export of the server-linux preset)
-      #   if: runner.os == 'Linux'
-      #   run: |
-      #     run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow engine.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
-      #     gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-linux-template -D engine-ci/template
-      #     template="$PWD/engine-ci/template/godot.linuxbsd.template_release.double.x86_64.mono"
-      #     chmod +x "$template"
-      #     # The CI checkout is disposable: point the preset at the downloaded template.
-      #     sed -i "/^\[preset.3.options\]/,\$ s#^custom_template/release=\"\"#custom_template/release=\"$template\"#" game/export_presets.cfg
-      #     mkdir -p build/server-linux
-      #     engine-ci/editor/${{ matrix.editor }} --headless --path game --export-release server-linux ../build/server-linux/HoryzontServer.x86_64
-      #     python tools/server_smoke.py --export build/server-linux/HoryzontServer.x86_64
 
       - name: Generator report
         env:
@@ -225,34 +197,3 @@ jobs:
           path: game/TestResults/*.trx
           if-no-files-found: ignore
           retention-days: 14
-
-  generator-consistency:
-    # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
-    if: false
-    # Windows and Linux editors must generate the same LOD 0 blocks (K2-08, collisions depend on it).
-    needs: game
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        # Self-hosted Windows uses the system Python 3.12: the action's installer needs admin rights (HKLM) and hangs there.
-        if: runner.environment == 'github-hosted'
-        with:
-          python-version: "3.12"
-
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: generator-report-*-editor
-          path: reports
-          merge-multiple: true
-
-      - name: Self-test of the comparison tool
-        run: python -I tools/generator/compare_reports.py --self-test
-
-      - name: Compare Windows and Linux editor reports
-        run: |
-          ls reports
-          python -I tools/generator/compare_reports.py reports/generator-windows-editor.json reports/generator-linux-editor.json --out generator-consistency.md
-          cat generator-consistency.md >> "$GITHUB_STEP_SUMMARY"

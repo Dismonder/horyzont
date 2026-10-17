@@ -3,7 +3,7 @@
 
 Usage:
     python tools/server_smoke.py --godot <editor executable>       # editor, --headless --path game (Windows CI)
-    python tools/server_smoke.py --export <exported server binary>  # build of the server-linux / server-windows preset
+    python tools/server_smoke.py --export <exported server binary>  # build of the server-windows preset
 
 Steps (real time, one limit for the whole run, default 180 s):
  1. write a default configuration, start the server, wait for "SERVER READY world=<id> state hash=<hash>";

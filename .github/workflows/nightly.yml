@@ -15,8 +15,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
-        # os: [windows-latest, ubuntu-latest]
         os: [windows-latest]
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 120
@@ -39,7 +37,7 @@ jobs:
       - name: Soak tests
         run: dotnet test Horyzont.sln -c Release --no-build --filter "Category=Soak"
 
-  # K2-08: release builds (what players and the Linux server run) must generate the same terrain as the editors.
+  # K2-08: release builds (what players run) must generate the same terrain as the editors.
   # The Windows editor exports both release builds (engine-windows-editor + the release templates from engine.yml on main).
   release-windows:
     name: generator report (Windows editor and release)
@@ -82,8 +80,6 @@ jobs:
           gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-windows-editor -D engine-ci/editor
           gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-nupkgs -D engine-ci/nupkgs
           gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-windows-template-release -D engine-ci/templates
-          # Linux CI off (owner decision 2026-10-09): engine.yml no longer builds the Linux template.
-          # gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-linux-template -D engine-ci/templates
 
       - name: Activate engine packages
         run: python tools/engine/build.py activate --from engine-ci/nupkgs
@@ -96,8 +92,6 @@ jobs:
           # Godot reads this path from the file, so it needs D:/... rather than the Git Bash /d/... form.
           templates="$(cygpath -m "$PWD/engine-ci/templates")"
           sed -i "0,/^custom_template\/release=\"\"/s||custom_template/release=\"$templates/godot.windows.template_release.double.x86_64.mono.exe\"|" game/export_presets.cfg
-          # Linux CI off (owner decision 2026-10-09): engine.yml no longer builds the Linux template.
-          # sed -i "0,/^custom_template\/release=\"\"/s||custom_template/release=\"$templates/godot.linuxbsd.template_release.double.x86_64.mono\"|" game/export_presets.cfg
           grep -n "custom_template/release" game/export_presets.cfg
 
       - name: Import and export both release builds
@@ -106,8 +100,6 @@ jobs:
           mkdir -p build/windows-release
           bash tools/ci/godot_import.sh "$editor" game
           "$editor" --headless --path game --export-release windows-release ../build/windows-release/Horyzont.exe
-          # Linux CI off (owner decision 2026-10-09): engine.yml no longer builds the Linux template.
-          # "$editor" --headless --path game --export-release linux-release ../build/linux-release/Horyzont.x86_64
           ls build/windows-release
 
       - name: Reports of the editor and of the Windows release build
@@ -118,115 +110,14 @@ jobs:
           build/windows-release/Horyzont.exe --headless -- --generator-report "$PWD/reports"
           ls reports
 
+      - name: Compare the editor and the release build
+        run: |
+          python -I tools/generator/compare_reports.py reports/generator-windows-editor.json reports/generator-windows-template_release.json --out release-consistency.md
+          cat release-consistency.md >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/upload-artifact@v4
         with:
           name: release-reports-windows
           path: reports/*.json
           if-no-files-found: error
           retention-days: 14
-
-      # Linux CI off (owner decision 2026-10-09): no Linux release build to hand to release-linux.
-      # - uses: actions/upload-artifact@v4
-      #   with:
-      #     name: release-build-linux
-      #     path: build/linux-release
-      #     if-no-files-found: error
-
-  release-linux:
-    # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
-    if: false
-    name: generator report (Linux editor and release)
-    needs: release-windows
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      actions: read
-      contents: read
-    env:
-      GH_TOKEN: ${{ github.token }}
-      HORYZONT_COMMIT: ${{ github.sha }}
-    steps:
-      - uses: actions/checkout@v4
-        # Game assets (models) live in Git LFS.
-        with:
-          lfs: true
-
-      - uses: actions/setup-dotnet@v4
-        # Self-hosted Windows uses the installed .NET SDK: the action cannot write to C:\Program Files\dotnet without admin rights.
-        if: runner.environment == 'github-hosted'
-        with:
-          global-json-file: global.json
-
-      - uses: actions/setup-python@v5
-        # Self-hosted Windows uses the system Python 3.12: the action's installer needs admin rights (HKLM) and hangs there.
-        if: runner.environment == 'github-hosted'
-        with:
-          python-version: "3.12"
-
-      - name: Download the Linux editor from the last successful engine.yml run on main
-        run: |
-          run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow engine.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
-          if [ -z "$run_id" ]; then
-            echo "::error::No successful engine.yml run on main."
-            exit 1
-          fi
-          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-linux-editor -D engine-ci/editor
-          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n engine-nupkgs -D engine-ci/nupkgs
-          chmod +x engine-ci/editor/godot.linuxbsd.editor.double.x86_64.mono
-
-      - name: Activate engine packages
-        run: python tools/engine/build.py activate --from engine-ci/nupkgs
-
-      - name: Build game for the editor
-        run: dotnet build game/Horyzont.Game.csproj -nologo
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: release-build-linux
-          path: build/linux-release
-
-      - name: Reports of the editor and of the Linux release build
-        run: |
-          editor="$PWD/engine-ci/editor/godot.linuxbsd.editor.double.x86_64.mono"
-          # upload-artifact drops the executable bit.
-          chmod +x build/linux-release/Horyzont.x86_64
-          mkdir -p reports
-          bash tools/ci/godot_import.sh "$editor" game
-          "$editor" --headless --path game -- --generator-report "$PWD/reports"
-          build/linux-release/Horyzont.x86_64 --headless -- --generator-report "$PWD/reports"
-          ls reports
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-reports-linux
-          path: reports/*.json
-          if-no-files-found: error
-          retention-days: 14
-
-  release-compare:
-    # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
-    if: false
-    name: compare the four runtimes
-    needs: release-linux
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        # Self-hosted Windows uses the system Python 3.12: the action's installer needs admin rights (HKLM) and hangs there.
-        if: runner.environment == 'github-hosted'
-        with:
-          python-version: "3.12"
-
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: release-reports-*
-          path: reports
-          merge-multiple: true
-
-      - name: Compare windows-editor, windows-release, linux-editor and linux-release
-        run: |
-          ls reports
-          python -I tools/generator/compare_reports.py reports/generator-windows-editor.json reports/generator-windows-template_release.json reports/generator-linux-editor.json reports/generator-linux-template_release.json --out release-consistency.md
-          cat release-consistency.md >> "$GITHUB_STEP_SUMMARY"

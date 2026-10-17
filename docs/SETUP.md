@@ -1,6 +1,6 @@
 # Przygotowanie maszyny
 
-Główna maszyna deweloperska to Windows (edytor, gra, serwer). Linux służy do CI i do szablonu eksportu, z którego powstają klient na Linuksa i Steam Decka oraz serwer dedykowany. Komendy z kroków 2–5 zaczynają działać po ukończeniu pakietów K1-01 i K1-02.
+Główna maszyna deweloperska to Windows (edytor, gra, serwer). Gra, serwer dedykowany i CI działają tylko na Windows; Linux nie jest wspierany (decyzja właściciela 2026-10-15).
 
 ## Windows: wymagania
 
@@ -17,10 +17,6 @@ Główna maszyna deweloperska to Windows (edytor, gra, serwer). Linux służy do
 Zależności sterownika Direct3D 12, ANGLE i AccessKit nie są potrzebne: `engine/engine.json` buduje silnik bez nich (K1-01). D3D12 włącza dopiero K9-60, a AccessKit K9-61.
 
 Sklonuj repozytorium do krótkiej ścieżki, np. `C:\dev\horyzont`, i dodaj ten katalog do wykluczeń antywirusa: przyspiesza to kompilację silnika kilkukrotnie.
-
-## Linux (edytor do testów silnika, szablon eksportu, CI)
-
-Wymagania budowania Godota dla `linuxbsd` według dokumentacji „Compiling for Linux, *BSD” dla wersji 4.7, plus Python 3.12, SCons i .NET SDK 10. Na Linuksie `python tools/engine/build.py all` buduje edytor `editor-linux` (z glue, paczkami i testem dymnym) oraz szablon `template-linux-release`; edytor służy testom silnika i raportowi zgodności generatora w CI (artefakt `engine-linux-editor`).
 
 ## Kroki
 
@@ -45,7 +41,7 @@ Tryb wybiera się argumentem po `--` (K2-10; menu przyjdzie w K3-18). `E` to edy
 - Sterowanie w `--solo`, `--host` i `--connect` (K2-11): `W A S D` ruch, mysz obrót (kursor przechwycony; `Esc` zwalnia, klik przechwytuje), `Spacja` skok, `Shift` bieg, `Ctrl` kucanie, `V` przełącza kamerę TPP/FPP (domyślnie TPP), `F` lot deweloperski postaci (tylko kompilacja dev), `F8` kamera deweloperska, `F9` orbita (lot do powierzchni), `F1` etykieta pomocy. Narzędzia (K2-13): `1` manipulator terenu, `2` budowanie, LPM kopie (manipulator) albo usuwa blok (budowanie), PPM zasypuje albo stawia blok, kółko zmienia promień kuli 0,5–3 m co 0,25 m albo typ bloku, `M` następny materiał zasypywania, `R` obrót bloku wokół „góry”, `T` zmiana ściany „góra”; przytrzymanie przycisku powtarza akcję (teren co 13 ticków, bloki co 15), a limity serwera to zasięg 8 m, najwyżej 5 edycji terenu w każdej sekundzie, nie poniżej rdzenia planety i brak bloku w graczu. Narzędzia działają w `--solo` i `--host` (zdalny klient dostaje je z K3-15/K3-16). Dodatkowe flagi: `--dev-speed <1-64>` (mnożnik prędkości, solo/host), `--dev-tools-demo` (tylko build deweloperski, solo/host: po wycelowaniu w ziemię narzędzia same kopią, zasypują i stawiają trzy bloki; do zrzutów), `--screenshot <plik.png> [--screenshot-after <s>]` (zapisuje zrzut i zamyka grę kanoniczną kolejnością).
 - Bez `--world` powstaje nowy świat; zapisy są w `user://saves/<WorldId>/world.db` (solo i host) albo `<data-dir>/saves/<WorldId>/world.db` (serwer; domyślnie katalog pliku wykonywalnego, id nowego świata trafia do `saves/last-world.txt`). `--data-dir` działa też dla solo i hosta. Tożsamość i nazwa gracza: `user://profile.json` (`--profile` pozwala uruchomić dwie instancje na jednej maszynie).
 - Serwer dedykowany czyta polecenia ze standardowego wejścia: `save`, `stop`, `players`, `kick <id>`, `help`. `Ctrl+C`/`SIGTERM` kończy go tą samą kolejnością zamykania; trzeci sygnał kończy proces natychmiast.
-- Eksport serwera: presety `server-windows` i `server-linux` (`godot --headless --path game --export-release server-windows ../build/server-windows/HoryzontServer.exe`; wymaga szablonów eksportu, np. wskazanych w `custom_template/release` presetu). Uruchomienie: `HoryzontServer.exe --headless -- --server --config server.json`.
+- Eksport serwera: preset `server-windows` (`godot --headless --path game --export-release server-windows ../build/server-windows/HoryzontServer.exe`; wymaga szablonów eksportu, np. wskazanych w `custom_template/release` presetu). Uruchomienie: `HoryzontServer.exe --headless -- --server --config server.json`.
 - Test dymny serwera (uruchamia serwer z `--dev`; polecenie konsoli `dev-op` zmienia świat): `python tools/server_smoke.py --godot <edytor>` albo `--export <wyeksportowany serwer>`.
 
 ## Zmierzone czasy i rozmiary (K1-01, 2026-10-08)
