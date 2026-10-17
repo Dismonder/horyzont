@@ -134,6 +134,12 @@ public static class CodecCases
                 b => StateCodec.EncodeChunkBlob(b),
                 d => StateCodec.DecodeChunkBlob(d)) with { MaxChunks = 1 },
             Blob(
+                "ContainerBlob",
+                BlobKind.Container,
+                CodecGen.ContainerRecord,
+                StateCodec.EncodeContainerBlob,
+                d => StateCodec.DecodeContainerBlob(d)),
+            Blob(
                 "TerrainBlockBlob",
                 BlobKind.TerrainBlock,
                 CodecGen.TerrainBlockBlob,

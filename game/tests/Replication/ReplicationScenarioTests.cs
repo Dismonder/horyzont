@@ -72,6 +72,7 @@ public class ReplicationScenarioTests
         AssertThat(composition.RemoteTools).IsNotNull();
         AssertThat(composition.RemoteConstructs).IsNotNull();
         var tools = composition.RemoteTools!;
+        AssertThat(tools.Inventory).IsNotNull(); // the hotbar selects the tool and an open inventory blocks it on a remote client too
         var replies = new List<Horyzont.Core.Protocol.Messages.IntentReply>();
         tools.IntentAnswered += (reply, _) => replies.Add(reply);
         var script = new ToolRig.ScriptedTools();

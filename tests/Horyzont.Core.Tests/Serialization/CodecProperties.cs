@@ -121,17 +121,24 @@ public static class CodecProperties
         _warmed.GetOrAdd(codec.Name, _ => Warm(codec));
 
         object? result = null;
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        try
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
         {
-            result = codec.Decode(data);
-        }
-        catch (ProtocolViolationException)
-        {
-            // Allowed: malformed input must surface as exactly this exception type.
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            try
+            {
+                result = codec.Decode(data);
+            }
+            catch (ProtocolViolationException)
+            {
+                // Allowed: malformed input must surface as exactly this exception type.
+            }
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = smallest;
         var budget = (4L * data.Length) + (64 * 1024) + (16L * 1024 * codec.MaxChunks);
         Assert.True(allocated <= budget, $"{codec.Name}: decoding {data.Length} bytes allocated {allocated} bytes (budget {budget})");
         return result;

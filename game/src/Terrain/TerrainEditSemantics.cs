@@ -34,7 +34,9 @@ public static class TerrainEditSemantics
     /// <summary>
     /// Material write of an add edit, added to the edit radius. The SDF add of Voxel Tools writes only the SDF channel, so a second
     /// sphere with the same centre and this radius sets the texture index channel to the material for every voxel strictly inside
-    /// it (the voxels whose SDF the union made negative). A remove edit leaves the material channel as it is.
+    /// it (the voxels whose SDF the union made negative). A remove edit leaves the material channel as it is. The fill cost of
+    /// <c>SurvivalRules</c> measures the edit sphere and charges every voxel whose material this write changes, so a non-zero offset
+    /// would repaint voxels nobody paid for.
     /// </summary>
     public const float MaterialSphereRadiusOffset = 0f;
 

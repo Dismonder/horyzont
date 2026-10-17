@@ -2,7 +2,9 @@ using System.Numerics;
 
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
+using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Tests.Items;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Testing;
 
@@ -219,7 +221,38 @@ public sealed class IntentValidationTests
             var p = f.Join();
             return f.Sim.Submit(p, f.Dig(p, f.Ground(2)) with { Planet = new PlanetId(2) }).Reason;
         },
+        [RejectReason.InventoryFull] = () =>
+        {
+            var f = ItemScenario();
+            f.Apply(ItemFixture.Create(ItemFixture.HotbarSlot(1), ItemFixture.Gem, 5, limit: 5));
+            f.Apply(ItemFixture.Create(ItemFixture.BagSlot(0), ItemFixture.Gem, 5, limit: 5));
+            return f.Sim.Sim.Submit(ItemFixture.Player1, MoveGem(1, 5, 5)).Reason;
+        },
+        [RejectReason.NotEnoughItems] = () =>
+        {
+            var f = ItemScenario();
+            f.Apply(ItemFixture.Create(ItemFixture.HotbarSlot(1), ItemFixture.Gem, 3, limit: 5));
+            return f.Sim.Sim.Submit(ItemFixture.Player1, MoveGem(1, 4, 3)).Reason;
+        },
+        [RejectReason.ContainerChanged] = () =>
+        {
+            var f = ItemScenario();
+            f.Apply(ItemFixture.Create(ItemFixture.HotbarSlot(1), ItemFixture.Gem, 3, limit: 5));
+            return f.Sim.Sim.Submit(ItemFixture.Player1, MoveGem(1, 1, 2)).Reason;
+        },
+        [RejectReason.ContainerLocked] = () =>
+        {
+            var f = ItemScenario(players: 2);
+            f.Apply(ItemFixture.Create(ItemFixture.HotbarSlot(1), ItemFixture.Gem, 3, limit: 5));
+            var foreign = ItemMoveTarget.ToSlot(new SlotRef(WorldFactory.BagOf(2), 0));
+            return f.Sim.Sim.Submit(ItemFixture.Player1, MoveGem(1, 3, 3) with { To = foreign }).Reason;
+        },
     };
+
+    private static ItemFixture ItemScenario(int players = 1) => new(players, content: SurvivalContentFactory.CreateTest());
+
+    private static ItemMoveIntent MoveGem(int hotbarSlot, int count, int expected) => new(
+        ItemFixture.HotbarSlot(hotbarSlot), ItemMoveTarget.ToSlot(ItemFixture.BagSlot(0)), (ushort)count, ItemFixture.Gem, (ushort)expected);
 
     public static TheoryData<RejectReason> AllReasons()
     {

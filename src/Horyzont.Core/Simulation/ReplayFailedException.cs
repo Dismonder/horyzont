@@ -37,9 +37,27 @@ public sealed class ReplayFailedException : Exception
         Kind = kind;
     }
 
+    /// <summary>Creates the exception for an entry whose precondition does not hold.</summary>
+    /// <param name="opId">Operation number.</param>
+    /// <param name="kind">Operation kind.</param>
+    /// <param name="componentIndex">Index of the failing component of a compound operation, null for other operations.</param>
+    /// <param name="reason">Why it failed.</param>
+    public ReplayFailedException(OpId opId, OperationKind kind, int? componentIndex, string reason)
+        : base(componentIndex is { } index
+            ? $"Replay of operation {opId.Value} ({kind}) failed in component {index}: {reason}"
+            : $"Replay of operation {opId.Value} ({kind}) failed: {reason}")
+    {
+        OpId = opId;
+        Kind = kind;
+        ComponentIndex = componentIndex;
+    }
+
     /// <summary>Operation that failed.</summary>
     public OpId OpId { get; }
 
     /// <summary>Kind of the operation that failed.</summary>
     public OperationKind? Kind { get; }
+
+    /// <summary>Index of the failing component of a compound operation; null for other operations and other failures.</summary>
+    public int? ComponentIndex { get; }
 }

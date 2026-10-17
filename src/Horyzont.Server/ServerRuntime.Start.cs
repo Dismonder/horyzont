@@ -100,6 +100,7 @@ public sealed partial class ServerRuntime
                     BackupsToKeep = persistence.BackupsToKeep,
                     BlockTypeKeys = _options.BlockTypeKeys,
                     MaterialKeys = _options.MaterialKeys,
+                    ItemTypeKeys = _options.ItemTypeKeys,
                 },
                 _time,
                 _loggers.CreateLogger("Horyzont.Persistence.WorldLoader"));
@@ -116,6 +117,19 @@ public sealed partial class ServerRuntime
         }
 
         _logger.WorldLoaded(loaded.State.Id.Value, loaded.LastCheckpointOpId.Value, loaded.JournalTail.Count);
+
+        if (_options.Content is { } content)
+        {
+            try
+            {
+                content.Items.CheckWorldItemTypes(loaded.State.ItemTypes.Entries.Select(e => e.Key));
+            }
+            catch (InvalidDataException ex)
+            {
+                _logger.WorldUnusable(ex.Message);
+                return new WorldStartResult.Corrupted(ex.Message, ListBackups(backups, persistence));
+            }
+        }
 
         // 3. Terrain edit semantics of the tail (K2-09, D1).
         var current = TerrainSemanticsMeta.Format(_terrainFactory.SemanticsVersion, _terrainFactory.VoxelRef);
@@ -239,7 +253,7 @@ public sealed partial class ServerRuntime
     private ServerSimulation CreateSimulation(WorldState state, ITerrainService terrain, IJournalSink sink)
     {
         var content = BlockContentTable.Create(state.BlockTypes, _options.BlockDefinitions);
-        var simulation = new ServerSimulation(state, terrain, sink, _options.Rules, _loggers.CreateLogger<ServerSimulation>(), content);
+        var simulation = new ServerSimulation(state, terrain, sink, _options.Rules, _loggers.CreateLogger<ServerSimulation>(), content, _options.Content);
         _shipStats = new ShipStatsCache(simulation);
         return simulation;
     }

@@ -56,6 +56,9 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+        # Game assets (models) live in Git LFS.
+        with:
+          lfs: true
 
       - uses: actions/setup-dotnet@v4
         # Self-hosted Windows uses the installed .NET SDK: the action cannot write to C:\Program Files\dotnet without admin rights.
@@ -144,6 +147,9 @@ jobs:
       HORYZONT_COMMIT: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
+        # Game assets (models) live in Git LFS.
+        with:
+          lfs: true
 
       - uses: actions/setup-dotnet@v4
         # Self-hosted Windows uses the installed .NET SDK: the action cannot write to C:\Program Files\dotnet without admin rights.

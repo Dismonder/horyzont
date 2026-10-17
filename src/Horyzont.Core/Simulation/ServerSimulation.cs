@@ -1,5 +1,6 @@
 using System.Numerics;
 
+using Horyzont.Core.Content;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
@@ -25,6 +26,7 @@ public sealed class ServerSimulation
     private readonly ILogger<ServerSimulation> _logger;
     private readonly OperationApplier _applier;
     private readonly IntentValidator _validator;
+    private readonly SurvivalRules? _survival;
     private readonly Dictionary<PlayerId, PlayerBuckets> _buckets = [];
     private readonly List<PlayerBuckets> _bucketList = [];
 
@@ -39,7 +41,24 @@ public sealed class ServerSimulation
     {
     }
 
-    /// <summary>Creates the simulation over a state with the block definitions of the game content.</summary>
+    /// <summary>Creates the simulation over a state with the survival rules of <paramref name="survival"/> and an empty block content table.</summary>
+    /// <param name="state">World state.</param>
+    /// <param name="terrain">Terrain service.</param>
+    /// <param name="journal">Journal sink.</param>
+    /// <param name="rules">Game rules.</param>
+    /// <param name="survival">Survival content, or null for the K2 rules.</param>
+    /// <param name="logger">Logger.</param>
+    public ServerSimulation(
+        WorldState state, ITerrainService terrain, IJournalSink journal, GameRules rules, SurvivalContent? survival, ILogger<ServerSimulation> logger)
+        : this(state, terrain, journal, rules, logger, BlockContentTable.Empty, survival)
+    {
+    }
+
+    /// <summary>
+    /// Creates the simulation over a state with the block definitions of the game content and, optionally, the survival rules of
+    /// <paramref name="survival"/> (K6-29W D8): item intents, mining yield and the fill cost. Without survival content the behaviour is
+    /// exactly that of K2 (no yield, free fill, item intents rejected).
+    /// </summary>
     /// <param name="state">World state.</param>
     /// <param name="terrain">Terrain service.</param>
     /// <param name="journal">Journal sink.</param>
@@ -49,9 +68,10 @@ public sealed class ServerSimulation
     /// Block definitions by type id. Read by intent validators only (the ship mode needs cockpits, engines and block masses);
     /// the operation applier never sees it.
     /// </param>
+    /// <param name="survival">Survival content, or null for the K2 rules.</param>
     public ServerSimulation(
         WorldState state, ITerrainService terrain, IJournalSink journal, GameRules rules, ILogger<ServerSimulation> logger,
-        BlockContentTable content)
+        BlockContentTable content, SurvivalContent? survival = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(terrain);
@@ -66,11 +86,16 @@ public sealed class ServerSimulation
         _journal = journal;
         _logger = logger;
         _applier = new OperationApplier(state, terrain);
-        _validator = new IntentValidator(state, terrain, rules, content);
+        _survival = survival is null ? null : new SurvivalRules(state, terrain, survival);
+        Survival = survival;
+        _validator = new IntentValidator(state, terrain, rules, content, _survival);
     }
 
     /// <summary>World state.</summary>
     public WorldState State { get; }
+
+    /// <summary>Survival content, or null when the simulation runs the K2 rules.</summary>
+    public SurvivalContent? Survival { get; }
 
     /// <summary>Game rules.</summary>
     public GameRules Rules { get; }
@@ -107,13 +132,27 @@ public sealed class ServerSimulation
             return IntentResult.Rejected(reason);
         }
 
-        var operation = IntentResolver.Resolve(State, player, intent, facts);
-        if (!_applier.CheckPreconditions(operation, out var failure))
+        Operation operation;
+        if (_survival is null)
         {
-            throw new InvalidOperationException($"A validated {operation.Kind} breaks a precondition: {failure}");
+            operation = IntentResolver.Resolve(State, player, intent, facts);
+        }
+        else
+        {
+            // Survival resolution may still refuse: items missing for a fill, a full target, a changed source (K6-29W).
+            reason = _survival.Resolve(player, intent, facts, out operation);
+            if (reason != RejectReason.None)
+            {
+                return IntentResult.Rejected(reason);
+            }
         }
 
-        var applied = ApplyAndJournal(player, operation);
+        // A refused operation changed nothing (the applier rolled it back), so the simulation is not faulted.
+        var applied = TryApplyAndJournal(player, operation, out var failure, out _)
+            ?? throw new InvalidOperationException($"A validated {operation.Kind} breaks a precondition: {failure}");
+
+        // The yield remainder and the fill credit change only after the operation holds (K6-29W D10, D12).
+        _survival?.Commit();
         IntentValidator.BucketFor(intent, buckets!)!.Consume();
         if (intent is TerrainToolIntent)
         {
@@ -161,7 +200,7 @@ public sealed class ServerSimulation
             SpawnPoint(planet), Quaternion.Identity);
     }
 
-    /// <summary>Applies and journals a server operation (join, leave). A broken precondition throws.</summary>
+    /// <summary>Applies and journals a server operation (join, leave, item operations). A broken precondition throws.</summary>
     /// <param name="operation">The operation.</param>
     /// <returns>The applied operation.</returns>
     /// <exception cref="InvalidOperationException">A precondition does not hold; nothing changed.</exception>
@@ -169,12 +208,10 @@ public sealed class ServerSimulation
     {
         EnsureNotFaulted();
         ArgumentNullException.ThrowIfNull(operation);
-        if (!_applier.CheckPreconditions(operation, out var failure))
-        {
-            throw new InvalidOperationException($"{operation.Kind} breaks a precondition: {failure}");
-        }
-
-        var applied = ApplyAndJournal(null, operation);
+        var applied = TryApplyAndJournal(null, operation, out var failure, out var componentIndex)
+            ?? throw new InvalidOperationException(componentIndex < 0
+                ? $"{operation.Kind} breaks a precondition: {failure}"
+                : $"{operation.Kind} breaks a precondition of component {componentIndex}: {failure}");
         RaiseApplied(applied);
         return applied;
     }
@@ -197,11 +234,14 @@ public sealed class ServerSimulation
 
     /// <summary>
     /// Replays a journal entry: requires <c>Id == LastOpId.Next</c>, sets CurrentTick to the entry tick and does not
-    /// write to the journal. Loads the terrain area before a terrain edit.
-    /// A tick before the current one is rejected; a failure while loading or applying faults the simulation.
+    /// write to the journal. Loads the terrain area before a terrain edit, also the last component of a compound operation
+    /// (<see cref="OperationTerrain"/>). A tick before the current one is rejected; a broken precondition changes nothing; an exception
+    /// while loading or applying faults the simulation.
     /// </summary>
     /// <param name="entry">The entry.</param>
-    /// <exception cref="ReplayFailedException">A gap in operation numbers, a tick going backwards or a broken precondition.</exception>
+    /// <exception cref="ReplayFailedException">
+    /// A gap in operation numbers, a tick going backwards or a broken precondition (with the component index for a compound operation).
+    /// </exception>
     public void Replay(JournalEntry entry)
     {
         EnsureNotFaulted();
@@ -217,25 +257,37 @@ public sealed class ServerSimulation
             throw new ReplayFailedException(entry.Id, kind, $"tick {entry.Tick.Value} is before the current tick {State.CurrentTick.Value}");
         }
 
-        if (!_applier.CheckPreconditions(entry.Operation, out var failure))
+        // The terrain precondition does not depend on items (D4 of K6-29W), so it is checked before the area is loaded, as in K2.
+        var hasEdit = OperationTerrain.TryGetTerrainEdit(entry.Operation, out var edit);
+        if (hasEdit && !_applier.CheckPreconditions(edit!, out var terrainFailure))
         {
-            throw new ReplayFailedException(entry.Id, kind, failure);
+            throw new ReplayFailedException(entry.Id, kind, ComponentOf(entry.Operation), terrainFailure);
         }
 
+        var previousTick = State.CurrentTick;
+        bool applied;
+        string failure;
+        int componentIndex;
         try
         {
-            if (entry.Operation is TerrainEditOp edit && State.Planets.TryGet(edit.Planet, out var planet))
+            if (hasEdit && State.Planets.TryGet(edit!.Planet, out var planet))
             {
                 _terrain.LoadAreaBlocking(edit.Planet, edit.Center, edit.Radius + (TerrainRules.EditMarginVoxels * planet.VoxelSizeMeters));
             }
 
             State.SetTick(entry.Tick);
-            _applier.Apply(entry.Id, entry.Tick, entry.Actor, entry.Operation);
+            applied = _applier.TryApply(entry.Id, entry.Tick, entry.Actor, entry.Operation, out _, out failure, out componentIndex);
         }
         catch (Exception exception)
         {
             Fault(exception, entry.Id, kind);
             throw;
+        }
+
+        if (!applied)
+        {
+            State.SetTick(previousTick);
+            throw new ReplayFailedException(entry.Id, kind, componentIndex < 0 ? null : componentIndex, failure);
         }
     }
 
@@ -249,6 +301,7 @@ public sealed class ServerSimulation
             _bucketList[i].Terrain.Refill();
             _bucketList[i].Blocks.Refill();
             _bucketList[i].Markers.Refill();
+            _bucketList[i].Items.Refill();
         }
     }
 
@@ -339,22 +392,26 @@ public sealed class ServerSimulation
         return true;
     }
 
-    private AppliedOperation ApplyAndJournal(PlayerId? actor, Operation operation)
+    private static int? ComponentOf(Operation operation) => operation is CompoundOp compound ? compound.Components.Count - 1 : null;
+
+    private AppliedOperation? TryApplyAndJournal(PlayerId? actor, Operation operation, out string failure, out int componentIndex)
     {
         var id = State.LastOpId.Next;
-        AppliedOperation applied;
         try
         {
-            applied = _applier.Apply(id, State.CurrentTick, actor, operation);
+            if (!_applier.TryApply(id, State.CurrentTick, actor, operation, out var applied, out failure, out componentIndex))
+            {
+                return null;
+            }
+
             _journal.Append(new JournalEntry(applied.Id, applied.Tick, actor, operation));
+            return applied;
         }
         catch (Exception exception)
         {
             Fault(exception, id, operation.Kind);
             throw;
         }
-
-        return applied;
     }
 
     // After the journal and the limiter bookkeeping: a subscriber (K2-13: the construct view of a host) sees only operations that are

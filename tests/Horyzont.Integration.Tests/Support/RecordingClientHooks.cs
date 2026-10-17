@@ -11,6 +11,8 @@ internal sealed class RecordingClientHooks : IClientGameHooks
 
     public List<IntentReply> Replies { get; } = [];
 
+    public List<Message> Messages { get; } = [];
+
     public List<DisconnectCode> Disconnections { get; } = [];
 
     public void OnServerHello(ServerHello hello) => Hello = hello;
@@ -20,6 +22,7 @@ internal sealed class RecordingClientHooks : IClientGameHooks
 
     public void OnMessage(Message message)
     {
+        Messages.Add(message);
         if (message is IntentReply reply)
         {
             Replies.Add(reply);

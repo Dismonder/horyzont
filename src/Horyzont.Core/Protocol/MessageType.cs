@@ -88,4 +88,18 @@ public enum MessageType : byte
 
     /// <summary>S→C: shared and own private map markers, once after the star system (K5-27).</summary>
     MarkersState = 33,
+    /// <summary>Server → client, reliable: full state of a subscribed container or a refused subscription (K6-29).</summary>
+    ContainerState = 40,
+
+    /// <summary>Server → client, reliable: changed slots of a subscribed container (K6-29).</summary>
+    ContainerDelta = 41,
+
+    /// <summary>Client → server, reliable: subscribe to a container (K6-29).</summary>
+    ContainerSubscribe = 42,
+
+    /// <summary>Client → server, reliable: unsubscribe from a container (K6-29).</summary>
+    ContainerUnsubscribe = 43,
+
+    /// <summary>Server → client, reliable: the item type registry (K6-29).</summary>
+    ItemRegistry = 49,
 }

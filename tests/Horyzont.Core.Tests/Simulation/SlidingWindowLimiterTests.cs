@@ -60,17 +60,24 @@ public sealed class SlidingWindowLimiterTests
     [Fact]
     public void RecordAndCanAccept_ManyCalls_DoNotAllocate()
     {
-        var limiter = new SlidingWindowLimiter(5, 60);
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (ulong tick = 0; tick < 5000; tick++)
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
         {
-            if (limiter.CanAccept(tick))
+            var limiter = new SlidingWindowLimiter(5, 60);
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (ulong tick = 0; tick < 5000; tick++)
             {
-                limiter.Record(tick);
+                if (limiter.CanAccept(tick))
+                {
+                    limiter.Record(tick);
+                }
             }
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, smallest);
     }
 
     [Fact]

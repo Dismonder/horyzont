@@ -21,7 +21,7 @@ namespace Horyzont.Game.Character;
 /// </summary>
 public sealed partial class PlayerBody : CharacterBody3D
 {
-    /// <summary>Scene of the placeholder capsule body.</summary>
+    /// <summary>Scene of the body: the capsule shape and an empty <c>Visual</c> node that a rendering client fills with the character model.</summary>
     public const string ScenePath = "res://scenes/Character/PlayerBody.tscn";
 
     /// <summary>Collision margin of the body (metres): a margin of a few millimetres keeps the floor contact steady at float32 precision 4 km from the origin.</summary>
@@ -38,8 +38,6 @@ public sealed partial class PlayerBody : CharacterBody3D
     private bool _devFlightAllowed;
     private float _tickSeconds = 1f / 60f;
     private MovementMode _mode = MovementMode.Frozen;
-    private float _visualHeight;
-    private MeshInstance3D? _visual;
 
     /// <summary>Gets the planet whose frame the body lives in.</summary>
     public PlanetId Planet => _space.Planet;
@@ -103,7 +101,6 @@ public sealed partial class PlayerBody : CharacterBody3D
         _movement = movement;
         _devFlightAllowed = devFlightAllowed;
         _tickSeconds = tickSeconds;
-        _visualHeight = rules.PlayerCapsuleHeight * 0.5f;
         _layer = 1u << (layer - 1);
         _mask = CollisionLayers.TerrainMask | CollisionLayers.ConstructsMask;
         CollisionLayer = _layer;
@@ -121,19 +118,16 @@ public sealed partial class PlayerBody : CharacterBody3D
         var capsule = GetNode<CollisionShape3D>("Shape");
         capsule.Shape = new CapsuleShape3D { Radius = rules.PlayerCapsuleRadius, Height = rules.PlayerCapsuleHeight };
         capsule.Position = new Vector3(0f, rules.PlayerCapsuleHeight * 0.5f, 0f);
-        if (GetNodeOrNull<MeshInstance3D>("Visual") is { } visual)
-        {
-            _visual = visual;
-            visual.Mesh = new CapsuleMesh { Radius = rules.PlayerCapsuleRadius, Height = rules.PlayerCapsuleHeight };
-            visual.Position = capsule.Position;
-        }
     }
 
-    /// <summary>Shows or hides the placeholder capsule mesh.</summary>
-    /// <param name="visible">Whether the mesh is shown.</param>
+    /// <summary>Gets the node that holds the visual model (feet at its origin); empty on a server and on a client without rendering.</summary>
+    public Node3D? Visual => GetNodeOrNull<Node3D>("Visual");
+
+    /// <summary>Shows or hides the visual model.</summary>
+    /// <param name="visible">Whether the model is shown.</param>
     public void SetVisualVisible(bool visible)
     {
-        if (_visual is { } visual)
+        if (Visual is { } visual)
         {
             visual.Visible = visible;
         }
@@ -144,14 +138,14 @@ public sealed partial class PlayerBody : CharacterBody3D
     /// <param name="rotationOffset">Correction multiplied on the left of the body rotation.</param>
     public void ApplyPresentation(NumVector3 positionOffset, NumQuaternion rotationOffset)
     {
-        if (_visual is not { } visual)
+        if (Visual is not { } visual)
         {
             return;
         }
 
         var rotation = NumQuaternion.Normalize(rotationOffset * BodyRotation);
-        var centre = Feet + positionOffset + NumVector3.Transform(NumVector3.UnitY * _visualHeight, rotation);
-        visual.GlobalTransform = new Transform3D(_space.ToGodotBasis(rotation), _space.ToGodot(centre));
+        var feet = Feet + positionOffset;
+        visual.GlobalTransform = new Transform3D(_space.ToGodotBasis(rotation), _space.ToGodot(feet));
     }
 
     /// <summary>Puts the body at a state without moving through the world: spawn, teleport, a correction by the server.</summary>

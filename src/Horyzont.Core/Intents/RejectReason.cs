@@ -85,4 +85,15 @@ public enum RejectReason : byte
 
     /// <summary>The ship is not parked (return to the static mode, refuelling); K5-24.</summary>
     ShipNotParked = 39,
+    /// <summary>No slot of the target can take any of the items (K6-29).</summary>
+    InventoryFull = 40,
+
+    /// <summary>The source holds fewer items than the intent moves, drops or the action costs (K6-29).</summary>
+    NotEnoughItems = 41,
+
+    /// <summary>The source slot no longer holds the type and count the client saw (K6-29).</summary>
+    ContainerChanged = 42,
+
+    /// <summary>The container is not accessible to the player (K6-29).</summary>
+    ContainerLocked = 43,
 }

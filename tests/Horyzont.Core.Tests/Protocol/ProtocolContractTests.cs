@@ -3,6 +3,7 @@ using System.Numerics;
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
+using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
@@ -30,21 +31,26 @@ public sealed class ProtocolContractTests
     {
         AssertValues((OperationKind.TerrainEdit, 1), (OperationKind.ConstructCreate, 2), (OperationKind.BlockSet, 3), (OperationKind.BlockClear, 4),
             (OperationKind.PlayerJoin, 5), (OperationKind.PlayerLeave, 6), (OperationKind.EntityReparent, 7),
-            (OperationKind.ShipModeSet, 20), (OperationKind.ShipFuelAdd, 21), (OperationKind.MarkerSet, 22), (OperationKind.MarkerRemove, 23));
+            (OperationKind.ShipModeSet, 20), (OperationKind.ShipFuelAdd, 21), (OperationKind.MarkerSet, 22), (OperationKind.MarkerRemove, 23),
+            (OperationKind.Compound, 30), (OperationKind.ItemTransfer, 31), (OperationKind.ItemSwap, 32), (OperationKind.ItemCreate, 33),
+            (OperationKind.ItemDestroy, 34), (OperationKind.ContainerCreate, 35));
         AssertValues((RejectReason.None, 0), (RejectReason.UnknownPlayer, 1), (RejectReason.PlayerOffline, 2), (RejectReason.RateLimited, 3),
             (RejectReason.InvalidParameters, 4), (RejectReason.RayOriginMismatch, 5), (RejectReason.NoHit, 6), (RejectReason.OutOfReach, 7),
             (RejectReason.AreaNotLoaded, 8), (RejectReason.BelowCore, 9), (RejectReason.OutsideAtmosphere, 10), (RejectReason.UnknownPlanet, 11),
             (RejectReason.UnknownConstruct, 12), (RejectReason.CellOutOfBounds, 13), (RejectReason.CellOccupied, 14), (RejectReason.CellEmpty, 15),
             (RejectReason.UnknownBlockType, 16), (RejectReason.UnknownMaterial, 17), (RejectReason.IntersectsPlayer, 18),
             (RejectReason.NoLineOfSight, 19), (RejectReason.WrongPlanet, 20), (RejectReason.ServerReadOnly, 21),
-            (RejectReason.NoCockpit, 30), (RejectReason.ShipAnchored, 31), (RejectReason.NoEngine, 37), (RejectReason.MarkerLimit, 36), (RejectReason.ShipNotParked, 39));
+            (RejectReason.NoCockpit, 30), (RejectReason.ShipAnchored, 31), (RejectReason.NoEngine, 37), (RejectReason.MarkerLimit, 36), (RejectReason.ShipNotParked, 39),
+            (RejectReason.InventoryFull, 40), (RejectReason.NotEnoughItems, 41), (RejectReason.ContainerChanged, 42), (RejectReason.ContainerLocked, 43));
         AssertValues((MessageType.ClientHello, 1), (MessageType.ServerHello, 2), (MessageType.HandshakeReject, 3), (MessageType.ClientReady, 4),
             (MessageType.TerrainCacheReport, 5), (MessageType.TerrainBlockData, 6), (MessageType.TerrainChecksums, 7), (MessageType.ConstructState, 8),
             (MessageType.ConstructRemoved, 9), (MessageType.OperationApplied, 10), (MessageType.IntentSubmit, 11), (MessageType.IntentReply, 12),
             (MessageType.InputBatch, 13), (MessageType.Snapshot, 14), (MessageType.SnapshotAck, 15), (MessageType.EntitySpawn, 16),
             (MessageType.EntityDespawn, 17), (MessageType.Ping, 18), (MessageType.Pong, 19), (MessageType.Disconnect, 20), (MessageType.ResyncRequest, 21), (MessageType.ServerStatus, 22), (MessageType.JoinUnavailable, 23), (MessageType.TerrainSync, 24), (MessageType.TerrainView, 25),
             (MessageType.ShipStatus, 31), (MessageType.StarSystemState, 32),
-            (MessageType.MarkersState, 33));
+            (MessageType.MarkersState, 33),
+            (MessageType.ContainerState, 40), (MessageType.ContainerDelta, 41), (MessageType.ContainerSubscribe, 42),
+            (MessageType.ContainerUnsubscribe, 43), (MessageType.ItemRegistry, 49));
         AssertValues((DeliveryChannel.ReliableOrdered, 0), (DeliveryChannel.Unreliable, 1));
         AssertValues((HandshakeRejectCode.WrongProtocol, 1), (HandshakeRejectCode.WrongBuild, 2), (HandshakeRejectCode.ServerFull, 3),
             (HandshakeRejectCode.BadPassword, 4), (HandshakeRejectCode.Banned, 5), (HandshakeRejectCode.AlreadyConnected, 6),
@@ -57,7 +63,17 @@ public sealed class ProtocolContractTests
         AssertValues((ConstructMode.Static, 0), (ConstructMode.Ship, 1));
         AssertValues((BlockShape.Cube, 1), (BlockShape.Mesh, 2));
         AssertValues((BlobKind.ConstructHeader, 1), (BlobKind.Player, 2), (BlobKind.ConstructChunk, 3), (BlobKind.PlanetParams, 4),
-            (BlobKind.TerrainBlock, 5), (BlobKind.StarSystemParams, 10), (BlobKind.Marker, 11), (BlobKind.ShipState, 12));
+            (BlobKind.TerrainBlock, 5), (BlobKind.StarSystemParams, 10), (BlobKind.Marker, 11), (BlobKind.ShipState, 12), (BlobKind.Container, 20));
+        AssertValues((ItemSource.Harvest, 1), (ItemSource.Craft, 2), (ItemSource.Station, 3), (ItemSource.Crop, 4), (ItemSource.Refund, 5),
+            (ItemSource.Loot, 6), (ItemSource.Admin, 7), (ItemSource.Recovered, 8), (ItemSource.Starter, 9));
+        AssertValues((ItemSink.Craft, 1), (ItemSink.Station, 2), (ItemSink.Eat, 3), (ItemSink.Fuel, 4), (ItemSink.BuildCost, 5),
+            (ItemSink.SuitRefill, 6), (ItemSink.Plant, 7), (ItemSink.Despawn, 8), (ItemSink.Admin, 9), (ItemSink.Ammo, 10), (ItemSink.Offering, 11));
+        AssertValues((ContainerKind.PlayerBag, 1), (ContainerKind.Hotbar, 2), (ContainerKind.Equipment, 3), (ContainerKind.Chest, 4),
+            (ContainerKind.CargoHold, 5), (ContainerKind.StationInput, 6), (ContainerKind.StationOutput, 7), (ContainerKind.Tombstone, 8),
+            (ContainerKind.DroppedItem, 9));
+        AssertValues((ContainerHostKind.Player, 1), (ContainerHostKind.ConstructBlock, 2), (ContainerHostKind.PersistentEntity, 3),
+            (ContainerHostKind.Poi, 4));
+        AssertValues((ContainerAccess.Shared, 1), (ContainerAccess.Private, 2));
         AssertValues((TerrainShape.Sphere, 1));
         AssertValues((TerrainEditMode.Remove, 1), (TerrainEditMode.Add, 2));
         AssertValues((EntityKind.Player, 1), (EntityKind.Construct, 2));
@@ -68,7 +84,7 @@ public sealed class ProtocolContractTests
     }
 
     /// <summary>
-    /// K2-10 adds reject reason 21 (and raised the protocol version from 1 to 2; K2-11 raises it to 3, see <see cref="ProtocolVersion_MatchesDocumentedMergeValue"/>).
+    /// K2-10 adds reject reason 21 (and raised the protocol version from 1 to 2; K2-11 raises it to 3, K6-29W to 14, see <see cref="ProtocolVersion_MatchesDocumentedMergeValue"/>).
     /// </summary>
     [Fact]
     public void RejectReason_ServerReadOnly_RoundTrips()
@@ -92,6 +108,7 @@ public sealed class ProtocolContractTests
     [InlineData(RejectReason.ShipAnchored, 31)]
     [InlineData(RejectReason.NoEngine, 37)]
     [InlineData(RejectReason.ShipNotParked, 39)]
+    [InlineData(RejectReason.MarkerLimit, 36)]
     public void RejectReason_KosmosValues_Golden(RejectReason reason, byte value)
     {
         var reply = new IntentReply(7, reason, OpId.None);
@@ -102,7 +119,7 @@ public sealed class ProtocolContractTests
 
         Assert.Equal(new byte[] { 12, 1, 7, value, 0 }, bytes);
         Assert.Equal(reply, MessageCodec.Read(bytes));
-        foreach (byte undefined in new byte[] { 22, 29, 32, 33, 34, 35, 38, 40, 255 })
+        foreach (byte undefined in new byte[] { 22, 29, 32, 33, 34, 35, 38, 44, 255 })
         {
             var copy = (byte[])bytes.Clone();
             copy[3] = undefined;
@@ -119,19 +136,20 @@ public sealed class ProtocolContractTests
     /// K5-24 adds ShipFuelAddOp (21), RefuelIntent (13) and ShipNotParked (39) after K5-22 (main 10): 11.
     /// K5-27 adds MarkersState (33), operations 22/23, intents 14/15, reject reason 36 and blob 11 after K5-24 (main 11): 12.
     /// K5-26 adds ShipStatus (31) and the seat in a player's EntitySpawn.KindData after K5-27 (main 12): 13.
+    /// K6-29W adds items (intents 20-21, reject reasons 40-43, messages 40-43 and 49) after K5-26 (main 13): 14.
     /// A rebase onto a newer main updates this value, the constant and the package plan together.
     /// </summary>
     [Fact]
     public void ProtocolVersion_MatchesDocumentedMergeValue()
     {
-        Assert.Equal(13, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(14, ProtocolConstants.ProtocolVersion);
         Assert.Equal(0x3F, ProtocolConstants.InputButtonsMask);
     }
 
     [Fact]
     public void Constants_GoldenValues()
     {
-        Assert.Equal(13, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(14, ProtocolConstants.ProtocolVersion);
         Assert.Equal(262144, ProtocolConstants.MaxReliableMessageBytes);
         Assert.Equal(1150, ProtocolConstants.MaxUnreliableMessageBytes);
         Assert.Equal(32, ProtocolConstants.MaxDisplayNameBytes);
@@ -140,6 +158,10 @@ public sealed class ProtocolContractTests
         Assert.Equal(255, ProtocolConstants.MaxMaterials);
         Assert.Equal(22, ProtocolConstants.MaxEntitiesPerSnapshot);
         Assert.Equal(8, ProtocolConstants.MaxFramesPerSnapshot);
+        Assert.Equal(4096, ProtocolConstants.MaxItemTypes);
+        Assert.Equal(256, ProtocolConstants.MaxContainerSlots);
+        Assert.Equal(4096, ProtocolConstants.MaxCompoundComponents);
+        Assert.Equal(160 * 1024, ProtocolConstants.MaxCompoundBytes);
     }
 
     [Fact]
@@ -193,6 +215,11 @@ public sealed class ProtocolContractTests
             new StarSystemState(Horyzont.Core.Space.StarSystemGenesis.CreateWorldBodies(1, "core:planet/1").System),
             new ShipStatus(new EntityId(1), default, 1f, 2f, 3f, default, default),
             new MarkersState([]),
+            ContainerState.Rejected(new ContainerId(1), RejectReason.ContainerLocked),
+            new ContainerDelta(new ContainerId(1), 1, []),
+            new ContainerSubscribe(new ContainerId(1)),
+            new ContainerUnsubscribe(new ContainerId(1)),
+            new ItemRegistry([]),
         ];
 
         foreach (var message in messages)

@@ -108,20 +108,27 @@ public class FramePoseHistoryTests
         history.Forget(frames[3]);
         Record(history, frames, tick++);
         var sink = 0.0;
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 10_000 / frames.Length; i++, tick++)
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
         {
-            Record(history, frames, tick);
-            for (var f = 0; f < frames.Length; f++)
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 10_000 / frames.Length; i++, tick++)
             {
-                history.TryGetWorldPose(frames[f], tick - 10.5, out var pose);
-                sink += pose.Position.X;
+                Record(history, frames, tick);
+                for (var f = 0; f < frames.Length; f++)
+                {
+                    history.TryGetWorldPose(frames[f], tick - 10.5, out var pose);
+                    sink += pose.Position.X;
+                }
+
+                history.Forget(frames[i % frames.Length]);
             }
 
-            history.Forget(frames[i % frames.Length]);
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, smallest);
         Assert.True(double.IsFinite(sink));
 
         static void Record(FramePoseHistory history, FrameRef[] frames, ulong tick)

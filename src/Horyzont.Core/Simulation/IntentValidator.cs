@@ -16,7 +16,7 @@ namespace Horyzont.Core.Simulation;
 /// Validates intents against the state and the terrain. The order of the checks decides the returned reason
 /// (docs/plans/K1-03-core-stan-i-operacje.md, "Walidacja i rozwiązanie"). Never throws for bad input.
 /// </summary>
-internal sealed class IntentValidator(WorldState state, ITerrainService terrain, GameRules rules, BlockContentTable content)
+internal sealed class IntentValidator(WorldState state, ITerrainService terrain, GameRules rules, BlockContentTable content, SurvivalRules? survival)
 {
     /// <summary>Distance from a cell centre to its corner, rounded up.</summary>
     private const float CellReachSlack = 0.87f;
@@ -57,6 +57,16 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.InvalidParameters;
         }
 
+        // Item intents (K6-29W): parameters and container access before the rate limit; without content they are invalid (D8).
+        if (intent is ItemMoveIntent or ItemDropIntent)
+        {
+            var itemReason = survival is null ? RejectReason.InvalidParameters : survival.CheckItemParameters(playerId, intent);
+            if (itemReason != RejectReason.None)
+            {
+                return itemReason;
+            }
+        }
+
         var hasPlanet = TryGetEye(player, out var playerPlanet, out var eye);
         if (rayOrigin is { } origin && hasPlanet && Vector3.Distance(origin, eye) > rules.MaxRayOriginErrorMeters)
         {
@@ -77,6 +87,9 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             ShipModeIntent ship => ValidateShipMode(ship, hasPlanet, playerPlanet, eye, out facts),
             MarkerSetIntent or MarkerRemoveIntent => MarkerIntentRules.Validate(state, playerId, intent),
             RefuelIntent refuel => ValidateRefuel(refuel, hasPlanet, playerPlanet, eye, out facts),
+
+            // The content checks of item intents (source content, counts, target room) are part of their resolution.
+            ItemMoveIntent or ItemDropIntent => RejectReason.None,
             _ => RejectReason.InvalidParameters,
         };
     }
@@ -87,6 +100,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
         TerrainToolIntent => buckets.Terrain,
         PlaceBlockIntent or RemoveBlockIntent or ShipModeIntent or RefuelIntent => buckets.Blocks,
         MarkerSetIntent or MarkerRemoveIntent => buckets.Markers,
+        ItemMoveIntent or ItemDropIntent => buckets.Items,
         _ => null,
     };
 
@@ -117,6 +131,9 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             case RefuelIntent refuel:
                 rayOrigin = refuel.RayOrigin;
                 return Geometry.IsFinite(refuel.RayOrigin) && Geometry.IsDirection(refuel.RayDirection);
+            case ItemMoveIntent or ItemDropIntent:
+                bucket = buckets.Items;
+                return true;
             default:
                 return false;
         }

@@ -108,12 +108,19 @@ public sealed class CameraRigMathTests
             CameraRigMath.Compute(feet, rotation, 0.1f, Vector3.UnitX, CameraMode.ThirdPerson, TppOffsets.Default, _rules);
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 10_000; i++)
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
         {
-            CameraRigMath.Compute(feet, rotation, 0.1f, Vector3.UnitX, i % 2 == 0 ? CameraMode.ThirdPerson : CameraMode.FirstPerson, TppOffsets.Default, _rules);
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 10_000; i++)
+            {
+                CameraRigMath.Compute(feet, rotation, 0.1f, Vector3.UnitX, i % 2 == 0 ? CameraMode.ThirdPerson : CameraMode.FirstPerson, TppOffsets.Default, _rules);
+            }
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, smallest);
     }
 }

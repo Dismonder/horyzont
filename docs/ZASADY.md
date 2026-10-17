@@ -24,6 +24,7 @@ Każda sesja pracy zaczyna się od przeczytania tego pliku i planu pakietu. Niej
 - Zero mutowalnego stanu statycznego. Zależności składa jedno miejsce startowe (composition root) w `game/src/Boot/`.
 - Jedynym composition root jest `GameComposition` (`game/src/Boot/`); węzły `/Root/Server` i `/Root/Client` dostają zależności metodą `Initialize` przed wejściem do drzewa. Węzeł serwera tyka z priorytetem fizyki -100, klienta 0, więc w hoście tick serwera poprzedza `Poll` klienta lokalnego; host ma jedną instancję terenu (`SharedTerrainProvider`).
 - Każda zmiana świata to operacja z `Horyzont.Core.Operations`, stosowana przez `ServerSimulation` i zapisywana w dzienniku. Nie ma innej drogi zmiany stanu świata.
+- Edycję terenu rozpoznaje się po typie operacji tylko przez `OperationTerrain.TryGetTerrainEdit`, bo bywa składową `CompoundOp` (kopanie z urobkiem, zasypywanie z kosztem). Dotyczy to `ServerSimulation.Replay`, `TerrainReplay`, `TerrainSemanticsMeta.CheckTail` i `ServerTerrainReplicator`; sprawdzenie typu wprost gubi takie edycje w powtórce i w replikacji (K6-29W).
 - Lot, zużycie paliwa i pozy statków poza dziennikiem — wyłącznie `UpdateConstructKinematics`/`UpdateShipState` z `ShipFlightSystem` (K5-24); paliwo dodaje tylko operacja `ShipFuelAddOp`.
 - Kanoniczny stan każdego bytu to rama rodzica (`FrameRef`), licznik przepięć `ParentSeq` i poza lokalna w tej ramie (`System.Numerics.Vector3` i `Quaternion`, metry). Pozycja w świecie jest zawsze wartością pochodną: zapis, dziennik i sieć znają wyłącznie pozycje lokalne.
 - Ramy składa się tylko w podwójnej precyzji (`Vector3D`, `QuaternionD` i `FrameMath` w Core, od K5-20). Pojedyncza precyzja wystarcza wewnątrz ramy planety albo budowli.
@@ -78,7 +79,7 @@ Kod stosujący operacje (`OperationApplier`, `ServerSimulation`, wszystko, co li
 - bez `Random` przy stosowaniu operacji; losowość tylko przy rozwiązywaniu intencji, a jej wynik trafia do operacji;
 - bez iteracji po `Dictionary`/`HashSet`, gdy kolejność wpływa na wynik; używaj `SortedDictionary` albo jawnego sortowania;
 - bez równoległości w stosowaniu operacji;
-- bez czytania treści gry (przedmioty, receptury, pojemności, generatory) w warunkach wstępnych appliera: operacja niesie każdą wartość z treści, od której zależy jej stosowanie (np. limit stosu, pojemność zbiornika), więc ogon dziennika odtwarza się tak samo po aktualizacji treści;
+- bez czytania treści gry (przedmioty, receptury, pojemności, generatory) w warunkach wstępnych appliera: operacja niesie każdą wartość z treści, od której zależy jej stosowanie (np. limit stosu: `ItemTransferOp.ToStackLimit`, `ItemCreateOp.StackLimit`; pojemność zbiornika), więc ogon dziennika odtwarza się tak samo po aktualizacji treści;
 - bez pytania terenu ani generatora przy stosowaniu: istnienie obiektów generatora i trafienia w teren sprawdza walidator, a wynik trafia do operacji;
 - walidator intencji może czytać treść (`BlockContentTable`) i teren (`ITerrainService.TrySampleSolid`); applier `ShipModeSetOp` nigdy: warunki wstępne appliera to tylko stan świata, a wszystko z treści albo terenu trafia do operacji lub zostaje w walidatorze (K5-23);
 - warunki wstępne `ShipFuelAddOp` nie czytają `ShipState` (poza skrótem): tylko budowla w trybie statku i poprawne wartości; pojemność zbiorników niesie operacja (K5-24);

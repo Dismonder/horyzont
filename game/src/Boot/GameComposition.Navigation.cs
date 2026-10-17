@@ -41,7 +41,13 @@ public sealed partial class GameComposition
     {
         ArgumentNullException.ThrowIfNull(menu);
         _menuGate = menu;
-        return MapGate is { } map ? new CompositeInputGate(menu, map) : menu;
+        var gate = MapGate is { } map ? new CompositeInputGate(menu, map) : menu;
+        if (Inventory is { } inventory)
+        {
+            inventory.ModalGate = gate; // the inventory neither opens over the map or the menu nor takes the mouse from them
+        }
+
+        return gate;
     }
 
     partial void ConfigureNavigation()
@@ -77,7 +83,7 @@ public sealed partial class GameComposition
         var map = new MapController(MapGate);
         map.Initialize(
             ClientStarSystem, poses, ClientMarkers, entities, viewpoint, Navigation, new SessionIntentSender(Client.Session), renderTick,
-            () => _menuGate?.IsBlocked != true, () => ClientNode.GetNodeOrNull<LocalInputReader>("Input")?.Recapture());
+            () => _menuGate?.IsBlocked != true && Inventory?.IsOpen != true, () => ClientNode.GetNodeOrNull<LocalInputReader>("Input")?.Recapture());
         Client.AddListener(map);
         Client.AddListener(map.Dialog);
         ClientNode.AddChild(map);

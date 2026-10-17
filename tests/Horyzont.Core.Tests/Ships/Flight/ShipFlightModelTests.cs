@@ -78,14 +78,21 @@ public sealed class ShipFlightModelTests
             ShipFlightModel.Step(ref motion, control, stats, e, _rules, Dt);
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 1000; i++)
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
         {
-            var e = FlightFixtures.HomeEnvironment(motion);
-            ShipFlightModel.Step(ref motion, control, stats, e, _rules, Dt);
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 1000; i++)
+            {
+                var e = FlightFixtures.HomeEnvironment(motion);
+                ShipFlightModel.Step(ref motion, control, stats, e, _rules, Dt);
+            }
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, smallest);
     }
 
     [Fact]
