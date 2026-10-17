@@ -118,3 +118,4 @@ EQ_MODULE,Module,Moduł
 SUIT_PANEL_TITLE,Suit,Kombinezon
 SUIT_DRAIN,value / capacity  drain,wartość / pojemność  zużycie
 PROMPT_GENERATOR_OPEN,[E] Oxygen generator,[E] Generator tlenu
+REJECT_IN_TRANSITION,You cannot do that right now,Nie możesz tego teraz zrobić

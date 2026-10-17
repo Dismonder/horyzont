@@ -16,7 +16,7 @@ project/assembly_name="Horyzont.Game"
 [internationalization]
 
 locale/fallback="en"
-locale/translations=PackedStringArray("res://locale/tools.en.translation", "res://locale/tools.pl.translation", "res://locale/items.en.translation", "res://locale/items.pl.translation", "res://locale/ui.en.translation", "res://locale/ui.pl.translation")
+locale/translations=PackedStringArray("res://locale/tools.en.translation", "res://locale/tools.pl.translation", "res://locale/items.en.translation", "res://locale/items.pl.translation", "res://locale/ui.en.translation", "res://locale/ui.pl.translation", "res://locale/death.en.translation", "res://locale/death.pl.translation")
 
 [input]
 
