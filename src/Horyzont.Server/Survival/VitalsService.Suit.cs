@@ -35,6 +35,11 @@ public sealed partial class VitalsService
             : SuitStep.Advance(current, effective, stats, sample.Sheltered || sample.Generator || sample.LifeSupport, rules, tickRate);
         damage += result.Damage;
 
+        if (result.ExposedMask != 0 && data.Environment.Exposed == 0)
+        {
+            _logger.SuitExposed(player.Player.Value, result.ExposedMask); // the transition only, never every tick (review C-D, P3-9)
+        }
+
         data.HasSuit = true;
         data.Suit = result.Next;
         data.Capacity = stats.Capacity;

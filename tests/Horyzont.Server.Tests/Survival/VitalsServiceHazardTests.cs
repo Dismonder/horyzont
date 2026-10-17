@@ -275,6 +275,72 @@ public sealed class VitalsServiceHazardTests
         Assert.InRange(rig.SuitOf(rig.Alice).Oxygen, 150f, 199.9f);
     }
 
+    [Fact]
+    public void ExposureStarting_LoggedOnTheTransitionOnly()
+    {
+        var log = new ListLogger<VitalsService>();
+        var rig = MoonRig(logger: log);
+        rig.SetSuit(rig.Alice, WithOxygen(0f));
+
+        rig.Tick(120);
+
+        // The vacuum hurts from the first tick; the debug line says so once, not every tick (review C-D, P3-9).
+        Assert.Single(log.Entries, e => e.EventId.Id == 8605);
+    }
+
+    [Fact]
+    public void PlayerLeaving_ForgetsTheSample_TheNextStepSeesTheGeneratorAtOnce()
+    {
+        var rig = MoonRig();
+        rig.Vitals.OnPlayerReady(rig.Alice);
+
+        // The tracker samples a player every 10 ticks (id 1: ticks 9, 19) and a message goes out every 6 (ticks 12, 18): the sample of tick 9 is what tick 12 shows.
+        rig.Tick(10 - (int)rig.Sim.State.CurrentTick.Value);
+        var input = rig.PlaceGenerator(rig.Sim.State.CurrentTick);
+        rig.Stock(input, 0, HazardServerRig.Fuel, 2);
+        rig.StandOver(rig.Alice, 3f);
+        rig.Tick(3);
+        Assert.False(rig.MessagesTo(rig.Alice)[^1].Environment.Generator, "the sample should still be the old one");
+
+        // A player who left and came back is sampled at once (review C-D, P3-7), so the service forgets him in OnPlayerLeaving.
+        rig.Tick(5);
+        rig.Vitals.OnPlayerLeaving(rig.Alice, Horyzont.Core.Protocol.DisconnectCode.Normal);
+        rig.Vitals.OnPlayerReady(rig.Alice);
+        rig.Tick(1);
+
+        Assert.Equal(18UL, rig.Sim.State.CurrentTick.Value - 1);
+        Assert.True(rig.MessagesTo(rig.Alice)[^1].Environment.Generator, "the player was not sampled again after he came back");
+    }
+
+    [Fact]
+    public void SteadyTickWithGeneratorInRange_DoesNotAllocate()
+    {
+        var rig = MoonRig();
+        var input = rig.PlaceGenerator(rig.Sim.State.CurrentTick);
+        rig.Stock(input, 0, HazardServerRig.Fuel, 2);
+        rig.StandOver(rig.Alice, 3f);
+        rig.Tick(30);
+
+        // The generator in range and the rays that hit the blocks around are part of the window (review C-D, P3-6): 60 ticks cover six samples.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
+        {
+            long allocated = 0;
+            for (var i = 0; i < 60; i++)
+            {
+                var before = GC.GetAllocatedBytesForCurrentThread();
+                rig.Vitals.Step();
+                allocated += GC.GetAllocatedBytesForCurrentThread() - before;
+                rig.Sim.AdvanceTick();
+            }
+
+            smallest = Math.Min(smallest, allocated);
+        }
+
+        Assert.Equal(0, smallest);
+        Assert.True(rig.MessagesTo(rig.Alice).Count == 0, "the players are not ready");
+    }
+
     private sealed class ListLogger<T> : ILogger<T>
     {
         public List<(EventId EventId, LogLevel Level, string Message)> Entries { get; } = [];

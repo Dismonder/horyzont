@@ -30,7 +30,8 @@ public static class OxygenCoverage
         for (var i = 0; i < generators.Count; i++)
         {
             var block = generators[i];
-            if (!state.BlockEntities.TryGet(block, out var entity) || entity is not OxygenGeneratorBlockState generator
+            // An idle generator (never started, or burned out and settled) cannot run: the cheap tests go before the cell centre and the distance (review B5, P3-5).
+            if (!state.BlockEntities.TryGet(block, out var entity) || entity is not OxygenGeneratorBlockState { Started: not null } generator
                 || !ContainerReach.TryCellCenter(state, block.Construct, block.Cell, out var centrePlanet, out var centre) || centrePlanet != planet
                 || Vector3.Distance(point, centre) > rules.GeneratorRangeMeters
                 || !state.Containers.TryGet(generator.Input, out var input))
