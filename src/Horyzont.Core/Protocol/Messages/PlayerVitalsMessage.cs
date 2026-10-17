@@ -1,3 +1,4 @@
+using Horyzont.Core.Ids;
 using Horyzont.Core.Survival;
 
 namespace Horyzont.Core.Protocol.Messages;
@@ -22,6 +23,8 @@ namespace Horyzont.Core.Protocol.Messages;
 /// <param name="Environment">The protections and the hazards around the player (K6-34 tail, D18).</param>
 /// <param name="Suit">The resources of the suit, each 0 to its capacity (K6-34 tail).</param>
 /// <param name="Capacity">The capacities of the resources, each 1 to <c>ProtocolConstants.MaxSuitValue</c> (K6-34 tail).</param>
+/// <param name="SampleTick">The tick of the sample (K6-35 tail, D21): a client drops a sample older than the newest it has seen.</param>
+/// <param name="ParentSeq">The reparent counter of the body the sample belongs to (K6-35 tail): a sample of an older body must not overwrite the reset after a death.</param>
 public sealed record PlayerVitalsMessage(
     float Health,
     float HealthMax,
@@ -35,17 +38,12 @@ public sealed record PlayerVitalsMessage(
     byte Comfort,
     VitalsEnvironment Environment,
     SuitResources Suit,
-    SuitResources Capacity) : Message
+    SuitResources Capacity,
+    Tick SampleTick,
+    uint ParentSeq) : Message
 {
     /// <summary>The suit of a server without hazard content: every resource full at the base capacity (D18).</summary>
     public static readonly SuitResources DefaultSuit = new(100f, 100f, 100f, 100f, 100f);
-
-    /// <summary>Creates the message of a server without hazard content: no environment, the suit and the capacities at <see cref="DefaultSuit"/>.</summary>
-    public PlayerVitalsMessage(
-        float health, float healthMax, float stamina, float staminaMax, bool exhausted, bool restConditionsMet, bool rested, ushort restWarmupTicks, uint restRemainingTicks, byte comfort)
-        : this(health, healthMax, stamina, staminaMax, exhausted, restConditionsMet, rested, restWarmupTicks, restRemainingTicks, comfort, VitalsEnvironment.None, DefaultSuit, DefaultSuit)
-    {
-    }
 
     /// <inheritdoc />
     public override MessageType Type => MessageType.PlayerVitals;

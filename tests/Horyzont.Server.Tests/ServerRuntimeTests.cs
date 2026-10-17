@@ -364,6 +364,9 @@ public sealed class ServerRuntimeTests
         await rig.StartAsync();
         var client = await rig.JoinAsync("local", 1);
         rig.StepMany(30);
+        // The fault hits the next journal commit of the writer thread. Wait until the join is durable, or the fault lands on the join batch that is still in flight and the
+        // writer faults before the dig is answered (a race of the test with the writer thread, seen as ServerReadOnly in the first dig).
+        Assert.True(await rig.RunUntilAsync(() => RawDb.Long(rig.Dir.WorldPath, "SELECT COALESCE(MAX(op_id), 0) FROM journal") == (long)rig.Runtime.State.LastOpId.Value));
         rig.Faults.DiskErrorAt(FaultPoint.BeforeJournalCommit);
         await Scenarios.DigManyAsync(rig, client, 1);
 

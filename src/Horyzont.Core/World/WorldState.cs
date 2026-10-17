@@ -54,6 +54,7 @@ public sealed class WorldState
         Progress = new PlayerProgressStore(_tracker);
         HarvestedProps = new HarvestedPropStore(_tracker);
         ProgressKeys = new ProgressKeyStore(_tracker);
+        PersistentEntities = new PersistentEntityStore(_tracker);
     }
 
     /// <summary>World id.</summary>
@@ -129,6 +130,12 @@ public sealed class WorldState
     public HarvestedPropStore HarvestedProps { get; }
     /// <summary>Progress keys of the world (K6-32).</summary>
     public ProgressKeyStore ProgressKeys { get; }
+
+    /// <summary>Persistent entities that are neither constructs nor players: tombstones (K6-35).</summary>
+    public PersistentEntityStore PersistentEntities { get; }
+
+    /// <summary>Settings of the world (K6-35 D4); <see cref="WorldSettings.Default"/> until an operation or the loader sets others.</summary>
+    public WorldSettings Settings { get; private set; } = WorldSettings.Default;
 
     /// <summary>True between <see cref="CaptureCheckpoint"/> and its completion or requeue.</summary>
     public bool IsCheckpointInFlight => _inFlight is not null;
@@ -511,6 +518,24 @@ public sealed class WorldState
         }
 
         var progressKeys = _tracker.ProgressKeys ? ProgressKeys.Sorted.ToArray() : null;
+
+        var persistentIds = _tracker.PersistentEntities.ToArray();
+        Array.Sort(persistentIds, static (a, b) => a.Value.CompareTo(b.Value));
+        var upsertedPersistent = new List<PersistentEntity>();
+        var removedPersistent = new List<EntityId>();
+        foreach (var id in persistentIds)
+        {
+            if (PersistentEntities.TryGet(id, out var persistent))
+            {
+                upsertedPersistent.Add(persistent);
+            }
+            else
+            {
+                removedPersistent.Add(id);
+            }
+        }
+
+        var settings = _tracker.Settings ? Settings : null;
         _tracker.Clear();
         _inFlight = new WorldCheckpoint(
             LastOpId, CurrentTick, EntityIds.NextValue, PlayerIds.NextValue,
@@ -527,6 +552,9 @@ public sealed class WorldState
             UpsertedHarvestedProps = upsertedProps,
             RemovedHarvestedProps = removedProps,
             ProgressKeys = progressKeys,
+            UpsertedPersistentEntities = upsertedPersistent,
+            RemovedPersistentEntities = removedPersistent,
+            Settings = settings,
         };
         return _inFlight;
     }
@@ -642,6 +670,21 @@ public sealed class WorldState
             _tracker.MarkProgressKeys();
         }
 
+        foreach (var persistent in failed.UpsertedPersistentEntities)
+        {
+            _tracker.MarkPersistentEntity(persistent.Id);
+        }
+
+        foreach (var id in failed.RemovedPersistentEntities)
+        {
+            _tracker.MarkPersistentEntity(id);
+        }
+
+        if (failed.Settings is not null)
+        {
+            _tracker.MarkSettings();
+        }
+
         _inFlight = null;
     }
 
@@ -687,6 +730,12 @@ public sealed class WorldState
         seated = null;
         return false;
     }
+
+    /// <summary>Replaces the settings (operation 46 or its undo, and the world loader). The applier marks them changed when the operation is accepted.</summary>
+    internal void ReplaceSettings(WorldSettings settings) => Settings = settings;
+
+    /// <summary>Marks the settings changed for the next checkpoint.</summary>
+    internal void MarkSettingsChanged() => _tracker.MarkSettings();
 
     internal void SetLastOpId(OpId id) => LastOpId = id;
 

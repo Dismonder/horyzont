@@ -1,0 +1,27 @@
+keys,en,pl
+DEATH_TITLE,You died,Nie żyjesz
+DEATH_RESPAWNING,Respawning...,Odradzanie...
+DEATH_RESPAWN_WAIT,Waiting for the new body to be ready,Czekanie na gotowe nowe ciało
+DEATH_RESPAWN_READY,You are back in the world,Wracasz do świata
+DEATH_AT_BED,You wake up next to your bed,Budzisz się obok swojego łóżka
+DEATH_AT_START,You return to the start of the world,Wracasz do miejsca startu świata
+DEATH_ITEMS_KEPT,You keep all your items,Zachowujesz wszystkie przedmioty
+DEATH_ITEMS_TOMBSTONE,Your items wait in a tombstone,Twoje przedmioty czekają w nagrobku
+DEATH_ITEMS_TOMBSTONES,Your items wait in {0} tombstones,Twoje przedmioty czekają w nagrobkach: {0}
+DEATH_FOOD_LOST,The effects of your food are gone,Efekty twojego jedzenia przepadły
+DEATH_CONTINUE,Continue,Kontynuuj
+DEATH_PENALTY_MILD,Mild,Łagodna
+DEATH_PENALTY_NORMAL,Normal,Normalna
+DEATH_PENALTY_HARD,Hard,Twarda
+DEATH_PENALTY_MILD_DESC,You keep all your items,Zachowujesz wszystkie przedmioty
+DEATH_PENALTY_NORMAL_DESC,The bag and the hotbar go to a tombstone,Plecak i pasek trafiają do nagrobka
+DEATH_PENALTY_HARD_DESC,"The bag, the hotbar and the equipment go to a tombstone","Plecak, pasek i wyposażenie trafiają do nagrobka"
+DEATH_SETTING_PENALTY,Penalty for death,Kara za śmierć
+TOMBSTONE_NAME,Tombstone,Nagrobek
+TOMBSTONE_PROMPT_OPEN,[E] Open the tombstone,[E] Otwórz nagrobek
+TOMBSTONE_TAKE_ALL,Take all,Zabierz wszystko
+TOMBSTONE_MARKER,Your tombstone,Twój nagrobek
+TOMBSTONE_OTHER_PLANET,Tombstone on another planet,Nagrobek na innej planecie
+TOMBSTONE_DISTANCE,Tombstone {0} m away,Nagrobek {0} m stąd
+TOMBSTONE_REMAINDER,Not everything fit; the rest stays in the tombstone,Nie wszystko się zmieściło; reszta zostaje w nagrobku
+TOMBSTONE_PRIVATE,Only its owner can open this tombstone,Ten nagrobek może otworzyć tylko jego właściciel

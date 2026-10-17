@@ -33,7 +33,6 @@ public sealed class VitalsRulesTests
         Assert.Equal(10f, rules.JumpStamina);
         Assert.Equal(4f, rules.ToolUseStamina);
         Assert.Equal(0.2f, rules.ExhaustedRecoverFraction);
-        Assert.Equal(1f, rules.MinHealthWithoutDeath);
         Assert.Equal(0.5f, rules.RestStaminaRegenBonus);
         Assert.Equal(10, rules.MaxComfort);
         Assert.Equal(5f, rules.RestHeatRangeMeters);

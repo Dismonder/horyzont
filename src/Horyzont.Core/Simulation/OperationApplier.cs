@@ -40,6 +40,9 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
     // Blocks whose chest state or chest container the running operation created or removed, with the component that did it: the state
     // and the container must agree again by the end of the operation (the checkpoint rejects a world in which they do not).
     private readonly List<(BlockRef Block, int Component)> _chestKeys = [];
+
+    // Persistent entities the running operation created or removed, or whose container it created or removed (K6-35): an entity and its container come and go together.
+    private readonly List<(EntityId Entity, int Component)> _entityKeys = [];
     private int _component = -1;
     private readonly List<ulong> _pendingConstructs = [];
 
@@ -79,7 +82,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 return ok;
             case var _ when IsComponent(operation):
                 BeginOperation();
-                failure = ApplyComponent(operation) ?? CheckChestConsistency(out _) ?? CheckStations() ?? string.Empty;
+                failure = ApplyComponent(operation) ?? CheckChestConsistency(out _) ?? CheckEntityConsistency(out _) ?? CheckStations() ?? string.Empty;
                 if (failure.Length != 0)
                 {
                     _undo.Rollback(state);
@@ -126,7 +129,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
     private static bool IsComponent(Operation operation) =>
         operation is ItemTransferOp or ItemSwapOp or ItemCreateOp or ItemDestroyOp or ContainerCreateOp or ContainerRemoveOp
             or ContainerConfigureOp or BlockEntitySetOp or RespawnPointSetOp or BlockFunctionStateSetOp or ItemDiscoverOp or ProgressKeyGrantOp
-            or PropHarvestOp or PropRegrowOp or FoodSetOp or SuitRefillOp;
+            or PropHarvestOp or PropRegrowOp or FoodSetOp or SuitRefillOp or PersistentEntityCreateOp or PersistentEntityRemoveOp or WorldSettingsSetOp;
 
     private void BeginOperation()
     {
@@ -140,6 +143,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         _pendingStates.Clear();
         _stationCells.Clear();
         _chestKeys.Clear();
+        _entityKeys.Clear();
         _component = -1;
         _viewSet = null;
         _viewCreate = null;
@@ -248,6 +252,11 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 TerrainEditOp when i != components.Count - 1 => "a terrain edit must be the last component",
                 ConstructCreateOp or BlockSetOp or BlockClearOp when i != components.Count - 1 => "a construct edit must be the last component",
                 TerrainEditOp or ConstructCreateOp or BlockSetOp or BlockClearOp => null,
+
+                // K6-35 D6: the reparent of a player (the death) is the one other irreversible component, so it is the last one and there is room for one of them only.
+                EntityReparentOp when i != components.Count - 1 => "a reparent must be the last component",
+                EntityReparentOp body when !state.Players.TryGetByEntity(body.Entity, out _) => "only the reparent of a player may be a component",
+                EntityReparentOp => null,
                 _ when IsComponent(component) => null,
                 _ => $"{component.Kind} is not allowed in a compound operation",
             };
@@ -271,6 +280,19 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         }
 
         BeginOperation();
+        var reparent = last as EntityReparentOp;
+        if (reparent is not null)
+        {
+            // The reparent has no undo, so every condition of it is checked before any other component is applied (D6). No other component changes the frame, the
+            // counter or the seat of the player, so what holds now holds when its turn comes.
+            failure = CheckReparent(reparent) ?? string.Empty;
+            if (failure.Length != 0)
+            {
+                componentIndex = components.Count - 1;
+                return false;
+            }
+        }
+
         if (lastIsConstructEdit)
         {
             // The conditions of the last component are checked on the state before the compound: no other component changes constructs.
@@ -291,7 +313,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         }
 
         var terrainEdit = last as TerrainEditOp;
-        var otherCount = terrainEdit is null && !lastIsConstructEdit ? components.Count : components.Count - 1;
+        var otherCount = terrainEdit is null && !lastIsConstructEdit && reparent is null ? components.Count : components.Count - 1;
         for (var i = 0; i < otherCount; i++)
         {
             _component = i;
@@ -311,6 +333,14 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             _undo.Rollback(state);
             failure = inconsistent;
             componentIndex = inconsistentAt;
+            return false;
+        }
+
+        if (CheckEntityConsistency(out var entityAt) is { } entityFailure)
+        {
+            _undo.Rollback(state);
+            failure = entityFailure;
+            componentIndex = entityAt;
             return false;
         }
 
@@ -334,6 +364,10 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             }
 
             terrainVersions = ApplyTerrainEdit(terrainEdit);
+        }
+        else if (reparent is not null)
+        {
+            ApplyReparent(reparent);
         }
         else if (lastIsConstructEdit)
         {
@@ -456,6 +490,17 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             constructChanges = ApplyPendingFunctionStates();
         }
 
+        // Persistent entities and the settings are marked for the checkpoint once the operation holds, so a refused one leaves no mark (K6-35).
+        for (var i = 0; i < _undo.EntityCount; i++)
+        {
+            state.PersistentEntities.MarkChanged(_undo.EntityAt(i));
+        }
+
+        if (_undo.SettingsChanged)
+        {
+            state.MarkSettingsChanged();
+        }
+
         state.SetLastOpId(id);
         return new AppliedOperation(id, tick, actor, operation, terrainVersions, constructChanges, changes);
     }
@@ -532,8 +577,100 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         BlockFunctionStateSetOp op => ApplyFunctionState(op),
         PropHarvestOp op => ApplyPropHarvest(op),
         PropRegrowOp op => ApplyPropRegrow(op),
+        PersistentEntityCreateOp op => ApplyEntityCreate(op),
+        PersistentEntityRemoveOp op => ApplyEntityRemove(op),
+        WorldSettingsSetOp op => ApplyWorldSettingsSet(op),
         _ => $"{operation.Kind} is not an item or state operation",
     };
+
+    /// <summary>
+    /// Creates a persistent entity (K6-35, operation 38): an unused id of the whole entity space, a known kind, a known player as owner, a planet frame (D12: taking down a building
+    /// must never remove it) and a finite pose.
+    /// </summary>
+    private string? ApplyEntityCreate(PersistentEntityCreateOp op)
+    {
+        if (!state.EntityIds.IsUnused(op.Entity))
+        {
+            return "entity id already used";
+        }
+
+        if (!Enum.IsDefined(op.EntityKind))
+        {
+            return "unknown entity kind";
+        }
+
+        if (op.Frame.Kind != FrameKind.Planet || !state.FrameExists(op.Frame))
+        {
+            return "the frame of a persistent entity must be a known planet";
+        }
+
+        if (!Geometry.IsFinite(op.Position) || !Geometry.IsRotation(op.Rotation))
+        {
+            return "invalid pose";
+        }
+
+        if (op.Owner.IsNone || !state.Players.TryGet(op.Owner, out _))
+        {
+            return "owner unknown";
+        }
+
+        state.EntityIds.MarkUsed(op.Entity);
+        _undo.AddEntity(state, new PersistentEntity(op.Entity, op.EntityKind, op.Frame, op.ParentSeq, op.Position, op.Rotation, op.Owner));
+        _entityKeys.Add((op.Entity, _component));
+        return null;
+    }
+
+    /// <summary>Removes a persistent entity that does not host a container any more (K6-35, operation 39).</summary>
+    private string? ApplyEntityRemove(PersistentEntityRemoveOp op)
+    {
+        if (!state.PersistentEntities.TryGet(op.Entity, out var entity))
+        {
+            return "unknown persistent entity";
+        }
+
+        if (state.Containers.TryGetOfEntity(op.Entity, out _))
+        {
+            return "the entity still hosts a container";
+        }
+
+        _undo.RemoveEntity(state, entity);
+        _entityKeys.Add((op.Entity, _component));
+        return null;
+    }
+
+    /// <summary>Replaces the settings of the world (K6-35 D4, operation 46): the ranges, not the rights of whoever asks.</summary>
+    private string? ApplyWorldSettingsSet(WorldSettingsSetOp op)
+    {
+        if (op.Settings is null || !op.Settings.IsValid)
+        {
+            return "world settings out of range";
+        }
+
+        _undo.SetSettings(state, op.Settings);
+        return null;
+    }
+
+    /// <summary>
+    /// A persistent entity and the container it hosts belong together (K6-35): judged once all components are applied, for every entity whose entity or container the operation
+    /// created or removed, so the order in a compound is free except that a container needs its entity first.
+    /// </summary>
+    private string? CheckEntityConsistency(out int component)
+    {
+        for (var i = 0; i < _entityKeys.Count; i++)
+        {
+            var (key, at) = _entityKeys[i];
+            var hasEntity = state.PersistentEntities.TryGet(key, out _);
+            var hasContainer = state.Containers.TryGetOfEntity(key, out _);
+            if (hasEntity != hasContainer)
+            {
+                component = at;
+                return hasContainer ? "a container needs its persistent entity" : "a persistent entity needs its container";
+            }
+        }
+
+        component = -1;
+        return null;
+    }
 
     private string? ApplyItemCreate(ItemCreateOp op)
     {
@@ -703,6 +840,44 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 return "the block already hosts a container of this kind";
             }
         }
+        else if (op.Host.Kind == ContainerHostKind.PersistentEntity)
+        {
+            // A tombstone (K6-35): the entity exists already (created by an earlier component), has no container yet, and the container matches it in kind and owner.
+            var entityId = new EntityId(op.Host.Id);
+            if (op.Host != ContainerHost.PersistentEntity(entityId))
+            {
+                return "entity host with extra fields";
+            }
+
+            if (!state.PersistentEntities.TryGet(entityId, out var hostEntity))
+            {
+                return "host entity missing";
+            }
+
+            if (state.Containers.TryGetOfEntity(entityId, out _))
+            {
+                return "the entity already hosts a container";
+            }
+
+            var kindMatches = (hostEntity.Kind == PersistentEntityKind.Tombstone && op.ContainerKind == ContainerKind.Tombstone)
+                || (hostEntity.Kind == PersistentEntityKind.DroppedItem && op.ContainerKind == ContainerKind.DroppedItem);
+            if (!kindMatches)
+            {
+                return "the container kind does not match the entity";
+            }
+
+            if (op.Owner != hostEntity.Owner)
+            {
+                return "the container and its entity need the same owner";
+            }
+
+            if (op.ContainerKind == ContainerKind.Tombstone && op.Access != ContainerAccess.Private)
+            {
+                return "a tombstone is private";
+            }
+
+            _entityKeys.Add((entityId, _component));
+        }
         else
         {
             return "host kind not supported";
@@ -766,6 +941,11 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             _chestKeys.Add((new BlockRef(new EntityId(container.Host.Id), container.Host.Cell), _component));
         }
 
+        if (container.Host.Kind == ContainerHostKind.PersistentEntity)
+        {
+            _entityKeys.Add((new EntityId(container.Host.Id), _component));
+        }
+
         _undo.Remove(state, container);
         return null;
     }
@@ -780,6 +960,12 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         if (op.Size == 0 || op.Size > ProtocolConstants.MaxContainerSlots || !Enum.IsDefined(op.Access))
         {
             return "size or access invalid";
+        }
+
+        if (container.Host.Kind == ContainerHostKind.PersistentEntity)
+        {
+            // K6-35 review A, P2-2: a tombstone stays private and sized by its builder (the world builder rejects anything else); K6-36 adds its own rule for dropped items.
+            return "a container of a persistent entity cannot be reconfigured";
         }
 
         if (op.Size == container.Size && op.Access == container.Access)
@@ -1288,6 +1474,11 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             player.Position = op.LocalPosition;
             player.BodyRotation = op.LocalRotation;
             player.Seat = op.SeatCell;
+            if (op.ResetVitals)
+            {
+                player.Vitals = null; // the one thing of a death with no undo: the reparent is the last component and every condition was checked first (K6-35 D5, D6)
+            }
+
             state.Players.MarkChanged(player.Player);
             return;
         }
@@ -1487,6 +1678,11 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         if (!isPlayer && IsSelfOrDescendant(op.NewParent, op.Entity))
         {
             return "new frame is the construct or its descendant";
+        }
+
+        if (op.ResetVitals && !isPlayer)
+        {
+            return "only a player has vitals to reset";
         }
 
         if (!Geometry.IsFinite(op.LocalPosition) || !Geometry.IsFinite(op.LocalVelocity) || !Geometry.IsRotation(op.LocalRotation))

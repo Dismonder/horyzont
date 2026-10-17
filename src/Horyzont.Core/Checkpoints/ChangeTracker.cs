@@ -24,6 +24,12 @@ internal sealed class ChangeTracker
     internal HashSet<PlayerId> Progress { get; } = [];
 
     internal HashSet<HarvestedPropKey> HarvestedProps { get; } = [];
+
+    internal HashSet<EntityId> PersistentEntities { get; } = [];
+
+    /// <summary>Gets a value indicating whether the settings of the world changed (K6-35).</summary>
+    internal bool Settings { get; private set; }
+
     /// <summary>Gets a value indicating whether the progress keys of the world changed (K6-32).</summary>
     internal bool ProgressKeys { get; private set; }
 
@@ -46,6 +52,10 @@ internal sealed class ChangeTracker
     internal void MarkHarvestedProp(HarvestedPropKey key) => HarvestedProps.Add(key);
     internal void MarkProgressKeys() => ProgressKeys = true;
 
+    internal void MarkPersistentEntity(EntityId id) => PersistentEntities.Add(id);
+
+    internal void MarkSettings() => Settings = true;
+
     internal void Clear()
     {
         Constructs.Clear();
@@ -59,5 +69,7 @@ internal sealed class ChangeTracker
         Progress.Clear();
         HarvestedProps.Clear();
         ProgressKeys = false;
+        PersistentEntities.Clear();
+        Settings = false;
     }
 }

@@ -24,7 +24,8 @@ namespace Horyzont.Core.Hashing;
 /// K6-31 (D15) appends the harvested props (0x48) after them under the same rule.
 /// K6-32 (D22) adds the station state to 0x42, and after 0x48 the discoveries (0x44) and the progress keys (0x4B), each only when non-empty; the keys are a
 /// reason for the section too (discoveries live in progress records, which already are). A world without them hashes as before. K6-33 (D7) appends the
-/// food slots (0x46) at the very end of the section, only when a player has food; the vitals (health, stamina) are never hashed, online or offline.
+/// food slots (0x46) after them, only when a player has food; the vitals (health, stamina) are never hashed, online or offline. K6-35 (D22) appends the persistent
+/// entities (0x54) and the settings of the world (0x57, only when they are not the defaults) at the very end; both are a reason for the section too.
 /// </summary>
 public static class StateHasher
 {
@@ -35,6 +36,8 @@ public static class StateHasher
     private const byte DiscoveriesTag = 0x44;
     private const byte ProgressKeysTag = 0x4B;
     private const byte FoodTag = 0x46;
+    private const byte PersistentEntitiesTag = 0x54;
+    private const byte SettingsTag = 0x57;
 
     /// <summary>Hashes a state.</summary>
     /// <param name="state">The state.</param>
@@ -170,7 +173,8 @@ public static class StateHasher
         }
 
         if (state.ItemTypes.Entries.Count > 0 || state.Containers.Count > 0 || state.ContainerIds.NextValue != 1
-            || state.BlockEntities.Count > 0 || state.Progress.Count > 0 || state.HarvestedProps.Count > 0 || state.ProgressKeys.Count > 0)
+            || state.BlockEntities.Count > 0 || state.Progress.Count > 0 || state.HarvestedProps.Count > 0 || state.ProgressKeys.Count > 0
+            || state.PersistentEntities.Count > 0 || !state.Settings.IsDefault)
         {
             Survival(hash, state);
         }
@@ -365,6 +369,37 @@ public static class StateHasher
                     U64(hash, slot.Eaten.Value);
                 }
             }
+        }
+
+        // K6-35 (D22): the persistent entities (0x54), sorted by id, and the settings of the world (0x57), each only when it exists or differs from the defaults, after 0x46.
+        if (state.PersistentEntities.Count > 0)
+        {
+            Span<byte> entitiesTag = [PersistentEntitiesTag];
+            hash.Append(entitiesTag);
+            U32(hash, (uint)state.PersistentEntities.Count);
+            foreach (var entity in state.PersistentEntities.All)
+            {
+                U64(hash, entity.Id.Value);
+                U32(hash, (uint)entity.Kind);
+                Frame(hash, entity.Frame);
+                U32(hash, entity.ParentSeq);
+                Vec(hash, entity.Position);
+                Quat(hash, entity.Rotation);
+                U64(hash, entity.Owner.Value);
+            }
+        }
+
+        if (!state.Settings.IsDefault)
+        {
+            var settings = state.Settings;
+            Span<byte> settingsTag = [SettingsTag];
+            hash.Append(settingsTag);
+            U32(hash, (settings.TeleportAll ? 1u : 0u) | (settings.FreeFuel ? 2u : 0u) | (settings.FreeBuilding ? 4u : 0u));
+            U32(hash, settings.ResourceMultiplierPercent);
+            U32(hash, settings.StackMultiplierPercent);
+            U32(hash, settings.HazardIntensityPercent);
+            U32(hash, (uint)settings.BuildingIntegrity);
+            U32(hash, (uint)settings.DeathPenalty);
         }
     }
 

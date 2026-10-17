@@ -46,8 +46,8 @@ public sealed class PlayerProgressStateRouterTests
         Assert.Equal(ProgressType, type);
         Assert.Equal(DeliveryChannel.ReliableOrdered, MessageChannels.For(ProgressType));
 
-        // Its neighbour 47 (world settings) stays unassigned: it belongs to a later package (44 is the vitals of K6-33).
-        foreach (byte neighbour in new byte[] { 47 })
+        // Its neighbour 47 is the world settings since K6-35 (see DeathRouterTests); 50 is the first type of the combat range and stays unassigned.
+        foreach (byte neighbour in new byte[] { 50 })
         {
             Assert.False(MessageRouter.TryGetType([neighbour], out _));
         }

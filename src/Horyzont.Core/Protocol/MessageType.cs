@@ -109,6 +109,9 @@ public enum MessageType : byte
     /// <summary>Server → client, reliable ordered: the full list of functional block states of one construct (K6-30).</summary>
     BlockEntityStates = 46,
 
+    /// <summary>Server → client, reliable ordered: the settings of the world (K6-35).</summary>
+    WorldSettingsState = 47,
+
     /// <summary>Server → client, reliable ordered: the discoveries of the receiving player and the progress keys of the world (K6-32).</summary>
     PlayerProgressState = 48,
 

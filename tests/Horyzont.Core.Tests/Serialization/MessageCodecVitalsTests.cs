@@ -2,6 +2,7 @@ using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Serialization;
 using Horyzont.Core.Survival;
+using Horyzont.Testing;
 
 namespace Horyzont.Core.Tests.Serialization;
 
@@ -20,7 +21,10 @@ public sealed class MessageCodecVitalsTests
     /// <summary>The flag byte, the three masks and the number of hits of a tail without environment.</summary>
     private const string TailFlags = " 00 00 00 00 00";
 
-    private const string Tail = TailFlags + Pair100 + Pair100 + Pair100 + Pair100 + Pair100;
+    /// <summary>The tail of K6-35 (D21): the tick of the sample and the reparent counter, both varuint; zero for a sample that carries no epoch.</summary>
+    private const string Epoch = " 00 00";
+
+    private const string Tail = TailFlags + Pair100 + Pair100 + Pair100 + Pair100 + Pair100 + Epoch;
 
     /// <summary>The K6-33 part of <see cref="Valid"/>, without the tail.</summary>
     private const string Core = "2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 02 58 02 00 03";
@@ -39,7 +43,7 @@ public sealed class MessageCodecVitalsTests
 
     /// <summary>A tail from the bytes of the masks and the pairs of (value, capacity) of the five resources.</summary>
     private static string TailOf(string flags, string present, string active, string exposed, string hits, params (float Value, float Capacity)[] pairs) =>
-        " " + flags + " " + present + " " + active + " " + exposed + " " + hits + string.Concat(pairs.Select(p => " " + F(p.Value) + " " + F(p.Capacity)));
+        " " + flags + " " + present + " " + active + " " + exposed + " " + hits + string.Concat(pairs.Select(p => " " + F(p.Value) + " " + F(p.Capacity))) + Epoch;
 
     private static readonly (float, float)[] _pairs = [(100f, 100f), (100f, 100f), (100f, 100f), (0f, 100f), (75.5f, 200f)];
 
@@ -47,20 +51,20 @@ public sealed class MessageCodecVitalsTests
     /// <summary>Health 80 of 120, stamina 55.5 of 100, the conditions hold, warm-up 600, nothing remaining, comfort 3.</summary>
     private const string Valid = "2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 02 58 02 00 03" + Tail;
 
-    private static readonly PlayerVitalsMessage _warming = new(80f, 120f, 55.5f, 100f, false, true, false, 600, 0, 3);
+    private static readonly PlayerVitalsMessage _warming = TestMessages.Vitals(80f, 120f, 55.5f, 100f, false, true, false, 600, 0, 3);
 
     private static void AssertSame(PlayerVitalsMessage expected, Message actual) => Assert.Equal(expected, Assert.IsType<PlayerVitalsMessage>(actual));
 
     public static TheoryData<PlayerVitalsMessage> Messages() =>
     [
-        new PlayerVitalsMessage(100f, 100f, 100f, 100f, false, false, false, 0, 0, 0),
-        new PlayerVitalsMessage(80f, 120f, 55.5f, 100f, false, true, false, 600, 0, 3),
-        new PlayerVitalsMessage(0f, 100f, 0f, 100f, true, true, true, 1200, 64_800, 10),
-        new PlayerVitalsMessage(10_000f, 10_000f, 10_000f, 10_000f, false, false, true, 0, 1, 0),
-        new PlayerVitalsMessage(1f, 140f, 27.75f, 140f, true, false, false, 0, 0, 0),
-        new PlayerVitalsMessage(80f, 120f, 55.5f, 100f, false, true, false, 600, 0, 3, new VitalsEnvironment(true, false, false, 0x09, 0x08, 0x08, 23), new SuitResources(100f, 100f, 100f, 0f, 75.5f), new SuitResources(100f, 100f, 100f, 100f, 200f)),
-        new PlayerVitalsMessage(100f, 100f, 100f, 100f, false, false, false, 0, 0, 0, new VitalsEnvironment(false, true, true, 0x1F, 0x03, 0x01, 26), new SuitResources(0f, 1000f, 0.5f, 999.5f, 1f), new SuitResources(1f, 1000f, 100f, 1000f, 1f)),
-        new PlayerVitalsMessage(100f, 100f, 100f, 100f, false, false, false, 0, 0, 0, new VitalsEnvironment(false, false, false, 0x00, 0x00, 0x00, 0), new SuitResources(0f, 0f, 0f, 0f, 0f), new SuitResources(100f, 100f, 100f, 100f, 100f)),
+        TestMessages.Vitals(100f, 100f, 100f, 100f, false, false, false, 0, 0, 0),
+        TestMessages.Vitals(80f, 120f, 55.5f, 100f, false, true, false, 600, 0, 3),
+        TestMessages.Vitals(0f, 100f, 0f, 100f, true, true, true, 1200, 64_800, 10),
+        TestMessages.Vitals(10_000f, 10_000f, 10_000f, 10_000f, false, false, true, 0, 1, 0),
+        TestMessages.Vitals(1f, 140f, 27.75f, 140f, true, false, false, 0, 0, 0),
+        TestMessages.Vitals(80f, 120f, 55.5f, 100f, false, true, false, 600, 0, 3, new VitalsEnvironment(true, false, false, 0x09, 0x08, 0x08, 23), new SuitResources(100f, 100f, 100f, 0f, 75.5f), new SuitResources(100f, 100f, 100f, 100f, 200f)),
+        TestMessages.Vitals(100f, 100f, 100f, 100f, false, false, false, 0, 0, 0, new VitalsEnvironment(false, true, true, 0x1F, 0x03, 0x01, 26), new SuitResources(0f, 1000f, 0.5f, 999.5f, 1f), new SuitResources(1f, 1000f, 100f, 1000f, 1f)),
+        TestMessages.Vitals(100f, 100f, 100f, 100f, false, false, false, 0, 0, 0, new VitalsEnvironment(false, false, false, 0x00, 0x00, 0x00, 0), new SuitResources(0f, 0f, 0f, 0f, 0f), new SuitResources(100f, 100f, 100f, 100f, 100f)),
     ];
 
     [Theory]
@@ -83,12 +87,12 @@ public sealed class MessageCodecVitalsTests
         // Everything set: exhausted, the conditions hold and rested (flags 07), warm-up 1200 (B0 04), 64 800 ticks remaining (A0 FA 03), comfort 10.
         Assert.Equal(
             "2C 01 00 00 00 00 00 00 C8 42 00 00 00 00 00 00 C8 42 07 B0 04 A0 FA 03 0A" + Tail,
-            Kit.ToHex(Kit.Encode(new PlayerVitalsMessage(0f, 100f, 0f, 100f, true, true, true, 1200, 64_800, 10))));
+            Kit.ToHex(Kit.Encode(TestMessages.Vitals(0f, 100f, 0f, 100f, true, true, true, 1200, 64_800, 10))));
 
         // Rested alone (flags 04), 3 600 ticks remaining (90 1C).
         Assert.Equal(
             "2C 01 00 00 C8 42 00 00 C8 42 00 00 C8 42 00 00 C8 42 04 00 00 90 1C 00" + Tail,
-            Kit.ToHex(Kit.Encode(new PlayerVitalsMessage(100f, 100f, 100f, 100f, false, false, true, 0, 3_600, 0))));
+            Kit.ToHex(Kit.Encode(TestMessages.Vitals(100f, 100f, 100f, 100f, false, false, true, 0, 3_600, 0))));
     }
 
     [Fact]
@@ -120,7 +124,7 @@ public sealed class MessageCodecVitalsTests
     public void PlayerVitals_AboveMax_Throws()
     {
         // 10 000 is the largest value (46 1C 40 00), 10 001 is not; a negative value is refused (-0 is pinned in PlayerVitals_NegativeZero_...).
-        AssertSame(new PlayerVitalsMessage(10_000f, 120f, 55.5f, 100f, false, true, false, 600, 0, 3),
+        AssertSame(TestMessages.Vitals(10_000f, 120f, 55.5f, 100f, false, true, false, 600, 0, 3),
             MessageCodec.Read(Kit.Hex("2C 01 00 40 1C 46 00 00 F0 42 00 00 5E 42 00 00 C8 42 02 58 02 00 03" + Tail)));
 
         Kit.AssertMessageViolation("2C 01 00 44 1C 46 00 00 F0 42 00 00 5E 42 00 00 C8 42 02 58 02 00 03" + Tail);
@@ -149,7 +153,7 @@ public sealed class MessageCodecVitalsTests
     {
         // The twins: a rested frame with remaining ticks, an unrested one without, and a warm-up with the conditions holding.
         AssertSame(
-            new PlayerVitalsMessage(80f, 120f, 55.5f, 100f, false, true, true, 0, 3_600, 3),
+            TestMessages.Vitals(80f, 120f, 55.5f, 100f, false, true, true, 0, 3_600, 3),
             MessageCodec.Read(Kit.Hex("2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 06 00 00 90 1C 03" + Tail)));
         AssertSame(_warming, MessageCodec.Read(Kit.Hex(Valid)));
 
@@ -183,7 +187,7 @@ public sealed class MessageCodecVitalsTests
     {
         AssertSame(_warming, MessageCodec.Read(Kit.Hex(Valid)));
         AssertSame(
-            new PlayerVitalsMessage(80f, 120f, 55.5f, 100f, true, true, true, 600, 3_600, 3),
+            TestMessages.Vitals(80f, 120f, 55.5f, 100f, true, true, true, 600, 3_600, 3),
             MessageCodec.Read(Kit.Hex("2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 07 58 02 90 1C 03" + Tail)));
 
         // Bit 3, bit 7 and all bits.
@@ -197,7 +201,7 @@ public sealed class MessageCodecVitalsTests
     {
         // 1200 (B0 04) is the largest warm-up, 1201 (B1 04) is not.
         AssertSame(
-            new PlayerVitalsMessage(80f, 120f, 55.5f, 100f, false, true, false, 1200, 0, 3),
+            TestMessages.Vitals(80f, 120f, 55.5f, 100f, false, true, false, 1200, 0, 3),
             MessageCodec.Read(Kit.Hex("2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 02 B0 04 00 03" + Tail)));
 
         Kit.AssertMessageViolation("2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 02 B1 04 00 03" + Tail);
@@ -208,7 +212,7 @@ public sealed class MessageCodecVitalsTests
     public void PlayerVitals_RemainingAbove64800OrComfortAbove10_Throws()
     {
         AssertSame(
-            new PlayerVitalsMessage(80f, 120f, 55.5f, 100f, false, true, true, 600, 64_800, 10),
+            TestMessages.Vitals(80f, 120f, 55.5f, 100f, false, true, true, 600, 64_800, 10),
             MessageCodec.Read(Kit.Hex("2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 06 58 02 A0 FA 03 0A" + Tail)));
 
         // 64 801 ticks remaining (A1 FA 03) and comfort 11 (0B).
@@ -237,7 +241,7 @@ public sealed class MessageCodecVitalsTests
     {
         // The example of the plan (D18): sheltered (01), cold and radiation present (09), radiation active (08) and exposed (08), 23 hits (17); heating, cooling and filter 100 of 100, shield 0 of 100,
         // oxygen 75.5 of 200 (00 00 97 42 and 00 00 48 43).
-        const string expected = Core + " 01 09 08 08 17" + Pair100 + Pair100 + Pair100 + " 00 00 00 00 00 00 C8 42 00 00 97 42 00 00 48 43";
+        const string expected = Core + " 01 09 08 08 17" + Pair100 + Pair100 + Pair100 + " 00 00 00 00 00 00 C8 42 00 00 97 42 00 00 48 43" + Epoch;
 
         Assert.Equal(expected, Kit.ToHex(Kit.Encode(WithTail)));
         AssertSame(WithTail, MessageCodec.Read(Kit.Hex(expected)));
@@ -246,7 +250,7 @@ public sealed class MessageCodecVitalsTests
         // All three protections (07), every hazard present (1F) and active (1F) and exposed (1F), 26 hits (1A), the largest values.
         var most = _warming with { Environment = new VitalsEnvironment(true, true, true, 0x1F, 0x1F, 0x1F, 26), Suit = new SuitResources(1000f, 1000f, 1000f, 1000f, 1000f), Capacity = new SuitResources(1000f, 1000f, 1000f, 1000f, 1000f) };
         var pair1000 = " 00 00 7A 44 00 00 7A 44";
-        Assert.Equal(Core + " 07 1F 1F 1F 1A" + pair1000 + pair1000 + pair1000 + pair1000 + pair1000, Kit.ToHex(Kit.Encode(most)));
+        Assert.Equal(Core + " 07 1F 1F 1F 1A" + pair1000 + pair1000 + pair1000 + pair1000 + pair1000 + Epoch, Kit.ToHex(Kit.Encode(most)));
     }
 
     [Fact]

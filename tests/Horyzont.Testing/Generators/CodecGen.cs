@@ -219,6 +219,9 @@ public static class CodecGen
         BlockFunctionStateSetOp.Select(o => (Operation)o),
         FoodSetOp.Select(o => (Operation)o),
         SuitRefillOp.Select(o => (Operation)o),
+        PersistentEntityCreateOp.Select(o => (Operation)o),
+        PersistentEntityRemoveOp.Select(o => (Operation)o),
+        WorldSettingsSetOp.Select(o => (Operation)o),
         PropHarvestOp.Select(o => (Operation)o),
         PropRegrowOp.Select(o => (Operation)o));
 
@@ -448,6 +451,70 @@ public static class CodecGen
         from slots in FoodSlots
         select new FoodSetOp(player, slots);
 
+    /// <summary>Entity reparents with the reset of the vitals (operation 7 in format 2, K6-35); not part of <see cref="Operation"/>, whose reparents are format 1.</summary>
+    public static Gen<EntityReparentOp> EntityReparentResetOp { get; } = EntityReparentOp.Select(o => o with { ResetVitals = true });
+
+    /// <summary>Persistent entity creation (K6-35, operation 38): a tombstone or a dropped item in any frame (the frame kind is the applier's business).</summary>
+    public static Gen<PersistentEntityCreateOp> PersistentEntityCreateOp { get; } =
+        from entity in EntityId
+        from kind in Gen.Elements(Horyzont.Core.World.PersistentEntityKind.DroppedItem, Horyzont.Core.World.PersistentEntityKind.Tombstone)
+        from frame in FrameRef
+        from parentSeq in VarU32
+        from position in Vector
+        from rotation in UnitQuaternion
+        from owner in VarU64
+        select new PersistentEntityCreateOp(entity, kind, frame, parentSeq, position, rotation, new Core.Ids.PlayerId(owner));
+
+    /// <summary>Persistent entity removal (K6-35, operation 39).</summary>
+    public static Gen<PersistentEntityRemoveOp> PersistentEntityRemoveOp { get; } = EntityId.Select(e => new PersistentEntityRemoveOp(e));
+
+    /// <summary>World settings inside every range (K6-35 D4).</summary>
+    public static Gen<Horyzont.Core.World.WorldSettings> WorldSettings { get; } =
+        from teleport in Gen.Elements(false, true)
+        from fuel in Gen.Elements(false, true)
+        from building in Gen.Elements(false, true)
+        from resources in Gen.Frequency((1, Gen.Elements(50, 300)), (3, Gen.Choose(50, 300)))
+        from stacks in Gen.Frequency((1, Gen.Elements(100, 300)), (3, Gen.Choose(100, 300)))
+        from hazards in Gen.Frequency((1, Gen.Elements(50, 200)), (3, Gen.Choose(50, 200)))
+        from integrity in Gen.Elements(Enum.GetValues<Horyzont.Core.World.BuildingIntegrityMode>())
+        from penalty in Gen.Elements(Enum.GetValues<Horyzont.Core.World.DeathPenalty>())
+        select new Horyzont.Core.World.WorldSettings
+        {
+            TeleportAll = teleport,
+            FreeFuel = fuel,
+            FreeBuilding = building,
+            ResourceMultiplierPercent = (ushort)resources,
+            StackMultiplierPercent = (ushort)stacks,
+            HazardIntensityPercent = (ushort)hazards,
+            BuildingIntegrity = integrity,
+            DeathPenalty = penalty,
+        };
+
+    /// <summary>World settings operations (K6-35, operation 46).</summary>
+    public static Gen<WorldSettingsSetOp> WorldSettingsSetOp { get; } = WorldSettings.Select(s => new WorldSettingsSetOp(s));
+
+    /// <summary>The tail of message 48 (K6-35): an optional bed, the transition, a page that is one of its page count and up to 64 entries, an optional notice of a death.</summary>
+    public static Gen<Horyzont.Core.Protocol.Messages.PlayerRespawnState> PlayerRespawnState { get; } =
+        from bed in Optional(from construct in EntityId
+                             from cell in Cell
+                             from type in Gen.Choose(0, ushort.MaxValue)
+                             select new Horyzont.Core.Progress.BedRef(construct, cell, (ushort)type))
+        from transition in Gen.Elements(Horyzont.Core.Protocol.Messages.PlayerTransitionKind.None, Horyzont.Core.Protocol.Messages.PlayerTransitionKind.Respawn)
+        from revision in VarU32
+        from pageCount in Gen.Choose(1, 6)
+        from page in Gen.Choose(0, pageCount - 1)
+        from count in Gen.Frequency((3, Gen.Choose(0, 4)), (1, Gen.Choose(0, ProtocolConstants.MaxTombstonesPerPage)))
+        from entries in (from entity in EntityId
+                         from container in ContainerId
+                         from frame in FrameRef
+                         from parentSeq in VarU32
+                         from position in Vector
+                         select new Horyzont.Core.Protocol.Messages.TombstoneEntry(entity, container, frame, parentSeq, position)).ArrayOf(count)
+        from death in Optional(from op in OpId
+                               from seq in VarU32
+                               select new Horyzont.Core.Protocol.Messages.DeathNotice(op, seq))
+        select new Horyzont.Core.Protocol.Messages.PlayerRespawnState(bed, transition, revision, (ushort)page, (ushort)pageCount, entries, death);
+
     /// <summary>Suit refill operations (K6-34): any resource, amount and capacity of 1 to 1000.</summary>
     public static Gen<SuitRefillOp> SuitRefillOp =>
         from player in PlayerId
@@ -571,10 +638,12 @@ public static class CodecGen
         from keyCount in Gen.Choose(0, 5)
         from keys in RegistryKey.ArrayOf(keyCount)
         from food in FoodSlots
+        from respawn in PlayerRespawnState
         select new PlayerProgressState(
             types.Aggregate(Horyzont.Core.Progress.ItemTypeBitSet.Empty, (set, type) => set.With(new ItemTypeId((ushort)type))),
             keys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
-            food);
+            food,
+            respawn);
 
     private static Gen<float> VitalValue { get; } = Gen.Frequency(
         (3, Gen.Choose(0, 10_000).Select(v => (float)v)),
@@ -599,11 +668,14 @@ public static class CodecGen
             (1, Gen.Elements(1, ProtocolConstants.MaxRestRemainingTicks)))
         from comfort in Gen.Choose(0, 10)
         from tail in Gen.Frequency((1, Gen.Constant<(VitalsEnvironment, Horyzont.Core.Survival.SuitResources, Horyzont.Core.Survival.SuitResources)?>(null)), (3, SuitTail.Select(t => ((VitalsEnvironment, Horyzont.Core.Survival.SuitResources, Horyzont.Core.Survival.SuitResources)?)t)))
+        from sampleTick in Tick
+        from parentSeq in VarU32
         select tail is { } t
             ? new PlayerVitalsMessage(
-                health, healthMax, stamina, staminaMax, exhausted, conditions, remaining > 0, (ushort)(conditions ? warmup : 0), (uint)remaining, (byte)comfort, t.Item1, t.Item2, t.Item3)
-            : new PlayerVitalsMessage(
-                health, healthMax, stamina, staminaMax, exhausted, conditions, remaining > 0, (ushort)(conditions ? warmup : 0), (uint)remaining, (byte)comfort);
+                health, healthMax, stamina, staminaMax, exhausted, conditions, remaining > 0, (ushort)(conditions ? warmup : 0), (uint)remaining, (byte)comfort, t.Item1, t.Item2, t.Item3, sampleTick, parentSeq)
+            : TestMessages.Vitals(
+                health, healthMax, stamina, staminaMax, exhausted, conditions, remaining > 0, (ushort)(conditions ? warmup : 0), (uint)remaining, (byte)comfort) with
+            { SampleTick = sampleTick, ParentSeq = parentSeq };
 
     /// <summary>
     /// The suit tail of message 44 (K6-34 D18): three protection flags, masks that are subsets of each other, 0 to 26 rays, capacities of 1 to 1000 and values of 0 to the capacity,
@@ -984,6 +1056,7 @@ public static class CodecGen
         BlockEntityStatesMessage.Select(m => (Message)m),
         PropStatesMessage.Select(m => (Message)m),
         PlayerProgressStateMessage.Select(m => (Message)m),
+        WorldSettings.Select(s => (Message)new WorldSettingsState(s)),
         PlayerVitalsMessage.Select(m => (Message)m),
         ListUpTo(RegistryEntry(ProtocolConstants.MaxItemTypes), ProtocolConstants.MaxItemTypes, 12).Select(e => (Message)new ItemRegistry(e)));
 
@@ -1162,13 +1235,14 @@ public static class CodecGen
     /// <summary>Entity spawn messages; the initial state uses frame index 0.</summary>
     public static Gen<EntitySpawn> EntitySpawn { get; } =
         from entity in EntityId
-        from kind in Gen.Elements(EntityKind.Player, EntityKind.Construct)
+        from kind in Gen.Elements(EntityKind.Player, EntityKind.Construct, EntityKind.DroppedItem, EntityKind.Tombstone)
         from archetype in VarU16
         from owner in Optional(PlayerId)
         from frame in SnapshotFrame
         from initial in State(1)
         from data in Bytes(ProtocolConstants.MaxEntityKindDataBytes)
-        select new EntitySpawn(entity, kind, archetype, owner, frame, initial, data);
+        let plain = kind is EntityKind.DroppedItem or EntityKind.Tombstone
+        select new EntitySpawn(entity, kind, plain ? (ushort)0 : archetype, owner, frame, initial, plain ? [] : data);
 
     /// <summary>Entity despawn messages.</summary>
     public static Gen<EntityDespawn> EntityDespawn { get; } = EntityId.Select(e => new EntityDespawn(e));

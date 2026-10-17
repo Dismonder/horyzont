@@ -48,7 +48,7 @@ public class CraftingUiTests
 
     private static void Know(InventoryRig rig, params string[] discovered) =>
         rig.Node.Progress.Apply(
-            new PlayerProgressState(discovered.Aggregate(ItemTypeBitSet.Empty, (set, key) => set.With(rig.Type(key))), [], FoodSlots.Empty));
+            new PlayerProgressState(discovered.Aggregate(ItemTypeBitSet.Empty, (set, key) => set.With(rig.Type(key))), [], FoodSlots.Empty, PlayerRespawnState.None));
 
     private static void FeedStation(InventoryRig rig, params SlotContent[] output)
     {

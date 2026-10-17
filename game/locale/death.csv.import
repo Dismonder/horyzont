@@ -1,0 +1,18 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+
+[deps]
+
+files=["res://locale/death.en.translation", "res://locale/death.pl.translation"]
+
+source_file="res://locale/death.csv"
+dest_files=["res://locale/death.en.translation", "res://locale/death.pl.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

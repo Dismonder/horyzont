@@ -37,6 +37,9 @@ public sealed class EntityIdAllocator
     /// <summary>True when the identifier was never handed out (at least <see cref="NextValue"/>, persistent).</summary>
     internal bool IsUnused(EntityId id) => !id.IsNone && !id.IsTransient && id.Value >= NextValue;
 
+    /// <summary>Sets the next value back to an earlier one (undo of a refused compound operation).</summary>
+    internal void Restore(ulong nextValue) => NextValue = nextValue;
+
     /// <summary>Marks an identifier as used: <c>NextValue = max(NextValue, id + 1)</c>.</summary>
     internal void MarkUsed(EntityId id)
     {

@@ -62,12 +62,13 @@ public sealed partial class VitalsService
         var warmup = met ? (ushort)Math.Min(data.Rest.WarmupTicks, (ulong)ProtocolConstants.MaxRestWarmupTicks) : (ushort)0;
         var comfort = (byte)Math.Min((int)data.Rest.Comfort, ProtocolConstants.MaxRestComfort);
 
+        // K6-35 C3/C5: real epoch (`SampleTick` = server tick, `ParentSeq` = reparent counter of the current body) in both branches; `default, 0` is the open gap, see the plan (review B, P2-2).
         // The suit and its capacity come from the same step, and the value never exceeds the capacity of that step: the codec refuses a value above its capacity (review B5, P2-1).
         return data.HasSuit
             ? new PlayerVitalsMessage(
                 vitals.Health, data.HealthMax, vitals.Stamina, data.StaminaMax, vitals.Exhausted, met, remaining > 0, warmup, (uint)remaining, comfort,
-                data.Environment, Clamp(data.Suit, data.Capacity), data.Capacity)
-            : new PlayerVitalsMessage(vitals.Health, data.HealthMax, vitals.Stamina, data.StaminaMax, vitals.Exhausted, met, remaining > 0, warmup, (uint)remaining, comfort);
+                data.Environment, Clamp(data.Suit, data.Capacity), data.Capacity, default, 0)
+            : new PlayerVitalsMessage(vitals.Health, data.HealthMax, vitals.Stamina, data.StaminaMax, vitals.Exhausted, met, remaining > 0, warmup, (uint)remaining, comfort, VitalsEnvironment.None, PlayerVitalsMessage.DefaultSuit, PlayerVitalsMessage.DefaultSuit, default, 0);
     }
 
     private bool IsOnline(PlayerId player) =>

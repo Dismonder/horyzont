@@ -516,6 +516,9 @@ internal sealed class FunctionalBlockRules(WorldState state, GameRules rules, Bl
         }
 
         operation = _components.Count == 1 ? _components[0] : new CompoundOp(_components.ToArray());
+
+        // What empties a tombstone takes it away in the same operation (K6-35 D13).
+        operation = TombstoneRecovery.CompleteRemoval(state, operation);
         return RejectReason.None;
     }
 

@@ -186,14 +186,14 @@ public sealed class VitalsServiceTests
     }
 
     [Fact]
-    public void Tick_HealthNeverBelowOne()
+    public void Tick_HealthNeverBelowZero()
     {
         Walk(1);
 
         _rig.Vitals.ApplyDamage(_rig.Alice, 500f, DamageKind.Fall);
         _rig.Tick(1);
 
-        Assert.Equal(1f, Vitals(_rig.Alice).Health, 0.001f);
+        Assert.Equal(0f, Vitals(_rig.Alice).Health, 0.001f);
     }
 
     [Fact]

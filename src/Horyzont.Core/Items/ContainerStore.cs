@@ -15,6 +15,7 @@ public sealed class ContainerStore
     private readonly Dictionary<(PlayerId Player, ContainerKind Kind), Container> _byPlayer = [];
     private readonly Dictionary<(EntityId Construct, CellPos Cell, ContainerKind Kind), Container> _byBlock = [];
     private readonly Dictionary<BlockRef, int> _blockHostCount = [];
+    private readonly Dictionary<EntityId, Container> _byEntity = [];
     private readonly List<Container> _sorted = [];
     private readonly Dictionary<ContainerKind, List<Container>> _byKind = [];
     private readonly List<Container> _noContainers = [];
@@ -66,6 +67,12 @@ public sealed class ContainerStore
     public bool TryGetOfBlock(EntityId construct, CellPos cell, ContainerKind kind, [NotNullWhen(true)] out Container? container) =>
         _byBlock.TryGetValue((construct, cell, kind), out container);
 
+    /// <summary>Looks up the container hosted by a persistent entity (K6-35): a tombstone has exactly one.</summary>
+    /// <param name="entity">The persistent entity.</param>
+    /// <param name="container">The container when found.</param>
+    /// <returns>True when the entity hosts one.</returns>
+    public bool TryGetOfEntity(EntityId entity, [NotNullWhen(true)] out Container? container) => _byEntity.TryGetValue(entity, out container);
+
     /// <summary>True when the block hosts a container of any kind.</summary>
     /// <param name="construct">The construct.</param>
     /// <param name="cell">Cell of the block.</param>
@@ -115,6 +122,10 @@ public sealed class ContainerStore
             }
 
             _blockHostCount[new BlockRef(construct, host.Cell)] = _blockHostCount.GetValueOrDefault(new BlockRef(construct, host.Cell)) + 1;
+        }
+        else if (host.Kind == ContainerHostKind.PersistentEntity)
+        {
+            _byEntity.Add(new EntityId(host.Id), container);
         }
 
         InsertSorted(_sorted, container);
@@ -178,6 +189,10 @@ public sealed class ContainerStore
             {
                 _blockHostCount[new BlockRef(construct, container.Host.Cell)] = left;
             }
+        }
+        else if (container.Host.Kind == ContainerHostKind.PersistentEntity)
+        {
+            _byEntity.Remove(new EntityId(container.Host.Id));
         }
 
         _sorted.Remove(container);

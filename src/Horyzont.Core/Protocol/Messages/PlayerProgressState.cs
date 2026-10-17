@@ -11,7 +11,8 @@ namespace Horyzont.Core.Protocol.Messages;
 /// <param name="Discovered">Item types the player discovered.</param>
 /// <param name="WorldProgressKeys">Progress keys of the world, ascending by <see cref="string.CompareOrdinal(string, string)"/>, at most <c>ProtocolConstants.MaxProgressKeys</c>.</param>
 /// <param name="Food">The three food slots of the player (K6-33); required: a state without food cannot be sent by accident, use <see cref="FoodSlots.Empty"/>.</param>
-public sealed record PlayerProgressState(ItemTypeBitSet Discovered, IReadOnlyList<string> WorldProgressKeys, FoodSlots Food) : Message
+/// <param name="Respawn">The respawn point, the tombstones and the transition of the player (K6-35 tail, see <see cref="PlayerRespawnState"/>).</param>
+public sealed record PlayerProgressState(ItemTypeBitSet Discovered, IReadOnlyList<string> WorldProgressKeys, FoodSlots Food, PlayerRespawnState Respawn) : Message
 {
     /// <inheritdoc />
     public override MessageType Type => MessageType.PlayerProgressState;

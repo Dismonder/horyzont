@@ -41,6 +41,45 @@ public sealed class VitalsStepTests
     }
 
     [Fact]
+    public void Advance_WithSuit_PreservesResources()
+    {
+        // K6-35: the new branches (lethal damage, a body at zero) keep the suit, like every other step (ZASADY section 2: `with`, never `new PlayerVitals`).
+        var suit = new SuitResources(10f, 20f, 30f, 40f, 50f);
+
+        Assert.Equal(suit, Step(new PlayerVitals(5f, 70f, new Tick(2000), false, suit), new VitalsTickInput(false, false, 0f, 50f, default)).Vitals.Suit);
+        Assert.Equal(suit, Step(new PlayerVitals(0f, 70f, new Tick(2000), false, suit), _idle).Vitals.Suit);
+    }
+
+    [Fact]
+    public void Advance_LethalDamage_ReachesZero()
+    {
+        // K6-35 D7: the floor of 1 is gone; damage that exceeds the health brings it to exactly zero, never below.
+        var result = Step(new PlayerVitals(5f, 70f, default, false), new VitalsTickInput(false, false, 0f, 50f, default));
+
+        Assert.Equal(0f, result.Vitals.Health);
+        Assert.True(result.Vitals.IsValid);
+        Assert.Equal(0f, Step(new PlayerVitals(0.1f, 70f, default, false), new VitalsTickInput(false, false, 0f, float.MaxValue, default)).Vitals.Health);
+    }
+
+    [Fact]
+    public void Advance_AlreadyZero_DoesNotRevive()
+    {
+        // K6-35 D7: a body waiting for its death neither regenerates health nor spends or regenerates stamina; food regeneration does not help either.
+        var zero = new PlayerVitals(0f, 40f, new Tick(2000), false);
+
+        var idle = Run(zero, 600, _idle);
+        var fed = Run(zero, 600, _idle, new FoodBonus(50f, 50f, 5f));
+        var sprinting = Step(zero, new VitalsTickInput(true, true, 4f, 0f, default));
+
+        Assert.Equal(0f, idle.Health);
+        Assert.Equal(0f, fed.Health);
+        Assert.Equal(40f, idle.Stamina);
+        Assert.Equal(0f, sprinting.Vitals.Health);
+        Assert.Equal(40f, sprinting.Vitals.Stamina);
+        Assert.Equal(100f, sprinting.HealthMax);
+    }
+
+    [Fact]
     public void Regen_BaseHealthRate()
     {
         // 0.5 per second for one second.
@@ -209,18 +248,18 @@ public sealed class VitalsStepTests
     }
 
     [Fact]
-    public void Damage_NeverBelowOne()
+    public void Damage_NeverBelowZero()
     {
         // The accepted counterpart: 4 damage take health from 10 to about 6 (one tick of regeneration comes first, then the damage).
         var hit = Step(new PlayerVitals(10f, 100f, default, false), new VitalsTickInput(false, false, 0f, 4f, default)).Vitals;
         Assert.InRange(hit.Health, 6f, 6.01f);
 
-        // Until death exists (K6-35) health stops at 1, however large the damage.
+        // With death (K6-35, D7) the floor of 1 is gone: health stops at 0, however large the damage, and stays there.
         var deep = Step(new PlayerVitals(10f, 100f, default, false), new VitalsTickInput(false, false, 0f, 50f, default)).Vitals;
-        Assert.Equal(1f, deep.Health);
+        Assert.Equal(0f, deep.Health);
 
         var again = Step(deep, new VitalsTickInput(false, false, 0f, 50f, default)).Vitals;
-        Assert.Equal(1f, again.Health);
+        Assert.Equal(0f, again.Health);
         Assert.False(again.Exhausted);
     }
 

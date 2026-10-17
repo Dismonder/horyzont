@@ -63,7 +63,7 @@ internal sealed class CraftingClientFixture
             bits = bits.With(Item(key));
         }
 
-        Progress.Apply(new PlayerProgressState(bits, [.. worldKeys.Order(StringComparer.Ordinal)], FoodSlots.Empty));
+        Progress.Apply(TestMessages.Progress(bits, [.. worldKeys.Order(StringComparer.Ordinal)], FoodSlots.Empty));
     }
 
     public void State(ContainerId id, ContainerKind kind, ushort size, params (int Slot, string Item, int Count)[] slots) =>

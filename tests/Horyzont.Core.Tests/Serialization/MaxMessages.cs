@@ -16,6 +16,7 @@ using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Markers;
 using Horyzont.Core.World.Terrain;
+using Horyzont.Testing;
 
 namespace Horyzont.Core.Tests.Serialization;
 
@@ -186,9 +187,10 @@ public static class MaxMessages
             new ContainerUnsubscribe(new ContainerId(ulong.MaxValue)),
             MaxBlockEntityStates(),
             MaxPlayerProgressState(),
-            new PlayerVitalsMessage(
+            new Horyzont.Core.Protocol.Messages.WorldSettingsState(Horyzont.Core.World.WorldSettings.Default),
+            TestMessages.Vitals(
                 ProtocolConstants.MaxVitalValue, ProtocolConstants.MaxVitalValue, ProtocolConstants.MaxVitalValue, ProtocolConstants.MaxVitalValue, true, true, true,
-                ProtocolConstants.MaxRestWarmupTicks, ProtocolConstants.MaxRestRemainingTicks, 10),
+                ProtocolConstants.MaxRestWarmupTicks, ProtocolConstants.MaxRestRemainingTicks, 10) with { SampleTick = new Tick(ulong.MaxValue), ParentSeq = uint.MaxValue },
             MaxPropStates(),
             // 4096 entries of 64-byte keys would need 268 KiB; the registry fits the reliable channel with keys of up to 60 bytes
             // (K6-29W stage B deviation), and the writer refuses a larger frame.
@@ -243,8 +245,22 @@ public static class MaxMessages
         bytes[^1] = 0x01;
         var keys = Enumerable.Range(0, ProtocolConstants.MaxProgressKeys).Select(i => $"{i:D3}" + Text(ProtocolConstants.MaxRegistryKeyBytes - 3)).ToArray();
         var food = new FoodSlot(new ItemTypeId(ProtocolConstants.MaxItemTypes), new Tick(ulong.MaxValue));
-        return new PlayerProgressState(ItemTypeBitSet.FromBytes(bytes), keys, new FoodSlots(food, food, food));
+        return new PlayerProgressState(ItemTypeBitSet.FromBytes(bytes), keys, new FoodSlots(food, food, food), MaxRespawnState());
     }
+
+    /// <summary>
+    /// The largest tail of message 48 (K6-35): a bed with the largest ids, the respawn transition, the largest revision and a full page of 64 tombstones with the largest ids and
+    /// counters, and a death notice with the largest values; 64 x 40 bytes against 256 KiB.
+    /// </summary>
+    public static Horyzont.Core.Protocol.Messages.PlayerRespawnState MaxRespawnState() => new(
+        new Horyzont.Core.Progress.BedRef(new EntityId(ulong.MaxValue), new CellPos(-2048, -2048, -2048), ushort.MaxValue),
+        Horyzont.Core.Protocol.Messages.PlayerTransitionKind.Respawn,
+        uint.MaxValue,
+        ProtocolConstants.MaxTombstonePages - 1,
+        ProtocolConstants.MaxTombstonePages,
+        [.. Enumerable.Range(0, ProtocolConstants.MaxTombstonesPerPage).Select(i => new Horyzont.Core.Protocol.Messages.TombstoneEntry(
+            new EntityId(ulong.MaxValue - (ulong)i), new ContainerId(ulong.MaxValue - (ulong)i), FrameRef.Of(new PlanetId(ulong.MaxValue)), uint.MaxValue, new Vector3(-1e6f, 1e6f, -1e6f)))],
+        new Horyzont.Core.Protocol.Messages.DeathNotice(new OpId(ulong.MaxValue), uint.MaxValue));
 
     /// <summary>
     /// 4096 harvested props (K6-31): 64 regions of the last face with the largest region numbers, 64 entries each, ids of nine bytes and the

@@ -444,9 +444,14 @@ public static class MessageCodec
 
             case EntitySpawn es:
                 w.WriteVarUInt(es.Entity.Value);
-                if (es.Kind < EntityKind.Player || es.Kind > EntityKind.Construct)
+                if (!IsSpawnKind((byte)es.Kind))
                 {
                     throw new ArgumentException($"Invalid EntityKind {(byte)es.Kind}.", nameof(message));
+                }
+
+                if (es.Kind is EntityKind.DroppedItem or EntityKind.Tombstone && (es.Archetype != 0 || es.KindData.Length != 0))
+                {
+                    throw new ArgumentException($"EntityKind {(byte)es.Kind} needs archetype 0 and no kind data.", nameof(message));
                 }
 
                 w.WriteByte((byte)es.Kind);
@@ -535,6 +540,10 @@ public static class MessageCodec
 
             case PlayerProgressState progress:
                 WritePlayerProgressState(w, progress);
+                break;
+
+            case WorldSettingsState settings:
+                CoreCodecPrimitives.WriteWorldSettings(w, settings.Settings);
                 break;
 
             case ItemRegistry ireg:
@@ -892,7 +901,7 @@ public static class MessageCodec
             case MessageType.EntitySpawn:
                 var spawnEntity = new EntityId(r.ReadVarUInt());
                 byte kindByte = r.ReadByte();
-                if (kindByte < (byte)EntityKind.Player || kindByte > (byte)EntityKind.Construct)
+                if (!IsSpawnKind(kindByte))
                 {
                     throw new ProtocolViolationException($"Unknown entity kind {kindByte}.");
                 }
@@ -913,6 +922,11 @@ public static class MessageCodec
                 }
 
                 byte[] kindData = r.ReadBytes(ProtocolConstants.MaxEntityKindDataBytes);
+                if (kindByte is (byte)EntityKind.DroppedItem or (byte)EntityKind.Tombstone && (archetype != 0 || kindData.Length != 0))
+                {
+                    throw new ProtocolViolationException($"Entity kind {kindByte} needs archetype 0 and no kind data.");
+                }
+
                 return new EntitySpawn(spawnEntity, (EntityKind)kindByte, archetype, owner, spawnFrame, initial, kindData);
 
             case MessageType.EntityDespawn:
@@ -967,6 +981,9 @@ public static class MessageCodec
             case MessageType.PlayerProgressState:
                 return ReadPlayerProgressState(ref r);
 
+            case MessageType.WorldSettingsState:
+                return new WorldSettingsState(CoreCodecPrimitives.ReadWorldSettings(ref r));
+
             case MessageType.ItemRegistry:
                 ulong entryCount = r.ReadVarUInt();
                 if (entryCount > ProtocolConstants.MaxItemTypes)
@@ -986,6 +1003,9 @@ public static class MessageCodec
                 throw new ProtocolViolationException($"Unhandled message type {type}.");
         }
     }
+
+    /// <summary>The entity kinds an <see cref="EntitySpawn"/> may carry: 1, 2, and (K6-35) 3 and 6; 4, 5 and 7 stay reserved.</summary>
+    private static bool IsSpawnKind(byte kind) => kind is (byte)EntityKind.Player or (byte)EntityKind.Construct or (byte)EntityKind.DroppedItem or (byte)EntityKind.Tombstone;
 
     private static void WritePlayerProgressState(ByteWriter w, PlayerProgressState state)
     {
@@ -1017,6 +1037,103 @@ public static class MessageCodec
 
         // The tail appended by K6-33 (D6): the three food slots.
         CoreCodecPrimitives.WriteFoodSlots(w, state.Food);
+
+        // The tail appended by K6-35: the bed, the transition, a page of tombstones and the death notice.
+        WriteRespawnState(w, state.Respawn);
+    }
+
+    /// <summary>The smallest entry of the tombstone list: two one-byte ids, a frame of two bytes, a one-byte counter and a position.</summary>
+    private const int MinTombstoneEntryBytes = 1 + 1 + 2 + 1 + 12;
+
+    private static void WriteRespawnState(ByteWriter w, PlayerRespawnState respawn)
+    {
+        ArgumentNullException.ThrowIfNull(respawn);
+        ArgumentNullException.ThrowIfNull(respawn.Tombstones);
+        if (respawn.Transition is not (PlayerTransitionKind.None or PlayerTransitionKind.Respawn))
+        {
+            throw new ArgumentException($"Unknown transition {(byte)respawn.Transition}.", nameof(respawn));
+        }
+
+        if (respawn.PageCount == 0 || respawn.PageCount > ProtocolConstants.MaxTombstonePages || respawn.Page >= respawn.PageCount)
+        {
+            throw new ArgumentException($"Page {respawn.Page} of {respawn.PageCount} is not a page of the list.", nameof(respawn));
+        }
+
+        if (respawn.Tombstones.Count > ProtocolConstants.MaxTombstonesPerPage)
+        {
+            throw new ArgumentException($"A page holds at most {ProtocolConstants.MaxTombstonesPerPage} tombstones, not {respawn.Tombstones.Count}.", nameof(respawn));
+        }
+
+        w.WriteBool(respawn.Bed is not null);
+        if (respawn.Bed is { } bed)
+        {
+            CoreCodecPrimitives.WriteBedRef(w, bed);
+        }
+
+        w.WriteByte((byte)respawn.Transition);
+        w.WriteUInt32(respawn.Revision);
+        w.WriteUInt16(respawn.Page);
+        w.WriteUInt16(respawn.PageCount);
+        w.WriteVarUInt((ulong)respawn.Tombstones.Count);
+        for (var i = 0; i < respawn.Tombstones.Count; i++)
+        {
+            var entry = respawn.Tombstones[i];
+            w.WriteVarUInt(entry.Entity.Value);
+            w.WriteVarUInt(entry.Container.Value);
+            CoreCodecPrimitives.WriteFrameRef(w, entry.Frame);
+            w.WriteVarUInt(entry.ParentSeq);
+            w.WriteVector3(entry.Position);
+        }
+
+        w.WriteBool(respawn.Death is not null);
+        if (respawn.Death is { } death)
+        {
+            w.WriteVarUInt(death.Op.Value);
+            w.WriteVarUInt(death.TargetParentSeq);
+        }
+    }
+
+    private static PlayerRespawnState ReadRespawnState(ref ByteReader r)
+    {
+        BedRef? bed = r.ReadBool() ? CoreCodecPrimitives.ReadBedRef(ref r) : null;
+        byte transition = r.ReadByte();
+        if (transition > (byte)PlayerTransitionKind.Respawn)
+        {
+            throw new ProtocolViolationException($"Unknown or reserved transition {transition}.");
+        }
+
+        uint revision = r.ReadUInt32();
+        ushort page = r.ReadUInt16();
+        ushort pageCount = r.ReadUInt16();
+        if (pageCount == 0 || pageCount > ProtocolConstants.MaxTombstonePages || page >= pageCount)
+        {
+            throw new ProtocolViolationException($"Page {page} of {pageCount} is not a page of the list.");
+        }
+
+        var count = r.ReadCount(ProtocolConstants.MaxTombstonesPerPage);
+        if ((long)count * MinTombstoneEntryBytes > r.Remaining)
+        {
+            throw new ProtocolViolationException($"Declared {count} tombstones exceed the remaining {r.Remaining} bytes.");
+        }
+
+        var entries = new TombstoneEntry[count];
+        for (var i = 0; i < count; i++)
+        {
+            var entity = new EntityId(r.ReadVarUInt());
+            var container = new ContainerId(r.ReadVarUInt());
+            var frame = CoreCodecPrimitives.ReadFrameRef(ref r);
+            uint parentSeq = r.ReadVarUInt32();
+            entries[i] = new TombstoneEntry(entity, container, frame, parentSeq, r.ReadVector3());
+        }
+
+        DeathNotice? death = null;
+        if (r.ReadBool())
+        {
+            var op = new OpId(r.ReadVarUInt());
+            death = new DeathNotice(op, r.ReadVarUInt32());
+        }
+
+        return new PlayerRespawnState(bed, (PlayerTransitionKind)transition, revision, page, pageCount, entries, death);
     }
 
     private static PlayerProgressState ReadPlayerProgressState(ref ByteReader r)
@@ -1050,7 +1167,8 @@ public static class MessageCodec
         }
 
         // The repeated types of the food are not checked here: the server sends what the builder of blob 22 accepted, and the client applies it as it is.
-        return new PlayerProgressState(discovered, keys, CoreCodecPrimitives.ReadFoodSlots(ref r));
+        var food = CoreCodecPrimitives.ReadFoodSlots(ref r);
+        return new PlayerProgressState(discovered, keys, food, ReadRespawnState(ref r));
     }
 
     private static void WritePlayerVitals(ByteWriter w, PlayerVitalsMessage m)
@@ -1089,6 +1207,10 @@ public static class MessageCodec
         w.WriteVarUInt(m.RestRemainingTicks);
         w.WriteByte(m.Comfort);
         WriteSuitTail(w, m);
+
+        // The tail appended by K6-35 (D21): the tick of the sample and the reparent counter of the body.
+        w.WriteVarUInt(m.SampleTick.Value);
+        w.WriteVarUInt(m.ParentSeq);
     }
 
     /// <summary>The tail of K6-34 (D18): the protections, three hazard masks, the rays that hit and five (value, capacity) pairs.</summary>
@@ -1207,9 +1329,12 @@ public static class MessageCodec
             capacities[i] = capacity;
         }
 
+        var sampleTick = new Tick(r.ReadVarUInt());
+        uint parentSeq = r.ReadVarUInt32();
         return new PlayerVitalsMessage(
             health, healthMax, stamina, staminaMax, (flags & VitalsFlagExhausted) != 0, conditions, rested, warmup, (uint)remaining, comfort,
-            environment, new SuitResources(values[0], values[1], values[2], values[3], values[4]), new SuitResources(capacities[0], capacities[1], capacities[2], capacities[3], capacities[4]));
+            environment, new SuitResources(values[0], values[1], values[2], values[3], values[4]), new SuitResources(capacities[0], capacities[1], capacities[2], capacities[3], capacities[4]),
+            sampleTick, parentSeq);
     }
 
     private static VitalsEnvironment ReadEnvironment(ref ByteReader r)

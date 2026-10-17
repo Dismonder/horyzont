@@ -71,7 +71,7 @@ internal sealed class HazardClientFixture
     /// <summary>Tells the client the vitals the server sent: the suit, its capacity and the environment.</summary>
     public void Told(SuitResources suit, SuitResources? capacity = null, VitalsEnvironment environment = default) =>
         Vitals.Apply(
-            new PlayerVitalsMessage(100f, 100f, 100f, 100f, false, false, false, 0, 0, 0, environment, suit, capacity ?? new SuitResources(100f, 100f, 100f, 100f, 100f)), 1000);
+            TestMessages.Vitals(100f, 100f, 100f, 100f, false, false, false, 0, 0, 0, environment, suit, capacity ?? new SuitResources(100f, 100f, 100f, 100f, 100f)), 1000);
 
     /// <summary>Puts items into a slot through the next delta of the container.</summary>
     public void Put(ContainerId id, int slot, ItemTypeId type, int count)

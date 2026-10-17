@@ -4,6 +4,7 @@ using Horyzont.Core.Operations;
 using Horyzont.Core.Progress;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Survival;
+using Horyzont.Core.World;
 using Horyzont.Core.World.Constructs;
 
 namespace Horyzont.Core.Serialization;
@@ -15,6 +16,9 @@ namespace Horyzont.Core.Serialization;
 public static class OperationCodec
 {
     private const byte CurrentFormatVersion = 1;
+
+    /// <summary>Format 2 of operation 7 (K6-35): the reset of the vitals of a player. The table of allowed versions is per kind: every other operation has format 1 only.</summary>
+    private const byte ReparentResetVersion = 2;
 
     /// <summary>Appends the frame of <paramref name="op"/>.</summary>
     /// <param name="w">Target writer.</param>
@@ -288,8 +292,9 @@ public static class OperationCodec
                 break;
 
             case EntityReparentOp er:
+                // Format 2 (K6-35 D5) is the format 1 fields and a final byte 01 for the reset of the vitals; without the reset the frame is format 1, byte for byte as before.
                 w.WriteByte((byte)OperationKind.EntityReparent);
-                w.WriteByte(CurrentFormatVersion);
+                w.WriteByte(er.ResetVitals ? ReparentResetVersion : CurrentFormatVersion);
                 w.WriteVarUInt(er.Entity.Value);
                 CoreCodecPrimitives.WriteFrameRef(w, er.NewParent);
                 w.WriteVarUInt(er.NewParentSeq);
@@ -297,6 +302,29 @@ public static class OperationCodec
                 w.WriteQuaternion(er.LocalRotation);
                 w.WriteVector3(er.LocalVelocity);
                 CoreCodecPrimitives.WriteOptionalCellPos(w, er.SeatCell);
+                if (er.ResetVitals)
+                {
+                    w.WriteByte(1);
+                }
+
+                break;
+
+            case PersistentEntityCreateOp pc:
+                w.WriteByte((byte)OperationKind.PersistentEntityCreate);
+                w.WriteByte(CurrentFormatVersion);
+                CoreCodecPrimitives.WritePersistentEntity(w, new PersistentEntity(pc.Entity, pc.EntityKind, pc.Frame, pc.ParentSeq, pc.Position, pc.Rotation, pc.Owner));
+                break;
+
+            case PersistentEntityRemoveOp pr:
+                w.WriteByte((byte)OperationKind.PersistentEntityRemove);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(pr.Entity.Value);
+                break;
+
+            case WorldSettingsSetOp ws:
+                w.WriteByte((byte)OperationKind.WorldSettingsSet);
+                w.WriteByte(CurrentFormatVersion);
+                CoreCodecPrimitives.WriteWorldSettings(w, ws.Settings);
                 break;
 
             case ShipModeSetOp sm:
@@ -410,10 +438,11 @@ public static class OperationCodec
         byte kindByte = r.ReadByte();
         var known = (kindByte >= (byte)OperationKind.TerrainEdit && kindByte <= (byte)OperationKind.EntityReparent)
             || (kindByte >= (byte)OperationKind.ShipModeSet && kindByte <= (byte)OperationKind.MarkerRemove)
-            || (kindByte >= (byte)OperationKind.Compound && kindByte <= (byte)OperationKind.ContainerConfigure)
+            || (kindByte >= (byte)OperationKind.Compound && kindByte <= (byte)OperationKind.PersistentEntityRemove)
             || kindByte is (byte)OperationKind.BlockEntitySet or (byte)OperationKind.ItemDiscover or (byte)OperationKind.RespawnPointSet
                 or (byte)OperationKind.ProgressKeyGrant or (byte)OperationKind.PropRegrow or (byte)OperationKind.PropHarvest
-                or (byte)OperationKind.BlockFunctionStateSet or (byte)OperationKind.FoodSet or (byte)OperationKind.SuitRefill;
+                or (byte)OperationKind.BlockFunctionStateSet or (byte)OperationKind.FoodSet or (byte)OperationKind.SuitRefill
+                or (byte)OperationKind.WorldSettingsSet;
         if (!known)
         {
             throw new ProtocolViolationException($"Unknown operation kind {kindByte}.");
@@ -425,7 +454,7 @@ public static class OperationCodec
         }
 
         byte version = r.ReadByte();
-        if (version != CurrentFormatVersion)
+        if (version != CurrentFormatVersion && !(version == ReparentResetVersion && kindByte == (byte)OperationKind.EntityReparent))
         {
             throw new ProtocolViolationException($"Unsupported operation format version {version}.");
         }
@@ -627,7 +656,30 @@ public static class OperationCodec
                 var erRotation = r.ReadQuaternion();
                 var erVelocity = r.ReadVector3();
                 var erSeat = CoreCodecPrimitives.ReadOptionalCellPos(ref r);
-                return new EntityReparentOp(erEntity, erParent, erParentSeq, erPosition, erRotation, erVelocity, erSeat);
+
+                // Format 2 carries the byte 01 and nothing else: one encoding per operation, so a frame that says "no reset" in format 2 is refused.
+                var erReset = false;
+                if (version == ReparentResetVersion)
+                {
+                    if (r.ReadByte() != 1)
+                    {
+                        throw new ProtocolViolationException("The reset byte of an entity reparent in format 2 must be 1.");
+                    }
+
+                    erReset = true;
+                }
+
+                return new EntityReparentOp(erEntity, erParent, erParentSeq, erPosition, erRotation, erVelocity, erSeat, erReset);
+
+            case OperationKind.PersistentEntityCreate:
+                var pe = CoreCodecPrimitives.ReadPersistentEntity(ref r);
+                return new PersistentEntityCreateOp(pe.Id, pe.Kind, pe.Frame, pe.ParentSeq, pe.Position, pe.Rotation, pe.Owner);
+
+            case OperationKind.PersistentEntityRemove:
+                return new PersistentEntityRemoveOp(new EntityId(r.ReadVarUInt()));
+
+            case OperationKind.WorldSettingsSet:
+                return new WorldSettingsSetOp(CoreCodecPrimitives.ReadWorldSettings(ref r));
 
             case OperationKind.ShipModeSet:
                 var smConstruct = new EntityId(r.ReadVarUInt());

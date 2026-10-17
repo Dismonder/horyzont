@@ -17,9 +17,13 @@ namespace Horyzont.Core.Operations;
 /// <param name="LocalRotation">Rotation in the new frame.</param>
 /// <param name="LocalVelocity">Initial velocity for the game controller; not stored by Core.</param>
 /// <param name="SeatCell">Seat for a player entering a construct frame.</param>
+/// <param name="ResetVitals">
+/// Operation 7 in format 2 (K6-35 D5): a death sets the vitals of the player to none, which the vitals service turns into the full maxima and a fresh suit
+/// in the next tick. Only for a player; in a compound only as the last component (D6).
+/// </param>
 public sealed record EntityReparentOp(
     EntityId Entity, FrameRef NewParent, uint NewParentSeq, Vector3 LocalPosition, Quaternion LocalRotation,
-    Vector3 LocalVelocity, CellPos? SeatCell) : Operation
+    Vector3 LocalVelocity, CellPos? SeatCell, bool ResetVitals = false) : Operation
 {
     /// <inheritdoc />
     public override OperationKind Kind => OperationKind.EntityReparent;

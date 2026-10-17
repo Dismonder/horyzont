@@ -5,6 +5,7 @@ using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Ships;
+using Horyzont.Core.Survival;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -55,6 +56,12 @@ internal sealed class IntentValidator(
         if (!player.IsOnline || buckets is null)
         {
             return RejectReason.PlayerOffline;
+        }
+
+        // A dead player, or one whose new body is not ready, can change nothing (K6-35 D19). A cheap precondition: it is judged before the parameters and costs no token.
+        if (DeathRules.IsDead(player.Vitals))
+        {
+            return RejectReason.InTransition;
         }
 
         if (!HasValidParameters(intent, out var rayOrigin, out var bucket, buckets))

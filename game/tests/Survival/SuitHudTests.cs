@@ -62,7 +62,7 @@ public class SuitHudTests
         vitals.Apply(
             new PlayerVitalsMessage(
                 100f, 100f, 100f, 100f, false, false, false, 0, 0, 0, new VitalsEnvironment(true, false, false, 0b00001, 0b00001, 0, 22),
-                new SuitResources(50f, 100f, 100f, 100f, 100f), new SuitResources(100f, 100f, 100f, 100f, 100f)), 1000);
+                new SuitResources(50f, 100f, 100f, 100f, 100f), new SuitResources(100f, 100f, 100f, 100f, 100f), default, 0), 1000);
         var data = SuitHudSource.Build(vitals);
 
         AssertThat(data.Visible).IsTrue();

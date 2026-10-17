@@ -14,6 +14,7 @@ using Horyzont.Core.Survival;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Terrain;
+using Horyzont.Testing;
 
 namespace Horyzont.Core.Tests.Protocol;
 
@@ -38,6 +39,7 @@ public sealed class ProtocolContractTests
             (OperationKind.Compound, 30), (OperationKind.ItemTransfer, 31), (OperationKind.ItemSwap, 32), (OperationKind.ItemCreate, 33),
             (OperationKind.ItemDestroy, 34), (OperationKind.ContainerCreate, 35),
             (OperationKind.ContainerRemove, 36), (OperationKind.ContainerConfigure, 37), (OperationKind.BlockEntitySet, 40), (OperationKind.FoodSet, 41), (OperationKind.SuitRefill, 42), (OperationKind.ItemDiscover, 43), (OperationKind.RespawnPointSet, 44), (OperationKind.ProgressKeyGrant, 45),
+            (OperationKind.PersistentEntityCreate, 38), (OperationKind.PersistentEntityRemove, 39), (OperationKind.WorldSettingsSet, 46),
             (OperationKind.PropRegrow, 47), (OperationKind.PropHarvest, 48), (OperationKind.BlockFunctionStateSet, 49));
         AssertValues((RejectReason.None, 0), (RejectReason.UnknownPlayer, 1), (RejectReason.PlayerOffline, 2), (RejectReason.RateLimited, 3),
             (RejectReason.InvalidParameters, 4), (RejectReason.RayOriginMismatch, 5), (RejectReason.NoHit, 6), (RejectReason.OutOfReach, 7),
@@ -47,7 +49,7 @@ public sealed class ProtocolContractTests
             (RejectReason.NoLineOfSight, 19), (RejectReason.WrongPlanet, 20), (RejectReason.ServerReadOnly, 21),
             (RejectReason.NoCockpit, 30), (RejectReason.ShipAnchored, 31), (RejectReason.NoEngine, 37), (RejectReason.MarkerLimit, 36), (RejectReason.ShipNotParked, 39),
             (RejectReason.InventoryFull, 40), (RejectReason.NotEnoughItems, 41), (RejectReason.ContainerChanged, 42), (RejectReason.ContainerLocked, 43),
-            (RejectReason.StationRequired, 44), (RejectReason.RecipeLocked, 45), (RejectReason.TooFarFromStation, 46), (RejectReason.FoodAlreadyActive, 49),
+            (RejectReason.StationRequired, 44), (RejectReason.RecipeLocked, 45), (RejectReason.TooFarFromStation, 46), (RejectReason.InTransition, 48), (RejectReason.FoodAlreadyActive, 49),
             (RejectReason.ToolTierTooLow, 53), (RejectReason.NotOwner, 54), (RejectReason.ContainerNotEmpty, 57));
         AssertValues((MessageType.ClientHello, 1), (MessageType.ServerHello, 2), (MessageType.HandshakeReject, 3), (MessageType.ClientReady, 4),
             (MessageType.TerrainCacheReport, 5), (MessageType.TerrainBlockData, 6), (MessageType.TerrainChecksums, 7), (MessageType.ConstructState, 8),
@@ -57,7 +59,7 @@ public sealed class ProtocolContractTests
             (MessageType.ShipStatus, 31), (MessageType.StarSystemState, 32),
             (MessageType.MarkersState, 33),
             (MessageType.ContainerState, 40), (MessageType.ContainerDelta, 41), (MessageType.ContainerSubscribe, 42),
-            (MessageType.ContainerUnsubscribe, 43), (MessageType.PlayerVitals, 44), (MessageType.PropStates, 45), (MessageType.BlockEntityStates, 46), (MessageType.PlayerProgressState, 48), (MessageType.ItemRegistry, 49));
+            (MessageType.ContainerUnsubscribe, 43), (MessageType.PlayerVitals, 44), (MessageType.PropStates, 45), (MessageType.BlockEntityStates, 46), (MessageType.WorldSettingsState, 47), (MessageType.PlayerProgressState, 48), (MessageType.ItemRegistry, 49));
         AssertValues((StationKind.Hands, 0), (StationKind.Workbench, 1), (StationKind.Furnace, 2), (StationKind.Refinery, 3), (StationKind.Kitchen, 4),
             (StationKind.Fabricator, 5));
         AssertValues((DeliveryChannel.ReliableOrdered, 0), (DeliveryChannel.Unreliable, 1));
@@ -73,7 +75,7 @@ public sealed class ProtocolContractTests
         AssertValues((BlockShape.Cube, 1), (BlockShape.Mesh, 2));
         AssertValues((BlobKind.ConstructHeader, 1), (BlobKind.Player, 2), (BlobKind.ConstructChunk, 3), (BlobKind.PlanetParams, 4),
             (BlobKind.TerrainBlock, 5), (BlobKind.StarSystemParams, 10), (BlobKind.Marker, 11), (BlobKind.ShipState, 12), (BlobKind.Container, 20),
-            (BlobKind.BlockEntity, 21), (BlobKind.PlayerProgress, 22), (BlobKind.ProgressKeys, 25));
+            (BlobKind.BlockEntity, 21), (BlobKind.PlayerProgress, 22), (BlobKind.WorldSettings, 23), (BlobKind.PersistentEntity, 24), (BlobKind.ProgressKeys, 25));
         AssertValues((ItemSource.Harvest, 1), (ItemSource.Craft, 2), (ItemSource.Station, 3), (ItemSource.Crop, 4), (ItemSource.Refund, 5),
             (ItemSource.Loot, 6), (ItemSource.Admin, 7), (ItemSource.Recovered, 8), (ItemSource.Starter, 9));
         AssertValues((ItemSink.Craft, 1), (ItemSink.Station, 2), (ItemSink.Eat, 3), (ItemSink.Fuel, 4), (ItemSink.BuildCost, 5),
@@ -99,7 +101,7 @@ public sealed class ProtocolContractTests
         AssertValues((BlockConfigKind.TeleportName, 1), (BlockConfigKind.ContainerAccess, 2));
         AssertValues((TerrainShape.Sphere, 1));
         AssertValues((TerrainEditMode.Remove, 1), (TerrainEditMode.Add, 2));
-        AssertValues((EntityKind.Player, 1), (EntityKind.Construct, 2));
+        AssertValues((EntityKind.Player, 1), (EntityKind.Construct, 2), (EntityKind.DroppedItem, 3), (EntityKind.Tombstone, 6));
         AssertValues((EntityStateFields.None, 0), (EntityStateFields.Position, 1), (EntityStateFields.Rotation, 2), (EntityStateFields.Velocity, 4),
             (EntityStateFields.MotionFlags, 8));
         AssertValues((InputButtons.None, 0), (InputButtons.Jump, 1), (InputButtons.Sprint, 2), (InputButtons.Crouch, 4), (InputButtons.Primary, 8),
@@ -107,7 +109,7 @@ public sealed class ProtocolContractTests
     }
 
     /// <summary>
-    /// K2-10 adds reject reason 21 (and raised the protocol version from 1 to 2; K2-11 raises it to 3, K6-29W to 14, K6-30 to 15, K6-31 to 16, K6-32 to 17, K6-33 to 18, K6-34 to 19, see <see cref="ProtocolVersion_MatchesDocumentedMergeValue"/>).
+    /// K2-10 adds reject reason 21 (and raised the protocol version from 1 to 2; K2-11 raises it to 3, K6-29W to 14, K6-30 to 15, K6-31 to 16, K6-32 to 17, K6-33 to 18, K6-34 to 19, K6-35 to 20, see <see cref="ProtocolVersion_MatchesDocumentedMergeValue"/>).
     /// </summary>
     [Fact]
     public void RejectReason_ServerReadOnly_RoundTrips()
@@ -165,19 +167,21 @@ public sealed class ProtocolContractTests
     /// K6-32 adds operations 43, 45, station state 3, intent 24, reject reasons 44 to 46, message 48, blob 22 version 2 and blob 25 after K6-31 (main 16): 17.
     /// K6-33 adds operation 41, intent 25, reject reason 49, message 44, the food tail of message 48, blob 22 version 3 and blob 2 version 2 after K6-32 (main 17): 18.
     /// K6-34 adds operation 42, intent 26, the oxygen generator state 5 (operation 40, message 46), the suit tail of message 44 and blob 2 version 3 after K6-33 (main 18): 19.
+    /// K6-35 adds operations 38, 39, 46, operation 7 format 2, message 47, the tails of messages 44 and 48, blobs 23 and 24, reject reason 48 and entity kinds 3 and 6 in EntitySpawn after K6-34 (main 19): 20.
     /// A rebase onto a newer main updates this value, the constant and the package plan together.
     /// </summary>
     [Fact]
     public void ProtocolVersion_MatchesDocumentedMergeValue()
     {
-        Assert.Equal(19, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(20, ProtocolConstants.ProtocolVersion);
         Assert.Equal(0x3F, ProtocolConstants.InputButtonsMask);
     }
 
     [Fact]
     public void Constants_GoldenValues()
     {
-        Assert.Equal(19, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(20, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(64, ProtocolConstants.MaxTombstonesPerPage);
         Assert.Equal(262144, ProtocolConstants.MaxReliableMessageBytes);
         Assert.Equal(1150, ProtocolConstants.MaxUnreliableMessageBytes);
         Assert.Equal(32, ProtocolConstants.MaxDisplayNameBytes);
@@ -256,8 +260,9 @@ public sealed class ProtocolContractTests
             new ContainerUnsubscribe(new ContainerId(1)),
             new PropStates(new PlanetId(1), []),
             new BlockEntityStates(new EntityId(1), []),
-            new PlayerProgressState(Horyzont.Core.Progress.ItemTypeBitSet.Empty, [], Horyzont.Core.Progress.FoodSlots.Empty),
-            new PlayerVitalsMessage(100f, 100f, 100f, 100f, false, false, false, 0, 0, 0),
+            new WorldSettingsState(Horyzont.Core.World.WorldSettings.Default),
+            TestMessages.Progress(Horyzont.Core.Progress.ItemTypeBitSet.Empty, [], Horyzont.Core.Progress.FoodSlots.Empty),
+            TestMessages.Vitals(100f, 100f, 100f, 100f, false, false, false, 0, 0, 0),
             new ItemRegistry([]),
         ];
 

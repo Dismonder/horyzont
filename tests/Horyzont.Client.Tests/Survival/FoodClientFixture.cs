@@ -82,7 +82,7 @@ internal sealed class FoodClientFixture
             slots = slots.With(i, new FoodSlot(foods[i].Type, new Tick(foods[i].Tick)));
         }
 
-        Progress.Apply(new PlayerProgressState(ItemTypeBitSet.Empty, [], slots));
+        Progress.Apply(TestMessages.Progress(ItemTypeBitSet.Empty, [], slots));
     }
 
     private bool ReadTick(out ulong tick)
