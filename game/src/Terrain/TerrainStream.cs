@@ -63,7 +63,7 @@ public sealed partial class TerrainStream : VoxelStreamScript
         _derived = derived;
     }
 
-    /// <summary>Godot needs a parameterless constructor; such a stream is closed and answers every call with an error.</summary>
+    /// <summary>Godot needs a parameterless constructor; such a stream is closed and loads nothing.</summary>
     public TerrainStream() => _closed = true;
 
     /// <summary>Planet of the terrain.</summary>
@@ -93,7 +93,7 @@ public sealed partial class TerrainStream : VoxelStreamScript
         }
     }
 
-    /// <summary>Stops reading: from now on every call returns an error without touching the source.</summary>
+    /// <summary>Stops reading: from now on loads return "not found" and saves are dropped, without touching the source.</summary>
     public void Close() => _closed = true;
 
     /// <inheritdoc />
@@ -102,7 +102,15 @@ public sealed partial class TerrainStream : VoxelStreamScript
     /// <inheritdoc />
     public override int _LoadVoxelBlock(VoxelBuffer outBuffer, Vector3I positionInBlocks, int lod)
     {
-        if (_closed || _source is null || _codec is null || _lodCache is null || _logger is null || lod < 0 || lod > byte.MaxValue)
+        if (_closed)
+        {
+            // Voxel Tools keeps loading on its worker threads after Close. An error result leaves no data block, and the LOD update
+            // that follows asserts on it ("src_block != nullptr" in VoxelData::update_lods) and crashes the process. The generator
+            // fills the block instead; the terrain is going away and nothing is saved any more.
+            return (int)VoxelStream.ResultCode.BlockNotFound;
+        }
+
+        if (_source is null || _codec is null || _lodCache is null || _logger is null || lod < 0 || lod > byte.MaxValue)
         {
             return (int)VoxelStream.ResultCode.Error;
         }
@@ -148,12 +156,14 @@ public sealed partial class TerrainStream : VoxelStreamScript
                     _codec.Decode(blob, outBuffer);
                     return (int)VoxelStream.ResultCode.BlockFound;
                 default:
-                    if (!_closed)
+                    if (_closed)
                     {
-                        TerrainGameLog.BlockUnavailable(_logger, key);
-                        ReportError(key);
+                        // Closed while this load was reading the source (the store answers "unavailable" once it is closed).
+                        return (int)VoxelStream.ResultCode.BlockNotFound;
                     }
 
+                    TerrainGameLog.BlockUnavailable(_logger, key);
+                    ReportError(key);
                     return (int)VoxelStream.ResultCode.Error;
             }
         }
@@ -167,6 +177,12 @@ public sealed partial class TerrainStream : VoxelStreamScript
         catch (Exception exception)
 #pragma warning restore CA1031
         {
+            if (_closed)
+            {
+                // The source was torn down under a load that started before Close (see the start of this method).
+                return (int)VoxelStream.ResultCode.BlockNotFound;
+            }
+
             TerrainGameLog.StreamCallFailed(_logger, exception, key);
             ReportError(key);
             return (int)VoxelStream.ResultCode.Error;
