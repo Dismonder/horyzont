@@ -1087,22 +1087,51 @@ public static class StateCodec
     /// <summary>Encodes the settings of a world as a SQLite blob (kind 23, version 1; K6-35).</summary>
     /// <param name="settings">Settings; every value in range.</param>
     /// <returns>The blob.</returns>
-    public static byte[] EncodeWorldSettingsBlob(WorldSettings settings) => throw new NotImplementedException("K6-35 B2.");
+    public static byte[] EncodeWorldSettingsBlob(WorldSettings settings)
+    {
+        var w = new ByteWriter();
+        w.WriteByte((byte)BlobKind.WorldSettings);
+        w.WriteByte(CurrentFormatVersion);
+        CoreCodecPrimitives.WriteWorldSettings(w, settings);
+        return w.WrittenSpan.ToArray();
+    }
 
     /// <summary>Decodes a world settings blob (kind 23).</summary>
     /// <param name="blob">Blob bytes.</param>
     /// <returns>The settings.</returns>
-    public static WorldSettings DecodeWorldSettingsBlob(ReadOnlySpan<byte> blob) => throw new NotImplementedException("K6-35 B2.");
+    public static WorldSettings DecodeWorldSettingsBlob(ReadOnlySpan<byte> blob)
+    {
+        ValidateBlobHeader(blob, BlobKind.WorldSettings);
+        var r = new ByteReader(blob.Slice(2));
+        var settings = CoreCodecPrimitives.ReadWorldSettings(ref r);
+        r.EnsureEnd();
+        return settings;
+    }
 
     /// <summary>Encodes a persistent entity as a SQLite blob (kind 24, version 1; K6-35).</summary>
     /// <param name="entity">Entity.</param>
     /// <returns>The blob.</returns>
-    public static byte[] EncodePersistentEntityBlob(PersistentEntity entity) => throw new NotImplementedException("K6-35 B2.");
+    public static byte[] EncodePersistentEntityBlob(PersistentEntity entity)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        var w = new ByteWriter();
+        w.WriteByte((byte)BlobKind.PersistentEntity);
+        w.WriteByte(CurrentFormatVersion);
+        CoreCodecPrimitives.WritePersistentEntity(w, entity);
+        return w.WrittenSpan.ToArray();
+    }
 
     /// <summary>Decodes a persistent entity blob (kind 24).</summary>
     /// <param name="blob">Blob bytes.</param>
     /// <returns>The entity.</returns>
-    public static PersistentEntity DecodePersistentEntityBlob(ReadOnlySpan<byte> blob) => throw new NotImplementedException("K6-35 B2.");
+    public static PersistentEntity DecodePersistentEntityBlob(ReadOnlySpan<byte> blob)
+    {
+        ValidateBlobHeader(blob, BlobKind.PersistentEntity);
+        var r = new ByteReader(blob.Slice(2));
+        var entity = CoreCodecPrimitives.ReadPersistentEntity(ref r);
+        r.EnsureEnd();
+        return entity;
+    }
 
     private static void ValidateBlobHeader(ReadOnlySpan<byte> blob, BlobKind expectedKind, byte highestVersion = CurrentFormatVersion)
     {

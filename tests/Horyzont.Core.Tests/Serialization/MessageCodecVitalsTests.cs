@@ -20,7 +20,10 @@ public sealed class MessageCodecVitalsTests
     /// <summary>The flag byte, the three masks and the number of hits of a tail without environment.</summary>
     private const string TailFlags = " 00 00 00 00 00";
 
-    private const string Tail = TailFlags + Pair100 + Pair100 + Pair100 + Pair100 + Pair100;
+    /// <summary>The tail of K6-35 (D21): the tick of the sample and the reparent counter, both varuint; zero for a sample that carries no epoch.</summary>
+    private const string Epoch = " 00 00";
+
+    private const string Tail = TailFlags + Pair100 + Pair100 + Pair100 + Pair100 + Pair100 + Epoch;
 
     /// <summary>The K6-33 part of <see cref="Valid"/>, without the tail.</summary>
     private const string Core = "2C 01 00 00 A0 42 00 00 F0 42 00 00 5E 42 00 00 C8 42 02 58 02 00 03";
@@ -39,7 +42,7 @@ public sealed class MessageCodecVitalsTests
 
     /// <summary>A tail from the bytes of the masks and the pairs of (value, capacity) of the five resources.</summary>
     private static string TailOf(string flags, string present, string active, string exposed, string hits, params (float Value, float Capacity)[] pairs) =>
-        " " + flags + " " + present + " " + active + " " + exposed + " " + hits + string.Concat(pairs.Select(p => " " + F(p.Value) + " " + F(p.Capacity)));
+        " " + flags + " " + present + " " + active + " " + exposed + " " + hits + string.Concat(pairs.Select(p => " " + F(p.Value) + " " + F(p.Capacity))) + Epoch;
 
     private static readonly (float, float)[] _pairs = [(100f, 100f), (100f, 100f), (100f, 100f), (0f, 100f), (75.5f, 200f)];
 
@@ -237,7 +240,7 @@ public sealed class MessageCodecVitalsTests
     {
         // The example of the plan (D18): sheltered (01), cold and radiation present (09), radiation active (08) and exposed (08), 23 hits (17); heating, cooling and filter 100 of 100, shield 0 of 100,
         // oxygen 75.5 of 200 (00 00 97 42 and 00 00 48 43).
-        const string expected = Core + " 01 09 08 08 17" + Pair100 + Pair100 + Pair100 + " 00 00 00 00 00 00 C8 42 00 00 97 42 00 00 48 43";
+        const string expected = Core + " 01 09 08 08 17" + Pair100 + Pair100 + Pair100 + " 00 00 00 00 00 00 C8 42 00 00 97 42 00 00 48 43" + Epoch;
 
         Assert.Equal(expected, Kit.ToHex(Kit.Encode(WithTail)));
         AssertSame(WithTail, MessageCodec.Read(Kit.Hex(expected)));
@@ -246,7 +249,7 @@ public sealed class MessageCodecVitalsTests
         // All three protections (07), every hazard present (1F) and active (1F) and exposed (1F), 26 hits (1A), the largest values.
         var most = _warming with { Environment = new VitalsEnvironment(true, true, true, 0x1F, 0x1F, 0x1F, 26), Suit = new SuitResources(1000f, 1000f, 1000f, 1000f, 1000f), Capacity = new SuitResources(1000f, 1000f, 1000f, 1000f, 1000f) };
         var pair1000 = " 00 00 7A 44 00 00 7A 44";
-        Assert.Equal(Core + " 07 1F 1F 1F 1A" + pair1000 + pair1000 + pair1000 + pair1000 + pair1000, Kit.ToHex(Kit.Encode(most)));
+        Assert.Equal(Core + " 07 1F 1F 1F 1A" + pair1000 + pair1000 + pair1000 + pair1000 + pair1000 + Epoch, Kit.ToHex(Kit.Encode(most)));
     }
 
     [Fact]

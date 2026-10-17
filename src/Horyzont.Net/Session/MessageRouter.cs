@@ -57,7 +57,7 @@ internal static class MessageRouter
         or MessageType.ConstructRemoved or MessageType.OperationApplied or MessageType.IntentReply or MessageType.Snapshot
         or MessageType.EntitySpawn or MessageType.EntityDespawn or MessageType.Pong or MessageType.ServerStatus or MessageType.StarSystemState
         or MessageType.ShipStatus or MessageType.MarkersState or MessageType.ContainerState or MessageType.ContainerDelta or MessageType.BlockEntityStates or MessageType.PropStates or MessageType.ItemRegistry
-        or MessageType.PlayerProgressState or MessageType.PlayerVitals;
+        or MessageType.PlayerProgressState or MessageType.PlayerVitals or MessageType.WorldSettingsState;
 
     /// <summary>Client-to-server types the game sends itself through <see cref="ClientSession.Send"/>.</summary>
     public static bool IsGameMessageFromClient(MessageType type) =>

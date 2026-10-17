@@ -2,7 +2,6 @@ using System.Numerics;
 
 using Horyzont.Core.Ids;
 using Horyzont.Core.Operations;
-using Horyzont.Core.Tests.Serialization;
 
 namespace Horyzont.Core.Tests.Survival;
 
@@ -13,14 +12,6 @@ public sealed class OperationReparentTests
         new EntityId(7), FrameRef.Of(new PlanetId(1)), 1, new Vector3(1f, 2f, 3f), Quaternion.Identity, Vector3.Zero, null, true);
 
     private static readonly FoodSetOp _feed = new(new PlayerId(1), default);
-
-    // K6-35 review A, P2-1: until stage B2 gives format 2 a codec, the encoder must refuse the reset instead of dropping it silently. B2 deletes this test.
-    [Fact]
-    public void Write_ResetVitalsBeforeB2_Throws()
-    {
-        Assert.Throws<ArgumentException>(() => Kit.Encode(_reparent));
-        Assert.NotEmpty(Kit.Encode(_reparent with { ResetVitals = false }));
-    }
 
     [Fact]
     public void TryGetReparent_Standalone_ReturnsIt()

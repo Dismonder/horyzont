@@ -8,6 +8,7 @@ using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Serialization;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Constructs;
+using Horyzont.Testing.Generators;
 
 namespace Horyzont.Core.Tests.Serialization;
 
@@ -53,7 +54,7 @@ public sealed class DeathCodecTests
         where T : Operation
     {
         var back = Assert.IsType<T>(Kit.DecodeOperation(Kit.Encode(op)));
-        Assert.Equal(op, back);
+        DeepAssert.Equal(op, back);
         return back;
     }
 
@@ -87,6 +88,24 @@ public sealed class DeathCodecTests
         Assert.Equal(1, frame[1]);
         Assert.Equal(compound.Components, Assert.IsType<CompoundOp>(Kit.DecodeOperation(frame)).Components);
         Assert.EndsWith(ReparentV2, Kit.ToHex(frame));
+    }
+
+    [Fact]
+    public void ReparentV2_Property_RoundTripsAndEveryPrefixIsRefused()
+    {
+        Kit.ForAll(
+            CodecGen.EntityReparentResetOp,
+            op =>
+            {
+                var frame = Kit.Encode(op);
+                Assert.Equal(2, frame[1]);
+                DeepAssert.Equal(op, Kit.DecodeOperation(frame));
+                foreach (var length in Kit.PrefixLengths(frame.Length))
+                {
+                    Kit.AssertViolation(d => Kit.DecodeOperation(d), frame[..length]);
+                }
+            },
+            300);
     }
 
     [Fact]
@@ -333,7 +352,7 @@ public sealed class DeathCodecTests
         // 48 = 0x30. The part up to the tail is that of K6-33 (empty bitset, no keys, empty food); the empty tail is twelve bytes: no bed, no transition, revision 0,
         // page 0 of 1, no entries, no death.
         var empty = Kit.ToHex(Kit.Encode(new PlayerProgressState(ItemTypeBitSet.Empty, [], FoodSlots.Empty)));
-        Assert.Equal("30 01 00 00 00 00 00 00 00 00 00 00 00 00 01 00 00 00", empty);
+        Assert.Equal("30 01 00 00 00 00 00 " + "00 00 00 00 00 00 00 00 " + "01 00 00 00", empty);
         Assert.Equal(empty, Kit.ToHex(Kit.Encode(State(PlayerRespawnState.None))));
 
         // Bed (construct 5, cell (1, 2, 3), type 7), the respawn transition, revision 3, page 1 of 2, one entry (entity 9, container 10, planet 1, counter 2, position),

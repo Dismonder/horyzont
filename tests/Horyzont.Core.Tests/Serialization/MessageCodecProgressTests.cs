@@ -18,7 +18,10 @@ public sealed class MessageCodecProgressTests
     private const MessageType ProgressType = (MessageType)48;
 
     /// <summary>The tail of three empty food slots.</summary>
-    private const string NoFood = " 00 00 00";
+    private const string NoFood = " 00 00 00" + Respawn;
+
+    /// <summary>The tail of K6-35 for a player with no bed, no transition and no tombstones: twelve bytes (the layout is in <c>DeathCodecTests</c>).</summary>
+    private const string Respawn = " 00 00 00 00 00 00 00 00 01 00 00 00";
 
     private static ItemTypeBitSet Bits(params ushort[] types) => types.Aggregate(ItemTypeBitSet.Empty, (set, type) => set.With(new ItemTypeId(type)));
 
@@ -66,10 +69,10 @@ public sealed class MessageCodecProgressTests
     public void GoldenBytes()
     {
         // The bytes of K6-32 with the tail of three empty slots (00 00 00): only the tail is new, the rest is unchanged (K6-33 D6).
-        Assert.Equal("30 01 00 00 00 00 00", Kit.ToHex(Kit.Encode(new PlayerProgressState(ItemTypeBitSet.Empty, [], FoodSlots.Empty))));
-        Assert.Equal("30 01 01 20 00 00 00 00", Kit.ToHex(Kit.Encode(new PlayerProgressState(Bits(5), [], FoodSlots.Empty))));
-        Assert.Equal("30 01 01 20 01 06 74 3A 62 6F 73 73 00 00 00", Kit.ToHex(Kit.Encode(new PlayerProgressState(Bits(5), ["t:boss"], FoodSlots.Empty))));
-        Assert.Equal("30 01 00 02 01 61 01 62 00 00 00", Kit.ToHex(Kit.Encode(new PlayerProgressState(ItemTypeBitSet.Empty, ["a", "b"], FoodSlots.Empty))));
+        Assert.Equal("30 01 00 00 00 00 00" + Respawn, Kit.ToHex(Kit.Encode(new PlayerProgressState(ItemTypeBitSet.Empty, [], FoodSlots.Empty))));
+        Assert.Equal("30 01 01 20 00 00 00 00" + Respawn, Kit.ToHex(Kit.Encode(new PlayerProgressState(Bits(5), [], FoodSlots.Empty))));
+        Assert.Equal("30 01 01 20 01 06 74 3A 62 6F 73 73 00 00 00" + Respawn, Kit.ToHex(Kit.Encode(new PlayerProgressState(Bits(5), ["t:boss"], FoodSlots.Empty))));
+        Assert.Equal("30 01 00 02 01 61 01 62 00 00 00" + Respawn, Kit.ToHex(Kit.Encode(new PlayerProgressState(ItemTypeBitSet.Empty, ["a", "b"], FoodSlots.Empty))));
     }
 
     [Fact]
@@ -77,10 +80,10 @@ public sealed class MessageCodecProgressTests
     {
         // Approved at the B1 review: the codec checks the shape only; repeated types are refused by the builder of blob 22, and the client applies the
         // state of the server as it is.
-        var distinct = Assert.IsType<PlayerProgressState>(MessageCodec.Read(Kit.Hex("30 01 00 00 05 64 06 C8 01 00")));
+        var distinct = Assert.IsType<PlayerProgressState>(MessageCodec.Read(Kit.Hex("30 01 00 00 05 64 06 C8 01 00" + Respawn)));
         Assert.Equal(new FoodSlots(Slot(5, 100), Slot(6, 200), default), distinct.Food);
 
-        var repeated = Assert.IsType<PlayerProgressState>(MessageCodec.Read(Kit.Hex("30 01 00 00 05 64 05 C8 01 00")));
+        var repeated = Assert.IsType<PlayerProgressState>(MessageCodec.Read(Kit.Hex("30 01 00 00 05 64 05 C8 01 00" + Respawn)));
         Assert.Equal(new FoodSlots(Slot(5, 100), Slot(5, 200), default), repeated.Food);
     }
 
@@ -89,13 +92,13 @@ public sealed class MessageCodecProgressTests
     {
         // One slot (type 5 eaten in tick 100), then three slots (types 5, 6, 7; ticks 100, 200 as C8 01, 0), then the largest type with a two-byte tick.
         Assert.Equal(
-            "30 01 01 20 00 05 64 00 00",
+            "30 01 01 20 00 05 64 00 00" + Respawn,
             Kit.ToHex(Kit.Encode(new PlayerProgressState(Bits(5), [], new FoodSlots(Slot(5, 100), default, default)))));
         Assert.Equal(
-            "30 01 01 20 00 05 64 06 C8 01 07 00",
+            "30 01 01 20 00 05 64 06 C8 01 07 00" + Respawn,
             Kit.ToHex(Kit.Encode(new PlayerProgressState(Bits(5), [], new FoodSlots(Slot(5, 100), Slot(6, 200), Slot(7, 0))))));
         Assert.Equal(
-            "30 01 00 00 00 80 20 80 01 00",
+            "30 01 00 00 00 80 20 80 01 00" + Respawn,
             Kit.ToHex(Kit.Encode(new PlayerProgressState(ItemTypeBitSet.Empty, [], new FoodSlots(default, Slot(4096, 128), default)))));
     }
 
@@ -103,7 +106,10 @@ public sealed class MessageCodecProgressTests
     public void ProgressState_WithoutFoodTail_Throws()
     {
         // The tail is mandatory: the version byte stays 01 and the handshake demands an equal protocol version (K6-33 D6).
-        AssertSame(new PlayerProgressState(ItemTypeBitSet.Empty, [], FoodSlots.Empty), MessageCodec.Read(Kit.Hex("30 01 00 00 00 00 00")));
+        AssertSame(new PlayerProgressState(ItemTypeBitSet.Empty, [], FoodSlots.Empty), MessageCodec.Read(Kit.Hex("30 01 00 00 00 00 00" + Respawn)));
+
+        // The tail of K6-35 is mandatory as well: the K6-33 frame ends where the new tail should begin.
+        Kit.AssertMessageViolation("30 01 00 00 00 00 00");
 
         // The K6-32 frame without any tail, one and two empty slots only, and a filled slot cut before its tick.
         Kit.AssertMessageViolation("30 01 00 00");
@@ -119,7 +125,7 @@ public sealed class MessageCodecProgressTests
         // 4096 (80 20) is the largest type, 4097 (81 20) is not, in any of the three slots.
         AssertSame(
             new PlayerProgressState(ItemTypeBitSet.Empty, [], new FoodSlots(Slot(4096, 0), default, default)),
-            MessageCodec.Read(Kit.Hex("30 01 00 00 80 20 00 00 00")));
+            MessageCodec.Read(Kit.Hex("30 01 00 00 80 20 00 00 00" + Respawn)));
 
         Kit.AssertMessageViolation("30 01 00 00 81 20 00 00 00");
         Kit.AssertMessageViolation("30 01 00 00 00 81 20 00 00");

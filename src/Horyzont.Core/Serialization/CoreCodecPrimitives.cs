@@ -4,6 +4,7 @@ using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
 using Horyzont.Core.Progress;
 using Horyzont.Core.Protocol;
+using Horyzont.Core.World;
 using Horyzont.Core.World.Constructs;
 
 namespace Horyzont.Core.Serialization;
@@ -409,5 +410,89 @@ internal static class CoreCodecPrimitives
         var cell = ReadCellPos(ref r);
         ushort type = r.ReadVarUInt16();
         return new BedRef(construct, cell, type);
+    }
+
+    /// <summary>
+    /// A persistent entity (K6-35): varuint id, kind byte (3 or 6), frame, varuint counter, position, rotation, varuint owner. The content of operation 38 and of blob 24. That the
+    /// frame is a planet of the world is for the applier to check; here only its shape is.
+    /// </summary>
+    public static void WritePersistentEntity(ByteWriter w, PersistentEntity entity)
+    {
+        if (!Enum.IsDefined(entity.Kind))
+        {
+            throw new ArgumentException($"Invalid PersistentEntityKind {(byte)entity.Kind}.", nameof(entity));
+        }
+
+        w.WriteVarUInt(entity.Id.Value);
+        w.WriteByte((byte)entity.Kind);
+        WriteFrameRef(w, entity.Frame);
+        w.WriteVarUInt(entity.ParentSeq);
+        w.WriteVector3(entity.Position);
+        w.WriteQuaternion(entity.Rotation);
+        w.WriteVarUInt(entity.Owner.Value);
+    }
+
+    public static PersistentEntity ReadPersistentEntity(ref ByteReader r)
+    {
+        var id = new EntityId(r.ReadVarUInt());
+        var kind = (PersistentEntityKind)ReadEnumByte(ref r, (byte)PersistentEntityKind.DroppedItem, (byte)PersistentEntityKind.Tombstone, "persistent entity kind");
+        if (!Enum.IsDefined(kind))
+        {
+            throw new ProtocolViolationException($"Unknown persistent entity kind {(byte)kind}.");
+        }
+
+        var frame = ReadFrameRef(ref r);
+        uint parentSeq = r.ReadVarUInt32();
+        var position = r.ReadVector3();
+        var rotation = r.ReadQuaternion();
+        var owner = new PlayerId(r.ReadVarUInt());
+        return new PersistentEntity(id, kind, frame, parentSeq, position, rotation, owner);
+    }
+
+    /// <summary>
+    /// The settings of a world (K6-35 D4): a flag byte (bit 0 teleport everything, bit 1 free fuel, bit 2 free building; every other bit is an error), three u16 little endian
+    /// (resources, stacks, hazards in percent) and the bytes of the integrity and of the death penalty. The content of operation 46, of blob 23 and of message 47.
+    /// </summary>
+    public static void WriteWorldSettings(ByteWriter w, WorldSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        if (!settings.IsValid)
+        {
+            throw new ArgumentException("The world settings are out of range or hold an undefined enum.", nameof(settings));
+        }
+
+        w.WriteByte((byte)((settings.TeleportAll ? 1 : 0) | (settings.FreeFuel ? 2 : 0) | (settings.FreeBuilding ? 4 : 0)));
+        w.WriteUInt16(settings.ResourceMultiplierPercent);
+        w.WriteUInt16(settings.StackMultiplierPercent);
+        w.WriteUInt16(settings.HazardIntensityPercent);
+        w.WriteByte((byte)settings.BuildingIntegrity);
+        w.WriteByte((byte)settings.DeathPenalty);
+    }
+
+    public static WorldSettings ReadWorldSettings(ref ByteReader r)
+    {
+        byte flags = r.ReadByte();
+        if ((flags & ~7) != 0)
+        {
+            throw new ProtocolViolationException($"Unknown or reserved world setting flags {flags}.");
+        }
+
+        var settings = new WorldSettings
+        {
+            TeleportAll = (flags & 1) != 0,
+            FreeFuel = (flags & 2) != 0,
+            FreeBuilding = (flags & 4) != 0,
+            ResourceMultiplierPercent = r.ReadUInt16(),
+            StackMultiplierPercent = r.ReadUInt16(),
+            HazardIntensityPercent = r.ReadUInt16(),
+            BuildingIntegrity = (BuildingIntegrityMode)r.ReadByte(),
+            DeathPenalty = (DeathPenalty)r.ReadByte(),
+        };
+        if (!settings.IsValid)
+        {
+            throw new ProtocolViolationException("The world settings are out of range or hold an undefined enum.");
+        }
+
+        return settings;
     }
 }
