@@ -28,7 +28,11 @@ public sealed class GeneratorSanityTests
 
     [Fact]
     public void Operations_CoverAllEightKinds() =>
-        Assert.Equal(Enum.GetValues<OperationKind>().Order(), Draw(CodecGen.Operation).Select(o => o.Kind).Distinct().Order());
+        Assert.Equal(Enum.GetValues<OperationKind>().Except(_withoutCodecYet).Order(), Draw(CodecGen.Operation).Select(o => o.Kind).Distinct().Order());
+
+    // The operations of K6-35 (38, 39, 46) have no codec until stage B2 of the package; B2 deletes this list and adds them to the generator.
+    private static readonly OperationKind[] _withoutCodecYet =
+        [OperationKind.PersistentEntityCreate, OperationKind.PersistentEntityRemove, OperationKind.WorldSettingsSet];
 
     [Fact]
     public void Intents_CoverAllKindsAndBothBlockTargets()

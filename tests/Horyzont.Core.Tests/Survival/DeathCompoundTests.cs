@@ -93,6 +93,111 @@ public sealed class DeathCompoundTests
     }
 
     [Fact]
+    public void Apply_FailingComponentAfterRemoval_RestoresEntityContainerAndIndexes()
+    {
+        var w = Armed();
+        var entity = w.State.EntityIds.PeekNext();
+        var container = w.State.ContainerIds.PeekNext();
+        w.Apply(new CompoundOp(TombstoneParts(w)));
+        w.State.CompleteCheckpoint(w.State.CaptureCheckpoint());
+        var hash = w.Hash();
+        var record = w.State.PersistentEntities.OwnedBy(_p1).Single();
+        var nextEntity = w.State.EntityIds.NextValue;
+
+        // Removing the container and the entity is fine; the last component then fails.
+        var op = new CompoundOp(
+        [
+            new ContainerRemoveOp(container), new PersistentEntityRemoveOp(entity), new ItemDestroyOp(new SlotRef(DeathWorld.BagOf(_p1), 20), DeathWorld.Stone, 1, ItemSink.Admin),
+        ]);
+        Assert.False(w.TryApplyRaw(op, out _, out _, out var index));
+        Assert.Equal(2, index);
+
+        Assert.Equal(hash, w.Hash());
+        Assert.Equal([record], w.State.PersistentEntities.OwnedBy(_p1));
+        Assert.True(w.State.PersistentEntities.TryGet(entity, out var restored) && restored == record);
+        Assert.True(w.State.Containers.TryGetOfEntity(entity, out var hosted) && hosted.Id == container);
+        Assert.Equal(nextEntity, w.State.EntityIds.NextValue);
+        var checkpoint = w.State.CaptureCheckpoint();
+        Assert.Empty(checkpoint.UpsertedPersistentEntities);
+        Assert.Empty(checkpoint.RemovedPersistentEntities);
+        w.State.CompleteCheckpoint(checkpoint);
+
+        // And without the failing component the same removal works, with the marks for the checkpoint.
+        w.Apply(new CompoundOp([new ContainerRemoveOp(container), new PersistentEntityRemoveOp(entity)]));
+        Assert.Equal(0, w.State.PersistentEntities.Count);
+        Assert.Empty(w.State.PersistentEntities.OwnedBy(_p1));
+        Assert.False(w.State.Containers.TryGetOfEntity(entity, out _));
+        Assert.Equal([entity], w.State.CaptureCheckpoint().RemovedPersistentEntities);
+    }
+
+    [Fact]
+    public void Apply_EntityAndContainerNeedEachOther()
+    {
+        var w = Armed();
+        var parts = TombstoneParts(w);
+
+        // The entity alone, the container alone (its entity is missing) and the container before its entity: refused; the entity is the first component.
+        w.Hazard.AssertFails(parts[0]);
+        w.Hazard.AssertFails(parts[1]);
+        w.Hazard.AssertFails(new CompoundOp([parts[1], parts[0]]));
+
+        // A container of another owner, a shared one, or one of a kind that does not match its entity.
+        var create = (PersistentEntityCreateOp)parts[0];
+        var container = (ContainerCreateOp)parts[1];
+        w.Hazard.AssertFails(new CompoundOp([create, container with { Owner = DeathWorld.Player1 == _p1 ? new PlayerId(99) : _p1 }]));
+        w.Hazard.AssertFails(new CompoundOp([create, container with { Access = ContainerAccess.Shared }]));
+        w.Hazard.AssertFails(new CompoundOp([create, container with { ContainerKind = ContainerKind.DroppedItem }]));
+
+        // The entity cannot be removed while it hosts a container, and an entity id is not used twice.
+        w.Apply(new CompoundOp(parts));
+        w.Hazard.AssertFails(new PersistentEntityRemoveOp(create.Entity));
+        w.Hazard.AssertFails(new CompoundOp([create with { Entity = create.Entity }, container with { Id = new ContainerId(container.Id.Value + 1) }]));
+        w.Hazard.AssertFails(new PersistentEntityRemoveOp(new EntityId(create.Entity.Value + 40)));
+    }
+
+    [Fact]
+    public void Apply_EntityOutsideAPlanetFrameOrWithABadPose_Refused()
+    {
+        var w = Armed();
+        var create = (PersistentEntityCreateOp)TombstoneParts(w)[0];
+        var container = (ContainerCreateOp)TombstoneParts(w)[1];
+
+        PersistentEntityCreateOp[] bad =
+        [
+            create with { Frame = FrameRef.Of(Horyzont.Testing.FunctionalBlocks.Construct) },
+            create with { Frame = FrameRef.Of(new PlanetId(99)) },
+            create with { Position = new Vector3(float.NaN, 0f, 0f) },
+            create with { Rotation = new Quaternion(0f, 0f, 0f, 2f) },
+            create with { Owner = default },
+            create with { Owner = new PlayerId(99) },
+            create with { EntityKind = (PersistentEntityKind)5 },
+            create with { Entity = new EntityId(1) },
+        ];
+        foreach (var op in bad)
+        {
+            w.Hazard.AssertFails(new CompoundOp([op, container]));
+        }
+    }
+
+    [Fact]
+    public void Apply_SettingsFollowedByAFailingComponent_AreRestoredWithoutAMark()
+    {
+        var w = new DeathWorld();
+        w.State.CompleteCheckpoint(w.State.CaptureCheckpoint());
+        var op = new CompoundOp(
+        [
+            new WorldSettingsSetOp(new WorldSettings { DeathPenalty = DeathPenalty.Hard }),
+            new ItemDestroyOp(new SlotRef(DeathWorld.BagOf(_p1), 3), DeathWorld.Stone, 1, ItemSink.Admin),
+        ]);
+
+        Assert.False(w.TryApplyRaw(op, out _, out _, out var index));
+
+        Assert.Equal(1, index);
+        Assert.True(w.State.Settings.IsDefault);
+        Assert.Null(w.State.CaptureCheckpoint().Settings);
+    }
+
+    [Fact]
     public void Apply_Death_IsOneJournalEntryAndTheSameWorldAsTheParts()
     {
         var w = Armed();
