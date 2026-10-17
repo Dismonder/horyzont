@@ -14,6 +14,7 @@ using Horyzont.Core.Survival;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Terrain;
+using Horyzont.Testing;
 
 namespace Horyzont.Core.Tests.Protocol;
 
@@ -100,7 +101,7 @@ public sealed class ProtocolContractTests
         AssertValues((BlockConfigKind.TeleportName, 1), (BlockConfigKind.ContainerAccess, 2));
         AssertValues((TerrainShape.Sphere, 1));
         AssertValues((TerrainEditMode.Remove, 1), (TerrainEditMode.Add, 2));
-        AssertValues((EntityKind.Player, 1), (EntityKind.Construct, 2));
+        AssertValues((EntityKind.Player, 1), (EntityKind.Construct, 2), (EntityKind.DroppedItem, 3), (EntityKind.Tombstone, 6));
         AssertValues((EntityStateFields.None, 0), (EntityStateFields.Position, 1), (EntityStateFields.Rotation, 2), (EntityStateFields.Velocity, 4),
             (EntityStateFields.MotionFlags, 8));
         AssertValues((InputButtons.None, 0), (InputButtons.Jump, 1), (InputButtons.Sprint, 2), (InputButtons.Crouch, 4), (InputButtons.Primary, 8),
@@ -166,7 +167,7 @@ public sealed class ProtocolContractTests
     /// K6-32 adds operations 43, 45, station state 3, intent 24, reject reasons 44 to 46, message 48, blob 22 version 2 and blob 25 after K6-31 (main 16): 17.
     /// K6-33 adds operation 41, intent 25, reject reason 49, message 44, the food tail of message 48, blob 22 version 3 and blob 2 version 2 after K6-32 (main 17): 18.
     /// K6-34 adds operation 42, intent 26, the oxygen generator state 5 (operation 40, message 46), the suit tail of message 44 and blob 2 version 3 after K6-33 (main 18): 19.
-    /// K6-35 adds operations 38, 39, 46, operation 7 format 2, message 47, the tails of messages 44 and 48, blobs 23 and 24 and reject reason 48 after K6-34 (main 19): 20.
+    /// K6-35 adds operations 38, 39, 46, operation 7 format 2, message 47, the tails of messages 44 and 48, blobs 23 and 24, reject reason 48 and entity kinds 3 and 6 in EntitySpawn after K6-34 (main 19): 20.
     /// A rebase onto a newer main updates this value, the constant and the package plan together.
     /// </summary>
     [Fact]
@@ -260,8 +261,8 @@ public sealed class ProtocolContractTests
             new PropStates(new PlanetId(1), []),
             new BlockEntityStates(new EntityId(1), []),
             new WorldSettingsState(Horyzont.Core.World.WorldSettings.Default),
-            new PlayerProgressState(Horyzont.Core.Progress.ItemTypeBitSet.Empty, [], Horyzont.Core.Progress.FoodSlots.Empty),
-            new PlayerVitalsMessage(100f, 100f, 100f, 100f, false, false, false, 0, 0, 0),
+            TestMessages.Progress(Horyzont.Core.Progress.ItemTypeBitSet.Empty, [], Horyzont.Core.Progress.FoodSlots.Empty),
+            TestMessages.Vitals(100f, 100f, 100f, 100f, false, false, false, 0, 0, 0),
             new ItemRegistry([]),
         ];
 

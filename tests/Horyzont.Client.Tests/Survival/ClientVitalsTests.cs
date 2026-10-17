@@ -2,6 +2,7 @@ using Horyzont.Client.Replication;
 using Horyzont.Client.Survival;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
+using Horyzont.Testing;
 
 namespace Horyzont.Client.Tests.Survival;
 
@@ -11,7 +12,7 @@ public sealed class ClientVitalsTests
     private static PlayerVitalsMessage Message(
         float health = 80f, float healthMax = 110f, float stamina = 50f, float staminaMax = 120f, bool exhausted = false, bool resting = false, bool rested = false,
         ushort warmup = 0, uint remaining = 0, byte comfort = 0) =>
-        new(health, healthMax, stamina, staminaMax, exhausted, resting, rested, warmup, remaining, comfort);
+        TestMessages.Vitals(health, healthMax, stamina, staminaMax, exhausted, resting, rested, warmup, remaining, comfort);
 
     [Fact]
     public void Receive_LatestWins()

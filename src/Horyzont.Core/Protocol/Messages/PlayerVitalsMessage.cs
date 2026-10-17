@@ -42,23 +42,8 @@ public sealed record PlayerVitalsMessage(
     Tick SampleTick,
     uint ParentSeq) : Message
 {
-    /// <summary>Creates the message of a server that sends no epoch: tick 0 and counter 0 (the tail of K6-35 is then neutral).</summary>
-    public PlayerVitalsMessage(
-        float health, float healthMax, float stamina, float staminaMax, bool exhausted, bool restConditionsMet, bool rested, ushort restWarmupTicks, uint restRemainingTicks, byte comfort,
-        VitalsEnvironment environment, SuitResources suit, SuitResources capacity)
-        : this(health, healthMax, stamina, staminaMax, exhausted, restConditionsMet, rested, restWarmupTicks, restRemainingTicks, comfort, environment, suit, capacity, default, 0)
-    {
-    }
-
     /// <summary>The suit of a server without hazard content: every resource full at the base capacity (D18).</summary>
     public static readonly SuitResources DefaultSuit = new(100f, 100f, 100f, 100f, 100f);
-
-    /// <summary>Creates the message of a server without hazard content: no environment, the suit and the capacities at <see cref="DefaultSuit"/>.</summary>
-    public PlayerVitalsMessage(
-        float health, float healthMax, float stamina, float staminaMax, bool exhausted, bool restConditionsMet, bool rested, ushort restWarmupTicks, uint restRemainingTicks, byte comfort)
-        : this(health, healthMax, stamina, staminaMax, exhausted, restConditionsMet, rested, restWarmupTicks, restRemainingTicks, comfort, VitalsEnvironment.None, DefaultSuit, DefaultSuit)
-    {
-    }
 
     /// <inheritdoc />
     public override MessageType Type => MessageType.PlayerVitals;

@@ -322,7 +322,9 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
     }
 
     private static bool HasAccess(Container container, PlayerId player) =>
-        container.Access == ContainerAccess.Shared || container.Owner == player;
+        container.Kind == ContainerKind.Tombstone
+            ? container.Owner == player // defence in depth (review B, P3-3): a tombstone is the owner's alone whatever its access says
+            : container.Access == ContainerAccess.Shared || container.Owner == player;
 
     /// <summary>Chests and the pieces of a station in a construct, and tombstones (K6-35); any other container is opened by no subscription.</summary>
     private static bool IsSubscribable(Container container) =>

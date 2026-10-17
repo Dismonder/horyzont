@@ -8,6 +8,7 @@ using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Serialization;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Constructs;
+using Horyzont.Testing;
 using Horyzont.Testing.Generators;
 
 namespace Horyzont.Core.Tests.Serialization;
@@ -295,14 +296,14 @@ public sealed class DeathCodecTests
             }
         }
 
-        // Damaged copies of the valid frames: a violation or another valid value, nothing else.
+        // Damaged copies of the valid frames (operations, blobs 23 and 24, message 47): a violation or another valid value, nothing else.
         for (var seed = 0; seed < 300; seed++)
         {
-            foreach (var frame in frames.Take(4))
+            for (var f = 0; f < frames.Length; f++)
             {
                 try
                 {
-                    Kit.DecodeOperation(Kit.Mutate(frame, seed));
+                    decoders[f](Kit.Mutate(frames[f], seed));
                 }
                 catch (ProtocolViolationException)
                 {
@@ -351,7 +352,7 @@ public sealed class DeathCodecTests
     {
         // 48 = 0x30. The part up to the tail is that of K6-33 (empty bitset, no keys, empty food); the empty tail is twelve bytes: no bed, no transition, revision 0,
         // page 0 of 1, no entries, no death.
-        var empty = Kit.ToHex(Kit.Encode(new PlayerProgressState(ItemTypeBitSet.Empty, [], FoodSlots.Empty)));
+        var empty = Kit.ToHex(Kit.Encode(TestMessages.Progress(ItemTypeBitSet.Empty, [], FoodSlots.Empty)));
         Assert.Equal("30 01 00 00 00 00 00 " + "00 00 00 00 00 00 00 00 " + "01 00 00 00", empty);
         Assert.Equal(empty, Kit.ToHex(Kit.Encode(State(PlayerRespawnState.None))));
 
@@ -375,7 +376,7 @@ public sealed class DeathCodecTests
             PlayerRespawnState.None with { Bed = new BedRef(new EntityId(ulong.MaxValue), new CellPos(-5, 0, 9), ushort.MaxValue) },
             PlayerRespawnState.None with { Death = new DeathNotice(new OpId(ulong.MaxValue), uint.MaxValue) },
             new PlayerRespawnState(null, PlayerTransitionKind.None, uint.MaxValue, 0, 1, [Entry(1)], null),
-            new PlayerRespawnState(null, PlayerTransitionKind.None, 1, ushort.MaxValue - 1, ushort.MaxValue, [], null),
+            new PlayerRespawnState(null, PlayerTransitionKind.None, 1, ProtocolConstants.MaxTombstonePages - 1, ProtocolConstants.MaxTombstonePages, [], null),
             new PlayerRespawnState(null, PlayerTransitionKind.None, 9, 0, 1, [.. Enumerable.Range(1, ProtocolConstants.MaxTombstonesPerPage).Select(i => Entry((ulong)i * 3))], null),
         ];
         Assert.Equal(7, shapes.Length);
@@ -424,14 +425,79 @@ public sealed class DeathCodecTests
         Violation(b => b[tail + 6] = 1, "page 1 of 1");
         Violation(b => b[tail + 10] = 65, "65 entries");
         Violation(b => b[tail + 10] = 64, "64 entries declared and none present");
+        Violation(b => b[tail + 8] = 65, "65 pages");
+        Violation(b => b[tail + 9] = 1, "256 pages");
         Violation(b => b[tail + 11] = 2, "death flag 2");
         Violation(b => b[tail + 11] = 1, "death flag without a notice");
 
         // The same refusals on the writer.
         Assert.Throws<ArgumentException>(() => Kit.Encode(State(PlayerRespawnState.None with { PageCount = 0 })));
         Assert.Throws<ArgumentException>(() => Kit.Encode(State(PlayerRespawnState.None with { Page = 1 })));
+        Assert.Throws<ArgumentException>(() => Kit.Encode(State(PlayerRespawnState.None with { PageCount = (ushort)(ProtocolConstants.MaxTombstonePages + 1) })));
+        Assert.IsType<PlayerProgressState>(MessageCodec.Read(Kit.Encode(State(PlayerRespawnState.None with { PageCount = ProtocolConstants.MaxTombstonePages, Page = ProtocolConstants.MaxTombstonePages - 1 }))));
         Assert.Throws<ArgumentException>(() => Kit.Encode(State(PlayerRespawnState.None with { Transition = (PlayerTransitionKind)2 })));
         Assert.Throws<ArgumentException>(() => Kit.Encode(State(PlayerRespawnState.None with { Tombstones = [.. Enumerable.Range(1, 65).Select(i => Entry((ulong)i))] })));
         Assert.Throws<ArgumentException>(() => Kit.Encode(State(PlayerRespawnState.None with { Tombstones = [Entry(1) with { Position = new Vector3(float.NaN, 0f, 0f) }] })));
+    }
+
+    private static EntitySpawn Spawn(EntityKind kind, ushort archetype = 0, byte[]? data = null) =>
+        new(
+            new EntityId(1), kind, archetype, null, new SnapshotFrame(FrameRef.Of(new PlanetId(1)), 0),
+            new EntityState(new EntityId(1), EntityStateFields.None, 0, 0, Vector3.Zero, Quaternion.Identity, Vector3.Zero, 0), data ?? []);
+
+    [Fact]
+    public void EntitySpawn_DroppedItemAndTombstone_GoldenBytesAndRoundTrip()
+    {
+        // 0x10 = 16, format 1, entity id 1, then the kind byte: only that byte differs from the player's spawn (the golden bytes of kinds 1 and 2 are unchanged).
+        var player = Kit.ToHex(Kit.Encode(Spawn(EntityKind.Player)));
+        Assert.StartsWith("10 01 01 01 ", player, StringComparison.Ordinal);
+        Assert.Equal("10 01 01 06 " + player["10 01 01 01 ".Length..], Kit.ToHex(Kit.Encode(Spawn(EntityKind.Tombstone))));
+        Assert.Equal("10 01 01 03 " + player["10 01 01 01 ".Length..], Kit.ToHex(Kit.Encode(Spawn(EntityKind.DroppedItem))));
+        Assert.StartsWith("10 01 01 02 ", Kit.ToHex(Kit.Encode(Spawn(EntityKind.Construct))), StringComparison.Ordinal);
+
+        foreach (var kind in new[] { EntityKind.DroppedItem, EntityKind.Tombstone })
+        {
+            var spawn = Spawn(kind);
+            var back = Assert.IsType<EntitySpawn>(MessageCodec.Read(Kit.Encode(spawn)));
+            Assert.Equal(kind, back.Kind);
+            Assert.Equal(spawn.Initial, back.Initial);
+            Assert.Empty(back.KindData);
+        }
+    }
+
+    [Fact]
+    public void EntitySpawn_OtherKinds_AreRefused()
+    {
+        var player = Kit.ToHex(Kit.Encode(Spawn(EntityKind.Player)));
+        var rest = player["10 01 01 01 ".Length..];
+        foreach (var kind in new[] { "00", "04", "05", "07", "FF" })
+        {
+            Kit.AssertMessageViolation("10 01 01 " + kind + " " + rest);
+        }
+
+        foreach (var kind in new[] { (EntityKind)0, (EntityKind)4, (EntityKind)5, (EntityKind)7 })
+        {
+            Assert.Throws<ArgumentException>(() => Kit.Encode(Spawn(kind)));
+        }
+    }
+
+    [Fact]
+    public void EntitySpawn_DroppedItemAndTombstone_NeedArchetypeZeroAndNoKindData()
+    {
+        foreach (var kind in new[] { EntityKind.DroppedItem, EntityKind.Tombstone })
+        {
+            Assert.Throws<ArgumentException>(() => Kit.Encode(Spawn(kind, archetype: 1)));
+            Assert.Throws<ArgumentException>(() => Kit.Encode(Spawn(kind, data: [1])));
+
+            // The same refusal on the reader: encode the valid twin, then patch the archetype byte (index 4) or append kind data.
+            var good = Kit.Encode(Spawn(kind));
+            Assert.IsType<EntitySpawn>(MessageCodec.Read(good));
+            var badArchetype = (byte[])good.Clone();
+            badArchetype[4] = 1;
+            Kit.AssertViolation(d => MessageCodec.Read(d), badArchetype);
+            var withData = Kit.Encode(Spawn(EntityKind.Player, data: [1, 2]));
+            withData[3] = (byte)kind;
+            Kit.AssertViolation(d => MessageCodec.Read(d), withData);
+        }
     }
 }

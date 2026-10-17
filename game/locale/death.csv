@@ -1,7 +1,7 @@
 keys,en,pl
 DEATH_TITLE,You died,Nie żyjesz
 DEATH_RESPAWNING,Respawning...,Odradzanie...
-DEATH_RESPAWN_WAIT,Waiting for the new body to be ready,Czekam aż nowe ciało będzie gotowe
+DEATH_RESPAWN_WAIT,Waiting for the new body to be ready,Czekanie na gotowe nowe ciało
 DEATH_RESPAWN_READY,You are back in the world,Wracasz do świata
 DEATH_AT_BED,You wake up next to your bed,Budzisz się obok swojego łóżka
 DEATH_AT_START,You return to the start of the world,Wracasz do miejsca startu świata

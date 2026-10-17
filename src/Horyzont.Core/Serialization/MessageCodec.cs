@@ -444,9 +444,14 @@ public static class MessageCodec
 
             case EntitySpawn es:
                 w.WriteVarUInt(es.Entity.Value);
-                if (es.Kind < EntityKind.Player || es.Kind > EntityKind.Construct)
+                if (!IsSpawnKind((byte)es.Kind))
                 {
                     throw new ArgumentException($"Invalid EntityKind {(byte)es.Kind}.", nameof(message));
+                }
+
+                if (es.Kind is EntityKind.DroppedItem or EntityKind.Tombstone && (es.Archetype != 0 || es.KindData.Length != 0))
+                {
+                    throw new ArgumentException($"EntityKind {(byte)es.Kind} needs archetype 0 and no kind data.", nameof(message));
                 }
 
                 w.WriteByte((byte)es.Kind);
@@ -896,7 +901,7 @@ public static class MessageCodec
             case MessageType.EntitySpawn:
                 var spawnEntity = new EntityId(r.ReadVarUInt());
                 byte kindByte = r.ReadByte();
-                if (kindByte < (byte)EntityKind.Player || kindByte > (byte)EntityKind.Construct)
+                if (!IsSpawnKind(kindByte))
                 {
                     throw new ProtocolViolationException($"Unknown entity kind {kindByte}.");
                 }
@@ -917,6 +922,11 @@ public static class MessageCodec
                 }
 
                 byte[] kindData = r.ReadBytes(ProtocolConstants.MaxEntityKindDataBytes);
+                if (kindByte is (byte)EntityKind.DroppedItem or (byte)EntityKind.Tombstone && (archetype != 0 || kindData.Length != 0))
+                {
+                    throw new ProtocolViolationException($"Entity kind {kindByte} needs archetype 0 and no kind data.");
+                }
+
                 return new EntitySpawn(spawnEntity, (EntityKind)kindByte, archetype, owner, spawnFrame, initial, kindData);
 
             case MessageType.EntityDespawn:
@@ -994,6 +1004,9 @@ public static class MessageCodec
         }
     }
 
+    /// <summary>The entity kinds an <see cref="EntitySpawn"/> may carry: 1, 2, and (K6-35) 3 and 6; 4, 5 and 7 stay reserved.</summary>
+    private static bool IsSpawnKind(byte kind) => kind is (byte)EntityKind.Player or (byte)EntityKind.Construct or (byte)EntityKind.DroppedItem or (byte)EntityKind.Tombstone;
+
     private static void WritePlayerProgressState(ByteWriter w, PlayerProgressState state)
     {
         ArgumentNullException.ThrowIfNull(state.Discovered);
@@ -1041,7 +1054,7 @@ public static class MessageCodec
             throw new ArgumentException($"Unknown transition {(byte)respawn.Transition}.", nameof(respawn));
         }
 
-        if (respawn.PageCount == 0 || respawn.Page >= respawn.PageCount)
+        if (respawn.PageCount == 0 || respawn.PageCount > ProtocolConstants.MaxTombstonePages || respawn.Page >= respawn.PageCount)
         {
             throw new ArgumentException($"Page {respawn.Page} of {respawn.PageCount} is not a page of the list.", nameof(respawn));
         }
@@ -1092,7 +1105,7 @@ public static class MessageCodec
         uint revision = r.ReadUInt32();
         ushort page = r.ReadUInt16();
         ushort pageCount = r.ReadUInt16();
-        if (pageCount == 0 || page >= pageCount)
+        if (pageCount == 0 || pageCount > ProtocolConstants.MaxTombstonePages || page >= pageCount)
         {
             throw new ProtocolViolationException($"Page {page} of {pageCount} is not a page of the list.");
         }

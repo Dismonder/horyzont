@@ -673,7 +673,7 @@ public static class CodecGen
         select tail is { } t
             ? new PlayerVitalsMessage(
                 health, healthMax, stamina, staminaMax, exhausted, conditions, remaining > 0, (ushort)(conditions ? warmup : 0), (uint)remaining, (byte)comfort, t.Item1, t.Item2, t.Item3, sampleTick, parentSeq)
-            : new PlayerVitalsMessage(
+            : TestMessages.Vitals(
                 health, healthMax, stamina, staminaMax, exhausted, conditions, remaining > 0, (ushort)(conditions ? warmup : 0), (uint)remaining, (byte)comfort) with
             { SampleTick = sampleTick, ParentSeq = parentSeq };
 
@@ -1235,13 +1235,14 @@ public static class CodecGen
     /// <summary>Entity spawn messages; the initial state uses frame index 0.</summary>
     public static Gen<EntitySpawn> EntitySpawn { get; } =
         from entity in EntityId
-        from kind in Gen.Elements(EntityKind.Player, EntityKind.Construct)
+        from kind in Gen.Elements(EntityKind.Player, EntityKind.Construct, EntityKind.DroppedItem, EntityKind.Tombstone)
         from archetype in VarU16
         from owner in Optional(PlayerId)
         from frame in SnapshotFrame
         from initial in State(1)
         from data in Bytes(ProtocolConstants.MaxEntityKindDataBytes)
-        select new EntitySpawn(entity, kind, archetype, owner, frame, initial, data);
+        let plain = kind is EntityKind.DroppedItem or EntityKind.Tombstone
+        select new EntitySpawn(entity, kind, plain ? (ushort)0 : archetype, owner, frame, initial, plain ? [] : data);
 
     /// <summary>Entity despawn messages.</summary>
     public static Gen<EntityDespawn> EntityDespawn { get; } = EntityId.Select(e => new EntityDespawn(e));

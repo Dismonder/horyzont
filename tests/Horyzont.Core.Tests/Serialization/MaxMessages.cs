@@ -16,6 +16,7 @@ using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Markers;
 using Horyzont.Core.World.Terrain;
+using Horyzont.Testing;
 
 namespace Horyzont.Core.Tests.Serialization;
 
@@ -187,9 +188,9 @@ public static class MaxMessages
             MaxBlockEntityStates(),
             MaxPlayerProgressState(),
             new Horyzont.Core.Protocol.Messages.WorldSettingsState(Horyzont.Core.World.WorldSettings.Default),
-            new PlayerVitalsMessage(
+            TestMessages.Vitals(
                 ProtocolConstants.MaxVitalValue, ProtocolConstants.MaxVitalValue, ProtocolConstants.MaxVitalValue, ProtocolConstants.MaxVitalValue, true, true, true,
-                ProtocolConstants.MaxRestWarmupTicks, ProtocolConstants.MaxRestRemainingTicks, 10),
+                ProtocolConstants.MaxRestWarmupTicks, ProtocolConstants.MaxRestRemainingTicks, 10) with { SampleTick = new Tick(ulong.MaxValue), ParentSeq = uint.MaxValue },
             MaxPropStates(),
             // 4096 entries of 64-byte keys would need 268 KiB; the registry fits the reliable channel with keys of up to 60 bytes
             // (K6-29W stage B deviation), and the writer refuses a larger frame.
@@ -255,8 +256,8 @@ public static class MaxMessages
         new Horyzont.Core.Progress.BedRef(new EntityId(ulong.MaxValue), new CellPos(-2048, -2048, -2048), ushort.MaxValue),
         Horyzont.Core.Protocol.Messages.PlayerTransitionKind.Respawn,
         uint.MaxValue,
-        ushort.MaxValue - 1,
-        ushort.MaxValue,
+        ProtocolConstants.MaxTombstonePages - 1,
+        ProtocolConstants.MaxTombstonePages,
         [.. Enumerable.Range(0, ProtocolConstants.MaxTombstonesPerPage).Select(i => new Horyzont.Core.Protocol.Messages.TombstoneEntry(
             new EntityId(ulong.MaxValue - (ulong)i), new ContainerId(ulong.MaxValue - (ulong)i), FrameRef.Of(new PlanetId(ulong.MaxValue)), uint.MaxValue, new Vector3(-1e6f, 1e6f, -1e6f)))],
         new Horyzont.Core.Protocol.Messages.DeathNotice(new OpId(ulong.MaxValue), uint.MaxValue));
