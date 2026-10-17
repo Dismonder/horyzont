@@ -65,15 +65,15 @@ public sealed class VitalsServiceHazardTests
     }
 
     [Fact]
-    public void HealthFloorOne_WithHazards()
+    public void HealthFloorZero_WithHazards()
     {
         var rig = MoonRig();
         rig.SetSuit(rig.Alice, WithOxygen(0f), health: 5f);
 
-        // 300 ticks of 10 a second would take 50 health: the health stops at 1 until the death of K6-35 (K6-33 D16).
+        // 300 ticks of 10 a second would take 50 health: the health stops at 0 and waits for the death (K6-35 A4).
         rig.Tick(300);
 
-        Assert.Equal(1f, rig.VitalsOf(rig.Alice)!.Value.Health, 0.01f);
+        Assert.Equal(0f, rig.VitalsOf(rig.Alice)!.Value.Health, 0.01f);
     }
 
     [Fact]
