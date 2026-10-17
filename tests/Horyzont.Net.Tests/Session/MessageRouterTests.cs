@@ -45,7 +45,7 @@ public sealed class MessageRouterTests
     [InlineData(39, false)]
     [InlineData(44, true)]
     [InlineData(48, true)]
-    [InlineData(47, false)]
+    [InlineData(47, true)]
     [InlineData(50, false)]
     [InlineData(0, false)]
     public void TryGetType_KnowsTheSurvivalTypes(byte code, bool known)

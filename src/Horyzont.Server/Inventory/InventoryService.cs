@@ -7,6 +7,7 @@ using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Simulation;
+using Horyzont.Core.Survival;
 using Horyzont.Core.World;
 
 using Microsoft.Extensions.Logging;
@@ -149,6 +150,14 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
 
         var sim = _simulation();
         var state = sim.State;
+
+        // A dead player or one waiting for the new body opens nothing (K6-35 D19); a cheap precondition, checked before anything else is read.
+        if (IsInTransition(state, player))
+        {
+            Reject(player, subscribe.Container, RejectReason.InTransition, "in transition");
+            return true;
+        }
+
         if (!state.Containers.TryGet(subscribe.Container, out var container))
         {
             Reject(player, subscribe.Container, RejectReason.ContainerLocked, "locked");
@@ -162,15 +171,13 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
             return true;
         }
 
-        if (container.Kind is not (ContainerKind.Chest or ContainerKind.StationInput or ContainerKind.StationOutput)
-            || container.Host.Kind != ContainerHostKind.ConstructBlock || !HasAccess(container, player))
+        if (!IsSubscribable(container) || !HasAccess(container, player))
         {
             Reject(player, subscribe.Container, RejectReason.ContainerLocked, "locked");
             return true;
         }
 
-        if (!ContainerReach.TryDistanceFromEye(state, sim.Rules, player, new EntityId(container.Host.Id), container.Host.Cell, out var meters)
-            || meters > sim.Rules.ContainerOpenRangeMeters)
+        if (!TryMeasure(state, sim, player, container, out var meters) || meters > sim.Rules.ContainerOpenRangeMeters)
         {
             Reject(player, subscribe.Container, RejectReason.OutOfReach, "out of reach");
             return true;
@@ -231,9 +238,11 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
             {
                 reason = RejectReason.ContainerLocked;
             }
-            else if (container.Host.Kind != ContainerHostKind.ConstructBlock
-                || !ContainerReach.TryDistanceFromEye(state, sim.Rules, player, new EntityId(container.Host.Id), container.Host.Cell, out var meters)
-                || meters > sim.Rules.ContainerKeepRangeMeters)
+            else if (IsInTransition(state, player))
+            {
+                reason = RejectReason.InTransition;
+            }
+            else if (!IsSubscribable(container) || !TryMeasure(state, sim, player, container, out var meters) || meters > sim.Rules.ContainerKeepRangeMeters)
             {
                 reason = RejectReason.OutOfReach;
             }
@@ -282,8 +291,56 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
         System.Runtime.InteropServices.CollectionsMarshal.AsSpan(stations)[first..].Sort();
     }
 
+    /// <summary>
+    /// Ends every chest, station and tombstone subscription of a player, each with a <see cref="ContainerState"/> that carries <paramref name="reason"/>. The server calls it before the
+    /// operation of a death (K6-35 D19, spec 03), so no panel stays open on a container the dead player may no longer touch.
+    /// </summary>
+    /// <param name="player">The player.</param>
+    /// <param name="reason">The refusal the client receives.</param>
+    /// <returns>The number of subscriptions that ended.</returns>
+    public int EndSubscriptions(PlayerId player, RejectReason reason)
+    {
+        _scratch.Clear();
+        foreach (var pair in _chestSubscribers)
+        {
+            if (pair.Value.Contains(player))
+            {
+                _scratch.Add((pair.Key, player));
+            }
+        }
+
+        var ended = _scratch.Count;
+        foreach (var (container, _) in _scratch)
+        {
+            RemoveSubscriber(container, player);
+            _send(player, ContainerState.Rejected(container, reason));
+            _logger.SubscriptionEnded(player.Value, container.Value, reason);
+        }
+
+        _scratch.Clear();
+        return ended;
+    }
+
     private static bool HasAccess(Container container, PlayerId player) =>
         container.Access == ContainerAccess.Shared || container.Owner == player;
+
+    /// <summary>Chests and the pieces of a station in a construct, and tombstones (K6-35); any other container is opened by no subscription.</summary>
+    private static bool IsSubscribable(Container container) =>
+        (container.Kind is ContainerKind.Chest or ContainerKind.StationInput or ContainerKind.StationOutput && container.Host.Kind == ContainerHostKind.ConstructBlock)
+        || (container.Kind == ContainerKind.Tombstone && container.Host.Kind == ContainerHostKind.PersistentEntity);
+
+    private static bool TryMeasure(WorldState state, ServerSimulation sim, PlayerId player, Container container, out float meters)
+    {
+        meters = 0f;
+        return container.Host.Kind switch
+        {
+            ContainerHostKind.ConstructBlock => ContainerReach.TryDistanceFromEye(state, sim.Rules, player, new EntityId(container.Host.Id), container.Host.Cell, out meters),
+            ContainerHostKind.PersistentEntity => ContainerReach.TryDistanceToEntity(state, sim.Rules, player, new EntityId(container.Host.Id), out meters),
+            _ => false,
+        };
+    }
+
+    private static bool IsInTransition(WorldState state, PlayerId player) => state.Players.TryGet(player, out var body) && DeathRules.IsDead(body.Vitals);
 
     private void Reject(PlayerId player, ContainerId container, RejectReason reason, string result)
     {
@@ -426,7 +483,8 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
                 continue;
             }
 
-            if (container.Host.Kind == ContainerHostKind.ConstructBlock)
+            // A tombstone is private like a chest in the sense that matters here: only a player who opened it gets its changes (K6-35).
+            if (container.Host.Kind is ContainerHostKind.ConstructBlock or ContainerHostKind.PersistentEntity)
             {
                 SendChestChange(container, change, applied.Id.Value);
                 continue;
