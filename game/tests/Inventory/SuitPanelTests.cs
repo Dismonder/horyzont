@@ -37,7 +37,7 @@ public class SuitPanelTests
         rig.Node.Vitals!.Apply(
             new PlayerVitalsMessage(
                 100f, 100f, 100f, 100f, false, false, false, 0, 0, 0, VitalsEnvironment.None,
-                new SuitResources(100f, 100f, 100f, 100f, 75f), new SuitResources(100f, 100f, 100f, 100f, 100f), default, 0), 1000);
+                new SuitResources(100f, 100f, 100f, 100f, 75f), new SuitResources(100f, 100f, 100f, 100f, 200f), default, 0), 1000);
 
     [TestCase(Timeout = 60000)]
     [RequireGodotRuntime]
