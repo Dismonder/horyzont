@@ -161,7 +161,25 @@ public class TerrainStreamTests
 
     [TestCase(Timeout = 300000)]
     [RequireGodotRuntime]
-    public async Task Shutdown_StreamCallsAfterClose_ReturnErrorWithoutStore()
+    public async Task Stream_ClosedWhileTerrainStreams_EngineLoadsGeneratorDataWithoutErrors()
+    {
+        await using var scene = EngineTestScene.Create();
+        await using var world = await TerrainTestWorld.CreateAsync(scene);
+        var viewer = await Edited(world);
+        var stream = world.Node.Stream;
+
+        // Voxel Tools keeps loading after Close. An error result left no data block, and the LOD update after it crashed Godot
+        // (FATAL "src_block != nullptr" in VoxelData::update_lods): closed loads must hand the area to the generator instead.
+        stream.Close();
+        await UnloadAndReload(world, viewer);
+
+        AssertThat(stream.IsClosed).IsTrue();
+        AssertThat(stream.ErrorCount).IsEqual(0);
+    }
+
+    [TestCase(Timeout = 300000)]
+    [RequireGodotRuntime]
+    public async Task Shutdown_StreamCallsAfterClose_ReturnNotFoundWithoutStore()
     {
         await using var scene = EngineTestScene.Create();
         var world = await TerrainTestWorld.CreateAsync(scene);
@@ -180,8 +198,8 @@ public class TerrainStreamTests
         stream._SaveVoxelBlock(buffer, new Vector3I(key.X >> 1, key.Y >> 1, key.Z >> 1), 1);
         var lod1 = stream._LoadVoxelBlock(buffer, new Vector3I(key.X >> 1, key.Y >> 1, key.Z >> 1), 1);
 
-        AssertThat(load).IsEqual((int)VoxelStream.ResultCode.Error);
-        AssertThat(lod1).IsEqual((int)VoxelStream.ResultCode.Error);
+        AssertThat(load).IsEqual((int)VoxelStream.ResultCode.BlockNotFound);
+        AssertThat(lod1).IsEqual((int)VoxelStream.ResultCode.BlockNotFound);
         AssertThat(stream.SourceReads).IsEqual(reads);
         AssertThat(world.Blocks.TryLoad(key, out _, out _)).IsEqual(TerrainBlockLookup.Unavailable);
         AssertThat(world.Service.IsAreaLoaded(WorldFactory.HomePlanet, _area, 1f)).IsFalse();

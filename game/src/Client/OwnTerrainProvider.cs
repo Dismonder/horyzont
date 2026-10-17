@@ -189,7 +189,7 @@ public sealed class OwnTerrainProvider : IClientTerrainProvider, IDisposable
 
         if (made.Rebuilder is { } rebuilder)
         {
-            // Without it the engine keeps placeholders for the mipmaps it asked for while they were stale (as in the server terrain).
+            // Without it the engine keeps generator data for the mipmaps it asked for while they were stale (as in the server terrain).
             rebuilder.ReloadRequested += node.ReloadFromStream;
             _reloads.Add((rebuilder, node.ReloadFromStream));
         }

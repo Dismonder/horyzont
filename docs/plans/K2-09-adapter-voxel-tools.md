@@ -384,7 +384,7 @@ Testy silnika (Godot bez grafiki, Windows i Linux, job `game`):
 | `IsAreaLoaded_Saturated_ReturnsFalse` | po przekroczeniu `MaxPendingBlocks` intencja terenu dostaje `AreaNotLoaded` |
 | `TerrainDigest_Sensitivity` | zmiana jednego voxela, wersji albo klucza zmienia skrót; kolejność wejścia nie zmienia |
 | `EditSemantics_GoldenDigest` | płaski generator, stała lista 50 edycji: skrót równy stałej w teście na Windows i na Linux |
-| `Shutdown_StreamCallsAfterClose_ReturnErrorWithoutStore` | po `ShutdownAsync` i `CloseAsync` wywołania strumienia zwracają błąd, a `TerrainBlockStore.Close()` nie powoduje wyjątku w wątkach Voxel Tools |
+| `Shutdown_StreamCallsAfterClose_ReturnNotFoundWithoutStore` | po `ShutdownAsync` i `CloseAsync` wczytania strumienia zwracają `BlockNotFound` bez czytania źródła (zmiana 2026-10-17: wynik `Error` zostawiał w Voxel Tools brak bloku, a następna aktualizacja LOD-ów kończyła proces asercją `src_block != nullptr`), a `TerrainBlockStore.Close()` nie powoduje wyjątku w wątkach Voxel Tools |
 | `Raycast_NoManagedAllocation` | 1000 wywołań `Raycast` po rozgrzaniu: `GC.GetAllocatedBytesForCurrentThread` bez zmian |
 | `Restart_DifferentSemanticsVersion_SafeModeWithoutReplay` | ogon z edycją zapisany przy innym `terrain_semantics` → żadnego wywołania `ApplyEdit`, stan równy checkpointowi, wynik „niezgodność” z czytelnym komunikatem |
 | `ApplyEdit_Radius3_TimeBudget` (`Slow`) | mediana ≤ 1 ms, p99 ≤ 3 ms na edycję z kopią i kodowaniem 8 bloków; wynik liczbowy w logu testu i w PR |
@@ -568,7 +568,7 @@ K2-12 wnosi też własny runner `-- --engine-tests` (`game/src/Testing/EngineTes
 **Krok 10.**
 - Odstępstwo w sygnaturze: `VoxelTerrainService.ShutdownAsync()` zwraca `Task<bool>`, a plan podaje `Task`. Metoda zamyka strumienie wszystkich planet (od tej chwili każde wywołanie zwraca `Error` bez odczytu), potem czeka na `ServerTerrainBlocks.CloseAsync()` i zwraca jego wynik.
 - Wywołujący (K2-10) woła `TerrainBlockStore.Close()` tylko przy `true`. Przy `false` magazyn zostaje otwarty do końca procesu. Tak robi pomocnik testów (`TerrainTestWorld.DisposeAsync`).
-- Test `Shutdown_StreamCallsAfterClose_ReturnErrorWithoutStore` sprawdza też zwolnienie węzła terenu po zamknięciu magazynu.
+- Test `Shutdown_StreamCallsAfterClose_ReturnNotFoundWithoutStore` sprawdza też zwolnienie węzła terenu po zamknięciu magazynu.
 
 **Krok 12.**
 - `EditSemantics_GoldenDigest`: płaski generator i 50 stałych edycji (dodaj i usuń, wszystkie materiały, promienie 0,5–3 m, ściany, krawędzie i narożniki bloków, ujemne współrzędne). `RecordedSemanticsVersion = 1`, skrót `0x915455B1D651C6C8` (Windows; dwa przebiegi dały ten sam wynik). Linux nie jest sprawdzony lokalnie; wynik da dopiero job `game` w CI.

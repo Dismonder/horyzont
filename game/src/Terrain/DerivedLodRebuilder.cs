@@ -52,7 +52,7 @@ public sealed class DerivedLodRebuilder
     }
 
     /// <summary>
-    /// Raised on the main thread when the engine holds placeholders for blocks that were dirty and some of them are rebuilt by now: it
+    /// Raised on the main thread when the engine holds generator data for blocks that were dirty and some of them are rebuilt by now: it
     /// has to load again. Voxel Tools offers no per-area reload for a block stream, so the subscriber reloads the whole terrain; the
     /// schedule spaces the events by <see cref="DerivedRebuildSchedule.MinReloadInterval"/> and does not wait for other dirty blocks.
     /// </summary>
@@ -86,7 +86,7 @@ public sealed class DerivedLodRebuilder
         }
     }
 
-    /// <summary>Whether a known changed ancestor must wait instead of returning unedited generator data.</summary>
+    /// <summary>Whether a known changed ancestor is not rebuilt yet (the stream serves generator data for it and notes a reload).</summary>
     /// <param name="key">Derived key.</param>
     /// <returns>Invalidation state.</returns>
     public bool IsDirty(TerrainBlockKey key)

@@ -113,7 +113,8 @@ public class VoxelServerTerrainFactoryTests
             }
 
             release.Set();
-            AssertThat(await reading!).IsEqual((int)VoxelStream.ResultCode.Error);
+            // The stream closed while this read was in the source: "not found", not an error (an error crashes Voxel Tools' LOD update).
+            AssertThat(await reading!).IsEqual((int)VoxelStream.ResultCode.BlockNotFound);
             await factory.FailureCleanup;
             AssertThat(factory.FailedStoreCount).IsEqual(drainTimesOut ? 1 : 0);
         }
