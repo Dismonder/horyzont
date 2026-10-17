@@ -1,11 +1,15 @@
 using Horyzont.Core.Ids;
+using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.World.Constructs;
 
 namespace Horyzont.Core.Serialization;
 
-/// <summary>Binary codec for <see cref="Operation"/> frames: kind, format version, payload.</summary>
+/// <summary>
+/// Binary codec for <see cref="Operation"/> frames: kind, format version, payload. A <see cref="CompoundOp"/> frame holds 1..4096
+/// component frames (never another compound) and at most <see cref="ProtocolConstants.MaxCompoundBytes"/> bytes.
+/// </summary>
 public static class OperationCodec
 {
     private const byte CurrentFormatVersion = 1;
@@ -91,6 +95,74 @@ public static class OperationCodec
                 w.WriteSingle(pl.Pitch);
                 break;
 
+            case CompoundOp compound:
+                WriteCompound(w, compound);
+                break;
+
+            case ItemTransferOp it:
+                w.WriteByte((byte)OperationKind.ItemTransfer);
+                w.WriteByte(CurrentFormatVersion);
+                CoreCodecPrimitives.WriteSlotRef(w, it.From);
+                CoreCodecPrimitives.WriteSlotRef(w, it.To);
+                w.WriteVarUInt(it.Type.Value);
+                w.WriteVarUInt(it.Count);
+                w.WriteVarUInt(it.ToStackLimit);
+                break;
+
+            case ItemSwapOp sw:
+                w.WriteByte((byte)OperationKind.ItemSwap);
+                w.WriteByte(CurrentFormatVersion);
+                CoreCodecPrimitives.WriteSlotRef(w, sw.A);
+                CoreCodecPrimitives.WriteSlotRef(w, sw.B);
+                w.WriteVarUInt(sw.ExpectedA.Value);
+                w.WriteVarUInt(sw.ExpectedB.Value);
+                break;
+
+            case ItemCreateOp ic:
+                if (!Enum.IsDefined(ic.Source))
+                {
+                    throw new ArgumentException($"Invalid ItemSource {(byte)ic.Source}.", nameof(op));
+                }
+
+                w.WriteByte((byte)OperationKind.ItemCreate);
+                w.WriteByte(CurrentFormatVersion);
+                CoreCodecPrimitives.WriteSlotRef(w, ic.Slot);
+                w.WriteVarUInt(ic.Type.Value);
+                w.WriteVarUInt(ic.Count);
+                w.WriteVarUInt(ic.StackLimit);
+                w.WriteByte((byte)ic.Source);
+                break;
+
+            case ItemDestroyOp id:
+                if (!Enum.IsDefined(id.Sink))
+                {
+                    throw new ArgumentException($"Invalid ItemSink {(byte)id.Sink}.", nameof(op));
+                }
+
+                w.WriteByte((byte)OperationKind.ItemDestroy);
+                w.WriteByte(CurrentFormatVersion);
+                CoreCodecPrimitives.WriteSlotRef(w, id.Slot);
+                w.WriteVarUInt(id.Type.Value);
+                w.WriteVarUInt(id.Count);
+                w.WriteByte((byte)id.Sink);
+                break;
+
+            case ContainerCreateOp cr:
+                if (!Enum.IsDefined(cr.ContainerKind) || !Enum.IsDefined(cr.Access) || !Enum.IsDefined(cr.Host.Kind))
+                {
+                    throw new ArgumentException("Invalid container kind, access or host kind.", nameof(op));
+                }
+
+                w.WriteByte((byte)OperationKind.ContainerCreate);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(cr.Id.Value);
+                w.WriteByte((byte)cr.ContainerKind);
+                CoreCodecPrimitives.WriteContainerHost(w, cr.Host);
+                w.WriteVarUInt(cr.Owner.Value);
+                w.WriteByte((byte)cr.Access);
+                w.WriteVarUInt(cr.Size);
+                break;
+
             case EntityReparentOp er:
                 w.WriteByte((byte)OperationKind.EntityReparent);
                 w.WriteByte(CurrentFormatVersion);
@@ -152,12 +224,77 @@ public static class OperationCodec
     /// <summary>Reads one operation frame.</summary>
     /// <param name="r">Reader positioned at the frame.</param>
     /// <returns>The operation.</returns>
-    public static Operation Read(ref ByteReader r)
+    public static Operation Read(ref ByteReader r) => Read(ref r, allowCompound: true);
+
+    private static void WriteCompound(ByteWriter w, CompoundOp compound)
     {
+        var components = compound.Components ?? throw new ArgumentException("Compound operation without components.", nameof(compound));
+        if (components.Count == 0 || components.Count > ProtocolConstants.MaxCompoundComponents)
+        {
+            throw new ArgumentException($"A compound operation has 1..{ProtocolConstants.MaxCompoundComponents} components, not {components.Count}.", nameof(compound));
+        }
+
+        var start = w.Length;
+        w.WriteByte((byte)OperationKind.Compound);
+        w.WriteByte(CurrentFormatVersion);
+        w.WriteVarUInt((ulong)components.Count);
+        foreach (var component in components)
+        {
+            if (component is null or CompoundOp)
+            {
+                throw new ArgumentException("A compound operation component is missing or is itself a compound.", nameof(compound));
+            }
+
+            Write(w, component);
+            if (w.Length - start > ProtocolConstants.MaxCompoundBytes)
+            {
+                throw new ArgumentException($"A compound operation exceeds {ProtocolConstants.MaxCompoundBytes} bytes.", nameof(compound));
+            }
+        }
+    }
+
+    private static CompoundOp ReadCompound(ref ByteReader r, int start)
+    {
+        ulong count = r.ReadVarUInt();
+        if (count == 0 || count > ProtocolConstants.MaxCompoundComponents)
+        {
+            throw new ProtocolViolationException($"A compound operation has 1..{ProtocolConstants.MaxCompoundComponents} components, not {count}.");
+        }
+
+        // Every component frame has at least a kind and a version byte.
+        if ((ulong)r.Remaining < count * 2)
+        {
+            throw new ProtocolViolationException($"Declared {count} components exceed the remaining {r.Remaining} bytes.");
+        }
+
+        var components = new Operation[count];
+        for (var i = 0; i < components.Length; i++)
+        {
+            components[i] = Read(ref r, allowCompound: false);
+            if (r.Position - start > ProtocolConstants.MaxCompoundBytes)
+            {
+                throw new ProtocolViolationException($"A compound operation exceeds {ProtocolConstants.MaxCompoundBytes} bytes.");
+            }
+        }
+
+        return new CompoundOp(components);
+    }
+
+    private static Operation Read(ref ByteReader r, bool allowCompound)
+    {
+        var start = r.Position;
         byte kindByte = r.ReadByte();
-        if (kindByte is < (byte)OperationKind.TerrainEdit or > (byte)OperationKind.EntityReparent and not ((byte)OperationKind.ShipModeSet or (byte)OperationKind.ShipFuelAdd or (byte)OperationKind.MarkerSet or (byte)OperationKind.MarkerRemove))
+        var known = (kindByte >= (byte)OperationKind.TerrainEdit && kindByte <= (byte)OperationKind.EntityReparent)
+            || (kindByte >= (byte)OperationKind.ShipModeSet && kindByte <= (byte)OperationKind.MarkerRemove)
+            || (kindByte >= (byte)OperationKind.Compound && kindByte <= (byte)OperationKind.ContainerCreate);
+        if (!known)
         {
             throw new ProtocolViolationException($"Unknown operation kind {kindByte}.");
+        }
+
+        if (kindByte == (byte)OperationKind.Compound && !allowCompound)
+        {
+            throw new ProtocolViolationException("A compound operation cannot contain another compound operation.");
         }
 
         byte version = r.ReadByte();
@@ -169,6 +306,50 @@ public static class OperationCodec
         var kind = (OperationKind)kindByte;
         switch (kind)
         {
+            case OperationKind.Compound:
+                return ReadCompound(ref r, start);
+
+            case OperationKind.ItemTransfer:
+                var itFrom = CoreCodecPrimitives.ReadSlotRef(ref r);
+                var itTo = CoreCodecPrimitives.ReadSlotRef(ref r);
+                var itType = new ItemTypeId(r.ReadVarUInt16());
+                ushort itCount = r.ReadVarUInt16();
+                ushort itLimit = r.ReadVarUInt16();
+                return new ItemTransferOp(itFrom, itTo, itType, itCount, itLimit);
+
+            case OperationKind.ItemSwap:
+                var swA = CoreCodecPrimitives.ReadSlotRef(ref r);
+                var swB = CoreCodecPrimitives.ReadSlotRef(ref r);
+                var swExpectedA = new ItemTypeId(r.ReadVarUInt16());
+                var swExpectedB = new ItemTypeId(r.ReadVarUInt16());
+                return new ItemSwapOp(swA, swB, swExpectedA, swExpectedB);
+
+            case OperationKind.ItemCreate:
+                var icSlot = CoreCodecPrimitives.ReadSlotRef(ref r);
+                var icType = new ItemTypeId(r.ReadVarUInt16());
+                ushort icCount = r.ReadVarUInt16();
+                ushort icLimit = r.ReadVarUInt16();
+                var icSource = (ItemSource)CoreCodecPrimitives.ReadEnumByte(ref r, (byte)ItemSource.Harvest, (byte)ItemSource.Starter, "item source");
+                return new ItemCreateOp(icSlot, icType, icCount, icLimit, icSource);
+
+            case OperationKind.ItemDestroy:
+                var idSlot = CoreCodecPrimitives.ReadSlotRef(ref r);
+                var idType = new ItemTypeId(r.ReadVarUInt16());
+                ushort idCount = r.ReadVarUInt16();
+                var idSink = (ItemSink)CoreCodecPrimitives.ReadEnumByte(ref r, (byte)ItemSink.Craft, (byte)ItemSink.Offering, "item sink");
+                return new ItemDestroyOp(idSlot, idType, idCount, idSink);
+
+            case OperationKind.ContainerCreate:
+                var crId = new ContainerId(r.ReadVarUInt());
+                var crKind = (ContainerKind)CoreCodecPrimitives.ReadEnumByte(
+                    ref r, (byte)ContainerKind.PlayerBag, (byte)ContainerKind.DroppedItem, "container kind");
+                var crHost = CoreCodecPrimitives.ReadContainerHost(ref r);
+                var crOwner = new PlayerId(r.ReadVarUInt());
+                var crAccess = (ContainerAccess)CoreCodecPrimitives.ReadEnumByte(
+                    ref r, (byte)ContainerAccess.Shared, (byte)ContainerAccess.Private, "container access");
+                ushort crSize = r.ReadVarUInt16();
+                return new ContainerCreateOp(crId, crKind, crHost, crOwner, crAccess, crSize);
+
             case OperationKind.TerrainEdit:
                 var planet = new PlanetId(r.ReadVarUInt());
                 byte shapeByte = r.ReadByte();

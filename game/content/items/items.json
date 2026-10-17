@@ -1,0 +1,11 @@
+{
+  "formatVersion": 1,
+  "items": [
+    { "key": "core:multitool", "category": "tool", "flags": ["tool"], "toolTier": 1, "visual": { "glyph": "MT", "color": "#4FD1C5", "clientTool": "terrain" } },
+    { "key": "core:build_tool", "category": "tool", "flags": ["tool"], "toolTier": 1, "visual": { "glyph": "BT", "color": "#4FD1C5", "clientTool": "builder" } },
+    { "key": "core:stone", "category": "resource", "flags": ["bulk"], "visual": { "glyph": "St", "color": "#8A8D91" } },
+    { "key": "core:soil", "category": "resource", "flags": ["bulk"], "visual": { "glyph": "So", "color": "#7A5534" } },
+    { "key": "core:sand", "category": "resource", "flags": ["bulk"], "visual": { "glyph": "Sa", "color": "#D9C38A" } },
+    { "key": "core:ore", "category": "resource", "flags": ["bulk"], "visual": { "glyph": "Or", "color": "#C9733A" } }
+  ]
+}

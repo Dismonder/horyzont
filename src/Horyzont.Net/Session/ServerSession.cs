@@ -532,7 +532,7 @@ public sealed class ServerSession
                 BeginClose(peer, DisconnectCode.Normal, sendMessage: false);
                 break;
             default:
-                // TerrainCacheReport, TerrainChecksums, SnapshotAck: MessageRouter admitted nothing else.
+                // TerrainCacheReport, TerrainChecksums, SnapshotAck, ContainerSubscribe, ContainerUnsubscribe: MessageRouter admitted nothing else.
                 _hooks.OnClientMessage(peer.Player, message);
                 break;
         }

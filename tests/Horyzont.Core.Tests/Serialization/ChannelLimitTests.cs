@@ -143,9 +143,17 @@ public sealed class ChannelLimitTests
         frame[1] = 1;
         Assert.IsType<ProtocolViolationException>(Record.Exception(() => MessageCodec.Read(frame)));
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        Kit.AssertViolation(d => MessageCodec.Read(d), frame);
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            Kit.AssertViolation(d => MessageCodec.Read(d), frame);
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        var allocated = smallest;
 
         Assert.True(allocated < 16 * 1024, $"allocated {allocated} bytes");
     }

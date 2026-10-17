@@ -26,7 +26,7 @@ public static class WorldCreator
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(time);
         if (world.LastOpId != OpId.None || world.Constructs.Count != 0 || world.Players.Count != 0
-            || world.TerrainVersions.Count != 0)
+            || world.TerrainVersions.Count != 0 || world.Containers.Count != 0 || world.ContainerIds.NextValue != 1)
         {
             throw new ArgumentException("Only a world fresh from WorldState.CreateNew can be created.", nameof(world));
         }
@@ -56,6 +56,7 @@ public static class WorldCreator
         Sql.SetMeta(connection, transaction, Sql.MetaNextEntityId, Sql.ToDb(world.EntityIds.NextValue));
         Sql.SetMeta(connection, transaction, Sql.MetaNextPlayerId, Sql.ToDb(world.PlayerIds.NextValue));
         Sql.SetMeta(connection, transaction, Sql.MetaNextMarkerId, Sql.ToDb(world.MarkerIds.NextValue));
+        Sql.SetMeta(connection, transaction, Sql.MetaNextContainerId, Sql.ToDb(world.ContainerIds.NextValue));
         Sql.SetMeta(connection, transaction, Sql.MetaLastCheckpointOpId, 0L);
         Sql.SetMeta(connection, transaction, Sql.MetaLastCheckpointTick, 0L);
         Sql.SetMeta(connection, transaction, Sql.MetaGameVersion, gameVersion);
@@ -69,6 +70,11 @@ public static class WorldCreator
         foreach (var entry in world.Materials.Entries)
         {
             InsertRegistry(connection, transaction, "materials", entry.Id, entry.Key);
+        }
+
+        foreach (var entry in world.ItemTypes.Entries)
+        {
+            InsertRegistry(connection, transaction, "item_types", entry.Id, entry.Key);
         }
 
         foreach (var planet in world.Planets.All)

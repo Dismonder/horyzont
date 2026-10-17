@@ -37,6 +37,9 @@ public sealed partial class LocalInputReader : Node, ILocalInputSource
     /// <summary>Gets or sets the mouse sensitivity in radians per pixel.</summary>
     public float Sensitivity { get; set; } = RadiansPerPixel;
 
+    /// <summary>Gets or sets a function that says the movement and camera input is blocked (the inventory screen is open); null for never.</summary>
+    public Func<bool>? Blocked { get; set; }
+
     /// <summary>Gets a value indicating whether the mouse is captured by the game.</summary>
     public static bool MouseCaptured => Input.MouseMode == Input.MouseModeEnum.Captured;
 
@@ -104,6 +107,15 @@ public sealed partial class LocalInputReader : Node, ILocalInputSource
         }
     }
 
+    /// <summary>Takes the mouse for the game again (the inventory screen closed). Does nothing in a headless run.</summary>
+    public void CaptureMouse()
+    {
+        if (DisplayServer.GetName() != "headless")
+        {
+            Capture();
+        }
+    }
+
     private void Capture()
     {
         // Capturing moves the pointer to the window centre; the first motion events can carry that jump as a huge turn.
@@ -116,7 +128,7 @@ public sealed partial class LocalInputReader : Node, ILocalInputSource
     /// <inheritdoc />
     public LocalInputSample Take()
     {
-        if (Gate?.IsBlocked == true)
+        if (Gate?.IsBlocked == true || (Blocked?.Invoke() ?? false))
         {
             _yaw = 0f;
             _pitch = 0f;

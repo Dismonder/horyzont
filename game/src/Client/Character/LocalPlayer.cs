@@ -689,6 +689,11 @@ public sealed partial class LocalPlayer : Node, ILocalPlayerView, IClientSession
         body.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off;
         AddChild(body);
         body.Place(own.Feet, own.Velocity, own.Rotation, own.Mode, OnFloorOf(own.Mode));
+        if (_render)
+        {
+            CharacterVisual.Attach(body);
+        }
+
         _body = body;
         _probe = new GroundProbe(space);
         _orientation!.Reset(own.Rotation, 0f);

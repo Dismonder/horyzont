@@ -55,6 +55,31 @@ public sealed class FakeTerrainService(float surfaceRadius = 4000f, float voxelS
     /// <summary>When set, <see cref="ApplyEdit"/> throws it.</summary>
     public Exception? ThrowOnApply { get; set; }
 
+    /// <summary>Result of <see cref="MeasureSphere"/>; null makes it return false (nothing measurable).</summary>
+    public MeasuredSphere? MeasureResult { get; set; }
+
+    /// <summary>Number of <see cref="MeasureSphere"/> calls.</summary>
+    public int MeasureCalls { get; private set; }
+
+    public bool MeasureSphere(PlanetId planet, Vector3 center, float radius, Span<int> solidVoxelsByMaterial, out int airVoxels)
+    {
+        MeasureCalls++;
+        solidVoxelsByMaterial.Clear();
+        airVoxels = 0;
+        if (MeasureResult is not { } result)
+        {
+            return false;
+        }
+
+        foreach (var (material, count) in result.Solid)
+        {
+            solidVoxelsByMaterial[material] = count;
+        }
+
+        airVoxels = result.Air;
+        return true;
+    }
+
     public bool IsAreaLoaded(PlanetId planet, Vector3 center, float radius)
     {
         if (AllAreasLoaded)

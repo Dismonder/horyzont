@@ -103,6 +103,9 @@ internal static partial class ServerLog
     [LoggerMessage(EventId = 8107, Level = LogLevel.Error, Message = "A player observer failed while player {Player} was leaving; the leave goes on")]
     public static partial void ObserverFailed(this ILogger logger, ulong player, Exception exception);
 
+    [LoggerMessage(EventId = 8108, Level = LogLevel.Error, Message = "A message handler failed on {Type} from player {Player}; the message is dropped")]
+    public static partial void MessageHandlerFailed(this ILogger logger, ulong player, MessageType type, Exception exception);
+
     [LoggerMessage(EventId = 8201, Level = LogLevel.Information, Message = "Console command {Command}")]
     public static partial void ConsoleCommand(this ILogger logger, string command);
 

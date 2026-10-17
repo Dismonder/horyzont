@@ -90,15 +90,23 @@ public sealed class ShipStatusSenderTests
             sender.Send(session, world);
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        var sent = 0;
-        for (var i = 0; i < 1_000; i++)
+        // Tiered JIT promotion can allocate once on the measuring thread under load.
+        // A steady-state allocation occurs in every window, so at least one full window must allocate zero bytes.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
         {
-            sent += sender.Send(session, world);
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            var sent = 0;
+            for (var i = 0; i < 1_000; i++)
+            {
+                sent += sender.Send(session, world);
+            }
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
+            Assert.Equal(8_000, sent);
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
-        Assert.Equal(8_000, sent);
+        Assert.Equal(0, smallest);
     }
 
     [Fact]

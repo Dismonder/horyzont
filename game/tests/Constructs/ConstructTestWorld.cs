@@ -141,6 +141,13 @@ internal sealed class ConstructTestWorld : IDisposable
             return true;
         }
 
+        public bool MeasureSphere(PlanetId planet, Vector3 center, float radius, Span<int> solidVoxelsByMaterial, out int airVoxels)
+        {
+            solidVoxelsByMaterial.Clear();
+            airVoxels = 0;
+            return false;
+        }
+
         public void ApplyEdit(TerrainEditOp edit, IReadOnlyList<TerrainBlockVersion> versions)
         {
         }

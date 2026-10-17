@@ -4,6 +4,7 @@ using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
+using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
@@ -23,6 +24,12 @@ public static class MaxMessages
     /// <param name="bytes">Encoded length.</param>
     /// <returns>The string.</returns>
     public static string Text(int bytes) => new string('€', bytes / 3) + new string('a', bytes % 3);
+
+    /// <summary>A slot with the largest encoded stack.</summary>
+    /// <param name="slot">Slot index.</param>
+    /// <returns>The slot content.</returns>
+    public static SlotContent MaxSlot(int slot) =>
+        new((ushort)slot, new ItemStack(new ItemTypeId(ProtocolConstants.MaxItemTypes), ushort.MaxValue));
 
     /// <summary>The worst-case snapshot: 8 frames with maximal ids and 22 entities with every field present and maximal varuints.</summary>
     /// <returns>The snapshot.</returns>
@@ -168,6 +175,16 @@ public static class MaxMessages
             new ShipStatus(new EntityId(ulong.MaxValue), new Tick(ulong.MaxValue), float.MaxValue, float.MaxValue, float.MaxValue,
                 (Horyzont.Core.Ships.Flight.ShipFlightFlags)0xFF, Horyzont.Core.Ships.ShipLaunchBlock.FuelReserve),
             new MarkersState(MaxMarkers()),
+            new ContainerState(
+                new ContainerId(ulong.MaxValue), RejectReason.None, ContainerKind.DroppedItem, ContainerAccess.Private, ProtocolConstants.MaxContainerSlots,
+                uint.MaxValue, Enumerable.Range(0, ProtocolConstants.MaxContainerSlots).Select(MaxSlot).ToArray()),
+            new ContainerDelta(
+                new ContainerId(ulong.MaxValue), uint.MaxValue, Enumerable.Range(0, ProtocolConstants.MaxContainerSlots).Select(MaxSlot).ToArray()),
+            new ContainerSubscribe(new ContainerId(ulong.MaxValue)),
+            new ContainerUnsubscribe(new ContainerId(ulong.MaxValue)),
+            // 4096 entries of 64-byte keys would need 268 KiB; the registry fits the reliable channel with keys of up to 60 bytes
+            // (K6-29W stage B deviation), and the writer refuses a larger frame.
+            new ItemRegistry(Enumerable.Range(1, ProtocolConstants.MaxItemTypes).Select(i => new RegistryEntry((ushort)i, Text(60))).ToArray()),
         ];
     }
     /// <summary>512 markers with the largest ids, owners and 32-byte names (about 37 KB, K5-27 decision 6).</summary>

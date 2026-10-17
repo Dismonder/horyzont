@@ -271,12 +271,19 @@ public sealed class PredictionBufferTests
             Tick(n);
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (uint n = 501; n <= 10_500; n++)
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
         {
-            Tick(n);
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (uint n = 501 + ((uint)window * 10_000); n <= 10_500 + ((uint)window * 10_000); n++)
+            {
+                Tick(n);
+            }
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, smallest);
     }
 }

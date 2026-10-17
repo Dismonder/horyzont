@@ -87,13 +87,20 @@ public sealed class ClientTerrainSelectionTests
     {
         var selection = new ClientTerrainSelection();
         selection.Update(At(_moon, 2), _bodies, default, 0);
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 10_000; i++)
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
         {
-            selection.Update(At(i % 2 == 0 ? _moon : _home, 2 + (i % 5)), _bodies, default, i * 0.016);
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 10_000; i++)
+            {
+                selection.Update(At(i % 2 == 0 ? _moon : _home, 2 + (i % 5)), _bodies, default, ((window * 10_000) + i) * 0.016);
+            }
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, smallest);
     }
 
     private static Vector3D At(BodyInfo body, double radii) => body.Position + new Vector3D(0, radii * body.RadiusMeters, 0);

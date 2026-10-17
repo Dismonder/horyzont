@@ -26,4 +26,6 @@ public enum BlobKind : byte
 
     /// <summary>The flight state of a ship (K5-24): fuel, velocities and flags.</summary>
     ShipState = 12,
+    /// <summary>A container record (K6-29).</summary>
+    Container = 20,
 }
