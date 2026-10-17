@@ -399,21 +399,21 @@ Przeglądy Opus są wymaganiami ZASADY §3 i §12; poprawki przeglądu zapisać 
 
 ### Etap A — Core
 
-- [ ] **A0. Baza i rezerwacje.** Pliki: plan, enumy, kodeki, `StateHasher`; test `DeathHashTests.NoNewState_PreservesPreviousHash`.
+- [x] **A0. Baza i rezerwacje.** Pliki: plan, enumy, kodeki, `StateHasher`; test `DeathHashTests.NoNewState_PreservesPreviousHash`.
   Komenda: `rg -n 'ProtocolVersion|PersistentEntity|InTransition|WorldSettings|Tag =|ServerTickPhase' src docs/plans/K6-34-zagrozenia-i-kombinezon.md`.
   Zanotować commit bazy, pin skrótu `DeathHashFixture` przed zmianami Core, obecność K6-34 (`UndoLog.SetVitals`, blob 2 v3) oraz fakty „Niesprawdzone” z Kontekstu.
-- [ ] **A1. Czerwone testy i przegląd Opus przed kodem.** Pliki: `tests/Horyzont.Core.Tests/Survival/Death*`, `RespawnPointsTests`, szkielety nowych kontraktów.
+- [x] **A1. Czerwone testy i przegląd Opus przed kodem.** Pliki: `tests/Horyzont.Core.Tests/Survival/Death*`, `RespawnPointsTests`, szkielety nowych kontraktów.
   Test: `DeathRulesTests.Death_Normal_MovesBagAndHotbar`; komenda: `dotnet test tests/Horyzont.Core.Tests --filter "FullyQualifiedName~Death|FullyQualifiedName~RespawnPoints"`.
   Opus zatwierdza D1–D17, szczególnie format 7 v2, D4 (pełny rekord), D6 (przepięcie ostatnie), kilka nagrobków i zasady łóżka.
-- [ ] **A2. Reguły i model.** Pliki: `PersistentEntity*`, `DeathRules`, `DeathInventoryPlan`, `RespawnPoints`, `RespawnContext`, `WorldState`, `WorldSettings`.
+- [x] **A2. Reguły i model.** Pliki: `PersistentEntity*`, `DeathRules`, `DeathInventoryPlan`, `RespawnPoints`, `RespawnContext`, `WorldState`, `WorldSettings`.
   Test: `RespawnPointsTests.Resolve_OwnBed_SelectsSafeCandidate`; komenda: `dotnet test tests/Horyzont.Core.Tests --filter "FullyQualifiedName~RespawnPoints|FullyQualifiedName~DeathRules"`.
-- [ ] **A3. Atomowa śmierć.** Pliki: operacje 38/39/46, `EntityReparentOp`, `DeathOperationBuilder`, `OperationApplier` (przepięcie ostatnie, gospodarz `PersistentEntity`), `UndoLog` (byty).
+- [x] **A3. Atomowa śmierć.** Pliki: operacje 38/39/46, `EntityReparentOp`, `DeathOperationBuilder`, `OperationApplier` (przepięcie ostatnie, gospodarz `PersistentEntity`), `UndoLog` (byty).
   Test: `DeathCompoundTests.Apply_FailingComponent_RollsBackEverything`; komenda: `dotnet test tests/Horyzont.Core.Tests --filter "FullyQualifiedName~DeathCompound|FullyQualifiedName~DeathRules"`.
-- [ ] **A4. Zero zdrowia i odzyskiwanie.** Pliki: `VitalsStep`, reguły intencji, `ContainerReach`, `FunctionalBlockRules`, `SurvivalRules`.
+- [x] **A4. Zero zdrowia i odzyskiwanie.** Pliki: `VitalsStep`, reguły intencji, `ContainerReach`, `FunctionalBlockRules`, `SurvivalRules`.
   Test: `VitalsStepTests.Advance_AlreadyZero_DoesNotRevive`, `TombstoneRecoveryTests.MoveOrSwapIntoTombstone_Refused`; komenda: `dotnet test tests/Horyzont.Core.Tests --filter "FullyQualifiedName~VitalsStep|FullyQualifiedName~TombstoneRecovery"`.
-- [ ] **A5. Checkpoint i skrót w Core.** Pliki: rekordy, tracker, builder, `WorldCheckpoint`, `StateHasher`; bez SQLite.
+- [x] **A5. Checkpoint i skrót w Core.** Pliki: rekordy, tracker, builder, `WorldCheckpoint`, `StateHasher`; bez SQLite.
   Test: `DeathHashTests.NoNewState_PreservesPreviousHash`; komenda: `dotnet test tests/Horyzont.Core.Tests --filter "FullyQualifiedName~DeathHash|FullyQualifiedName~DeathConservation"`.
-- [ ] **A6. Właściwości i regresje.** Pliki: `DeathConservationProperties`, testy cofania, istniejące testy vitals wymagające minimum 1.
+- [x] **A6. Właściwości i regresje.** Pliki: `DeathConservationProperties`, testy cofania, istniejące testy vitals wymagające minimum 1.
   Test: `DeathConservationProperties.RandomDeathsAndRecovery_ConserveEveryItem`; komenda: `dotnet test tests/Horyzont.Core.Tests`.
   Zmianę oczekiwania 1→0 opisać; nie zmieniać zamrożonych testów determinizmu.
 - [ ] **A7. Przegląd Opus i bramka A.** Pliki: cały diff Core i testów; test `DeathCompoundTests.Replay_CheckpointHadPositiveHealth_AppliesReset`.
@@ -575,7 +575,18 @@ Nie oznaczać testów, integracji foteli ani oceny wyglądu jako wykonanych wył
 - „Niesprawdzone” z Kontekstu: (1) `QuickStackIntent` wybiera wyłącznie `ContainerKind.Chest` (`FunctionalBlockRules.ResolveQuickStack`, indeks `OfKind(Chest)`): sprawdzone, nagrobek nie jest jego celem; (2) rejestr komend konsoli serwera istnieje (`Horyzont.Server/Console/ConsoleCommandProcessor.cs`): komenda administratora dla op 46 należy do etapu C3; (3) miejsce wysyłki migawek względem faz ticka leży w projekcie `Horyzont.Server`: sprawdzenie należy do C3 (blokuje C3, nie A); (4) `WorldState.FrameExists` przyjmuje ramę budowli także dla bytów, więc zakaz ramy innej niż planeta (D12) egzekwuje applier op 38 i builder świata, nie model.
 
 **A1. Czerwone testy i szkielety.** Przegląd Opus przed kodem (kontrakty D1–D17, w szczególności format 7 v2, D4, D6, kilka nagrobków, zasady łóżka) NIE został wykonany przed kodem: na polecenie orkiestratora przegląd A1 zostanie wykonany razem z A7. Do tego czasu kontrakty są zapisane w tym planie i w testach z A1; ewentualne poprawki przeglądu zostaną naniesione po A7.
-Czerwone testy A1 (stan na commit A1: 39 z 68 uruchomionych testów `Death*|RespawnPoints|TombstoneRecovery|VitalsStepTests` pada): `DeathRulesTests`, `RespawnPointsTests`, `DeathCompoundTests`, `TombstoneRecoveryTests`, `DeathHashStateTests`, `VitalsStepTests` (3 nowe + zmieniony `Damage_NeverBelowZero`). Szkielety: typy danych i operacje 38/39/46 są gotowe, zachowanie (`DeathInventoryPlan`, `DeathRules`, `RespawnPoints`, `DeathOperationBuilder`) rzuca `NotImplementedException`.
+
+**Wyniki etapu A i odstępstwa (2026-10-17).** dotnet build Horyzont.sln: 0 ostrzeżeń, 0 błędów; dotnet format --verify-no-changes: czysto; dotnet test (bez Soak/Manual): Core 2954, Server 490 (1 pominięty), Persistence 237, Integration 66, Client 776, Constructs 158, Net 177 zielone. Pliki chronione względem 1026730 bez zmian. Odstępstwa:
+
+- PersistentEntity służy bezpośrednio jako rekord checkpointu (brak PersistentEntityRecord.cs).
+- Rotacja ciała po odrodzeniu = Quaternion.Identity.
+- Zasady własności nagrobka realizują D13 ogólnie (właściciel, zasięg, tylko wyjmowanie, zakaz zamiany).
+- Limit pustych nagrobków: gdy dodanie 2 składowych przekroczyłoby 4096, usunięcie nie jest dopisywane.
+- Kandydaci łóżka: bok skierowany więcej niż 45 stopni w dół jest pomijany; budowla odwrócona (iloczyn z górą < -0,5) nie daje kandydatów.
+- ResetVitals nie ma jeszcze kodeka (B2); koder cicho by go pominął. Op 38/39/46 bez kodeka do B2 (GeneratorSanityTests._withoutCodecYet).
+- Testy serwera VitalsServiceTests.Tick_HealthNeverBelowZero i VitalsServiceHazardTests.HealthFloorZero_WithHazards zmienione z minimum 1 na 0 (zgodnie z A4); obsługa śmierci w serwerze to etap C.
+- Do C3: kolejność wysyłki migawek względem faz ticka; komenda konsoli dla op 46.
+- Przegląd Opus A1 razem z A7 (patrz wyżej).Czerwone testy A1 (stan na commit A1: 39 z 68 uruchomionych testów `Death*|RespawnPoints|TombstoneRecovery|VitalsStepTests` pada): `DeathRulesTests`, `RespawnPointsTests`, `DeathCompoundTests`, `TombstoneRecoveryTests`, `DeathHashStateTests`, `VitalsStepTests` (3 nowe + zmieniony `Damage_NeverBelowZero`). Szkielety: typy danych i operacje 38/39/46 są gotowe, zachowanie (`DeathInventoryPlan`, `DeathRules`, `RespawnPoints`, `DeathOperationBuilder`) rzuca `NotImplementedException`.
 
 ## Przegląd planu (Opus 5.5)
 
