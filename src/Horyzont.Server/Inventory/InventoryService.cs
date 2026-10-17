@@ -15,11 +15,16 @@ namespace Horyzont.Server.Inventory;
 /// <summary>
 /// The player inventory on the server (K6-29W stage C, D6, D20): creates the bag, hotbar and equipment with the start kit when a player
 /// without containers is ready, sends the item registry and the container states, and replicates every change of a player's containers
-/// to that player only (<see cref="ContainerDelta"/> from <see cref="ServerSimulation.Applied"/>). Main thread only; changes the world
-/// only through server operations of the simulation.
+/// to that player only (<see cref="ContainerDelta"/> from <see cref="ServerSimulation.Applied"/>). K6-30 D20: a player may also subscribe to
+/// the container of a chest block within 6 m, keeps the subscription up to 8 m and gets every change of it; the service ends a
+/// subscription (always with a <see cref="ContainerState"/> that carries the refusal) when the player walks away, loses access or the
+/// container is removed. Main thread only; changes the world only through server operations of the simulation.
 /// </summary>
-public sealed class InventoryService : IServerPlayerObserver, IServerClientMessageHandler
+public sealed class InventoryService : IServerPlayerObserver, IServerClientMessageHandler, IServerTickParticipant
 {
+    /// <summary>Ticks between two checks of the chest subscriptions.</summary>
+    public const int SubscriptionCheckEveryTicks = 10;
+
     private static readonly ContainerKind[] _playerKinds = [ContainerKind.PlayerBag, ContainerKind.Hotbar, ContainerKind.Equipment];
 
     private readonly Func<ServerSimulation> _simulation;
@@ -27,6 +32,8 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
     private readonly Func<bool> _isReadOnly;
     private readonly ILogger<InventoryService> _logger;
     private readonly HashSet<PlayerId> _subscribed = [];
+    private readonly Dictionary<ContainerId, List<PlayerId>> _chestSubscribers = [];
+    private readonly List<(ContainerId Container, PlayerId Player)> _scratch = [];
     private ServerSimulation? _attached;
 
     /// <summary>Initializes a new instance of the <see cref="InventoryService"/> class.</summary>
@@ -62,6 +69,7 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
             loggers.CreateLogger<InventoryService>());
         runtime.AddPlayerObserver(service);
         runtime.AddClientMessageHandler(service);
+        runtime.AddTickParticipant(service);
         return service;
     }
 
@@ -103,29 +111,151 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
     }
 
     /// <inheritdoc />
-    public void OnPlayerLeaving(PlayerId player, DisconnectCode reason) => _subscribed.Remove(player);
+    public void OnPlayerLeaving(PlayerId player, DisconnectCode reason)
+    {
+        _subscribed.Remove(player);
+        foreach (var subscribers in _chestSubscribers.Values)
+        {
+            subscribers.Remove(player);
+        }
+    }
+
+    /// <inheritdoc />
+    public void OnTick(ServerRuntime runtime)
+    {
+        ArgumentNullException.ThrowIfNull(runtime);
+        if (_attached is { } sim && _chestSubscribers.Count > 0 && sim.State.CurrentTick.Value % SubscriptionCheckEveryTicks == 0)
+        {
+            CheckSubscriptions();
+        }
+    }
 
     /// <inheritdoc />
     public bool Handle(PlayerId player, Message message)
     {
         ArgumentNullException.ThrowIfNull(message);
-        if (message is not ContainerSubscribe subscribe)
+        if (message is ContainerUnsubscribe unsubscribe)
         {
-            // ContainerUnsubscribe: the player containers are always subscribed (D20), so there is nothing to undo.
-            return message is ContainerUnsubscribe;
+            // The player containers are always subscribed (D20 of K6-29W), so only a chest subscription ends here.
+            RemoveSubscriber(unsubscribe.Container, player);
+            return true;
         }
 
-        var state = _simulation().State;
-        if (state.Containers.TryGet(subscribe.Container, out var container) && IsOwnedBy(container, player))
+        if (message is not ContainerSubscribe subscribe)
+        {
+            return false;
+        }
+
+        var sim = _simulation();
+        var state = sim.State;
+        if (!state.Containers.TryGet(subscribe.Container, out var container))
+        {
+            Reject(player, subscribe.Container, RejectReason.ContainerLocked, "locked");
+            return true;
+        }
+
+        if (IsOwnedBy(container, player))
         {
             _send(player, StateOf(container));
             _logger.SubscribeHandled(player.Value, subscribe.Container.Value, "state");
             return true;
         }
 
-        _send(player, ContainerState.Rejected(subscribe.Container, RejectReason.ContainerLocked));
-        _logger.SubscribeHandled(player.Value, subscribe.Container.Value, "locked");
+        if (container.Kind != ContainerKind.Chest || container.Host.Kind != ContainerHostKind.ConstructBlock || !HasAccess(container, player))
+        {
+            Reject(player, subscribe.Container, RejectReason.ContainerLocked, "locked");
+            return true;
+        }
+
+        if (!ContainerReach.TryDistanceFromEye(state, sim.Rules, player, new EntityId(container.Host.Id), container.Host.Cell, out var meters)
+            || meters > sim.Rules.ContainerOpenRangeMeters)
+        {
+            Reject(player, subscribe.Container, RejectReason.OutOfReach, "out of reach");
+            return true;
+        }
+
+        if (!_chestSubscribers.TryGetValue(container.Id, out var subscribers))
+        {
+            subscribers = [];
+            _chestSubscribers.Add(container.Id, subscribers);
+        }
+
+        if (!subscribers.Contains(player))
+        {
+            subscribers.Add(player);
+        }
+
+        _send(player, StateOf(container));
+        _logger.SubscribeHandled(player.Value, subscribe.Container.Value, "chest state");
         return true;
+    }
+
+    /// <summary>
+    /// Checks the chest subscriptions (K6-30 D20): ends those of a player who walked further than 8 m, lost access or whose container is
+    /// gone, each with a <see cref="ContainerState"/> that carries the refusal. Called every 10th tick.
+    /// </summary>
+    public void CheckSubscriptions()
+    {
+        if (_attached is not { } sim || _chestSubscribers.Count == 0)
+        {
+            return;
+        }
+
+        var state = sim.State;
+        _scratch.Clear();
+        foreach (var pair in _chestSubscribers)
+        {
+            foreach (var player in pair.Value)
+            {
+                _scratch.Add((pair.Key, player));
+            }
+        }
+
+        // The subscriptions are visited in container and subscription order of the dictionary; the messages are independent of each other.
+        foreach (var (containerId, player) in _scratch)
+        {
+            var reason = RejectReason.None;
+            if (!state.Containers.TryGet(containerId, out var container))
+            {
+                reason = RejectReason.ContainerLocked;
+            }
+            else if (!HasAccess(container, player))
+            {
+                reason = RejectReason.ContainerLocked;
+            }
+            else if (container.Host.Kind != ContainerHostKind.ConstructBlock
+                || !ContainerReach.TryDistanceFromEye(state, sim.Rules, player, new EntityId(container.Host.Id), container.Host.Cell, out var meters)
+                || meters > sim.Rules.ContainerKeepRangeMeters)
+            {
+                reason = RejectReason.OutOfReach;
+            }
+
+            if (reason != RejectReason.None)
+            {
+                RemoveSubscriber(containerId, player);
+                _send(player, ContainerState.Rejected(containerId, reason));
+                _logger.SubscriptionEnded(player.Value, containerId.Value, reason);
+            }
+        }
+
+        _scratch.Clear();
+    }
+
+    private static bool HasAccess(Container container, PlayerId player) =>
+        container.Access == ContainerAccess.Shared || container.Owner == player;
+
+    private void Reject(PlayerId player, ContainerId container, RejectReason reason, string result)
+    {
+        _send(player, ContainerState.Rejected(container, reason));
+        _logger.SubscribeHandled(player.Value, container.Value, result);
+    }
+
+    private void RemoveSubscriber(ContainerId container, PlayerId player)
+    {
+        if (_chestSubscribers.TryGetValue(container, out var subscribers) && subscribers.Remove(player) && subscribers.Count == 0)
+        {
+            _chestSubscribers.Remove(container);
+        }
     }
 
     private static bool IsOwnedBy(Container container, PlayerId player) =>
@@ -236,7 +366,7 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
     private void OnApplied(AppliedOperation applied)
     {
         var containers = applied.ContainerChanges;
-        if (containers.Count == 0 || _subscribed.Count == 0)
+        if (containers.Count == 0 || (_subscribed.Count == 0 && _chestSubscribers.Count == 0))
         {
             return;
         }
@@ -244,21 +374,93 @@ public sealed class InventoryService : IServerPlayerObserver, IServerClientMessa
         var sim = _attached!;
         foreach (var change in containers)
         {
-            // Version 1 is the operation that created the container: the owner learns of it through a state, not a delta.
-            if (change.Version <= 1 || !sim.State.Containers.TryGet(change.Container, out var container)
-                || !_subscribed.Contains(container.Owner))
+            if (change.Removed)
+            {
+                EndChestSubscriptions(change.Container, RejectReason.ContainerLocked);
+                continue;
+            }
+
+            if (!sim.State.Containers.TryGet(change.Container, out var container))
             {
                 continue;
             }
 
-            var changed = new List<SlotContent>(change.Slots.Count);
-            foreach (var slot in change.Slots)
+            if (container.Host.Kind == ContainerHostKind.ConstructBlock)
             {
-                changed.Add(new SlotContent(slot, container.GetSlot(slot)));
+                SendChestChange(container, change, applied.Id.Value);
+                continue;
             }
 
-            _send(container.Owner, new ContainerDelta(container.Id, change.Version, changed));
-            _logger.DeltaSent(container.Owner.Value, container.Id.Value, change.Version, applied.Id.Value);
+            // Version 1 is the operation that created the container: the owner learns of it through a state, not a delta.
+            if (change.Version <= 1 || !_subscribed.Contains(container.Owner))
+            {
+                continue;
+            }
+
+            if (change.Configured)
+            {
+                // A change of size or access (also together with slots) is more than a delta can say: the owner gets the whole state.
+                _send(container.Owner, StateOf(container));
+                continue;
+            }
+
+            SendDelta(container.Owner, container, change, applied.Id.Value);
+        }
+    }
+
+    private void SendDelta(PlayerId player, Container container, ContainerChange change, ulong opId)
+    {
+        var changed = new List<SlotContent>(change.Slots.Count);
+        foreach (var slot in change.Slots)
+        {
+            changed.Add(new SlotContent(slot, container.GetSlot(slot)));
+        }
+
+        _send(player, new ContainerDelta(container.Id, change.Version, changed));
+        _logger.DeltaSent(player.Value, container.Id.Value, change.Version, opId);
+    }
+
+    /// <summary>Sends a change of a chest container to its subscribers: slots as a delta, a change of size or access (operation 37, also together with slots) as the whole state.</summary>
+    private void SendChestChange(Container container, ContainerChange change, ulong opId)
+    {
+        if (change.Version <= 1 || !_chestSubscribers.TryGetValue(container.Id, out var subscribers))
+        {
+            return;
+        }
+
+        // Copied: ending a subscription changes the list.
+        var targets = subscribers.ToArray();
+        var configured = change.Configured;
+        foreach (var player in targets)
+        {
+            if (!HasAccess(container, player))
+            {
+                RemoveSubscriber(container.Id, player);
+                _send(player, ContainerState.Rejected(container.Id, RejectReason.ContainerLocked));
+                _logger.SubscriptionEnded(player.Value, container.Id.Value, RejectReason.ContainerLocked);
+            }
+            else if (configured)
+            {
+                _send(player, StateOf(container));
+            }
+            else
+            {
+                SendDelta(player, container, change, opId);
+            }
+        }
+    }
+
+    private void EndChestSubscriptions(ContainerId container, RejectReason reason)
+    {
+        if (!_chestSubscribers.Remove(container, out var subscribers))
+        {
+            return;
+        }
+
+        foreach (var player in subscribers)
+        {
+            _send(player, ContainerState.Rejected(container, reason));
+            _logger.SubscriptionEnded(player.Value, container.Value, reason);
         }
     }
 }

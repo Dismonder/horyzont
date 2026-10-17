@@ -12,7 +12,13 @@ public static class BuiltInShapeMeshes
     /// <summary>Reference of the slope (identity orientation: height 1 at the −Z edge, 0 at the +Z edge).</summary>
     public const string SlopeRef = "builtin:slope";
 
-    /// <summary>Resolves <c>builtin:slab</c> and <c>builtin:slope</c>.</summary>
+    /// <summary>
+    /// Reference of the panel of an open door (K6-30 D6): 0.1 m thick, along the −X wall of the cell in the identity orientation. It is not
+    /// listed in the content; the render table gives it to every door block.
+    /// </summary>
+    public const string DoorOpenRef = "builtin:door_open";
+
+    /// <summary>Resolves <c>builtin:slab</c>, <c>builtin:slope</c> and <c>builtin:door_open</c>.</summary>
     /// <param name="meshRef">Mesh reference.</param>
     /// <param name="mesh">A new mesh when the reference is built in.</param>
     /// <returns>True for the built-in references.</returns>
@@ -25,6 +31,9 @@ public static class BuiltInShapeMeshes
                 return true;
             case SlopeRef:
                 mesh = Slope();
+                return true;
+            case DoorOpenRef:
+                mesh = DoorOpen();
                 return true;
             default:
                 mesh = null;
@@ -42,6 +51,19 @@ public static class BuiltInShapeMeshes
         b.Quad(new(0, 0, 1), new(0, 0, 0), new(1, 0, 0), new(1, 0, 1)); // -Y
         b.Quad(new(1, 0, 1), new(1, h, 1), new(0, h, 1), new(0, 0, 1)); // +Z
         b.Quad(new(0, 0, 0), new(0, h, 0), new(1, h, 0), new(1, 0, 0)); // -Z
+        return b.Build();
+    }
+
+    private static ShapeMesh DoorOpen()
+    {
+        var b = new Builder();
+        const float t = 0.1f;
+        b.Quad(new(t, 0, 0), new(t, 1, 0), new(t, 1, 1), new(t, 0, 1)); // +X
+        b.Quad(new(0, 0, 1), new(0, 1, 1), new(0, 1, 0), new(0, 0, 0)); // -X
+        b.Quad(new(0, 1, 0), new(0, 1, 1), new(t, 1, 1), new(t, 1, 0)); // +Y
+        b.Quad(new(0, 0, 1), new(0, 0, 0), new(t, 0, 0), new(t, 0, 1)); // -Y
+        b.Quad(new(t, 0, 1), new(t, 1, 1), new(0, 1, 1), new(0, 0, 1)); // +Z
+        b.Quad(new(0, 0, 0), new(0, 1, 0), new(t, 1, 0), new(t, 0, 0)); // -Z
         return b.Build();
     }
 

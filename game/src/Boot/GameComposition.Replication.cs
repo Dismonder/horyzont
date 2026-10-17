@@ -1,10 +1,12 @@
 using Godot;
 
+using Horyzont.Client.Blocks;
 using Horyzont.Client.Movement;
 using Horyzont.Client.Replication;
 using Horyzont.Client.Tools;
 using Horyzont.Core.Simulation;
 using Horyzont.Game.Client;
+using Horyzont.Game.Client.Blocks;
 using Horyzont.Game.Client.Replication;
 using Horyzont.Game.Client.Tools;
 using Horyzont.Game.Constructs;
@@ -29,6 +31,9 @@ public sealed partial class GameComposition
 
     /// <summary>Gets the constructs a remote client sees; null for solo, host and dedicated server.</summary>
     public RemoteConstructs? RemoteConstructs { get; private set; }
+
+    /// <summary>Gets the replicated states of the functional blocks (message 46); null in dedicated server mode and with characters off.</summary>
+    public ClientBlockEntities? BlockEntities { get; private set; }
 
     /// <summary>Gets the nodes of the other players; null in dedicated server mode and with characters off.</summary>
     public RemotePlayers? RemotePlayers { get; private set; }
@@ -79,7 +84,9 @@ public sealed partial class GameComposition
 
         // A process that runs the server shares its world with the local client; only a remote client mirrors the constructs.
         var mirror = Server is null ? new ConstructMirror(_env.Time) : null;
-        var replication = new ClientReplication(Client.Session.Send, mirror, _env.Time);
+        var blockEntities = new ClientBlockEntities();
+        var replication = new ClientReplication(Client.Session.Send, mirror, _env.Time, blockEntities);
+        BlockEntities = blockEntities;
         replication.Decoder.AddSink(LocalPlayer);
         if (_fullSnapshots is not null)
         {
@@ -137,11 +144,13 @@ public sealed partial class GameComposition
             tools.DigAccepted += inventory.OnDigAccepted;
         }
 
+        tools.BlockEntities = BlockEntities;
         if (_env.Render)
         {
             tools.AddChild(new TerrainToolPreview(tools));
             tools.AddChild(new BlockGhostPreview(tools));
             tools.AddChild(new ToolHud(tools));
+            tools.AddChild(new BlockPromptHud(tools));
             var overlay = new PredictedBlocksView { Name = "PredictedBlocks", FrameNodes = ClientFrameNodes };
             overlay.Initialize(prediction, mirror, LocalPlayer!);
             clientNode.AddChild(overlay);

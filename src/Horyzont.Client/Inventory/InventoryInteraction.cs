@@ -28,12 +28,17 @@ public sealed class InventoryInteraction : IClientSessionListener
     /// <param name="inventory">The inventory.</param>
     /// <param name="sender">Where the intents go.</param>
     /// <param name="logger">Logger.</param>
-    public InventoryInteraction(ClientInventory inventory, IIntentSender sender, ILogger<InventoryInteraction> logger)
+    /// <param name="chests">The chest session whose open chest is the other side of a shift click (K6-30); null for none.</param>
+    public InventoryInteraction(ClientInventory inventory, IIntentSender sender, ILogger<InventoryInteraction> logger, ChestSession? chests = null)
     {
+        Chests = chests;
         _inventory = inventory ?? throw new ArgumentNullException(nameof(inventory));
         _sender = sender ?? throw new ArgumentNullException(nameof(sender));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
+
+    /// <summary>Gets the chest session, or null.</summary>
+    public ChestSession? Chests { get; }
 
     /// <summary>Gets the items in hand, or null.</summary>
     public HeldStack? Held { get; private set; }
@@ -92,7 +97,10 @@ public sealed class InventoryInteraction : IClientSessionListener
         return Held is { } held ? Place(held, slot, 1) : Pick(slot, half: true);
     }
 
-    /// <summary>Shift click: moves the whole stack to any free place of the other container (bag and hotbar).</summary>
+    /// <summary>
+    /// Shift click: moves the whole stack to any free place of the other container: from the bag or the hotbar to the open chest, or to
+    /// the other of the two without one; from a chest to the bag.
+    /// </summary>
     /// <param name="slot">The slot under the cursor.</param>
     /// <returns>What happened.</returns>
     public InteractionOutcome ShiftClick(SlotRef slot)
@@ -103,7 +111,13 @@ public sealed class InventoryInteraction : IClientSessionListener
         }
 
         var stack = container.Get(slot.Slot);
-        var other = container.Kind == ContainerKind.PlayerBag ? _inventory.Hotbar : _inventory.Bag;
+        var other = container.Kind switch
+        {
+            ContainerKind.Chest => _inventory.Bag,
+            _ when Chests?.OpenContainer is { } chest => chest,
+            ContainerKind.PlayerBag => _inventory.Hotbar,
+            _ => _inventory.Bag,
+        };
         if (stack.IsEmpty || other is null)
         {
             return InteractionOutcome.Ignored;
@@ -244,8 +258,8 @@ public sealed class InventoryInteraction : IClientSessionListener
 
     private bool TryGetUsable(SlotRef slot, out ClientContainer container)
     {
-        if (_inventory.TryGetContainer(slot.Container, out var found) && found.Kind is ContainerKind.PlayerBag or ContainerKind.Hotbar
-            && slot.Slot < found.Size)
+        if (_inventory.TryGetContainer(slot.Container, out var found)
+            && found.Kind is ContainerKind.PlayerBag or ContainerKind.Hotbar or ContainerKind.Chest && slot.Slot < found.Size)
         {
             container = found;
             return true;

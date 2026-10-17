@@ -157,6 +157,26 @@ public sealed class Construct
         return previous;
     }
 
+    /// <summary>
+    /// Sets the function state (bits 25-27) of a block without changing <see cref="Version"/>; a compound operation bumps the version once
+    /// with <see cref="BumpVersion"/>. The caller checked that the cell holds a block.
+    /// </summary>
+    internal void ChangeFunctionState(CellPos cell, byte functionState)
+    {
+        var chunkPos = cell.Chunk;
+        var chunk = _chunks[chunkPos];
+        chunk.Set(cell.LocalIndex, chunk.Get(cell.LocalIndex).WithFunctionState(functionState));
+        _tracker.MarkChunk(new ConstructChunkKey(Id, chunkPos));
+        _tracker.MarkConstruct(Id);
+    }
+
+    /// <summary>Raises <see cref="Version"/> by one and marks the header changed.</summary>
+    internal void BumpVersion()
+    {
+        Version++;
+        _tracker.MarkConstruct(Id);
+    }
+
     /// <summary>Moves the construct to a new parent frame.</summary>
     internal void Reparent(FrameRef parent, uint parentSeq, Vector3 origin, Quaternion rotation)
     {

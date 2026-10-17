@@ -17,4 +17,9 @@ BLOCK_SHIP_HULL,Ship hull,Kadłub statku
 BLOCK_SHIP_WINDOW,Ship window,Okno statku
 BLOCK_SHIP_DOOR,Ship door,Drzwi statku
 BLOCK_SHIP_REFUEL_STATION,Refuel station,Stacja tankowania
+BLOCK_CHEST_WOOD,Wooden chest,Skrzynia drewniana
+BLOCK_CHEST_METAL,Metal chest,Skrzynia metalowa
+BLOCK_BED,Bed,Łóżko
+BLOCK_LAMP,Lamp,Lampa
+BLOCK_WOOD_DOOR,Wooden door,Drzwi drewniane
 BLOCK_MISSING,Missing block,Brakujący blok

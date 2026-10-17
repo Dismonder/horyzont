@@ -190,7 +190,7 @@ public static class CodecGen
     /// <summary>Chunks of 4096 well-formed block states in assorted shapes (empty, uniform, sparse, banded, worst-case alternating, random).</summary>
     public static Gen<uint[]> ChunkBlocks { get; } = Gen.Choose(0, 5).SelectMany(shape => Gen.Choose(0, int.MaxValue).SelectMany(seed => BuildChunk(shape, seed)));
 
-    /// <summary>Operations of every kind (1-7, 20-23 and 30-35).</summary>
+    /// <summary>Operations of every kind (1-7, 20-23, 30-37, 40, 44 and 49).</summary>
     public static Gen<Operation> Operation => Gen.OneOf(
         TerrainEditOp.Select(o => (Operation)o),
         ConstructCreateOp.Select(o => (Operation)o),
@@ -208,7 +208,12 @@ public static class CodecGen
         ItemSwapOp.Select(o => (Operation)o),
         ItemCreateOp.Select(o => (Operation)o),
         ItemDestroyOp.Select(o => (Operation)o),
-        ContainerCreateOp.Select(o => (Operation)o));
+        ContainerCreateOp.Select(o => (Operation)o),
+        ContainerRemoveOp.Select(o => (Operation)o),
+        ContainerConfigureOp.Select(o => (Operation)o),
+        BlockEntitySetOp.Select(o => (Operation)o),
+        RespawnPointSetOp.Select(o => (Operation)o),
+        BlockFunctionStateSetOp.Select(o => (Operation)o));
 
     /// <summary>Terrain edit operations.</summary>
     public static Gen<TerrainEditOp> TerrainEditOp { get; } =
@@ -345,6 +350,64 @@ public static class CodecGen
         from size in VarU16
         select new ContainerCreateOp(id, kind, host, new PlayerId(owner), access, size);
 
+    /// <summary>Container removals (K6-30).</summary>
+    public static Gen<ContainerRemoveOp> ContainerRemoveOp { get; } = ContainerId.Select(id => new ContainerRemoveOp(id));
+
+    /// <summary>Container configuration with a size inside the container limits (K6-30).</summary>
+    public static Gen<ContainerConfigureOp> ContainerConfigureOp { get; } =
+        from id in ContainerId
+        from size in Gen.Choose(1, ProtocolConstants.MaxContainerSlots)
+        from access in Gen.Elements(Enum.GetValues<ContainerAccess>())
+        select new ContainerConfigureOp(id, (ushort)size, access);
+
+    /// <summary>Block states of format 1: a chest, a bed or none (K6-30).</summary>
+    public static Gen<Horyzont.Core.BlockEntities.BlockEntityState?> BlockEntityStateOrNone { get; } = Gen.OneOf(
+        Gen.Constant<Horyzont.Core.BlockEntities.BlockEntityState?>(null),
+        ContainerId.Select(c => (Horyzont.Core.BlockEntities.BlockEntityState?)new Horyzont.Core.BlockEntities.ChestBlockState(c)),
+        PlayerId.Select(p => (Horyzont.Core.BlockEntities.BlockEntityState?)new Horyzont.Core.BlockEntities.BedBlockState(p)));
+
+    /// <summary>Block states of messages: a chest or a bed (K6-30).</summary>
+    private static Gen<Horyzont.Core.BlockEntities.BlockEntityState> BlockEntityStateOfEntry { get; } = Gen.OneOf(
+        ContainerId.Select(c => (Horyzont.Core.BlockEntities.BlockEntityState)new Horyzont.Core.BlockEntities.ChestBlockState(c)),
+        PlayerId.Select(p => (Horyzont.Core.BlockEntities.BlockEntityState)new Horyzont.Core.BlockEntities.BedBlockState(p)));
+
+    /// <summary>Block state lists of one construct: strictly ascending by cell (chunk, then index in the chunk), no repeats (K6-30).</summary>
+    public static Gen<BlockEntityStates> BlockEntityStatesMessage { get; } =
+        from construct in EntityId
+        from count in Gen.Choose(0, 8)
+        from entries in (from cell in Cell
+                         from state in BlockEntityStateOfEntry
+                         select new BlockEntityEntry(cell, state)).ArrayOf(count)
+        select new BlockEntityStates(
+            construct,
+            entries.OrderBy(e => new Horyzont.Core.BlockEntities.BlockRef(construct, e.Cell)).DistinctBy(e => e.Cell).ToArray());
+
+    /// <summary>Block state operations (K6-30).</summary>
+    public static Gen<BlockEntitySetOp> BlockEntitySetOp { get; } =
+        from construct in EntityId
+        from cell in Cell
+        from type in VarU16
+        from state in BlockEntityStateOrNone
+        select new BlockEntitySetOp(construct, cell, type, state);
+
+    /// <summary>Respawn point operations (K6-30).</summary>
+    public static Gen<RespawnPointSetOp> RespawnPointSetOp { get; } =
+        from player in PlayerId
+        from bed in Optional(
+            from construct in EntityId
+            from cell in Cell
+            from type in VarU16
+            select new Horyzont.Core.Progress.BedRef(construct, cell, type))
+        select new RespawnPointSetOp(player, bed);
+
+    /// <summary>Function state operations with a state in 0..7 (K6-30).</summary>
+    public static Gen<BlockFunctionStateSetOp> BlockFunctionStateSetOp { get; } =
+        from construct in EntityId
+        from cell in Cell
+        from type in VarU16
+        from state in Gen.Choose(0, BlockState.FunctionStateCount - 1)
+        select new BlockFunctionStateSetOp(construct, cell, type, (byte)state);
+
     /// <summary>Item components of compound operations.</summary>
     public static Gen<Operation> ItemComponent { get; } = Gen.OneOf(
         ItemTransferOp.Select(o => (Operation)o),
@@ -382,7 +445,27 @@ public static class CodecGen
         MarkerRemoveIntent.Select(i => (Intent)i),
         RefuelIntent.Select(i => (Intent)i),
         ItemMoveIntent.Select(i => (Intent)i),
-        ItemDropIntent.Select(i => (Intent)i));
+        ItemDropIntent.Select(i => (Intent)i),
+        Gen.Constant<Intent>(new QuickStackIntent()),
+        ContainerId.Select(c => (Intent)new TakeAllIntent(c)),
+        BlockInteractIntent.Select(i => (Intent)i),
+        BlockConfigIntent.Select(i => (Intent)i));
+
+    /// <summary>Block interaction intents with all three actions (K6-30).</summary>
+    public static Gen<BlockInteractIntent> BlockInteractIntent { get; } =
+        from construct in EntityId
+        from cell in Cell
+        from action in Gen.Elements(Enum.GetValues<BlockInteractAction>())
+        select new BlockInteractIntent(construct, cell, action);
+
+    /// <summary>Block configuration intents with both variants; a teleport name is 1..32 UTF-8 bytes (K6-30).</summary>
+    public static Gen<BlockConfigIntent> BlockConfigIntent { get; } =
+        from construct in EntityId
+        from cell in Cell
+        from config in Gen.OneOf(
+            Gen.Elements(Enum.GetValues<ContainerAccess>()).Select(a => (BlockConfig)new ContainerAccessConfig(a)),
+            Gen.Elements("A", "Dock", "Base 7", "Zażółć gęślą", new string('x', ProtocolConstants.MaxTeleportNameBytes)).Select(n => (BlockConfig)new TeleportNameConfig(n)))
+        select new BlockConfigIntent(construct, cell, config);
 
     /// <summary>Item move intents with both target variants.</summary>
     public static Gen<ItemMoveIntent> ItemMoveIntent { get; } =
@@ -641,6 +724,7 @@ public static class CodecGen
         ContainerDelta.Select(m => (Message)m),
         ContainerId.Select(c => (Message)new ContainerSubscribe(c)),
         ContainerId.Select(c => (Message)new ContainerUnsubscribe(c)),
+        BlockEntityStatesMessage.Select(m => (Message)m),
         ListUpTo(RegistryEntry(ProtocolConstants.MaxItemTypes), ProtocolConstants.MaxItemTypes, 12).Select(e => (Message)new ItemRegistry(e)));
 
     /// <summary>Ship status messages (K5-26): any ship and tick, non-negative finite values, any flags, a defined launch block.</summary>

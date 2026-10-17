@@ -3,6 +3,7 @@ using System.Numerics;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Protocol;
 using Horyzont.Core.Ships;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
@@ -16,7 +17,8 @@ namespace Horyzont.Core.Simulation;
 /// Validates intents against the state and the terrain. The order of the checks decides the returned reason
 /// (docs/plans/K1-03-core-stan-i-operacje.md, "Walidacja i rozwiązanie"). Never throws for bad input.
 /// </summary>
-internal sealed class IntentValidator(WorldState state, ITerrainService terrain, GameRules rules, BlockContentTable content, SurvivalRules? survival)
+internal sealed class IntentValidator(
+    WorldState state, ITerrainService terrain, GameRules rules, BlockContentTable content, SurvivalRules? survival, FunctionalBlockRules functional)
 {
     /// <summary>Distance from a cell centre to its corner, rounded up.</summary>
     private const float CellReachSlack = 0.87f;
@@ -39,6 +41,8 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
     /// </summary>
     private const float TerrainSightSlackMeters = 0.25f;
 
+    private readonly List<CellPos> _doorColumn = [];
+
     internal RejectReason Validate(PlayerId playerId, Intent intent, PlayerBuckets? buckets, out IntentFacts facts)
     {
         facts = default;
@@ -57,8 +61,14 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.InvalidParameters;
         }
 
+        // Chest settings, sleeping and setting the respawn point need the survival content; switching a door or a lamp does not (K6-30 D21).
+        if (survival is null && intent is BlockConfigIntent or BlockInteractIntent { Action: not BlockInteractAction.Toggle })
+        {
+            return RejectReason.InvalidParameters;
+        }
+
         // Item intents (K6-29W): parameters and container access before the rate limit; without content they are invalid (D8).
-        if (intent is ItemMoveIntent or ItemDropIntent)
+        if (intent is ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent)
         {
             var itemReason = survival is null ? RejectReason.InvalidParameters : survival.CheckItemParameters(playerId, intent);
             if (itemReason != RejectReason.None)
@@ -88,8 +98,11 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             MarkerSetIntent or MarkerRemoveIntent => MarkerIntentRules.Validate(state, playerId, intent),
             RefuelIntent refuel => ValidateRefuel(refuel, hasPlanet, playerPlanet, eye, out facts),
 
+            BlockInteractIntent interact => ValidateBlockInteract(playerId, interact, hasPlanet, playerPlanet, eye, out facts),
+            BlockConfigIntent config => ValidateBlockConfig(playerId, config, hasPlanet, playerPlanet, eye, out facts),
+
             // The content checks of item intents (source content, counts, target room) are part of their resolution.
-            ItemMoveIntent or ItemDropIntent => RejectReason.None,
+            ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent => RejectReason.None,
             _ => RejectReason.InvalidParameters,
         };
     }
@@ -98,9 +111,9 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
     internal static TokenBucket? BucketFor(Intent intent, PlayerBuckets buckets) => intent switch
     {
         TerrainToolIntent => buckets.Terrain,
-        PlaceBlockIntent or RemoveBlockIntent or ShipModeIntent or RefuelIntent => buckets.Blocks,
+        PlaceBlockIntent or RemoveBlockIntent or ShipModeIntent or RefuelIntent or BlockInteractIntent or BlockConfigIntent => buckets.Blocks,
         MarkerSetIntent or MarkerRemoveIntent => buckets.Markers,
-        ItemMoveIntent or ItemDropIntent => buckets.Items,
+        ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent => buckets.Items,
         _ => null,
     };
 
@@ -131,9 +144,13 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             case RefuelIntent refuel:
                 rayOrigin = refuel.RayOrigin;
                 return Geometry.IsFinite(refuel.RayOrigin) && Geometry.IsDirection(refuel.RayDirection);
-            case ItemMoveIntent or ItemDropIntent:
+            case ItemMoveIntent or ItemDropIntent or TakeAllIntent or QuickStackIntent:
                 bucket = buckets.Items;
                 return true;
+            case BlockInteractIntent interact:
+                return Enum.IsDefined(interact.Action);
+            case BlockConfigIntent { Config: { } config }:
+                return Enum.IsDefined(config.Kind);
             default:
                 return false;
         }
@@ -213,6 +230,12 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
         if (block != RejectReason.None)
         {
             return block;
+        }
+
+        var functionalPlacement = CheckFunctionalPlacement(place, target.Construct);
+        if (functionalPlacement != RejectReason.None)
+        {
+            return functionalPlacement;
         }
 
         if (!state.Constructs.TryGet(target.Construct, out var construct))
@@ -296,6 +319,12 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
         if (block != RejectReason.None)
         {
             return block;
+        }
+
+        var functionalPlacement = CheckFunctionalPlacement(place, null);
+        if (functionalPlacement != RejectReason.None)
+        {
+            return functionalPlacement;
         }
 
         if (!state.Planets.TryGet(target.Planet, out _))
@@ -400,8 +429,159 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             return RejectReason.IntersectsPlayer;
         }
 
+        // Without survival content a block with a state or a container cannot be taken down (K6-30 D21).
+        if (survival is null && functional.HasFunctionalState(remove.Construct, remove.Cell))
+        {
+            return RejectReason.InvalidParameters;
+        }
+
         facts = new IntentFacts(planet, cellCenter, Quaternion.Identity, remove.Cell);
         return RejectReason.None;
+    }
+
+    /// <summary>
+    /// The common checks of the intents aimed at one block (K6-30 D18), in the order of <see cref="ValidateRemove"/>: the construct, the
+    /// planet, the cell, reach from the eye and line of sight.
+    /// </summary>
+    private RejectReason CheckBlockTarget(
+        EntityId constructId, CellPos cell, bool hasPlanet, PlanetId playerPlanet, Vector3 eye,
+        out Construct construct, out PlanetId planet, out Vector3 cellCenter)
+    {
+        planet = default;
+        cellCenter = default;
+        if (!state.Constructs.TryGet(constructId, out construct!))
+        {
+            return RejectReason.UnknownConstruct;
+        }
+
+        if (!hasPlanet || !state.TryResolvePlanet(construct.Parent, out planet) || planet != playerPlanet)
+        {
+            return RejectReason.WrongPlanet;
+        }
+
+        if (!cell.IsInBounds)
+        {
+            return RejectReason.CellOutOfBounds;
+        }
+
+        if (construct.GetBlock(cell).IsEmpty)
+        {
+            return RejectReason.CellEmpty;
+        }
+
+        cellCenter = ToPlanet(construct, CellCenter(cell));
+        if (Vector3.Distance(eye, cellCenter) > rules.ReachMeters + CellReachSlack)
+        {
+            return RejectReason.OutOfReach;
+        }
+
+        return HasLineOfSight(planet, eye, cellCenter, construct.Id, cell) ? RejectReason.None : RejectReason.NoLineOfSight;
+    }
+
+    /// <summary>
+    /// Toggle (a door or a lamp; closing a door column may not catch an online player), Sleep and SetRespawn (a bed that is free or the
+    /// own bed of the player), K6-30 D6, D10, D18.
+    /// </summary>
+    private RejectReason ValidateBlockInteract(
+        PlayerId playerId, BlockInteractIntent intent, bool hasPlanet, PlanetId playerPlanet, Vector3 eye, out IntentFacts facts)
+    {
+        facts = default;
+        var target = CheckBlockTarget(intent.Construct, intent.Cell, hasPlanet, playerPlanet, eye, out var construct, out var planet, out var cellCenter);
+        if (target != RejectReason.None)
+        {
+            return target;
+        }
+
+        var block = construct.GetBlock(intent.Cell);
+        var kind = content.Get(block.TypeId).Function.Kind;
+        if (intent.Action == BlockInteractAction.Toggle)
+        {
+            if (kind == BlockFunctionKind.Door)
+            {
+                // Open doors do not collide, so only closing can catch a player; the whole column closes together.
+                if (block.FunctionState != 0)
+                {
+                    FunctionalBlockRules.DoorColumn(construct, intent.Cell, rules.MaxDoorColumnCells, _doorColumn);
+                    for (var i = 0; i < _doorColumn.Count; i++)
+                    {
+                        if (CellHitsPlayer(planet, construct.Origin, construct.Rotation, construct, _doorColumn[i]))
+                        {
+                            return RejectReason.IntersectsPlayer;
+                        }
+                    }
+                }
+            }
+            else if (kind != BlockFunctionKind.Light)
+            {
+                return RejectReason.InvalidParameters;
+            }
+        }
+        else
+        {
+            if (kind != BlockFunctionKind.Bed || !state.BlockEntities.TryGet(new BlockEntities.BlockRef(intent.Construct, intent.Cell), out var entity)
+                || entity is not BlockEntities.BedBlockState bed)
+            {
+                return RejectReason.InvalidParameters;
+            }
+
+            if (!bed.Owner.IsNone && bed.Owner != playerId)
+            {
+                return RejectReason.NotOwner;
+            }
+        }
+
+        facts = new IntentFacts(planet, cellCenter, Quaternion.Identity, intent.Cell);
+        return RejectReason.None;
+    }
+
+    /// <summary>The access of a chest, set by its owner; the teleport name is reserved for K6-37 (K6-30 D18, D19).</summary>
+    private RejectReason ValidateBlockConfig(
+        PlayerId playerId, BlockConfigIntent intent, bool hasPlanet, PlanetId playerPlanet, Vector3 eye, out IntentFacts facts)
+    {
+        facts = default;
+        var target = CheckBlockTarget(intent.Construct, intent.Cell, hasPlanet, playerPlanet, eye, out _, out var planet, out var cellCenter);
+        if (target != RejectReason.None)
+        {
+            return target;
+        }
+
+        if (intent.Config is not ContainerAccessConfig access
+            || !state.BlockEntities.TryGet(new BlockEntities.BlockRef(intent.Construct, intent.Cell), out var entity)
+            || entity is not BlockEntities.ChestBlockState chest || !state.Containers.TryGet(chest.Container, out var container))
+        {
+            return RejectReason.InvalidParameters;
+        }
+
+        if (container.Owner != playerId)
+        {
+            return RejectReason.NotOwner;
+        }
+
+        if (container.Access == access.Access)
+        {
+            return RejectReason.InvalidParameters;
+        }
+
+        facts = new IntentFacts(planet, cellCenter, Quaternion.Identity, intent.Cell);
+        return RejectReason.None;
+    }
+
+    /// <summary>A chest or a bed needs the survival content and a free block state of the construct (K6-30 D21, D23).</summary>
+    private RejectReason CheckFunctionalPlacement(PlaceBlockIntent place, EntityId? construct)
+    {
+        if (content.Get(place.BlockTypeId).Function.Kind is not (BlockFunctionKind.Chest or BlockFunctionKind.Bed))
+        {
+            return RejectReason.None;
+        }
+
+        if (survival is null)
+        {
+            return RejectReason.InvalidParameters;
+        }
+
+        return construct is { } id && state.BlockEntities.CountOf(id) >= ProtocolConstants.MaxBlockEntitiesPerConstruct
+            ? RejectReason.InvalidParameters
+            : RejectReason.None;
     }
 
     private RejectReason ValidateShipMode(ShipModeIntent intent, bool hasPlanet, PlanetId playerPlanet, Vector3 eye, out IntentFacts facts)
@@ -675,17 +855,7 @@ internal sealed class IntentValidator(WorldState state, ITerrainService terrain,
             || terrainHit.Distance >= reach - TerrainSightSlackMeters;
     }
 
-    private bool TryGetEye(PlayerState player, out PlanetId planet, out Vector3 eye)
-    {
-        if (!state.TryToPlanetFrame(player.Frame, player.Position, out planet, out var feet))
-        {
-            eye = default;
-            return false;
-        }
-
-        eye = feet + (TerrainMath.UpAt(feet) * rules.EyeHeight);
-        return true;
-    }
+    private bool TryGetEye(PlayerState player, out PlanetId planet, out Vector3 eye) => ContainerReach.TryGetEye(state, rules, player, out planet, out eye);
 
     private bool SphereHitsPlayer(PlanetId planet, Vector3 center, float radius)
     {

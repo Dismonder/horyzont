@@ -1,9 +1,11 @@
 using System.Numerics;
 using System.Text;
 
+using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Progress;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.Space;
@@ -40,6 +42,8 @@ public sealed class WorldStateBuilder
     private ulong _nextPlayerId = 1;
     private ulong _nextMarkerId = 1;
     private ulong _nextContainerId = 1;
+    private readonly List<BlockEntityRecord> _blockEntities = [];
+    private readonly List<PlayerProgressRecord> _progress = [];
     private bool _built;
 
     /// <summary>Starts a world.</summary>
@@ -78,6 +82,22 @@ public sealed class WorldStateBuilder
     {
         ArgumentNullException.ThrowIfNull(container);
         _containers.Add(container);
+    }
+
+    /// <summary>Adds the state of a functional block (K6-30); its block and, for a chest, its container must be added too. Checked in Build.</summary>
+    /// <param name="record">The state.</param>
+    public void AddBlockEntity(BlockEntityRecord record)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        _blockEntities.Add(record);
+    }
+
+    /// <summary>Adds the progress of a player (K6-30); the player must be added too. Checked in Build.</summary>
+    /// <param name="record">The progress.</param>
+    public void AddPlayerProgress(PlayerProgressRecord record)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        _progress.Add(record);
     }
 
     /// <summary>Adds a planet.</summary>
@@ -263,6 +283,29 @@ public sealed class WorldStateBuilder
             LoadContainer(state, container);
         }
 
+        foreach (var record in _blockEntities)
+        {
+            LoadBlockEntity(state, record);
+        }
+
+        // A chest container hosted by a block needs the matching chest state (the other direction is checked in LoadBlockEntity).
+        var chests = state.Containers.OfKind(ContainerKind.Chest);
+        for (var i = 0; i < chests.Count; i++)
+        {
+            var chest = chests[i];
+            if (chest.Host.Kind == ContainerHostKind.ConstructBlock
+                && !(state.BlockEntities.TryGet(new BlockRef(new EntityId(chest.Host.Id), chest.Host.Cell), out var entity)
+                    && entity is ChestBlockState chestState && chestState.Container == chest.Id))
+            {
+                throw new InvalidDataException($"Chest container {chest.Id.Value} has no chest state on its host block.");
+            }
+        }
+
+        foreach (var record in _progress)
+        {
+            LoadProgress(state, record);
+        }
+
         foreach (var version in _terrain)
         {
             if (!state.Planets.TryGet(version.Key.Planet, out _))
@@ -374,7 +417,18 @@ public sealed class WorldStateBuilder
             throw new InvalidDataException($"Container {id.Value} has an invalid kind, access or size.");
         }
 
-        if (record.Host.Kind != ContainerHostKind.Player
+        if (record.Host.Kind == ContainerHostKind.ConstructBlock)
+        {
+            var construct = new EntityId(record.Host.Id);
+            if (record.Host != ContainerHost.ConstructBlock(construct, record.Host.Cell)
+                || !state.Constructs.TryGet(construct, out var hostConstruct)
+                || !record.Host.Cell.IsInBounds || hostConstruct.GetBlock(record.Host.Cell).IsEmpty
+                || state.Containers.TryGetOfBlock(construct, record.Host.Cell, record.Kind, out _))
+            {
+                throw new InvalidDataException($"Container {id.Value} is hosted by a missing block or duplicates a container of its block.");
+            }
+        }
+        else if (record.Host.Kind != ContainerHostKind.Player
             || !state.Players.TryGet(record.Host.PlayerId, out _)
             || state.Containers.TryGetOfPlayer(record.Host.PlayerId, record.Kind, out _))
         {
@@ -399,6 +453,54 @@ public sealed class WorldStateBuilder
         {
             container.SetSlot(slot, record.Slots[slot]);
         }
+    }
+
+    private static void LoadBlockEntity(WorldState state, BlockEntityRecord record)
+    {
+        var key = new BlockRef(record.Construct, record.Cell);
+        if (!state.Constructs.TryGet(record.Construct, out var construct)
+            || !record.Cell.IsInBounds || construct.GetBlock(record.Cell).IsEmpty || state.BlockEntities.TryGet(key, out _))
+        {
+            throw new InvalidDataException($"Block state of construct {record.Construct.Value} at {record.Cell} has no block or is duplicated.");
+        }
+
+        if (state.BlockEntities.CountOf(record.Construct) >= ProtocolConstants.MaxBlockEntitiesPerConstruct)
+        {
+            throw new InvalidDataException($"Construct {record.Construct.Value} has more than {ProtocolConstants.MaxBlockEntitiesPerConstruct} block states.");
+        }
+
+        switch (record.State)
+        {
+            case ChestBlockState chest:
+                if (!state.Containers.TryGet(chest.Container, out var container) || container.Kind != ContainerKind.Chest
+                    || container.Host != ContainerHost.ConstructBlock(record.Construct, record.Cell))
+                {
+                    throw new InvalidDataException($"The chest at {record.Cell} of construct {record.Construct.Value} has no chest container hosted by the block.");
+                }
+
+                break;
+            case BedBlockState bed:
+                if (!bed.Owner.IsNone && !state.Players.TryGet(bed.Owner, out _))
+                {
+                    throw new InvalidDataException($"The bed at {record.Cell} of construct {record.Construct.Value} has an unknown owner.");
+                }
+
+                break;
+            default:
+                throw new InvalidDataException($"Block state kind {record.State.Kind} is not supported.");
+        }
+
+        state.BlockEntities.Load(key, record.State);
+    }
+
+    private static void LoadProgress(WorldState state, PlayerProgressRecord record)
+    {
+        if (!state.Players.TryGet(record.Player, out _) || record.RespawnBed is null || state.Progress.TryGet(record.Player, out _))
+        {
+            throw new InvalidDataException($"Progress of player {record.Player.Value} is for an unknown player, has no respawn point or is duplicated.");
+        }
+
+        state.Progress.Load(new PlayerProgress(record.Player, record.RespawnBed));
     }
 
     private static void CheckEntity(WorldState state, EntityId id)

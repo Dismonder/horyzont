@@ -17,6 +17,12 @@ internal static partial class ReplicationLog
     [LoggerMessage(EventId = 8304, Level = LogLevel.Warning, Message = "Player {Player}: buffered operation for construct {Construct} has version {Version} after {Sent}; restarting its state")]
     public static partial void BufferedOperationGap(this ILogger logger, ulong player, ulong construct, uint version, uint sent);
 
+    [LoggerMessage(EventId = 8306, Level = LogLevel.Debug, Message = "Sent the block states of construct {Construct} to player {Player}: the link is live")]
+    public static partial void BlockStatesSentOnLinkLive(this ILogger logger, ulong player, ulong construct);
+
+    [LoggerMessage(EventId = 8307, Level = LogLevel.Debug, Message = "Sent the block states of construct {Construct} after operation {OpId} to {Recipients} recipients")]
+    public static partial void BlockStatesSentForOperation(this ILogger logger, ulong construct, ulong opId, int recipients);
+
     [LoggerMessage(EventId = 8305, Level = LogLevel.Warning, Message = "The replication source returned more than {Capacity} entities; the buffer is full")]
     public static partial void SourceOverflow(this ILogger logger, int capacity);
 }

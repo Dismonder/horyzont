@@ -94,6 +94,41 @@ public sealed class FixtureGenerator
         File.Copy(dir.WorldPath, target);
     }
 
+    /// <summary>
+    /// Writes <c>Fixtures/world-v3-blocks.db</c> (schema version 3, K6-30 D25): a chest with items, an owned bed with its respawn point, a
+    /// lit lamp and an open door in the checkpoint; a door closed by one compound of two function states and an item moved from the bag
+    /// into the chest in the journal tail. Same rules as <see cref="Generate_WorldV1"/>.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "Manual")]
+    public async Task Generate_WorldV3Blocks()
+    {
+        var target = Path.Combine(RepoRoot(), "tests", "Horyzont.Persistence.Tests", "Fixtures", MigrationTests.FixtureV3BlocksName);
+        Assert.False(File.Exists(target), $"{target} exists; delete it first if it really must be regenerated.");
+        using var dir = new TempDirectory();
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 16, 12, 0, 0, TimeSpan.Zero));
+        await using (var h = WorldHarness.CreateNew(dir.WorldPath, world: FunctionalWorldScript.NewWorld(), time: time))
+        {
+            var built = FunctionalWorldScript.Build(h);
+            var gem = WorldFactory.Item(SurvivalContentFactory.GemKey);
+            h.Sim.ApplyServerOperation(new ItemCreateOp(new SlotRef(WorldFactory.BagOf(1), 0), gem, 3, 5, ItemSource.Starter));
+            Assert.True(await h.CheckpointAndPump());
+
+            h.Sim.ApplyServerOperation(new CompoundOp(
+            [
+                new BlockFunctionStateSetOp(built.Construct, FunctionalBlocks.DoorLowCell, FunctionalBlocks.DoorType, 0),
+                new BlockFunctionStateSetOp(built.Construct, FunctionalBlocks.DoorHighCell, FunctionalBlocks.DoorType, 0),
+            ]));
+            h.Sim.ApplyServerOperation(new ItemTransferOp(new SlotRef(WorldFactory.BagOf(1), 0), new SlotRef(built.Chest, 6), gem, 1, 5));
+            await h.FlushAndPump();
+        }
+
+        dir.ReleasePools();
+        RawDb.Execute(dir.WorldPath, "PRAGMA journal_mode = DELETE;");
+        Assert.False(File.Exists(dir.WorldPath + "-wal"));
+        File.Copy(dir.WorldPath, target);
+    }
+
     private static string RepoRoot()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);

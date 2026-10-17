@@ -22,6 +22,7 @@ public sealed partial class ToolInputReader : Node, IToolInputSource
     private static readonly StringName _rotateYaw = new("tool_rotate_yaw");
     private static readonly StringName _rotateUp = new("tool_rotate_up");
     private static readonly StringName _shipMode = new("ship_mode_toggle");
+    private static readonly StringName _blockInteract = new("block_interact");
 
     private bool _primaryPressed;
     private bool _secondaryPressed;
@@ -30,6 +31,7 @@ public sealed partial class ToolInputReader : Node, IToolInputSource
     private int _yaw;
     private int _up;
     private bool _shipModeToggle;
+    private bool _blockInteractPressed;
 
     /// <summary>Gets or sets the gate that blocks tool input while a menu or modal has focus (K3-18); null for none.</summary>
     public IGameplayInputGate? Gate { get; set; }
@@ -88,6 +90,10 @@ public sealed partial class ToolInputReader : Node, IToolInputSource
         {
             _shipModeToggle = true;
         }
+        else if (@event.IsActionPressed(_blockInteract))
+        {
+            _blockInteractPressed = true;
+        }
     }
 
     /// <inheritdoc />
@@ -104,11 +110,12 @@ public sealed partial class ToolInputReader : Node, IToolInputSource
             _yaw = 0;
             _up = 0;
             _shipModeToggle = false;
+            _blockInteractPressed = false;
         }
 
         var frame = new ToolInputFrame(
             _primaryPressed, active && Input.IsActionPressed(_primary), _secondaryPressed, active && Input.IsActionPressed(_secondary),
-            null, _wheel, 0, _material, _yaw, _up, _shipModeToggle);
+            null, _wheel, 0, _material, _yaw, _up, _shipModeToggle, _blockInteractPressed);
         _primaryPressed = false;
         _secondaryPressed = false;
         _wheel = 0;
@@ -116,6 +123,7 @@ public sealed partial class ToolInputReader : Node, IToolInputSource
         _yaw = 0;
         _up = 0;
         _shipModeToggle = false;
+        _blockInteractPressed = false;
         return frame;
     }
 }

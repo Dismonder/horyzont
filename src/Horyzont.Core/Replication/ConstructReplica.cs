@@ -107,6 +107,58 @@ public sealed class ConstructReplica
         return true;
     }
 
+    /// <summary>Applies exactly the next version of a function state change (K6-30): bits 25-27 of the block in the cell.</summary>
+    /// <param name="cell">Target cell; must hold a block of <paramref name="expectedType"/>.</param>
+    /// <param name="expectedType">Block type the cell must hold.</param>
+    /// <param name="state">New function state, 0..7.</param>
+    /// <param name="version">Next version.</param>
+    /// <returns>Whether the change was applied; false leaves the copy unchanged.</returns>
+    public bool TrySetFunctionState(CellPos cell, ushort expectedType, byte state, uint version)
+    {
+        if (version != unchecked(Value.Version + 1) || !HoldsBlock(cell, expectedType, state))
+        {
+            return false;
+        }
+
+        Value.ChangeFunctionState(cell, state);
+        Value.BumpVersion();
+        _tracker.Clear();
+        return true;
+    }
+
+    /// <summary>Applies the function state changes of one operation (a door column, K6-30) as exactly the next version, all or nothing.</summary>
+    /// <param name="ops">The changes; every one targets this construct.</param>
+    /// <param name="version">Next version, shared by all changes.</param>
+    /// <returns>Whether every change was applied; false leaves the copy unchanged.</returns>
+    public bool TrySetFunctionStates(IReadOnlyList<Operations.BlockFunctionStateSetOp> ops, uint version)
+    {
+        ArgumentNullException.ThrowIfNull(ops);
+        if (ops.Count == 0 || version != unchecked(Value.Version + 1))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < ops.Count; i++)
+        {
+            if (ops[i].Construct != Value.Id || !HoldsBlock(ops[i].Cell, ops[i].ExpectedType, ops[i].State))
+            {
+                return false;
+            }
+        }
+
+        for (var i = 0; i < ops.Count; i++)
+        {
+            Value.ChangeFunctionState(ops[i].Cell, ops[i].State);
+        }
+
+        Value.BumpVersion();
+        _tracker.Clear();
+        return true;
+    }
+
+    private bool HoldsBlock(CellPos cell, ushort expectedType, byte state) =>
+        state < BlockState.FunctionStateCount && expectedType != 0 && cell.IsInBounds && Value.GetBlock(cell).TypeId == expectedType;
+
     /// <summary>Applies the next reparent counter without changing the block version.</summary>
     /// <param name="parent">New parent.</param>
     /// <param name="parentSeq">Next counter.</param>

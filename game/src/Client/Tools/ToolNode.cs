@@ -1,6 +1,7 @@
 using Godot;
 
 using Horyzont.Client;
+using Horyzont.Client.Blocks;
 using Horyzont.Client.Session;
 using Horyzont.Client.Ships;
 using Horyzont.Client.Tools;
@@ -47,6 +48,7 @@ public sealed partial class ToolNode : Node, IClientSessionListener
     private ILogger<ToolNode>? _logger;
     private IToolWorldView? _view;
     private ShipModeSwitch? _ship;
+    private BlockInteraction? _interaction;
     private readonly Dictionary<uint, Intent> _sent = [];
     private ToolKind? _hotbarTool;
     private long _tick;
@@ -88,6 +90,19 @@ public sealed partial class ToolNode : Node, IClientSessionListener
 
     /// <summary>Gets the physics tick of the latest press of the ship mode key (the HUD shows its result for a short time).</summary>
     public long LastShipToggleTick { get; private set; }
+
+    /// <summary>
+    /// Gets or sets the states of the functional blocks (chests, beds) that the interaction key reads: the replicated map of a remote
+    /// client, the world state itself in a process that runs the server. Set with <see cref="Inventory"/> before the server hello; the
+    /// key does nothing without them.
+    /// </summary>
+    public IBlockEntityView? BlockEntities { get; set; }
+
+    /// <summary>Gets the interaction key handler (K6-30); null while there is no controller or no inventory.</summary>
+    public BlockInteraction? Interaction => _interaction;
+
+    /// <summary>Gets the result of the latest press of the interaction key.</summary>
+    public BlockInteractionResult? LastBlockInteraction { get; private set; }
 
     /// <summary>Gets the block palette of the server hello; null before it.</summary>
     public BlockPalette? Blocks { get; private set; }
@@ -204,6 +219,10 @@ public sealed partial class ToolNode : Node, IClientSessionListener
             _loggers!.CreateLogger<ToolController>());
         var content = BlockContentTable.Create(hello.BlockTypes, BlockDefinitions ?? new Dictionary<string, BlockTypeDef>());
         _ship = new ShipModeSwitch(_view, new SessionIntentSender(_client.Session), Pending, content, _rules);
+        _interaction = Inventory is { Chests: { } chests } && BlockEntities is { } entities
+            ? new BlockInteraction(_view, new SessionIntentSender(_client.Session), Pending, content, entities, chests, hello.YourPlayer, _rules)
+            : null;
+        LastBlockInteraction = null;
         LastShipToggle = null;
         _accepted = 0;
         _rejected = 0;
@@ -250,6 +269,7 @@ public sealed partial class ToolNode : Node, IClientSessionListener
         _sent.Clear();
         Controller = null;
         _ship = null;
+        _interaction = null;
         Pending = null;
         _view = null;
         _prediction = null;
@@ -283,6 +303,7 @@ public sealed partial class ToolNode : Node, IClientSessionListener
         {
             controller.Update(frame, default, tick);
             _ship?.ClearAim();
+            _interaction?.ClearAim();
             return;
         }
 
@@ -291,10 +312,25 @@ public sealed partial class ToolNode : Node, IClientSessionListener
         {
             controller.Update(frame, default, tick);
             _ship?.ClearAim();
+            _interaction?.ClearAim();
             return;
         }
 
         controller.Update(frame, ray, tick);
+        if (_interaction is { } interaction)
+        {
+            // A press is handled at once; the hint under the crosshair is refreshed at a low rate.
+            if (frame.BlockInteract)
+            {
+                LastBlockInteraction = interaction.Interact(ray, tick);
+            }
+
+            if (tick % ShipObserveEveryTicks == 0)
+            {
+                interaction.Observe(ray);
+            }
+        }
+
         if (_ship is { } ship)
         {
             // The raycast for the developer HUD runs at 10 Hz; a press of the key is handled at once.

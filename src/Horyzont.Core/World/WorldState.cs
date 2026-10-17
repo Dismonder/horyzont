@@ -1,9 +1,11 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 
+using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
+using Horyzont.Core.Progress;
 using Horyzont.Core.Space;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -47,6 +49,8 @@ public sealed class WorldState
         Markers = new MarkerStore(_tracker);
         ItemTypes = new ItemTypeRegistry();
         Containers = new ContainerStore(_tracker);
+        BlockEntities = new BlockEntityStore(_tracker);
+        Progress = new PlayerProgressStore(_tracker);
     }
 
     /// <summary>World id.</summary>
@@ -111,6 +115,12 @@ public sealed class WorldState
 
     /// <summary>Container ids (<c>next_container_id</c>).</summary>
     public ContainerIdAllocator ContainerIds { get; }
+
+    /// <summary>States of functional blocks (K6-30).</summary>
+    public BlockEntityStore BlockEntities { get; }
+
+    /// <summary>Progress of the players (K6-30; only the respawn point).</summary>
+    public PlayerProgressStore Progress { get; }
 
     /// <summary>True between <see cref="CaptureCheckpoint"/> and its completion or requeue.</summary>
     public bool IsCheckpointInFlight => _inFlight is not null;
@@ -444,6 +454,38 @@ public sealed class WorldState
             }
         }
 
+        var entityKeys = _tracker.BlockEntities.ToArray();
+        Array.Sort(entityKeys);
+        var upsertedEntities = new List<BlockEntityRecord>();
+        var removedEntities = new List<BlockRef>();
+        foreach (var key in entityKeys)
+        {
+            if (BlockEntities.TryGet(key, out var entityState))
+            {
+                upsertedEntities.Add(new BlockEntityRecord(key.Construct, key.Cell, entityState));
+            }
+            else
+            {
+                removedEntities.Add(key);
+            }
+        }
+
+        var progressIds = _tracker.Progress.ToArray();
+        Array.Sort(progressIds, static (a, b) => a.Value.CompareTo(b.Value));
+        var upsertedProgress = new List<PlayerProgressRecord>();
+        var removedProgress = new List<PlayerId>();
+        foreach (var id in progressIds)
+        {
+            if (Progress.TryGet(id, out var progress))
+            {
+                upsertedProgress.Add(new PlayerProgressRecord(id, progress.RespawnBed));
+            }
+            else
+            {
+                removedProgress.Add(id);
+            }
+        }
+
         _tracker.Clear();
         _inFlight = new WorldCheckpoint(
             LastOpId, CurrentTick, EntityIds.NextValue, PlayerIds.NextValue,
@@ -453,6 +495,10 @@ public sealed class WorldState
             NextContainerId = ContainerIds.NextValue,
             UpsertedContainers = upsertedContainers,
             RemovedContainers = removedContainers,
+            UpsertedBlockEntities = upsertedEntities,
+            RemovedBlockEntities = removedEntities,
+            UpsertedProgress = upsertedProgress,
+            RemovedProgress = removedProgress,
         };
         return _inFlight;
     }
@@ -531,6 +577,26 @@ public sealed class WorldState
         foreach (var id in failed.RemovedContainers)
         {
             _tracker.MarkContainer(id);
+        }
+
+        foreach (var entity in failed.UpsertedBlockEntities)
+        {
+            _tracker.MarkBlockEntity(new BlockRef(entity.Construct, entity.Cell));
+        }
+
+        foreach (var key in failed.RemovedBlockEntities)
+        {
+            _tracker.MarkBlockEntity(key);
+        }
+
+        foreach (var progress in failed.UpsertedProgress)
+        {
+            _tracker.MarkProgress(progress.Player);
+        }
+
+        foreach (var id in failed.RemovedProgress)
+        {
+            _tracker.MarkProgress(id);
         }
 
         _inFlight = null;

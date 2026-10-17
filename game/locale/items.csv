@@ -34,3 +34,11 @@ INV_SLOT_BODY,Body,Tułów
 INV_SLOT_LEGS,Legs,Nogi
 INV_SLOT_BACK,Backpack slot,Plecak
 INV_SLOT_MODULE,Suit module,Moduł kombinezonu
+INV_CHEST,Chest,Skrzynia
+INV_CHEST_SHARED,Shared - everyone may use it,Wspólna - każdy może używać
+INV_CHEST_PRIVATE,Private - only you,Prywatna - tylko ty
+INV_ACCESS_TO_PRIVATE,Make private,Zrób prywatną
+INV_ACCESS_TO_SHARED,Make shared,Zrób wspólną
+INV_TAKE_ALL,Take all,Weź wszystko
+INV_QUICK_STACK,Put matching,Odłóż pasujące
+INV_QUICK_STACK_NEARBY,Put matching into nearby chests,Odłóż pasujące do skrzyń w pobliżu

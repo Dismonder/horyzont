@@ -33,4 +33,16 @@ internal static partial class InventoryLog
 
     [LoggerMessage(EventId = 9309, Level = LogLevel.Information, Message = "Item registry received: {Count} types, the largest id {MaxId}")]
     public static partial void RegistryReceived(this ILogger logger, int count, ushort maxId);
+
+    [LoggerMessage(EventId = 9310, Level = LogLevel.Debug, Message = "Chest container {Container} requested")]
+    public static partial void ChestRequested(this ILogger logger, ulong container);
+
+    [LoggerMessage(EventId = 9311, Level = LogLevel.Debug, Message = "Chest container {Container} opened")]
+    public static partial void ChestOpened(this ILogger logger, ulong container);
+
+    [LoggerMessage(EventId = 9312, Level = LogLevel.Debug, Message = "Chest container {Container} closed by the player")]
+    public static partial void ChestClosed(this ILogger logger, ulong container);
+
+    [LoggerMessage(EventId = 9313, Level = LogLevel.Information, Message = "Chest container {Container} refused or ended by the server: {Reason}")]
+    public static partial void ChestRefused(this ILogger logger, ulong container, RejectReason reason);
 }

@@ -302,6 +302,64 @@ public sealed class ChunkMesherTests
 
         return input;
     }
+
+    [Fact]
+    public void OpenDoor_NoCollision_DrawsOpenPanel()
+    {
+        var table = FunctionalMeshContent.Door();
+
+        var data = FunctionalMeshContent.Mesh(table, Input((5, 5, 5, FunctionalMeshContent.PackedFunctional(1))));
+
+        // An open door lets the player through: nothing to collide with, no full cube, a thin panel as a prefab shape inside the cell.
+        Assert.Equal(0, data.CollisionFaces.Length);
+        Assert.True(data.Cubes.IsEmpty);
+        Assert.False(data.Shapes.IsEmpty);
+        foreach (var p in data.Shapes.Positions)
+        {
+            Assert.InRange(p.X, 5f, 6f);
+            Assert.InRange(p.Y, 5f, 6f);
+            Assert.InRange(p.Z, 5f, 6f);
+        }
+    }
+
+    [Fact]
+    public void ClosedDoor_Collides()
+    {
+        var table = FunctionalMeshContent.Door();
+
+        var closed = FunctionalMeshContent.Mesh(table, Input((5, 5, 5, FunctionalMeshContent.PackedFunctional(0))));
+        var open = FunctionalMeshContent.Mesh(table, Input((5, 5, 5, FunctionalMeshContent.PackedFunctional(1))));
+
+        // A closed door is a cube like any other; the same cell opened is not (the contrast keeps this test from passing on a mesher that ignores the state).
+        Assert.Equal(36, closed.CollisionFaces.Length);
+        Assert.Equal(6, Quads(closed));
+        Assert.True(closed.Shapes.IsEmpty);
+        Assert.Equal(0, open.CollisionFaces.Length);
+    }
+
+    [Fact]
+    public void LitLamp_ListedInLightCells()
+    {
+        var table = FunctionalMeshContent.Lamp();
+
+        var data = FunctionalMeshContent.Mesh(table, Input((5, 5, 5, FunctionalMeshContent.PackedFunctional(1)), (6, 5, 5, FunctionalMeshContent.PackedFunctional(0))));
+
+        Assert.Equal([new CellPos(5, 5, 5)], data.LightCells.ToArray());
+        Assert.False(data.Cubes.IsEmpty);
+        Assert.True(data.CollisionFaces.Length > 0);
+    }
+
+    [Fact]
+    public void UnlitLamp_NotListed()
+    {
+        var table = FunctionalMeshContent.Lamp();
+
+        var data = FunctionalMeshContent.Mesh(table, Input((5, 5, 5, FunctionalMeshContent.PackedFunctional(0)), (9, 9, 9, FunctionalMeshContent.PackedFunctional(1))));
+
+        // Only the lit lamp is listed; the unlit one alone lists nothing.
+        Assert.Equal([new CellPos(9, 9, 9)], data.LightCells.ToArray());
+        Assert.Empty(FunctionalMeshContent.Mesh(table, Input((5, 5, 5, FunctionalMeshContent.PackedFunctional(0)))).LightCells.ToArray());
+    }
 }
 
 internal static class BuiltInShapes

@@ -1,3 +1,5 @@
+using Horyzont.Core.Intents;
+
 using Microsoft.Extensions.Logging;
 
 namespace Horyzont.Server.Inventory;
@@ -25,4 +27,7 @@ internal static partial class InventoryLog
 
     [LoggerMessage(EventId = 8407, Level = LogLevel.Warning, Message = "Player {PlayerId} is missing some of its containers; the existing ones are sent")]
     public static partial void ContainersIncomplete(this ILogger logger, ulong playerId);
+
+    [LoggerMessage(EventId = 8408, Level = LogLevel.Debug, Message = "Ended the subscription of player {PlayerId} to chest container {ContainerId}: {Reason}")]
+    public static partial void SubscriptionEnded(this ILogger logger, ulong playerId, ulong containerId, RejectReason reason);
 }

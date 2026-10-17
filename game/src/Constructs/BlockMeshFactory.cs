@@ -19,8 +19,9 @@ public sealed class BlockMeshFactory(BlockRenderTable table)
     /// <summary>Creates the mesh of one block, rendered like in a chunk (a lone cube, so all six faces).</summary>
     /// <param name="typeId">Block type id of the world registry.</param>
     /// <param name="orientation">Orientation 0-23.</param>
+    /// <param name="functionState">Function state 0-7: a door with a state other than 0 is the thin <c>builtin:door_open</c> panel.</param>
     /// <returns>The mesh, or null when the id is empty.</returns>
-    public ArrayMesh? CreateBlockMesh(ushort typeId, byte orientation)
+    public ArrayMesh? CreateBlockMesh(ushort typeId, byte orientation, byte functionState = 0)
     {
         if (typeId == 0)
         {
@@ -28,7 +29,7 @@ public sealed class BlockMeshFactory(BlockRenderTable table)
         }
 
         _input.Reset(new Horyzont.Core.Checkpoints.ConstructChunkKey(default, default), 0);
-        _input.Cells[ChunkMeshInput.Index(0, 0, 0)] = BlockState.Create(typeId, orientation).Packed;
+        _input.Cells[ChunkMeshInput.Index(0, 0, 0)] = BlockState.Create(typeId, orientation).WithFunctionState(functionState).Packed;
         using var output = new ChunkMeshData();
         _mesher.Build(_input, _table, output);
         return ChunkMeshUploader.CreateMesh(output);

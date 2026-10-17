@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Numerics;
 
+using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
@@ -508,6 +509,10 @@ public static class MessageCodec
                 w.WriteVarUInt(unsub.Container.Value);
                 break;
 
+            case BlockEntityStates bes:
+                WriteBlockEntityStates(w, bes);
+                break;
+
             case ItemRegistry ireg:
                 if (ireg.Entries.Count > ProtocolConstants.MaxItemTypes)
                 {
@@ -926,6 +931,9 @@ public static class MessageCodec
             case MessageType.ContainerUnsubscribe:
                 return new ContainerUnsubscribe(new ContainerId(r.ReadVarUInt()));
 
+            case MessageType.BlockEntityStates:
+                return ReadBlockEntityStates(ref r);
+
             case MessageType.ItemRegistry:
                 ulong entryCount = r.ReadVarUInt();
                 if (entryCount > ProtocolConstants.MaxItemTypes)
@@ -944,6 +952,61 @@ public static class MessageCodec
             default:
                 throw new ProtocolViolationException($"Unhandled message type {type}.");
         }
+    }
+
+    private static void WriteBlockEntityStates(ByteWriter w, BlockEntityStates states)
+    {
+        ArgumentNullException.ThrowIfNull(states.Entries);
+        if (states.Entries.Count > ProtocolConstants.MaxBlockEntitiesPerConstruct)
+        {
+            throw new ArgumentException(
+                $"BlockEntityStates entries count {states.Entries.Count} exceeds limit {ProtocolConstants.MaxBlockEntitiesPerConstruct}.", nameof(states));
+        }
+
+        w.WriteVarUInt(states.Construct.Value);
+        w.WriteVarUInt((ulong)states.Entries.Count);
+        BlockRef previous = default;
+        for (int i = 0; i < states.Entries.Count; i++)
+        {
+            var entry = states.Entries[i];
+            var key = new BlockRef(states.Construct, entry.Cell);
+            if (i > 0 && key.CompareTo(previous) <= 0)
+            {
+                throw new ArgumentException("BlockEntityStates entries must be strictly ascending by cell (chunk, then index in the chunk).", nameof(states));
+            }
+
+            previous = key;
+            CoreCodecPrimitives.WriteCellPos(w, entry.Cell);
+            CoreCodecPrimitives.WriteBlockEntityState(w, entry.State, allowNone: false);
+        }
+    }
+
+    private static BlockEntityStates ReadBlockEntityStates(ref ByteReader r)
+    {
+        var construct = new EntityId(r.ReadVarUInt());
+        ulong count = r.ReadVarUInt();
+        if (count > ProtocolConstants.MaxBlockEntitiesPerConstruct)
+        {
+            throw new ProtocolViolationException($"BlockEntityStates entries count {count} exceeds limit {ProtocolConstants.MaxBlockEntitiesPerConstruct}.");
+        }
+
+        var entries = new BlockEntityEntry[(int)count];
+        BlockRef previous = default;
+        for (int i = 0; i < entries.Length; i++)
+        {
+            var cell = CoreCodecPrimitives.ReadCellPos(ref r);
+            var state = CoreCodecPrimitives.ReadBlockEntityState(ref r, allowNone: false)!;
+            var key = new BlockRef(construct, cell);
+            if (i > 0 && key.CompareTo(previous) <= 0)
+            {
+                throw new ProtocolViolationException("BlockEntityStates entries are not strictly ascending by cell.");
+            }
+
+            previous = key;
+            entries[i] = new BlockEntityEntry(cell, state);
+        }
+
+        return new BlockEntityStates(construct, entries);
     }
 
     /// <summary>Length of a whole <see cref="ShipStatus"/> frame: type, format version and 30 payload bytes.</summary>

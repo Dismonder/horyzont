@@ -157,6 +157,9 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
             return false;
         }
 
+        // A compound operation (a chest placed with its container and state, a door column) changes a construct only through its
+        // construct part (K6-30 D14); the server already sends the projection, and the projection of a projection is itself.
+        var operation = OperationConstructs.TryGetConstructPart(message.Operation, out var part) ? part : message.Operation;
         var result = message.ConstructChanges[0];
         var id = result.Construct;
         if (_resync.Contains(id) || _transfers.ContainsKey(id))
@@ -165,7 +168,7 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
             return false;
         }
 
-        if (message.Operation is ConstructCreateOp create)
+        if (operation is ConstructCreateOp create)
         {
             if (create.Construct != id || result.Version != 1 || result.Removed || _set.TryGet(id, out _))
             {
@@ -193,12 +196,15 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
                 return false;
             }
 
-            var applied = message.Operation switch
+            var applied = operation switch
             {
                 BlockSetOp set when set.Construct == id && !result.Removed => replica.TrySet(set.Cell, set.Block, result.Version),
                 BlockClearOp clear when clear.Construct == id => replica.TrySet(clear.Cell, BlockState.Empty, result.Version),
                 ShipModeSetOp mode when mode.Construct == id && !result.Removed => replica.TrySetMode(
                     mode.Mode, mode.Parent, mode.ParentSeq, mode.Origin, mode.Rotation, result.Version),
+                BlockFunctionStateSetOp state when state.Construct == id && !result.Removed => replica.TrySetFunctionState(
+                    state.Cell, state.ExpectedType, state.State, result.Version),
+                CompoundOp column when !result.Removed && TryGetFunctionStates(column, out var states) => replica.TrySetFunctionStates(states, result.Version),
                 _ => false,
             };
             if (!applied)
@@ -214,9 +220,27 @@ public sealed class ConstructMirror(TimeProvider time) : IConstructSource
             }
         }
 
-        EditApplied?.Invoke(message.Operation, message.ConstructChanges);
+        EditApplied?.Invoke(operation, message.ConstructChanges);
         Changed?.Invoke(id);
         return true;
+    }
+
+    private static bool TryGetFunctionStates(CompoundOp column, [NotNullWhen(true)] out IReadOnlyList<BlockFunctionStateSetOp>? states)
+    {
+        var list = new List<BlockFunctionStateSetOp>(column.Components.Count);
+        foreach (var component in column.Components)
+        {
+            if (component is not BlockFunctionStateSetOp state)
+            {
+                states = null;
+                return false;
+            }
+
+            list.Add(state);
+        }
+
+        states = list;
+        return list.Count > 0;
     }
 
     /// <summary>Withdraws an entity and releases its staging bytes.</summary>

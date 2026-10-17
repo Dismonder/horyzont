@@ -55,4 +55,19 @@ public enum OperationKind : byte
 
     /// <summary><see cref="ContainerCreateOp"/>.</summary>
     ContainerCreate = 35,
+
+    /// <summary><see cref="ContainerRemoveOp"/>.</summary>
+    ContainerRemove = 36,
+
+    /// <summary><see cref="ContainerConfigureOp"/>.</summary>
+    ContainerConfigure = 37,
+
+    /// <summary><see cref="BlockEntitySetOp"/>.</summary>
+    BlockEntitySet = 40,
+
+    /// <summary><see cref="RespawnPointSetOp"/>.</summary>
+    RespawnPointSet = 44,
+
+    /// <summary><see cref="BlockFunctionStateSetOp"/>.</summary>
+    BlockFunctionStateSet = 49,
 }

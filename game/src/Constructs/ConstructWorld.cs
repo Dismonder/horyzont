@@ -10,6 +10,7 @@ using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Operations;
 using Horyzont.Core.World.Constructs;
+using Horyzont.Game.Client.Blocks;
 
 using Microsoft.Extensions.Logging;
 
@@ -41,7 +42,10 @@ public sealed partial class ConstructWorld : Node3D
     private readonly Queue<ConstructChunkKey> _collisionOrder = new();
     private readonly Dictionary<ConstructChunkKey, (RemeshJob Job, Vector3[] Points)> _collisionPoints = [];
 
+    private readonly List<ChunkLamp> _lampScratch = [];
+
     private IConstructSource _source = null!;
+    private BlockRenderTable _table = null!;
     private BlockVisuals? _visuals;
     private ConstructWorldOptions _options = new();
     private ILogger<ConstructWorld> _logger = null!;
@@ -63,6 +67,9 @@ public sealed partial class ConstructWorld : Node3D
     /// Also raised after two worker failures for the current edit, with the old mesh and collision kept.
     /// </summary>
     public event Action<EntityId, ChunkPos>? ChunkMeshApplied;
+
+    /// <summary>The lights of the lit lamps (K6-30 D7); null in collision-only mode.</summary>
+    public BlockLights? Lights { get; private set; }
 
     /// <summary>Main-thread time spent applying mesher results (diagnostics for the frame-time tests).</summary>
     public ApplyTimings Timings { get; } = new();
@@ -179,12 +186,19 @@ public sealed partial class ConstructWorld : Node3D
         }
 
         _source = source;
+        _table = table;
         _visuals = options.Mode == ConstructWorldMode.CollisionOnly ? null : visuals;
         _options = options;
         _logger = logger;
         _queue = new ChunkRemeshQueue(options.MaxInFlightJobs) { Distance = DistanceOf };
         _pool = new MeshWorkerPool(table, options.WorkerCount, options.MaxInFlightJobs, logger, BeforeBuild, options.TimeProvider);
         _initialized = true;
+        if (_visuals is not null)
+        {
+            Lights = new BlockLights(this) { Name = "Lights" };
+            AddChild(Lights);
+        }
+
         if (table.MissingKeyCount > 0)
         {
             LogMissingBlockKeys(table.MissingKeyCount, string.Join(", ", table.UnknownKeys));
@@ -211,7 +225,7 @@ public sealed partial class ConstructWorld : Node3D
             Unload(id);
         }
 
-        if (!_frameFixed && operation is ConstructCreateOp create)
+        if (!_frameFixed && OperationConstructs.TryGetConstructPart(operation, out var part) && part is ConstructCreateOp create)
         {
             _frame = create.Parent; // only until RebuildAll names the shown frame; later creates must not switch it
         }
@@ -481,6 +495,7 @@ public sealed partial class ConstructWorld : Node3D
 
         var chunk = entry.Node.GetOrCreateChunk(key.Chunk);
         chunk.ApplyMesh(prepared.Cubes, prepared.Shapes, _visuals);
+        ReadLamps(slot, chunk);
         Timings.AddUpload(uploadStart);
         if (points is null)
         {
@@ -499,6 +514,43 @@ public sealed partial class ConstructWorld : Node3D
         {
             _collisionPoints[key] = (slot.Job, points); // keeps its place in the queue, newest data wins
         }
+    }
+
+    /// <summary>Collects the lit lamps of all loaded chunks with the position of their light in the Godot world (main thread).</summary>
+    /// <param name="into">Receives one entry per lit lamp.</param>
+    public void CollectLamps(List<LampInstance> into)
+    {
+        ArgumentNullException.ThrowIfNull(into);
+        foreach (var entry in _entries.Values)
+        {
+            foreach (var chunk in entry.Node.Chunks)
+            {
+                foreach (var lamp in chunk.Lamps)
+                {
+                    into.Add(new LampInstance(chunk.ToGlobal(lamp.LocalPosition), lamp.Light));
+                }
+            }
+        }
+    }
+
+    private void ReadLamps(MeshJobSlot slot, ConstructChunkNode chunk)
+    {
+        _lampScratch.Clear();
+        var chunkPos = slot.Job.Key.Chunk;
+        foreach (var cell in slot.Output.LightCells)
+        {
+            var x = cell.X - (chunkPos.X * ConstructChunk.Size);
+            var y = cell.Y - (chunkPos.Y * ConstructChunk.Size);
+            var z = cell.Z - (chunkPos.Z * ConstructChunk.Size);
+            var state = new BlockState(slot.Input.Cells[ChunkMeshInput.Index(x, y, z)]);
+            var light = _table.Get(state.TypeId).Light;
+            if (light is not null)
+            {
+                _lampScratch.Add(new ChunkLamp(new Vector3(x + 0.5f, y + 0.5f, z + 0.5f), light));
+            }
+        }
+
+        chunk.SetLamps(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_lampScratch));
     }
 
     private void ApplyNextCollision()

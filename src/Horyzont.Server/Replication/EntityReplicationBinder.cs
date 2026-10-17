@@ -21,6 +21,7 @@ public sealed class EntityReplicationBinder : IServerTickParticipant, IServerPla
     private readonly ReplicationRanges _ranges;
     private ServerRuntime? _runtime;
     private EntityReplication? _replication;
+    private BlockEntityReplicator? _blockEntities;
 
     /// <summary>Initializes a new instance of the <see cref="EntityReplicationBinder"/> class.</summary>
     /// <param name="sourceFactory">Creates the entity source once the world has started; null while it is not available yet.</param>
@@ -65,7 +66,11 @@ public sealed class EntityReplicationBinder : IServerTickParticipant, IServerPla
     public void OnTick(ServerRuntime runtime) => Ensure(runtime)?.OnTick(runtime);
 
     /// <inheritdoc />
-    public void OnShutdown(ServerRuntime runtime) => _replication?.OnShutdown(runtime);
+    public void OnShutdown(ServerRuntime runtime)
+    {
+        _blockEntities?.Detach();
+        _replication?.OnShutdown(runtime);
+    }
 
     /// <inheritdoc />
     public void OnPlayerReady(PlayerId player) => Ensure(_runtime)?.OnPlayerReady(player);
@@ -92,6 +97,9 @@ public sealed class EntityReplicationBinder : IServerTickParticipant, IServerPla
         _replication = new EntityReplication(
             runtime.Session, runtime.Simulation, source, _snapshotBudget, SendBudget, _time, _loggers.CreateLogger<EntityReplication>(),
             _ranges, player => !runtime.IsLocalPlayer(player));
+
+        // After the replication: both listen to the applied operations, and the block states follow the operation they belong to (D15).
+        _blockEntities = new BlockEntityReplicator(runtime.Simulation, _replication.Constructs, _loggers.CreateLogger<BlockEntityReplicator>());
         return _replication;
     }
 }

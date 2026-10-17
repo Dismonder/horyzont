@@ -30,6 +30,9 @@ internal sealed class InventoryRig
 
     public RecordingSender Sender { get; } = new();
 
+    /// <summary>The client messages of the node (subscriptions to chests).</summary>
+    public List<Message> Sent { get; } = [];
+
     public ScriptedInput Input { get; } = new();
 
     public long Now { get; set; }
@@ -40,7 +43,7 @@ internal sealed class InventoryRig
         var content = SurvivalContentLoader.Load();
         var node = new InventoryNode { Name = "Inventory" };
         var rig = new InventoryRig(node, content);
-        node.Initialize(content, ItemVisuals.Load(), rig.Sender, _ => { }, NullLoggerFactory.Instance, render: true, recaptureMouse);
+        node.Initialize(content, ItemVisuals.Load(), rig.Sender, _ => { }, NullLoggerFactory.Instance, render: true, recaptureMouse, rig.Sent.Add);
         node.InputSource = rig.Input;
         node.Clock = () => rig.Now;
         scene.Add(node);

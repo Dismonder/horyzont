@@ -9,7 +9,8 @@
     { "key": "ship_console", "color": "#3C6E8F" },
     { "key": "ship_engine", "color": "#D9822B" },
     { "key": "ship_tank", "color": "#C9D24A" },
-    { "key": "ship_dark", "color": "#3A3F47" }
+    { "key": "ship_dark", "color": "#3A3F47" },
+    { "key": "lamp", "color": "#F2E3B3" }
   ],
   "blocks": [
     { "key": "core:stone_block", "shape": "cube", "mass": 2400, "material": "stone" },
@@ -29,6 +30,11 @@
     { "key": "core:ship_hull", "shape": "cube", "mass": 200, "material": "metal" },
     { "key": "core:ship_window", "shape": "cube", "mass": 150, "material": "ship_glass" },
     { "key": "core:ship_door", "shape": "cube", "mass": 200, "material": "ship_dark", "function": { "kind": "door" } },
-    { "key": "core:ship_refuel_station", "shape": "cube", "mass": 1500, "material": "ship_engine", "function": { "kind": "refuel_station" } }
+    { "key": "core:ship_refuel_station", "shape": "cube", "mass": 1500, "material": "ship_engine", "function": { "kind": "refuel_station" } },
+    { "key": "core:chest_wood", "shape": "cube", "mass": 80, "material": "wood", "function": { "kind": "chest", "slots": 20 } },
+    { "key": "core:chest_metal", "shape": "cube", "mass": 200, "material": "metal", "function": { "kind": "chest", "slots": 40 } },
+    { "key": "core:bed", "shape": "mesh", "mesh": "builtin:slab", "mass": 120, "material": "ship_fabric", "function": { "kind": "bed" } },
+    { "key": "core:lamp", "shape": "cube", "mass": 20, "material": "lamp", "function": { "kind": "light", "range": 8, "color": "#FFD9A0", "energy": 1.5 } },
+    { "key": "core:wood_door", "shape": "cube", "mass": 100, "material": "wood", "function": { "kind": "door" } }
   ]
 }

@@ -2,6 +2,7 @@ using System.Globalization;
 
 using Godot;
 
+using Horyzont.Client.Blocks;
 using Horyzont.Client.Platform;
 using Horyzont.Client.Replication;
 using Horyzont.Client.Session;
@@ -12,6 +13,7 @@ using Horyzont.Core.Protocol;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.World;
 using Horyzont.Game.Client;
+using Horyzont.Game.Client.Blocks;
 using Horyzont.Game.Client.Character;
 using Horyzont.Game.Client.Inventory;
 using Horyzont.Game.Client.Sky;
@@ -511,12 +513,14 @@ public sealed partial class GameComposition
         tools.Initialize(client, server, () => factory.Terrain!.Service, player, rules, env.Loggers);
         tools.BlockDefinitions = ShipBlockDefinitions(BlockContentLoader.Load());
         tools.Inventory = inventory;
+        tools.BlockEntities = new SharedBlockEntities(() => server.State); // the world is shared with the server: its block states are read directly
         tools.DigAccepted += inventory.OnDigAccepted;
         if (env.Render)
         {
             tools.AddChild(new TerrainToolPreview(tools));
             tools.AddChild(new BlockGhostPreview(tools));
             tools.AddChild(new ToolHud(tools));
+            tools.AddChild(new BlockPromptHud(tools));
         }
 
         if (demo)

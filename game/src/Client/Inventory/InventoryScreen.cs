@@ -34,6 +34,8 @@ public sealed partial class InventoryScreen : CanvasLayer
     private Label? _help;
     private Label? _refusal;
     private Button? _discard;
+    private Button? _quickStack;
+    private ChestPanel? _chestPanel;
     private PanelContainer? _confirm;
     private Label? _confirmText;
     private Button? _yes;
@@ -64,6 +66,12 @@ public sealed partial class InventoryScreen : CanvasLayer
 
     /// <summary>Gets the greyed equipment placeholders.</summary>
     public IReadOnlyList<SlotView> EquipmentViews => _equipment;
+
+    /// <summary>Gets the panel of the open chest; null before the screen entered the tree.</summary>
+    public ChestPanel? Chest => _chestPanel;
+
+    /// <summary>Gets the button that puts the matching items into the chests nearby (shown while no chest panel is open).</summary>
+    public Button? QuickStackButton => _quickStack;
 
     /// <summary>Gets the tooltip.</summary>
     public ItemTooltip Tooltip => _tooltip;
@@ -112,6 +120,10 @@ public sealed partial class InventoryScreen : CanvasLayer
         var body = new HBoxContainer();
         body.AddThemeConstantOverride("separation", 24);
         column.AddChild(body);
+
+        // The chest panel stands next to the backpack, so a large chest does not push the backpack off the screen.
+        _chestPanel = new ChestPanel(_node, NewSlot);
+        body.AddChild(_chestPanel);
 
         var left = new VBoxContainer();
         left.AddThemeConstantOverride("separation", 8);
@@ -169,6 +181,14 @@ public sealed partial class InventoryScreen : CanvasLayer
         _help = new Label { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         HudTheme.StyleLabel(_help, 13, HudTheme.Muted);
         footer.AddChild(_help);
+        _quickStack = new Button { Name = "QuickStack" };
+        HudTheme.StyleButton(_quickStack, HudTheme.AccentTool);
+        _quickStack.Pressed += () =>
+        {
+            _node.Chests.QuickStack();
+            _node.Refresh();
+        };
+        footer.AddChild(_quickStack);
         _discard = new Button();
         HudTheme.StyleButton(_discard, HudTheme.Danger);
         _discard.Pressed += () =>
@@ -319,6 +339,9 @@ public sealed partial class InventoryScreen : CanvasLayer
         _help!.Text = Tr("INV_HELP");
         _discard!.Text = Tr("INV_DISCARD");
         _discard.Visible = interaction.CanDiscard && !interaction.AwaitingDiscardConfirmation;
+        _chestPanel!.Update(held, interaction);
+        _quickStack!.Text = Tr("INV_QUICK_STACK_NEARBY");
+        _quickStack.Visible = !_node.Chests.IsOpen;
         _yes!.Text = Tr("INV_YES");
         _no!.Text = Tr("INV_NO");
 
@@ -332,7 +355,8 @@ public sealed partial class InventoryScreen : CanvasLayer
             _confirm!.Visible = false;
         }
 
-        _refusal!.Text = interaction.LastRefusal == RejectReason.None ? string.Empty : Tr(ToolHud.RejectKey(interaction.LastRefusal));
+        var refusal = _node.Chests.LastRefusal != RejectReason.None ? _node.Chests.LastRefusal : interaction.LastRefusal;
+        _refusal!.Text = refusal == RejectReason.None ? string.Empty : Tr(ToolHud.RejectKey(refusal));
 
         if (held is { } stack)
         {

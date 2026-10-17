@@ -96,4 +96,10 @@ public enum RejectReason : byte
 
     /// <summary>The container is not accessible to the player (K6-29).</summary>
     ContainerLocked = 43,
+
+    /// <summary>The block or its container belongs to another player: a private chest, the bed of another player (K6-30).</summary>
+    NotOwner = 54,
+
+    /// <summary>The container of the block still holds items, so the block cannot be removed (K6-30).</summary>
+    ContainerNotEmpty = 57,
 }

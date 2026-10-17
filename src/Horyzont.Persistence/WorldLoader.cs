@@ -169,6 +169,8 @@ public static class WorldLoader
                 : 1);
             ReadMarkers(connection, builder);
             ReadContainers(connection, builder);
+            ReadBlockEntities(connection, builder);
+            ReadPlayerProgress(connection, builder);
             ReadTerrainVersions(connection, builder);
             ReadShipStates(connection, builder, orphanShipStates);
             var state = builder.Build();
@@ -386,6 +388,43 @@ public static class WorldLoader
             }
 
             builder.AddContainer(record);
+        }
+    }
+
+    private static void ReadBlockEntities(SqliteConnection connection, WorldStateBuilder builder)
+    {
+        using var command = Sql.Command(
+            connection, null,
+            "SELECT construct_id, cell_x, cell_y, cell_z, data FROM block_entities ORDER BY construct_id, cell_x, cell_y, cell_z;");
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var construct = Sql.FromDb(reader.GetInt64(0));
+            var cell = new CellPos(checked((int)reader.GetInt64(1)), checked((int)reader.GetInt64(2)), checked((int)reader.GetInt64(3)));
+            var record = StateCodec.DecodeBlockEntityBlob((byte[])reader.GetValue(4));
+            if (record.Construct.Value != construct || record.Cell != cell)
+            {
+                throw new InvalidDataException($"Block state row {construct}/{cell} holds the state of {record.Construct.Value}/{record.Cell}.");
+            }
+
+            builder.AddBlockEntity(record);
+        }
+    }
+
+    private static void ReadPlayerProgress(SqliteConnection connection, WorldStateBuilder builder)
+    {
+        using var command = Sql.Command(connection, null, "SELECT player_id, data FROM player_progress ORDER BY player_id;");
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var player = Sql.FromDb(reader.GetInt64(0));
+            var record = StateCodec.DecodePlayerProgressBlob((byte[])reader.GetValue(1));
+            if (record.Player.Value != player)
+            {
+                throw new InvalidDataException($"Progress row {player} holds the progress of player {record.Player.Value}.");
+            }
+
+            builder.AddPlayerProgress(record);
         }
     }
 

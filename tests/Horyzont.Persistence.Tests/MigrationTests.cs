@@ -13,6 +13,7 @@ public sealed class MigrationTests
 {
     public const string FixtureName = "world-v1.db";
     public const string FixtureV3Name = "world-v3.db";
+    public const string FixtureV3BlocksName = "world-v3-blocks.db";
 
     // Newest production schema; the test migrations come right after it (K5-21 added M0002).
     private static int Latest => MigrationRunner.All.Count;
@@ -95,6 +96,39 @@ public sealed class MigrationTests
         Assert.True(sim.State.Containers.TryGet(WorldFactory.HotbarOf(1), out var hotbar));
         Assert.Equal(WorldFactory.Item(SurvivalContentFactory.GemKey), hotbar.GetSlot(1).Type);
         Assert.Equal(loaded.JournalTail[^1].Id, sim.State.LastOpId);
+        Assert.False(Directory.Exists(dir.BackupsPath) && Directory.GetFiles(dir.BackupsPath).Length > 0);
+    }
+
+    [Fact]
+    public void FixtureWorldV3Blocks_CopiedToTemp_LoadsAndReplays()
+    {
+        var fixture = Path.Combine(AppContext.BaseDirectory, "Fixtures", FixtureV3BlocksName);
+        Assert.True(File.Exists(fixture), $"Missing {fixture}; generate it once with FixtureGenerator (Category=Manual) and commit it.");
+        using var dir = new TempDirectory();
+        File.Copy(fixture, dir.WorldPath);
+        Assert.Equal(3L, RawDb.Long(dir.WorldPath, "PRAGMA user_version;"));
+
+        var (loaded, sim, _) = WorldHarness.LoadAndReplay(dir.WorldPath);
+
+        // The checkpoint holds the chest with its stone, the owned bed with its respawn point, a lit lamp and an open door; the tail closes
+        // the door (one compound of two function states) and moves a gem from the bag into the chest.
+        Assert.Equal(2, loaded.JournalTail.Count);
+        Assert.Equal(loaded.JournalTail[^1].Id, sim.State.LastOpId);
+        Assert.Equal(2, sim.State.BlockEntities.Count);
+        var construct = Assert.Single(sim.State.Constructs.All);
+        Assert.True(sim.State.BlockEntities.TryGet(new Core.BlockEntities.BlockRef(construct.Id, FunctionalWorld.ChestCell), out var chestState));
+        var chest = Assert.IsType<Core.BlockEntities.ChestBlockState>(chestState);
+        Assert.True(sim.State.Containers.TryGet(chest.Container, out var container));
+        Assert.Equal(Core.Items.ContainerKind.Chest, container.Kind);
+        Assert.Equal(WorldFactory.Item(SurvivalContentFactory.StoneKey), container.GetSlot(3).Type);
+        Assert.Equal(new Core.Items.ItemStack(WorldFactory.Item(SurvivalContentFactory.GemKey), 1), container.GetSlot(6));
+        Assert.True(sim.State.Progress.TryGet(new Core.Ids.PlayerId(1), out var progress));
+        Assert.Equal(FunctionalWorld.Bed(construct.Id), progress.RespawnBed);
+        Assert.Equal(1, construct.GetBlock(FunctionalWorld.LampCell).FunctionState);
+        Assert.Equal(0, construct.GetBlock(FunctionalBlocks.DoorLowCell).FunctionState);
+        Assert.Equal(0, construct.GetBlock(FunctionalBlocks.DoorHighCell).FunctionState);
+        Assert.True(sim.State.Containers.TryGet(WorldFactory.BagOf(1), out var bag));
+        Assert.Equal(2, bag.GetSlot(0).Count);
         Assert.False(Directory.Exists(dir.BackupsPath) && Directory.GetFiles(dir.BackupsPath).Length > 0);
     }
 

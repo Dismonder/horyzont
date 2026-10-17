@@ -135,6 +135,89 @@ public sealed class BlockTypeCatalogTests
     [InlineData("{ \"kind\": \"pulse_drive\", \"speedCap\": \"fast\" }", "$.blocks[0].function.speedCap")]
     public void BlockCatalog_InvalidFunction_ThrowsWithJsonPath(string function, string path) => AssertInvalid(FunctionBlock(function), path);
 
+    [Fact]
+    public void Parse_RepoContent_HasChestBedLampDoor()
+    {
+        var catalog = BlockTypeCatalog.Parse(File.ReadAllBytes(Path.Combine(RepoRoot(), "game", "content", "blocks", "blocks.json")), new FakeResolver());
+
+        // The tuning numbers (masses, slots, light) are data; the test pins only the shape of the content (K6-30 DECISION-11).
+        var woodChest = Shipped(catalog, "core:chest_wood").Def;
+        var metalChest = Shipped(catalog, "core:chest_metal").Def;
+        var bed = Shipped(catalog, "core:bed").Def;
+        var lamp = Shipped(catalog, "core:lamp");
+        var door = Shipped(catalog, "core:wood_door").Def;
+
+        Assert.Equal(BlockFunctionKind.Chest, woodChest.Function.Kind);
+        Assert.Equal(BlockFunctionKind.Chest, metalChest.Function.Kind);
+        Assert.InRange(woodChest.Function.ContainerSlots, 1, 256);
+        Assert.InRange(metalChest.Function.ContainerSlots, 1, 256);
+        Assert.True(metalChest.Function.ContainerSlots > woodChest.Function.ContainerSlots);
+        Assert.Equal(BlockFunctionKind.Bed, bed.Function.Kind);
+        Assert.Equal(BlockShape.Mesh, bed.Shape);
+        Assert.Equal(BlockFunctionKind.Light, lamp.Def.Function.Kind);
+        Assert.Equal(BlockFunctionKind.Door, door.Function.Kind);
+
+        Assert.All([woodChest, metalChest, bed, lamp.Def, door], def => Assert.True(def.MassKg > 0f && float.IsFinite(def.MassKg)));
+        Assert.NotNull(lamp.Light);
+        Assert.True(lamp.Light.RangeMeters > 0f && float.IsFinite(lamp.Light.RangeMeters));
+        Assert.True(lamp.Light.Energy > 0f && float.IsFinite(lamp.Light.Energy));
+        Assert.Contains(catalog.Materials, m => m.Key == "lamp");
+        Assert.All(["core:chest_wood", "core:chest_metal", "core:bed", "core:wood_door"], key => Assert.Null(Shipped(catalog, key).Light));
+
+        // Every new type has a translation row.
+        var csv = File.ReadAllLines(Path.Combine(RepoRoot(), "game", "locale", "blocks.csv"));
+        var names = csv.Skip(1).Select(line => line.Split(',')[0]).ToHashSet();
+        Assert.All(["core:chest_wood", "core:chest_metal", "core:bed", "core:lamp", "core:wood_door"], key => Assert.Contains(Shipped(catalog, key).NameKey, names));
+    }
+
+    private static BlockTypeContent Shipped(BlockTypeCatalog catalog, string key) =>
+        catalog.TryGet(key, out var block) ? block : throw new InvalidOperationException($"{key} is not in blocks.json");
+
+    private static byte MaterialId(BlockTypeCatalog catalog, string key) => catalog.Materials.Single(m => m.Key == key).Id;
+
+    [Fact]
+    public void Parse_ChestBedAndLightFunctions_AreRead()
+    {
+        static BlockTypeContent Content(string function) => Parse(FunctionBlock(function)).TryGet("a:b", out var b) ? b : throw new InvalidOperationException();
+
+        Assert.Equal(BlockFunction.CreateChest(20), Content("{ \"kind\": \"chest\", \"slots\": 20 }").Def.Function);
+        Assert.Equal(BlockFunction.CreateChest(256), Content("{ \"kind\": \"chest\", \"slots\": 256 }").Def.Function);
+        Assert.Equal(BlockFunction.Bed, Content("{ \"kind\": \"bed\" }").Def.Function);
+        var lamp = Content("{ \"kind\": \"light\", \"range\": 8, \"color\": \"#FFD9A0\", \"energy\": 1.5 }");
+        Assert.Equal(BlockFunction.Light, lamp.Def.Function);
+        Assert.Equal(new BlockLightDef(8f, 0xFFD9A0FFu, 1.5f), lamp.Light);
+        Assert.Null(Content("{ \"kind\": \"bed\" }").Light);
+    }
+
+    [Fact]
+    public void Parse_ChestWithoutSlots_Throws()
+    {
+        Parse(FunctionBlock("{ \"kind\": \"chest\", \"slots\": 4 }"));
+
+        AssertInvalid(FunctionBlock("{ \"kind\": \"chest\" }"), "$.blocks[0].function.slots");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"chest\", \"slots\": 0 }"), "$.blocks[0].function.slots");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"chest\", \"slots\": 2.5 }"), "$.blocks[0].function.slots");
+    }
+
+    [Fact]
+    public void Parse_ChestSlotsOver256_Throws()
+    {
+        Parse(FunctionBlock("{ \"kind\": \"chest\", \"slots\": 256 }"));
+
+        AssertInvalid(FunctionBlock("{ \"kind\": \"chest\", \"slots\": 257 }"), "$.blocks[0].function.slots");
+    }
+
+    [Fact]
+    public void Parse_LightWithInvalidColor_Throws()
+    {
+        Parse(FunctionBlock("{ \"kind\": \"light\", \"range\": 8, \"color\": \"#FFD9A0\", \"energy\": 1.5 }"));
+
+        AssertInvalid(FunctionBlock("{ \"kind\": \"light\", \"range\": 8, \"color\": \"nope\", \"energy\": 1.5 }"), "$.blocks[0].function.color");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"light\", \"range\": 8, \"energy\": 1.5 }"), "$.blocks[0].function.color");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"light\", \"range\": 0, \"color\": \"#FFD9A0\", \"energy\": 1.5 }"), "$.blocks[0].function.range");
+        AssertInvalid(FunctionBlock("{ \"kind\": \"light\", \"range\": 8, \"color\": \"#FFD9A0\", \"energy\": -1 }"), "$.blocks[0].function.energy");
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("\"mass\": 0, ")]
@@ -177,7 +260,8 @@ public sealed class BlockTypeCatalogTests
             Assert.Equal(function, block.Def.Function);
         }
 
-        Assert.Equal(expected.Length, catalog.BlockTypeKeys.Count);
+        // Later packages add content after the ship blocks, so the test pins the ship keys and not the count.
+        Assert.True(catalog.BlockTypeKeys.Count >= expected.Length);
         Assert.Equal(BlockShape.Mesh, catalog.Blocks.Single(b => b.Def.Key == "core:ship_seat").Def.Shape);
     }
 
@@ -186,8 +270,9 @@ public sealed class BlockTypeCatalogTests
     {
         var catalog = BlockTypeCatalog.Parse(File.ReadAllBytes(Path.Combine(RepoRoot(), "game", "content", "blocks", "blocks.json")), new FakeResolver());
 
-        Assert.Equal(ShipFixtures.BlockKeys, catalog.BlockTypeKeys);
-        foreach (var block in catalog.Blocks)
+        // The fixture lists the ship blocks, which come first in blocks.json; the blocks added after them are not fixture blocks.
+        Assert.Equal(ShipFixtures.BlockKeys, catalog.BlockTypeKeys.Take(ShipFixtures.BlockKeys.Length));
+        foreach (var block in catalog.Blocks.Where(b => ShipFixtures.BlockKeys.Contains(b.Def.Key)))
         {
             var fixture = ShipFixtures.Def(block.Def.Key);
             Assert.Equal(block.Def.MassKg, fixture.MassKg);

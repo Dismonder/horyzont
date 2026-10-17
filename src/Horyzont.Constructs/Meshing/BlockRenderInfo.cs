@@ -12,13 +12,21 @@ public readonly struct BlockRenderInfo
     /// <param name="hasCollision">Whether the block contributes to the collision mesh.</param>
     /// <param name="isMissing">Whether the type is drawn as core:missing.</param>
     /// <param name="mesh">Prefab mesh for <see cref="BlockShape.Mesh"/>.</param>
-    public BlockRenderInfo(BlockShape shape, byte materialId, bool hasCollision, bool isMissing, ShapeMesh? mesh)
+    /// <param name="function">Function kind of the block (K6-30: an open door and a lit lamp are drawn differently).</param>
+    /// <param name="openMesh">Mesh of a door in the open state, null for other blocks.</param>
+    /// <param name="light">Light parameters of a lamp, null for other blocks.</param>
+    public BlockRenderInfo(
+        BlockShape shape, byte materialId, bool hasCollision, bool isMissing, ShapeMesh? mesh,
+        BlockFunctionKind function = BlockFunctionKind.None, ShapeMesh? openMesh = null, BlockLightDef? light = null)
     {
         Shape = shape;
         MaterialId = materialId;
         HasCollision = hasCollision;
         IsMissing = isMissing;
         Mesh = mesh;
+        Function = function;
+        OpenMesh = openMesh;
+        Light = light;
     }
 
     /// <summary>Shape; 0 (default) is an empty cell.</summary>
@@ -38,6 +46,15 @@ public readonly struct BlockRenderInfo
 
     /// <summary>Prefab mesh for <see cref="BlockShape.Mesh"/>, otherwise null.</summary>
     public ShapeMesh? Mesh { get; }
+
+    /// <summary>Function kind of the block.</summary>
+    public BlockFunctionKind Function { get; }
+
+    /// <summary>Panel drawn in place of an open door (function state other than 0), otherwise null; it has no collision.</summary>
+    public ShapeMesh? OpenMesh { get; }
+
+    /// <summary>Light of a lit lamp (range, colour, energy), otherwise null; the game puts a light on each lit lamp cell.</summary>
+    public BlockLightDef? Light { get; }
 
     /// <summary>True for an empty cell.</summary>
     public bool IsEmpty => Shape == 0;

@@ -17,10 +17,12 @@ public sealed class ClientReplication : IClientSessionListener
     /// <param name="send">Sends a client message to the server (reliable for resync, unreliable for acknowledgements).</param>
     /// <param name="constructs">Mirror of constructs; null when the world is shared with the server.</param>
     /// <param name="time">Clock of the resync retries; the system clock when omitted.</param>
-    public ClientReplication(Action<Message> send, ConstructMirror? constructs, TimeProvider? time = null)
+    /// <param name="blockEntities">The states of the functional blocks (message 46, K6-30); null when the client does not track them.</param>
+    public ClientReplication(Action<Message> send, ConstructMirror? constructs, TimeProvider? time = null, Blocks.ClientBlockEntities? blockEntities = null)
     {
         ArgumentNullException.ThrowIfNull(send);
         _send = send;
+        BlockEntities = blockEntities;
         Constructs = constructs;
         Entities = new EntityMirror(time);
         Decoder = new SnapshotDecoder(id => _send(new SnapshotAck(id)));
@@ -41,6 +43,9 @@ public sealed class ClientReplication : IClientSessionListener
     /// <summary>Gets the construct mirror; null for a client that shares the server world.</summary>
     public ConstructMirror? Constructs { get; }
 
+    /// <summary>Gets the states of the functional blocks; null when not tracked.</summary>
+    public Blocks.ClientBlockEntities? BlockEntities { get; }
+
     /// <inheritdoc />
     public void OnMessage(Message message)
     {
@@ -55,13 +60,24 @@ public sealed class ClientReplication : IClientSessionListener
             case EntityDespawn despawn:
                 Entities.Apply(message);
                 Constructs?.Remove(despawn.Entity);
+                BlockEntities?.Remove(despawn.Entity);
                 break;
             case ConstructRemoved removed:
                 Entities.Apply(message);
                 Constructs?.Remove(removed.Construct);
+                BlockEntities?.Remove(removed.Construct);
                 break;
             case ConstructState part:
+                if (part.PartIndex == 0)
+                {
+                    // A new full state of a construct starts: its block states follow it (K6-30 D15).
+                    BlockEntities?.Remove(part.Header.Id);
+                }
+
                 Constructs?.Apply(part);
+                break;
+            case BlockEntityStates states:
+                BlockEntities?.Apply(states);
                 break;
             case OperationApplied operation:
                 Entities.Apply(operation);
@@ -76,6 +92,7 @@ public sealed class ClientReplication : IClientSessionListener
         Decoder.OnDisconnected(code);
         Entities.Clear();
         Constructs?.Clear();
+        BlockEntities?.Clear();
     }
 
     private void Request(Core.Ids.EntityId entity) => _send(new ResyncRequest(entity));

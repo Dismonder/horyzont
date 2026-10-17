@@ -173,13 +173,16 @@ public sealed partial class BlockTypeCatalog
         }
 
         var mass = ReadPositiveFloat(element, path, "mass");
-        var function = element.TryGetProperty("function", out var functionElement)
-            ? ParseFunction(functionElement, $"{path}.function")
-            : BlockFunction.None;
+        var function = BlockFunction.None;
+        BlockLightDef? light = null;
+        if (element.TryGetProperty("function", out var functionElement))
+        {
+            function = ParseFunction(functionElement, $"{path}.function", out light);
+        }
 
         var local = key[(key.IndexOf(':', StringComparison.Ordinal) + 1)..];
         var nameKey = "BLOCK_" + local.Replace('/', '_').ToUpperInvariant();
-        return new BlockTypeContent(new BlockTypeDef(key, shape, materialId, collision, mass, function), nameKey, mesh);
+        return new BlockTypeContent(new BlockTypeDef(key, shape, materialId, collision, mass, function), nameKey, mesh, light);
     }
 
     private static uint ParseColor(string text, string path)
@@ -189,9 +192,10 @@ public sealed partial class BlockTypeCatalog
         return text.Length == 7 ? (value << 8) | 0xFFu : value;
     }
 
-    private static BlockFunction ParseFunction(JsonElement element, string path)
+    private static BlockFunction ParseFunction(JsonElement element, string path, out BlockLightDef? light)
     {
         Require(element.ValueKind == JsonValueKind.Object, path, "must be an object");
+        light = null;
         var kind = ReadString(element, path, "kind");
         BlockFunction function;
         string[] allowed;
@@ -243,6 +247,22 @@ public sealed partial class BlockTypeCatalog
                 function = BlockFunction.RefuelStation;
                 allowed = [];
                 break;
+            case "chest":
+                function = BlockFunction.CreateChest(ReadChestSlots(element, path));
+                allowed = ["slots"];
+                break;
+            case "bed":
+                function = BlockFunction.Bed;
+                allowed = [];
+                break;
+            case "light":
+                function = BlockFunction.Light;
+                light = new BlockLightDef(
+                    ReadPositiveFloat(element, path, "range"),
+                    ParseColor(ReadString(element, path, "color"), $"{path}.color"),
+                    ReadPositiveFloat(element, path, "energy"));
+                allowed = ["range", "color", "energy"];
+                break;
             default:
                 throw Invalid($"{path}.kind", $"unknown function kind '{kind}'");
         }
@@ -253,6 +273,16 @@ public sealed partial class BlockTypeCatalog
         }
 
         return function;
+    }
+
+    private static ushort ReadChestSlots(JsonElement parent, string path)
+    {
+        Require(parent.TryGetProperty("slots", out var value), $"{path}.slots", "is required");
+        var slots = 0;
+        Require(
+            value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out slots) && slots is >= 1 and <= ProtocolConstants.MaxContainerSlots,
+            $"{path}.slots", $"must be an integer 1..{ProtocolConstants.MaxContainerSlots}");
+        return (ushort)slots;
     }
 
     private static byte ReadTier(JsonElement parent, string path)

@@ -8,6 +8,7 @@ namespace Horyzont.Game.Constructs;
 /// <summary>One 16³ chunk of a construct: an optional render mesh and an optional static collision body.</summary>
 public sealed partial class ConstructChunkNode : Node3D
 {
+    private readonly List<ChunkLamp> _lamps = [];
     private MeshInstance3D? _meshInstance;
     private StaticBody3D? _body;
     private CollisionShape3D? _shape;
@@ -38,6 +39,20 @@ public sealed partial class ConstructChunkNode : Node3D
 
     /// <summary>True when the node holds neither a mesh nor a collision body.</summary>
     public bool IsEmpty => _meshInstance is null && _body is null;
+
+    /// <summary>The lit lamps of this chunk (K6-30); <see cref="Client.Blocks.BlockLights"/> turns the nearest ones into lights.</summary>
+    public IReadOnlyList<ChunkLamp> Lamps => _lamps;
+
+    /// <summary>Replaces the lit lamps of the chunk (main thread).</summary>
+    /// <param name="lamps">The lamps from the latest mesher result.</param>
+    public void SetLamps(ReadOnlySpan<ChunkLamp> lamps)
+    {
+        _lamps.Clear();
+        foreach (var lamp in lamps)
+        {
+            _lamps.Add(lamp);
+        }
+    }
 
     /// <summary>Replaces the render mesh with the mesher output (main thread). Without visuals (collision-only mode) no mesh is kept.</summary>
     /// <param name="cubes">Prepared cube surface arrays, or null.</param>

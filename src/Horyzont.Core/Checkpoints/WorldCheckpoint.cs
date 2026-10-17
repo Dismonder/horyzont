@@ -1,3 +1,4 @@
+using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Ids;
 using Horyzont.Core.World.Markers;
 using Horyzont.Core.World.Ships;
@@ -70,4 +71,16 @@ public sealed record WorldCheckpoint(
 
     /// <summary>Containers removed, by id.</summary>
     public IReadOnlyList<ContainerId> RemovedContainers { get; init; } = [];
+
+    /// <summary>States of functional blocks that exist and changed (K6-30), by construct and cell.</summary>
+    public IReadOnlyList<BlockEntityRecord> UpsertedBlockEntities { get; init; } = [];
+
+    /// <summary>States of functional blocks removed (K6-30), by construct and cell.</summary>
+    public IReadOnlyList<BlockRef> RemovedBlockEntities { get; init; } = [];
+
+    /// <summary>Progress records that exist and changed (K6-30), by player.</summary>
+    public IReadOnlyList<PlayerProgressRecord> UpsertedProgress { get; init; } = [];
+
+    /// <summary>Progress records removed (K6-30), by player.</summary>
+    public IReadOnlyList<PlayerId> RemovedProgress { get; init; } = [];
 }

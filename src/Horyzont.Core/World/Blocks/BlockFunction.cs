@@ -8,9 +8,10 @@ namespace Horyzont.Core.World.Blocks;
 /// <param name="TorqueNewtonMeters">Stabilizer torque, N·m.</param>
 /// <param name="FuelCapacity">Fuel tank capacity, units.</param>
 /// <param name="SpeedCapMetersPerSecond">Pulse drive speed cap, m/s.</param>
+/// <param name="ContainerSlots">Slots of the container of a <see cref="BlockFunctionKind.Chest"/>, 1..256.</param>
 public readonly record struct BlockFunction(
     BlockFunctionKind Kind, SeatRole Seat = SeatRole.None, byte Tier = 0, float ThrustNewtons = 0f,
-    float TorqueNewtonMeters = 0f, float FuelCapacity = 0f, float SpeedCapMetersPerSecond = 0f)
+    float TorqueNewtonMeters = 0f, float FuelCapacity = 0f, float SpeedCapMetersPerSecond = 0f, ushort ContainerSlots = 0)
 {
     /// <summary>A plain block.</summary>
     public static BlockFunction None => default;
@@ -26,6 +27,17 @@ public readonly record struct BlockFunction(
 
     /// <summary>Gets the function of a refuel station (K5-24).</summary>
     public static BlockFunction RefuelStation => new(BlockFunctionKind.RefuelStation);
+
+    /// <summary>A bed (K6-30).</summary>
+    public static BlockFunction Bed => new(BlockFunctionKind.Bed);
+
+    /// <summary>A lamp (K6-30); the light parameters are visual content, not Core.</summary>
+    public static BlockFunction Light => new(BlockFunctionKind.Light);
+
+    /// <summary>A chest (K6-30).</summary>
+    /// <param name="slots">Slots of its container, 1..256.</param>
+    /// <returns>The function.</returns>
+    public static BlockFunction CreateChest(ushort slots) => new(BlockFunctionKind.Chest, ContainerSlots: slots);
 
     /// <summary>A seat block.</summary>
     /// <param name="role">Passenger or navigator.</param>

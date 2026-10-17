@@ -60,3 +60,15 @@ REJECT_INVENTORY_FULL,Inventory full,Ekwipunek pełny
 REJECT_NOT_ENOUGH_ITEMS,Not enough items,Za mało przedmiotów
 REJECT_CONTAINER_CHANGED,The slot changed,Slot się zmienił
 REJECT_CONTAINER_LOCKED,Container locked,Pojemnik zablokowany
+REJECT_NOT_OWNER,Not yours,To nie twoje
+REJECT_CONTAINER_NOT_EMPTY,The chest is not empty,Skrzynia nie jest pusta
+PROMPT_OPEN_CHEST,[E] Open chest,[E] Otwórz skrzynię
+PROMPT_CHEST_LOCKED,Private chest,Skrzynia prywatna
+PROMPT_OPEN_DOOR,[E] Open door,[E] Otwórz drzwi
+PROMPT_CLOSE_DOOR,[E] Close door,[E] Zamknij drzwi
+PROMPT_LIGHT_ON,[E] Switch the light on,[E] Włącz światło
+PROMPT_LIGHT_OFF,[E] Switch the light off,[E] Wyłącz światło
+PROMPT_SLEEP,[E] Sleep (set respawn point),[E] Śpij (ustaw punkt odrodzenia)
+PROMPT_OWN_BED,Your bed,Twoje łóżko
+PROMPT_BED_OCCUPIED,Bed in use,Łóżko zajęte
+PROMPT_UNKNOWN,[E],[E]

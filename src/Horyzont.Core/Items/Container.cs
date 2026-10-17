@@ -8,7 +8,7 @@ namespace Horyzont.Core.Items;
 /// </summary>
 public sealed class Container
 {
-    private readonly ItemStack[] _slots;
+    private ItemStack[] _slots;
 
     internal Container(ContainerId id, ContainerKind kind, ContainerHost host, PlayerId owner, ContainerAccess access, ushort size, uint version)
     {
@@ -34,7 +34,7 @@ public sealed class Container
     public PlayerId Owner { get; }
 
     /// <summary>Access.</summary>
-    public ContainerAccess Access { get; }
+    public ContainerAccess Access { get; private set; }
 
     /// <summary>Number of slots.</summary>
     public int Size => _slots.Length;
@@ -53,4 +53,15 @@ public sealed class Container
     internal void SetSlot(int slot, ItemStack stack) => _slots[slot] = stack;
 
     internal void BumpVersion() => Version++;
+
+    /// <summary>Resizes the container and sets its access (operation 37); the slots above a smaller size are empty, the caller checked.</summary>
+    internal void Configure(ushort size, ContainerAccess access)
+    {
+        if (size != _slots.Length)
+        {
+            Array.Resize(ref _slots, size);
+        }
+
+        Access = access;
+    }
 }

@@ -39,6 +39,11 @@ public sealed class GeneratorSanityTests
         Assert.Contains(intents, i => i is RemoveBlockIntent);
         Assert.Contains(intents, i => i is ShipModeIntent);
         Assert.Contains(intents, i => i is RefuelIntent);
+        Assert.Contains(intents, i => i is QuickStackIntent);
+        Assert.Contains(intents, i => i is TakeAllIntent);
+        Assert.Contains(intents, i => i is BlockInteractIntent);
+        Assert.Contains(intents, i => i is BlockConfigIntent { Config: TeleportNameConfig });
+        Assert.Contains(intents, i => i is BlockConfigIntent { Config: ContainerAccessConfig });
         Assert.Contains(intents, i => i is PlaceBlockIntent { Target: ConstructFaceTarget });
         Assert.Contains(intents, i => i is PlaceBlockIntent { Target: TerrainTarget });
     }

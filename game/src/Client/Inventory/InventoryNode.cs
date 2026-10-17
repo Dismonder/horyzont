@@ -51,6 +51,9 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
     /// <summary>Gets the mouse logic of the inventory screen.</summary>
     public InventoryInteraction Interaction { get; private set; } = null!;
 
+    /// <summary>Gets the chest that is open on the screen (K6-30): E on a chest opens the screen with its panel.</summary>
+    public ChestSession Chests { get; private set; } = null!;
+
     /// <summary>Gets the toasts.</summary>
     public PickupToastFeed Feed { get; } = new();
 
@@ -90,7 +93,14 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
                     client.Session.Send(new ContainerSubscribe(id));
                 }
             },
-            loggers, render, recaptureMouse);
+            loggers, render, recaptureMouse,
+            message =>
+            {
+                if (client.Session.State == ClientState.InGame)
+                {
+                    client.Session.Send(message);
+                }
+            });
     }
 
     /// <summary>Gives the node its parts without a session; tests send intents to a fake.</summary>
@@ -101,9 +111,10 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
     /// <param name="loggers">Loggers.</param>
     /// <param name="render">Whether the UI is built.</param>
     /// <param name="recaptureMouse">Takes the mouse back for the game when the screen closes.</param>
+    /// <param name="send">Sends a client message (the subscription to a chest); messages are dropped when null.</param>
     public void Initialize(
         SurvivalContent content, ItemVisuals visuals, IIntentSender sender, Action<ContainerId> requestState, ILoggerFactory loggers, bool render,
-        Action? recaptureMouse)
+        Action? recaptureMouse, Action<Message>? send = null)
     {
         ArgumentNullException.ThrowIfNull(content);
         ArgumentNullException.ThrowIfNull(visuals);
@@ -117,8 +128,12 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
         Visuals = visuals;
         ToolMap = visuals.ToolMap();
         Inventory = new ClientInventory(content.Items, requestState, loggers.CreateLogger<ClientInventory>());
-        Interaction = new InventoryInteraction(Inventory, sender, loggers.CreateLogger<InventoryInteraction>());
+        Chests = new ChestSession(Inventory, sender, send ?? (static _ => { }), loggers.CreateLogger<ChestSession>());
+        Interaction = new InventoryInteraction(Inventory, sender, loggers.CreateLogger<InventoryInteraction>(), Chests);
         Inventory.Changed += Refresh;
+        Chests.Changed += Refresh;
+        Chests.Opened += OnChestOpened;
+        Chests.Closed += OnChestClosed;
         Inventory.OwnedCountChanged += (type, delta) => Feed.OnOwnedCountChanged(type, delta, Clock());
     }
 
@@ -146,6 +161,7 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
         {
             _client.AddListener(Inventory);
             _client.AddListener(Interaction);
+            _client.AddListener(Chests);
             _client.AddListener(this);
         }
     }
@@ -157,6 +173,7 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
         {
             _client.RemoveListener(Inventory);
             _client.RemoveListener(Interaction);
+            _client.RemoveListener(Chests);
             _client.RemoveListener(this);
         }
     }
@@ -247,6 +264,7 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
 
         Interaction.Cancel();
         IsOpen = false;
+        Chests.Close();
         if (ModalGate?.IsBlocked != true)
         {
             _recaptureMouse?.Invoke();
@@ -254,6 +272,22 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
 
         Refresh();
         OpenChanged?.Invoke();
+    }
+
+    private void OnChestOpened()
+    {
+        Open();
+        if (!IsOpen)
+        {
+            // The screen cannot open now (a modal screen has focus, the bag is unknown): do not keep following the chest.
+            Chests.Close();
+        }
+    }
+
+    private void OnChestClosed()
+    {
+        // The server ended the subscription (the player walked away, the chest became private or was removed): the screen goes with it.
+        Close();
     }
 
     /// <summary>Escape on the open screen: withdraws the discard question, then the hand, then closes.</summary>

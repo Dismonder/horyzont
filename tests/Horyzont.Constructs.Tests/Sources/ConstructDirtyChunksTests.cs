@@ -1,8 +1,10 @@
 using System.Numerics;
 
 using Horyzont.Constructs.Sources;
+using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
+using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.World.Constructs;
 
@@ -145,5 +147,65 @@ public sealed class ConstructDirtyChunksTests
             Assert.Empty(removed);
             Assert.Empty(reposed);
         }
+    }
+
+    private static ItemCreateOp ItemOp() => new(new SlotRef(new ContainerId(1), 0), new ItemTypeId(1), 1, 500, ItemSource.Admin);
+
+    private static CompoundOp PlaceChest(Operation constructPart) => new(
+    [
+        new ContainerCreateOp(
+            new ContainerId(9), ContainerKind.Chest, ContainerHost.ConstructBlock(_id, new CellPos(20, 8, 40)), new PlayerId(1), ContainerAccess.Shared, 4),
+        new BlockEntitySetOp(_id, new CellPos(20, 8, 40), 2, new ChestBlockState(new ContainerId(9))),
+        constructPart,
+    ]);
+
+    [Fact]
+    public void Collect_FunctionStateSet_DirtiesCell()
+    {
+        var inside = Run(new BlockFunctionStateSetOp(_id, new CellPos(20, 8, 40), 5, 1), new ConstructChange(_id, 6, false));
+        var onFace = Run(new BlockFunctionStateSetOp(_id, new CellPos(15, 8, 8), 5, 1), new ConstructChange(_id, 7, false));
+
+        // An open door stops hiding the faces of its neighbours, so a cell on a chunk face dirties the chunk across it as well (as BlockSet does).
+        Assert.Equal([new ChunkPos(1, 0, 2)], Chunks(inside.Dirty));
+        Assert.Equal([new ChunkPos(0, 0, 0), new ChunkPos(1, 0, 0)], Chunks(onFace.Dirty));
+        Assert.Empty(inside.Created);
+        Assert.Empty(inside.Removed);
+    }
+
+    [Fact]
+    public void Collect_CompoundWithBlockSet_DirtiesCell()
+    {
+        var placed = Run(PlaceChest(new BlockSetOp(_id, new CellPos(20, 8, 40), BlockState.Create(2, 0))), new ConstructChange(_id, 5, false));
+        var created = Run(PlaceChest(new ConstructCreateOp(_id, FrameRef.Of(new PlanetId(1)), Vector3.Zero, Quaternion.Identity, new CellPos(20, 8, 40), _stone)));
+        var cleared = Run(
+            new CompoundOp([new ContainerRemoveOp(new ContainerId(9)), new BlockEntitySetOp(_id, new CellPos(20, 8, 40), 2, null), new BlockClearOp(_id, new CellPos(20, 8, 40))]),
+            new ConstructChange(_id, 6, false));
+        var doorColumn = Run(
+            new CompoundOp(
+            [
+                new BlockFunctionStateSetOp(_id, new CellPos(3, 15, 8), 5, 1),
+                new BlockFunctionStateSetOp(_id, new CellPos(3, 16, 8), 5, 1),
+            ]),
+            new ConstructChange(_id, 7, false));
+
+        Assert.Equal([new ChunkPos(1, 0, 2)], Chunks(placed.Dirty));
+        Assert.Equal([_id], created.Created);
+        Assert.Equal([new ChunkPos(1, 0, 2)], Chunks(cleared.Dirty));
+        Assert.Equal([new ChunkPos(0, 0, 0), new ChunkPos(0, 1, 0)], Chunks(doorColumn.Dirty).Distinct().ToArray());
+    }
+
+    [Fact]
+    public void Collect_ItemOnlyCompound_Nothing()
+    {
+        var transfer = new ItemTransferOp(new SlotRef(new ContainerId(1), 0), new SlotRef(new ContainerId(2), 3), new ItemTypeId(1), 1, 500);
+        var itemsOnly = Run(new CompoundOp([ItemOp(), transfer]), new ConstructChange(_id, 5, false));
+        var withBlock = Run(new CompoundOp([ItemOp(), new BlockSetOp(_id, new CellPos(20, 8, 40), _stone)]), new ConstructChange(_id, 5, false));
+
+        // The items of a compound move nothing in a construct; the control shows the construct component of the same shape is found.
+        Assert.Equal([new ChunkPos(1, 0, 2)], Chunks(withBlock.Dirty));
+        Assert.Empty(itemsOnly.Dirty);
+        Assert.Empty(itemsOnly.Created);
+        Assert.Empty(itemsOnly.Removed);
+        Assert.Empty(itemsOnly.Reposed);
     }
 }
