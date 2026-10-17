@@ -1,5 +1,6 @@
 using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
+using Horyzont.Core.Protocol;
 using Horyzont.Core.World;
 
 namespace Horyzont.Core.Survival;
@@ -42,6 +43,40 @@ public sealed class DeathInventoryPlan
     public static DeathInventoryPlan Create(WorldState state, PlayerId player, DeathPenalty penalty)
     {
         ArgumentNullException.ThrowIfNull(state);
-        throw new NotImplementedException();
+        var kinds = DeathRules.MovedKinds(penalty);
+        var stacks = new List<(SlotRef From, ItemStack Stack)>();
+        for (var k = 0; k < kinds.Count; k++)
+        {
+            if (!state.Containers.TryGetOfPlayer(player, kinds[k], out var container))
+            {
+                continue;
+            }
+
+            for (var slot = 0; slot < container.Size; slot++)
+            {
+                var stack = container.GetSlot(slot);
+                if (!stack.IsEmpty)
+                {
+                    stacks.Add((new SlotRef(container.Id, (ushort)slot), stack));
+                }
+            }
+        }
+
+        // 256 stacks to a tombstone: a container holds no more, and the global limit is not raised (D11).
+        var tombstones = new List<TombstonePlan>();
+        for (var start = 0; start < stacks.Count; start += ProtocolConstants.MaxContainerSlots)
+        {
+            var size = Math.Min(ProtocolConstants.MaxContainerSlots, stacks.Count - start);
+            var transfers = new DeathTransfer[size];
+            for (var i = 0; i < size; i++)
+            {
+                var (from, stack) = stacks[start + i];
+                transfers[i] = new DeathTransfer(from, stack.Type, stack.Count, (ushort)i);
+            }
+
+            tombstones.Add(new TombstonePlan((ushort)size, transfers));
+        }
+
+        return new DeathInventoryPlan(tombstones, stacks.Count);
     }
 }
