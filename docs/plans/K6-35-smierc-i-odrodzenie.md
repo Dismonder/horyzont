@@ -416,22 +416,22 @@ Przeglądy Opus są wymaganiami ZASADY §3 i §12; poprawki przeglądu zapisać 
 - [x] **A6. Właściwości i regresje.** Pliki: `DeathConservationProperties`, testy cofania, istniejące testy vitals wymagające minimum 1.
   Test: `DeathConservationProperties.RandomDeathsAndRecovery_ConserveEveryItem`; komenda: `dotnet test tests/Horyzont.Core.Tests`.
   Zmianę oczekiwania 1→0 opisać; nie zmieniać zamrożonych testów determinizmu.
-- [ ] **A7. Przegląd Opus i bramka A.** Pliki: cały diff Core i testów; test `DeathCompoundTests.Replay_CheckpointHadPositiveHealth_AppliesReset`.
+- [x] **A7. Przegląd Opus i bramka A.** Pliki: cały diff Core i testów; test `DeathCompoundTests.Replay_CheckpointHadPositiveHealth_AppliesReset`.
   Komenda: `dotnet test tests/Horyzont.Core.Tests --filter "FullyQualifiedName~DeathCompound|FullyQualifiedName~Determinism|FullyQualifiedName~TerrainJournalGoldenCorpus"`.
   Opus ocenia rollback, kolejność sprawdzania przepięcia, brak odczytu treści w applierze i zachowanie starych operacji; następnie sprawdzenie końca etapu.
 
 ### Etap B — protokół i treść
 
-- [ ] **B1. Czerwone kontrakty binarne; Opus przed implementacją.** Pliki: `DeathCodecTests`, `DeathProtocolTests`, fixture generatora ramek.
+- [x] **B1. Czerwone kontrakty binarne; Opus przed implementacją.** Pliki: `DeathCodecTests`, `DeathProtocolTests`, fixture generatora ramek.
   Test: `DeathCodecTests.ReparentV1_GoldenBytesUnchanged`; komenda: `dotnet test tests/Horyzont.Core.Tests --filter "FullyQualifiedName~DeathCodec|FullyQualifiedName~DeathProtocol"`.
   Zatwierdzić kolejność pól 7 v2, 23/24, 44/47/48, stronicowanie i przejęcie 46/23/47.
-- [ ] **B2. Operacje i bloby.** Pliki: `OperationCodec` (tabela wersji per rodzaj), `StateCodec`, `BlobKind`, prymitywy; odczyt starych formatów bez zmian.
+- [x] **B2. Operacje i bloby.** Pliki: `OperationCodec` (tabela wersji per rodzaj), `StateCodec`, `BlobKind`, prymitywy; odczyt starych formatów bez zmian.
   Test: `DeathCodecTests.NewOperationsAndBlobs_RoundTrip`; komenda: `dotnet test tests/Horyzont.Core.Tests --filter "FullyQualifiedName~DeathCodec"`.
-- [ ] **B3. Komunikaty i wersja.** Pliki: `MessageCodec`, rekordy 44/47/48, `MessageChannels`, `ProtocolConstants`, kontraktowe testy wersji.
+- [x] **B3. Komunikaty i wersja.** Pliki: `MessageCodec`, rekordy 44/47/48, `MessageChannels`, `ProtocolConstants`, kontraktowe testy wersji.
   Test: `DeathProtocolTests.ProtocolVersion_Is20`; komenda: `dotnet test tests/Horyzont.Core.Tests --filter "FullyQualifiedName~DeathProtocol|FullyQualifiedName~ProtocolContract|FullyQualifiedName~Constants"`.
-- [ ] **B4. Dostęp i routing.** Pliki: `RejectReason`, `IntentValidator`, `ServerSimulation`, `InventoryService`, `MessageRouter`, ich testy.
+- [x] **B4. Dostęp i routing.** Pliki: `RejectReason`, `IntentValidator`, `ServerSimulation`, `InventoryService`, `MessageRouter`, ich testy.
   Test: `DeathAccessTests.OtherPlayer_CannotSubscribeOrTakeItems`; komenda: `dotnet test Horyzont.sln --filter "FullyQualifiedName~DeathAccess|FullyQualifiedName~DeathRouter"`.
-- [ ] **B5. Treść minimalna.** Pliki: `game/locale/death.csv`, rejestr tłumaczeń i test kluczy; nagrobek jako prezentacja bytu, nie przedmiot.
+- [x] **B5. Treść minimalna.** Pliki: `game/locale/death.csv`, rejestr tłumaczeń i test kluczy; nagrobek jako prezentacja bytu, nie przedmiot.
   Test: `DeathContentTests.Translations_HavePolishAndEnglishKeys`; komenda: `dotnet test tests/Horyzont.Core.Tests --filter "FullyQualifiedName~DeathContent"`.
 - [ ] **B6. Przegląd Opus i bramka B.** Pliki: diff protokołu, wersji i testów; test `DeathCodecTests.MalformedFrames_RejectBeforeAllocation`.
   Komenda: `dotnet test tests/Horyzont.Core.Tests --filter "FullyQualifiedName~DeathCodec|FullyQualifiedName~DeathProtocol"`.
@@ -587,6 +587,46 @@ Nie oznaczać testów, integracji foteli ani oceny wyglądu jako wykonanych wył
 - Testy serwera VitalsServiceTests.Tick_HealthNeverBelowZero i VitalsServiceHazardTests.HealthFloorZero_WithHazards zmienione z minimum 1 na 0 (zgodnie z A4); obsługa śmierci w serwerze to etap C.
 - Do C3: kolejność wysyłki migawek względem faz ticka; komenda konsoli dla op 46.
 - Przegląd Opus A1 razem z A7 (patrz wyżej).Czerwone testy A1 (stan na commit A1: 39 z 68 uruchomionych testów `Death*|RespawnPoints|TombstoneRecovery|VitalsStepTests` pada): `DeathRulesTests`, `RespawnPointsTests`, `DeathCompoundTests`, `TombstoneRecoveryTests`, `DeathHashStateTests`, `VitalsStepTests` (3 nowe + zmieniony `Damage_NeverBelowZero`). Szkielety: typy danych i operacje 38/39/46 są gotowe, zachowanie (`DeathInventoryPlan`, `DeathRules`, `RespawnPoints`, `DeathOperationBuilder`) rzuca `NotImplementedException`.
+
+### Review of gate A (Opus 5.5, 2026-10-17) and its corrections
+
+Verdict A1 + A7: **GO with corrections** (P1 = 1, P2 = 3, P3 = 9). The corrections were made before stage B (commit `a52fb7d`); the contracts of stage B were approved with the clarifications noted below.
+
+| Point | Done |
+| --- | --- |
+| P1-1 | `OperationReparent.TryGetReparent` (Core, standalone or last component of a compound), the rule in `docs/ZASADY.md` (section 2, one line before the harvest rule; the file is protected, the owner approves the wording in the pull request) and `OperationReparentTests`. The consumers are **left for C5 as the review says**: `EntityReplication` (l. 605 and 624, and the `wire` of l. 611: other players get only the extracted `EntityReparentOp`, never the compound), `EntityMirror`, `ConstructMirror`, `ConstructDirtyChunks`; test `DeathFlowTests`: the second client sees the new `ParentSeq` and pose and gets no transfers and no container id of the tombstone in `OperationApplied`. |
+| P2-1 | The encoder refused `ResetVitals` until B2 (test `Write_ResetVitalsBeforeB2_Throws`); B2 replaced the refusal with format 2 and deleted the temporary test and the list `_withoutCodecYet` of `GeneratorSanityTests`. |
+| P2-2 | `ApplyContainerConfigure` refuses every container of a persistent entity (the simpler option of the review; K6-36 adds the rule of `DroppedItem`). Test `DeathCompoundTests.Configure_TombstoneContainer_Refused`. |
+| P2-3, P3-6 | The candidates of the bed carry `SurfaceFrame.FromYaw(radial up at the feet, yaw towards the bed)`; the feet stand half a cell below the centre of the neighbouring cell along the planet down (offset 1 cell, bed 1x1x1 cell as the code assumes; **the size of the bed in the content is still to verify**, and the probe of C4 must test the capsule along the radial up). Tests: `Candidates_BodyRotation_UpIsThePlanetUpAndFacesTheBed`, the expected positions of `RespawnPointsTests` moved by half a cell along the planet down. The adapter of C4 builds the pose of the world start with `FromYaw` as well. |
+| P3-1 | Test `Reparent_AfterTerrainOrConstructEdit_RejectedStructurally` (index 0, hash unchanged). |
+| P3-2, P3-3 | The comment says "unreachable"; `TombstoneRecovery.CompleteRemoval` first runs an allocation-free check for a transfer out of a tombstone. |
+| P3-4 | `DeathRules.IsDead` is true only for a finite health of 0 or less (test with -Infinity and NaN). |
+| P3-5 | `DeathHashStateTests.Tombstone_ChangesTheHash_EveryFieldOfTheEntity` (owner, rotation, counter, position, kind) and `..._TheFrameOfTheEntity` (own world with two planets, so the frozen fixture stays untouched). |
+| P3-7 | `DeathOperationBuilder.Build` throws `InvalidOperationException` above `MaxCompoundComponents` (**no test**: the limit is unreachable with the containers of today; it needs a container of more than 256 slots). |
+| P3-8 | `UndoLog.ClearVitals` is gone; `ApplyReparent` writes `player.Vitals = null` with a comment. |
+| P3-9 | The wording of ZASADY l. 29: "the reparent of a player (e.g. a death with `EntityReparentOp.ResetVitals`)". |
+
+### Regression of `ServerRuntimeTests.WriterFaulted_EntersSafeModeAndRejectsIntents`
+
+Not a regression of K6-35. The fault `BeforeJournalCommit` hits the **next** commit of the writer thread. After `JoinAsync` and `StepMany(30)` the join of the player may still be in flight on that thread; then the fault lands on the join batch, the writer faults before the first dig is answered and the dig gets `ServerReadOnly`. Evidence: with a temporary diagnostic in the test the failing run showed `durable op = 0, last op = 1` at the moment of arming (the join was not yet durable), the passing runs did not; the test failed in isolation 3 of 3 times and in the class 3 of 4 times, whatever the package (it fails in isolation on K6-33 as well). Fix (commit `06f3d2e`): the test waits until the journal holds the last operation before it arms the fault. Afterwards 8 of 8 runs in isolation and 3 of 3 runs of the class were green.
+
+### Stage B (2026-10-17, Sonnet 5.5)
+
+Commits: B1 `c3677e4` (red contracts and skeletons), B2 + B3 `1e69ac8` (codecs, messages, `ProtocolVersion` = 20), B4 `94d24f6`, B5 `71f294d`. **B6 (the review of Opus and the gate of stage B) is done by the orchestrator**, not by the executor. The contracts are those approved at the review of gate A:
+
+- Operation 7 format 2 = the fields of format 1 and the final byte `01` (only `01`; `00` and above 1 are errors), `ResetVitals == false` writes format 1 byte for byte as before; the allowed versions are a per-kind table (`EntityReparent` 1 and 2, the rest 1; the compound stays format 1). The golden bytes of the existing operations are untouched.
+- Operations 38 (id, kind 3 or 6, frame, counter, position, rotation, owner), 39 (id) and 46 (flag byte with bits 0 to 2, three `u16`, integrity, penalty); blob 23 and blob 24 and message 47 reuse one primitive each (`WriteWorldSettings`, `WritePersistentEntity`). The codec checks shapes and ranges (and the frame kind only as a kind of frame); that the frame is a planet is checked by the applier.
+- Tail of message 44: `Tick` and `ParentSeq` as varuint. Tail of message 48 (`PlayerRespawnState`): optional bed, transition byte (0 none, 1 respawn; 2 reserved for K6-37 and refused), `u32` revision, `u16` page, `u16` page count (at least 1, page below it), a varuint count of at most 64 entries (refused before allocation when the remaining bytes cannot hold them), optional death notice. The version byte of the messages stays the global `01`.
+- `RejectReason.InTransition` = 48, `ProtocolVersion` = 20, no migration, no new intent, no refusal 59.
+
+Deviations and decisions of stage B:
+
+- `PlayerProgressState` has a fourth member `Respawn`, `PlayerVitalsMessage` two more (`SampleTick`, `ParentSeq`); the old constructors stay as secondary ones with the neutral values (as K6-34 did for the suit), so the callers of K6-33/K6-34 compile unchanged. The assembler of the pages and the filter of the epochs that D21 asks for are **pure Core classes** (`TombstoneListAssembler`, `VitalsEpochFilter`) so that `DeathProtocolTests` run without a client; the client wires them in D2.
+- Existing tests that had to follow the tails: `MessageCodecVitalsTests` and `MessageCodecProgressTests` (the new tail is appended to every frame; new refusals of a frame without it), `ProtocolContractTests`, `MaxMessages` (a page of 64 tombstones, the settings), `MergedProtocolTests` (renamed `...AcceptsOnlyTwenty`, version 20, 47 is no longer a gap) and three router tests that treated 47 as unassigned. The reparents of `CodecGen.Operation` stay format 1 on purpose (`OperationFrames_StartWithOperationKindAndVersionOne` is an existing pin); format 2 has its own generator and property test in `DeathCodecTests`.
+- B4: the gate is `DeathRules.IsDead(player.Vitals)` in `IntentValidator.Validate` right after the check that the player is online (before the parameters, no token) and in `InventoryService.Handle` and `CheckSubscriptions`; `InventoryService.EndSubscriptions(player, reason)` is the call for C3 (D19). Subscriptions to a tombstone: owner only, 6 m to open, 8 m to keep, deltas only to subscribers (before B4 the containers of a persistent entity would have fallen into the path of the owner who never opened them). **Not in B4:** the acceptance of `InputBatch` (it lives in the character layer of `game/`, C3 and C4 with the state "waiting for the body"); the state "waiting for the collision after the respawn" is a state of the server in memory that the gate of C3/C4 must add to the same `InTransition` check. The tests of B4 were written after the code, not before (the size of the stage); they test the refusals and the absence of a leak.
+- B5: `game/locale/death.csv` with the texts of D2, D3 and D13, `death.csv.import` written by hand (without `uid`; the editor adds it at the first import), registered in `project.godot`; `REJECT_IN_TRANSITION` is in `tools.csv` like all refusals. `DeathContentTests` reads the files as text (the import of translations needs the editor); no gdUnit test of the texts, because gdUnit does not run in this session.
+- Not done and not claimed: `dotnet test game`, `python tools/engine/build.py smoke`, gdUnit (the shared runner serves the CI). `dotnet build game/Horyzont.Game.csproj` builds with 0 errors.
+- For C5: the list of the consumers of P1-1 above, `MessageRouter` already lets message 47 through from the server only, and the order of sending is containers, 47, 48 (D20).
 
 ## Przegląd planu (Opus 5.5)
 
