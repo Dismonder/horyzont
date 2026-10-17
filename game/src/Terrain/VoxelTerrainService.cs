@@ -26,6 +26,9 @@ namespace Horyzont.Game.Terrain;
 /// </summary>
 public sealed class VoxelTerrainService : ITerrainService, IDisposable
 {
+    /// <summary>Largest sphere <see cref="MeasureSphere"/> measures; larger requests are refused (a mining tool is far smaller).</summary>
+    public const float MaxMeasureRadiusMeters = 32f;
+
     private readonly ServerTerrainBlocks _blocks;
     private readonly TerrainBlockCodec _codec;
     private readonly TerrainMaterialMap _materials;
@@ -322,6 +325,72 @@ public sealed class VoxelTerrainService : ITerrainService, IDisposable
         }
 
         solid = TerrainRaycaster.Sample(entry.Node.Tool, TerrainVectors.ToGodot(position)) < 0;
+        return true;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Voxels of LOD 0 sit on the integer grid (the sample points of <see cref="Raycast"/>); a voxel counts when its position lies in the
+    /// sphere (distance &lt;= radius). Solid means SDF &lt; 0; its material is the texture index of the material channel mapped to the
+    /// world material id by <see cref="TerrainMaterialMap.TryGetMaterialId"/> (a texture the world does not know is not counted). Returns
+    /// false, with nothing counted, for a planet without terrain, an invalid or oversized sphere (radius above
+    /// <see cref="MaxMeasureRadiusMeters"/>) or blocks that are not loaded. Reads the voxels one by one: no managed allocation.
+    /// </remarks>
+    public bool MeasureSphere(PlanetId planet, Vector3 center, float radius, Span<int> solidVoxelsByMaterial, out int airVoxels)
+    {
+        EnsureMainThread();
+        solidVoxelsByMaterial.Clear();
+        airVoxels = 0;
+        if (_shutDown || solidVoxelsByMaterial.Length < 256 || !_planets.TryGetValue(planet.Value, out var entry)
+            || !float.IsFinite(radius) || radius <= 0f || radius > MaxMeasureRadiusMeters
+            || !float.IsFinite(center.X) || !float.IsFinite(center.Y) || !float.IsFinite(center.Z)
+            || FirstFault is not null || !IsBlockAreaEditable(entry, center, radius + 1f))
+        {
+            return false;
+        }
+
+        var tool = entry.Node.Tool;
+        var c = TerrainVectors.ToGodot(center);
+        var radiusSquared = (double)radius * radius;
+        var minX = (int)Math.Ceiling(c.X - radius);
+        var minY = (int)Math.Ceiling(c.Y - radius);
+        var minZ = (int)Math.Ceiling(c.Z - radius);
+        var maxX = (int)Math.Floor(c.X + radius);
+        var maxY = (int)Math.Floor(c.Y + radius);
+        var maxZ = (int)Math.Floor(c.Z + radius);
+        for (var x = minX; x <= maxX; x++)
+        {
+            var dx = x - c.X;
+            for (var y = minY; y <= maxY; y++)
+            {
+                var dy = y - c.Y;
+                for (var z = minZ; z <= maxZ; z++)
+                {
+                    var dz = z - c.Z;
+                    if ((dx * dx) + (dy * dy) + (dz * dz) > radiusSquared)
+                    {
+                        continue;
+                    }
+
+                    var position = new Vector3I(x, y, z);
+                    tool.Channel = TerrainChannels.Sdf;
+                    if (tool.GetVoxelF(position) >= 0f)
+                    {
+                        airVoxels++;
+                        continue;
+                    }
+
+                    tool.Channel = TerrainChannels.Material;
+                    var texture = (int)tool.GetVoxel(position);
+                    if (texture is >= 0 and <= byte.MaxValue && _materials.TryGetMaterialId((byte)texture, out var material))
+                    {
+                        solidVoxelsByMaterial[material]++;
+                    }
+                }
+            }
+        }
+
+        tool.Channel = TerrainChannels.Sdf;
         return true;
     }
 

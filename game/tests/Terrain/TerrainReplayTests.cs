@@ -22,6 +22,17 @@ namespace Horyzont.Game.Tests.Terrain;
 [TestSuite]
 public class TerrainReplayTests
 {
+    [TestCase(Timeout = 60000)]
+    [RequireGodotRuntime]
+    public void EditedPlanets_EditInsideACompound_IsFound()
+    {
+        var moon = new PlanetId(2);
+        var edit = new TerrainEditOp(moon, TerrainShape.Sphere, new Vector3(0, 100, 0), 2f, TerrainEditMode.Remove, 0);
+        IReadOnlyList<JournalEntry> tail = [new JournalEntry(new OpId(1), new Tick(1), null, new CompoundOp(new Operation[] { edit }))];
+
+        AssertThat(TerrainReplay.EditedPlanets(tail).Contains(moon)).IsTrue();
+    }
+
     private const float S = TerrainTestWorld.Surface;
 
     private static readonly Vector3 _area = TerrainTestWorld.Ground(0, 0);

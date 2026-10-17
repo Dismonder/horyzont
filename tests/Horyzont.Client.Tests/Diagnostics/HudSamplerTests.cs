@@ -39,13 +39,21 @@ public sealed class HudSamplerTests
             sampler.NoteRenderDelta(0.016);
             sampler.Sample();
         }
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 10000; i++)
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
         {
-            sampler.NoteRenderDelta(0.016);
-            sampler.Sample();
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 10000; i++)
+            {
+                sampler.NoteRenderDelta(0.016);
+                sampler.Sample();
+            }
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
         }
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+
+        Assert.Equal(0, smallest);
     }
 
     private sealed class Metrics : IHudMetricsSource

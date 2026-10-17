@@ -10,10 +10,12 @@ namespace Horyzont.Core.Operations;
 /// <param name="Operation">The operation.</param>
 /// <param name="TerrainVersions">New versions of terrain blocks; non-empty for terrain edits.</param>
 /// <param name="ConstructChanges">One entry per changed construct, by entity id.</param>
+/// <param name="ContainerChanges">One entry per changed container, by container id.</param>
 public sealed record AppliedOperation(
     OpId Id,
     Tick Tick,
     PlayerId? Actor,
     Operation Operation,
     IReadOnlyList<TerrainBlockVersion> TerrainVersions,
-    IReadOnlyList<ConstructChange> ConstructChanges);
+    IReadOnlyList<ConstructChange> ConstructChanges,
+    IReadOnlyList<ContainerChange> ContainerChanges);

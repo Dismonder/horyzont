@@ -52,9 +52,10 @@ public class DevCameraTests
         AssertThat(await fixture.WaitUntil(() => player.ClientTick > 0, 30)).IsTrue();
 
         // The viewer stands at the camera, the streaming settles, and the terrain under the camera is editable and meshed.
-        var viewerAt = player.VisualViewer!.GlobalPosition;
-        var cameraAt = PlanetFrames.ToGodot(planet.Id, dev.Position);
-        AssertThat(viewerAt.DistanceTo(cameraAt)).IsLess(5f);
+        // The viewer is placed on the frame after the camera moved, so how far it lags depends on the frame time: wait for it instead of
+        // sampling once (6.4 m seen on a loaded machine).
+        AssertThat(await fixture.WaitUntil(
+            () => player.VisualViewer!.GlobalPosition.DistanceTo(PlanetFrames.ToGodot(planet.Id, dev.Position)) < 5f, 10)).IsTrue();
         AssertThat(await fixture.WaitTerrainIdle(60, 120)).IsTrue();
         AssertThat(composition.TerrainFactory!.Terrain!.Voxel.TryGetPlanet(planet.Id, out var terrain)).IsTrue();
         AssertThat(composition.TerrainFactory.Terrain.Voxel.IsAreaLoaded(planet.Id, dev.Position, 8f)).IsTrue();

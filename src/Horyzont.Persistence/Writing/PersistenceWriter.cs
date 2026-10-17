@@ -552,10 +552,12 @@ public sealed class PersistenceWriter : IAsyncDisposable
             WritePlayers(connection, transaction, checkpoint);
             WriteMarkers(connection, transaction, checkpoint);
             WriteShipStates(connection, transaction, checkpoint);
+            WriteContainers(connection, transaction, checkpoint);
             WriteTerrain(connection, transaction, command.Request.TerrainBlocks);
             Sql.SetMeta(connection, transaction, Sql.MetaNextEntityId, Sql.ToDb(checkpoint.NextEntityId));
             Sql.SetMeta(connection, transaction, Sql.MetaNextPlayerId, Sql.ToDb(checkpoint.NextPlayerId));
             Sql.SetMeta(connection, transaction, Sql.MetaNextMarkerId, Sql.ToDb(checkpoint.NextMarkerId));
+            Sql.SetMeta(connection, transaction, Sql.MetaNextContainerId, Sql.ToDb(checkpoint.NextContainerId));
             Sql.SetMeta(connection, transaction, Sql.MetaLastCheckpointOpId, Sql.ToDb(barrier.Value));
             Sql.SetMeta(connection, transaction, Sql.MetaLastCheckpointTick, Sql.ToDb(checkpoint.Tick.Value));
             Sql.SetMeta(connection, transaction, Sql.MetaGameVersion, _options.GameVersion);
@@ -707,6 +709,26 @@ public sealed class PersistenceWriter : IAsyncDisposable
                 "INSERT INTO ship_state (construct_id, data) VALUES ($id, $data) ON CONFLICT (construct_id) DO UPDATE SET data = excluded.data;");
             command.Parameters.AddWithValue("$id", Sql.ToDb(ship.Construct.Value));
             command.Parameters.AddWithValue("$data", StateCodec.EncodeShipStateBlob(ship));
+            command.ExecuteNonQuery();
+        }
+    }
+
+    private static void WriteContainers(SqliteConnection connection, SqliteTransaction transaction, Core.Checkpoints.WorldCheckpoint checkpoint)
+    {
+        foreach (var removed in checkpoint.RemovedContainers)
+        {
+            using var command = Sql.Command(connection, transaction, "DELETE FROM containers WHERE container_id = $id;");
+            command.Parameters.AddWithValue("$id", Sql.ToDb(removed.Value));
+            command.ExecuteNonQuery();
+        }
+
+        foreach (var container in checkpoint.UpsertedContainers)
+        {
+            using var command = Sql.Command(
+                connection, transaction,
+                "INSERT INTO containers (container_id, data) VALUES ($id, $data) ON CONFLICT (container_id) DO UPDATE SET data = excluded.data;");
+            command.Parameters.AddWithValue("$id", Sql.ToDb(container.Id.Value));
+            command.Parameters.AddWithValue("$data", StateCodec.EncodeContainerBlob(container));
             command.ExecuteNonQuery();
         }
     }

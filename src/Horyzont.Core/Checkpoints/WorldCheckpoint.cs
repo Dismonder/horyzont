@@ -61,4 +61,13 @@ public sealed record WorldCheckpoint(
 
     /// <summary>Gets the removed ship states, never null.</summary>
     public IReadOnlyList<EntityId> ShipStatesToDelete => RemovedShipStates ?? [];
+
+    /// <summary>Next container id (<c>next_container_id</c>).</summary>
+    public ulong NextContainerId { get; init; } = 1;
+
+    /// <summary>Containers that exist and changed, by id.</summary>
+    public IReadOnlyList<ContainerRecord> UpsertedContainers { get; init; } = [];
+
+    /// <summary>Containers removed, by id.</summary>
+    public IReadOnlyList<ContainerId> RemovedContainers { get; init; } = [];
 }

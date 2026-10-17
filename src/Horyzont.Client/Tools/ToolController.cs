@@ -83,6 +83,12 @@ public sealed class ToolController
             return;
         }
 
+        if (Settings.Tool == ToolKind.None)
+        {
+            Preview = default;
+            return;
+        }
+
         var primary = input.PrimaryPressed || input.PrimaryHeld;
         var secondary = input.SecondaryPressed || input.SecondaryHeld;
         if (Settings.Tool == ToolKind.TerrainManipulator)

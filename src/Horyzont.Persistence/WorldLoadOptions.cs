@@ -19,4 +19,7 @@ public sealed record WorldLoadOptions
 
     /// <summary>Materials of the game content; missing keys get the next free numbers.</summary>
     public IReadOnlyList<string> MaterialKeys { get; init; } = [];
+
+    /// <summary>Item types of the game content; missing keys get the next free numbers.</summary>
+    public IReadOnlyList<string> ItemTypeKeys { get; init; } = [];
 }

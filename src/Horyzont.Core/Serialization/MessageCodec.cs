@@ -4,6 +4,7 @@ using System.Numerics;
 using Horyzont.Core.Checkpoints;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
+using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
@@ -489,6 +490,38 @@ public static class MessageCodec
                 w.WriteByte((byte)dc.Code);
                 break;
 
+            case ContainerState cst:
+                WriteContainerState(w, cst);
+                break;
+
+            case ContainerDelta cd:
+                w.WriteVarUInt(cd.Container.Value);
+                w.WriteVarUInt(cd.Version);
+                WriteSlotContents(w, cd.Changed, ProtocolConstants.MaxContainerSlots, nameof(message));
+                break;
+
+            case ContainerSubscribe sub:
+                w.WriteVarUInt(sub.Container.Value);
+                break;
+
+            case ContainerUnsubscribe unsub:
+                w.WriteVarUInt(unsub.Container.Value);
+                break;
+
+            case ItemRegistry ireg:
+                if (ireg.Entries.Count > ProtocolConstants.MaxItemTypes)
+                {
+                    throw new ArgumentException($"ItemRegistry entries count {ireg.Entries.Count} exceeds limit {ProtocolConstants.MaxItemTypes}.", nameof(message));
+                }
+
+                w.WriteVarUInt((ulong)ireg.Entries.Count);
+                for (int i = 0; i < ireg.Entries.Count; i++)
+                {
+                    StateCodec.WriteRegistryEntry(w, ireg.Entries[i], ProtocolConstants.MaxItemTypes);
+                }
+
+                break;
+
             default:
                 throw new ArgumentException($"Unknown message type {message.GetType().Name}.", nameof(message));
         }
@@ -878,6 +911,36 @@ public static class MessageCodec
 
                 return new Disconnect((DisconnectCode)dcByte);
 
+            case MessageType.ContainerState:
+                return ReadContainerState(ref r);
+
+            case MessageType.ContainerDelta:
+                var cdContainer = new ContainerId(r.ReadVarUInt());
+                uint cdVersion = r.ReadVarUInt32();
+                var changed = ReadSlotContents(ref r, ProtocolConstants.MaxContainerSlots);
+                return new ContainerDelta(cdContainer, cdVersion, changed);
+
+            case MessageType.ContainerSubscribe:
+                return new ContainerSubscribe(new ContainerId(r.ReadVarUInt()));
+
+            case MessageType.ContainerUnsubscribe:
+                return new ContainerUnsubscribe(new ContainerId(r.ReadVarUInt()));
+
+            case MessageType.ItemRegistry:
+                ulong entryCount = r.ReadVarUInt();
+                if (entryCount > ProtocolConstants.MaxItemTypes)
+                {
+                    throw new ProtocolViolationException($"ItemRegistry entries count {entryCount} exceeds limit {ProtocolConstants.MaxItemTypes}.");
+                }
+
+                var itemEntries = new RegistryEntry[(int)entryCount];
+                for (int i = 0; i < itemEntries.Length; i++)
+                {
+                    itemEntries[i] = StateCodec.ReadRegistryEntry(ref r, ProtocolConstants.MaxItemTypes);
+                }
+
+                return new ItemRegistry(itemEntries);
+
             default:
                 throw new ProtocolViolationException($"Unhandled message type {type}.");
         }
@@ -951,6 +1014,141 @@ public static class MessageCodec
     }
 
     private static bool IsStatusValue(float v) => float.IsFinite(v) && v >= 0f;
+
+    private static void WriteContainerState(ByteWriter w, ContainerState state)
+    {
+        if (!CoreCodecPrimitives.IsKnownRejectReason((byte)state.Reason))
+        {
+            throw new ArgumentException($"Invalid RejectReason {(byte)state.Reason}.", nameof(state));
+        }
+
+        w.WriteVarUInt(state.Container.Value);
+        w.WriteByte((byte)state.Reason);
+        if (state.Reason != RejectReason.None)
+        {
+            if (state.Kind != 0 || state.Access != 0 || state.Size != 0 || state.Version != 0 || state.Slots.Count != 0)
+            {
+                throw new ArgumentException("A refused ContainerState carries no fields after the reason.", nameof(state));
+            }
+
+            return;
+        }
+
+        if (!Enum.IsDefined(state.Kind) || !Enum.IsDefined(state.Access))
+        {
+            throw new ArgumentException($"Invalid ContainerKind {(byte)state.Kind} or ContainerAccess {(byte)state.Access}.", nameof(state));
+        }
+
+        if (state.Size < 1 || state.Size > ProtocolConstants.MaxContainerSlots)
+        {
+            throw new ArgumentException($"ContainerState size {state.Size} must be in 1..{ProtocolConstants.MaxContainerSlots}.", nameof(state));
+        }
+
+        w.WriteByte((byte)state.Kind);
+        w.WriteByte((byte)state.Access);
+        w.WriteVarUInt(state.Size);
+        w.WriteVarUInt(state.Version);
+        WriteSlotContents(w, state.Slots, state.Size, nameof(state));
+    }
+
+    private static ContainerState ReadContainerState(ref ByteReader r)
+    {
+        var container = new ContainerId(r.ReadVarUInt());
+        byte reasonByte = r.ReadByte();
+        if (!CoreCodecPrimitives.IsKnownRejectReason(reasonByte))
+        {
+            throw new ProtocolViolationException($"Unknown reject reason {reasonByte}.");
+        }
+
+        if (reasonByte != (byte)RejectReason.None)
+        {
+            return ContainerState.Rejected(container, (RejectReason)reasonByte);
+        }
+
+        var kind = (ContainerKind)CoreCodecPrimitives.ReadEnumByte(ref r, (byte)ContainerKind.PlayerBag, (byte)ContainerKind.DroppedItem, "container kind");
+        var access = (ContainerAccess)CoreCodecPrimitives.ReadEnumByte(ref r, (byte)ContainerAccess.Shared, (byte)ContainerAccess.Private, "container access");
+        ushort size = r.ReadVarUInt16();
+        if (size < 1 || size > ProtocolConstants.MaxContainerSlots)
+        {
+            throw new ProtocolViolationException($"ContainerState size {size} must be in 1..{ProtocolConstants.MaxContainerSlots}.");
+        }
+
+        uint version = r.ReadVarUInt32();
+        var slots = ReadSlotContents(ref r, size);
+        return new ContainerState(container, RejectReason.None, kind, access, size, version, slots);
+    }
+
+    /// <summary>Count, then (slot, stack) with slots strictly ascending and below <paramref name="slotLimit"/>; an empty stack is type 0.</summary>
+    private static void WriteSlotContents(ByteWriter w, IReadOnlyList<SlotContent> slots, int slotLimit, string paramName)
+    {
+        if (slots.Count > slotLimit)
+        {
+            throw new ArgumentException($"{slots.Count} slots exceed the limit {slotLimit}.", paramName);
+        }
+
+        w.WriteVarUInt((ulong)slots.Count);
+        int previous = -1;
+        for (int i = 0; i < slots.Count; i++)
+        {
+            var slot = slots[i];
+            if (slot.Slot <= previous || slot.Slot >= slotLimit)
+            {
+                throw new ArgumentException($"Slot {slot.Slot} is not ascending or not below {slotLimit}.", paramName);
+            }
+
+            previous = slot.Slot;
+            w.WriteVarUInt(slot.Slot);
+            if (slot.Stack.IsEmpty)
+            {
+                if (slot.Stack.Count != 0 || slot.Stack.Instance is not null)
+                {
+                    throw new ArgumentException($"Empty slot {slot.Slot} has a count or instance data.", paramName);
+                }
+
+                w.WriteVarUInt(0);
+            }
+            else
+            {
+                CoreCodecPrimitives.WriteItemStack(w, slot.Stack);
+            }
+        }
+    }
+
+    private static SlotContent[] ReadSlotContents(ref ByteReader r, int slotLimit)
+    {
+        ulong count = r.ReadVarUInt();
+        if (count > (ulong)slotLimit)
+        {
+            throw new ProtocolViolationException($"{count} slots exceed the limit {slotLimit}.");
+        }
+
+        var slots = new SlotContent[(int)count];
+        int previous = -1;
+        for (int i = 0; i < slots.Length; i++)
+        {
+            ushort slot = r.ReadVarUInt16();
+            if (slot <= previous || slot >= slotLimit)
+            {
+                throw new ProtocolViolationException($"Slot {slot} is not ascending or not below {slotLimit}.");
+            }
+
+            previous = slot;
+
+            // An empty slot is the single type 0; otherwise the stack is read again from its type.
+            var stackStart = r;
+            if (r.ReadVarUInt16() == 0)
+            {
+                slots[i] = new SlotContent(slot, ItemStack.Empty);
+            }
+            else
+            {
+                r = stackStart;
+                slots[i] = new SlotContent(slot, CoreCodecPrimitives.ReadItemStack(ref r));
+            }
+        }
+
+        return slots;
+    }
 
     private static void WriteEntityState(ByteWriter w, EntityState state, int maxFrames)
     {

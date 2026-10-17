@@ -14,7 +14,7 @@ public sealed partial class HelpOverlay : CanvasLayer
 {
     private const string Controls =
         "WASD move   Mouse look   Space jump   Shift sprint   V camera (3rd/1st person)   Esc free the mouse (click to capture again)\n"
-        + "Tools: 1 terrain manipulator   2 builder   LMB dig / remove block   RMB fill / place block   Wheel radius / block type   M material   R T rotate block\n"
+        + "Tools: 1-0 or wheel hotbar   Tab inventory   LMB dig / remove block   RMB fill / place block   Shift+wheel radius / block type   M material   R T rotate block\n"
         + "Dev builds: F fly (character)   F8 free camera   F9 camera to orbit   Wheel = free camera speed   F1 hide this";
 
     private const double RefreshSeconds = 0.25;

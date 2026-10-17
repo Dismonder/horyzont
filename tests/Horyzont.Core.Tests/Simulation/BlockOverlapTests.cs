@@ -82,16 +82,23 @@ public sealed class BlockOverlapTests
             _ = BlockOverlap.Intersects(_unit, turned);
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        var hits = 0;
-        for (var i = 0; i < 1000; i++)
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
         {
-            hits += BlockOverlap.Intersects(_unit, turned) ? 1 : 0;
+            var hits = 0;
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 1000; i++)
+            {
+                hits += BlockOverlap.Intersects(_unit, turned) ? 1 : 0;
+            }
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
+            Assert.Equal(1000, hits);
         }
 
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = smallest;
 
-        Assert.Equal(1000, hits);
         Assert.Equal(0, allocated);
     }
 

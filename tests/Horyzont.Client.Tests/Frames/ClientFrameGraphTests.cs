@@ -181,14 +181,21 @@ public sealed class ClientFrameGraphTests
             sink += pose.Position.X;
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 10_000; i++)
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
         {
-            rig.Graph.TryGetWorldPose(FrameRef.Of(_onShip), 30 + (i % 4), out var pose);
-            sink += pose.Position.X;
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 10_000; i++)
+            {
+                rig.Graph.TryGetWorldPose(FrameRef.Of(_onShip), 30 + (i % 4), out var pose);
+                sink += pose.Position.X;
+            }
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, smallest);
         Assert.True(double.IsFinite(sink));
     }
 

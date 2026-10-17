@@ -43,14 +43,21 @@ public sealed class ChunkMesherAllocationTests
         }
 
         Assert.False(output.IsEmpty);
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 20; i++)
+        // Ignore isolated tiered JIT allocations; recurring allocations remain in every window.
+        var smallest = long.MaxValue;
+        for (var window = 0; window < 5 && smallest != 0; window++)
         {
-            input.Fill(source, Key(), 1);
-            mesher.Build(input, Table, output);
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var i = 0; i < 20; i++)
+            {
+                input.Fill(source, Key(), 1);
+                mesher.Build(input, Table, output);
+            }
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
         }
 
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = smallest;
         Assert.Equal(0, allocated);
     }
 }

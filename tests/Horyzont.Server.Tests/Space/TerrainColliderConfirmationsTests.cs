@@ -94,13 +94,24 @@ public sealed class TerrainColliderConfirmationsTests
         Assert.True(confirmations.AllActive(box, 1, ref probe));
         Assert.True(confirmations.AllActive(box, 2, ref probe));
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (ulong frame = 3; frame < 200; frame++)
+        // Both sets are warm. Tiered JIT promotion may still allocate once under concurrent test load;
+        // a steady-state allocation occurs in every window, so the smallest complete window must be zero.
+        var smallest = long.MaxValue;
+        ulong frame = 3;
+        for (var window = 0; window < 5 && smallest != 0; window++)
         {
-            confirmations.AllActive(box, frame, ref probe);
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            var allActive = true;
+            for (var i = 0; i < 197; i++, frame++)
+            {
+                allActive &= confirmations.AllActive(box, frame, ref probe);
+            }
+
+            smallest = Math.Min(smallest, GC.GetAllocatedBytesForCurrentThread() - before);
+            Assert.True(allActive);
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, smallest);
     }
 
     [Fact]

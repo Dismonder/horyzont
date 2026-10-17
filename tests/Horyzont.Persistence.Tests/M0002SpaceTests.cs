@@ -24,7 +24,7 @@ public sealed class M0002SpaceTests
         using var dir = new TempDirectory();
         WorldCreator.Create(dir.WorldPath, WorldFactory.CreateDefault(), WorldHarness.Options, new FakeTimeProvider());
 
-        Assert.Equal(2L, RawDb.Long(dir.WorldPath, "PRAGMA user_version;"));
+        Assert.Equal((long)MigrationRunner.All.Count, RawDb.Long(dir.WorldPath, "PRAGMA user_version;"));
         Assert.Equal("system_id,params", Columns(dir.WorldPath, "star_systems"));
         Assert.Equal("marker_id,data", Columns(dir.WorldPath, "markers"));
         Assert.Equal("construct_id,data", Columns(dir.WorldPath, "ship_state"));
@@ -42,7 +42,7 @@ public sealed class M0002SpaceTests
 
         var loaded = Load(dir.WorldPath);
 
-        Assert.Equal(2L, RawDb.Long(dir.WorldPath, "PRAGMA user_version;"));
+        Assert.Equal((long)MigrationRunner.All.Count, RawDb.Long(dir.WorldPath, "PRAGMA user_version;"));
         Assert.Equal(4L, RawDb.Long(dir.WorldPath, "SELECT COUNT(*) FROM planets;"));
         Assert.Equal(1L, RawDb.Long(dir.WorldPath, "SELECT COUNT(*) FROM star_systems WHERE system_id = 1;"));
         Assert.Equal(4, loaded.State.Planets.All.Count);
@@ -134,12 +134,13 @@ public sealed class M0002SpaceTests
     private static LoadedWorld Load(string path) =>
         WorldLoader.Load(path, WorldHarness.LoadOptions(path), new FakeTimeProvider(), NullLogger.Instance);
 
-    /// <summary>A world file as K1-05 wrote it: created at the current schema, then the M0002 tables dropped and user_version 1.</summary>
+    /// <summary>A world file as K1-05 wrote it: created at the current schema, then the tables of M0002 and M0003 dropped and user_version 1.</summary>
     private static void CreateM0001World(string path, ulong seed, params PlanetParams[] planets)
     {
         var world = WorldState.CreateNew(WorldFactory.DefaultWorldId, seed, planets, [WorldFactory.StoneBlockKey], ["stone", "dirt"]);
         WorldCreator.Create(path, world, WorldHarness.Options, new FakeTimeProvider());
-        RawDb.Execute(path, "DROP TABLE star_systems; DROP TABLE markers; DROP TABLE ship_state; PRAGMA user_version = 1;");
+        RawDb.Execute(path, "DROP TABLE star_systems; DROP TABLE markers; DROP TABLE ship_state; DROP TABLE item_types; DROP TABLE containers; DROP TABLE block_entities; "
+            + "DROP TABLE player_progress; DROP TABLE harvested_props; DELETE FROM meta WHERE key = 'next_container_id'; PRAGMA user_version = 1;");
         Assert.Equal(1, MigrationRunner.All[0].Number);
     }
 

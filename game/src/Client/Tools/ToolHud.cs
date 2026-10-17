@@ -67,7 +67,7 @@ public sealed partial class ToolHud : CanvasLayer
         _label = new Label { GrowVertical = Control.GrowDirection.Begin };
         _label.SetAnchorsPreset(Control.LayoutPreset.BottomLeft);
         _label.OffsetLeft = 12f;
-        _label.OffsetBottom = -12f;
+        _label.OffsetBottom = -96f; // above the hotbar
         _crosshair = new Label { Text = "+", HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         _crosshair.SetAnchorsPreset(Control.LayoutPreset.Center);
         foreach (var label in new[] { _label, _crosshair })
@@ -106,8 +106,18 @@ public sealed partial class ToolHud : CanvasLayer
         var refusal = _tools.Pending?.LastRejection ?? RejectReason.None;
         var ship = _tools.Ship?.Aimed;
         var toggle = _tools.Ticks - _tools.LastShipToggleTick < ToggleMessageTicks ? _tools.LastShipToggle : null;
+        var stockCount = -1;
+        var stockName = string.Empty;
+        if (settings.Tool == ToolKind.TerrainManipulator && _tools.Inventory is { } inventory
+            && inventory.TryGetFillStock(MaterialName(settings.FillMaterial), out var name, out var count))
+        {
+            stockCount = count;
+            stockName = name;
+        }
+
         var shown = new Shown(
-            settings.Tool, settings.Radius, settings.FillMaterial, settings.BlockType, settings.Orientation, hint, waiting, refusal, ship, toggle);
+            settings.Tool, settings.Radius, settings.FillMaterial, settings.BlockType, settings.Orientation, hint, waiting, refusal, ship, toggle,
+            stockCount, stockName);
         if (_hasShown && shown.Equals(_shown))
         {
             return;
@@ -116,11 +126,19 @@ public sealed partial class ToolHud : CanvasLayer
         _shown = shown;
         _hasShown = true;
         _text.Clear();
-        if (settings.Tool == ToolKind.TerrainManipulator)
+        if (settings.Tool == ToolKind.None)
+        {
+            _text.Append(T("TOOL_NONE"));
+        }
+        else if (settings.Tool == ToolKind.TerrainManipulator)
         {
             _text.Append(T("TOOL_TERRAIN")).Append("   ").Append(T("TOOL_RADIUS")).Append(' ')
                 .Append(settings.Radius.ToString("F2", CultureInfo.InvariantCulture)).Append(" m   ").Append(T("TOOL_MATERIAL")).Append(' ')
                 .Append(MaterialName(settings.FillMaterial)).Append('\n').Append(T("TOOL_HINT_TERRAIN"));
+            if (stockCount >= 0)
+            {
+                _text.Append('\n').Append(T("TOOL_STOCK")).Append(": ").Append(stockName).Append(' ').Append(stockCount.ToString(CultureInfo.InvariantCulture));
+            }
         }
         else
         {
@@ -128,7 +146,7 @@ public sealed partial class ToolHud : CanvasLayer
                 .Append(T("TOOL_ORIENTATION")).Append(' ').Append(settings.Orientation).Append('\n').Append(T("TOOL_HINT_BUILD"));
         }
 
-        _text.Append("\n1 ").Append(T("TOOL_TERRAIN")).Append("   2 ").Append(T("TOOL_BUILD"));
+        _text.Append('\n').Append(T("INV_HOTBAR_HINT"));
         if (hint != RejectReason.None)
         {
             _text.Append('\n').Append(RejectText(hint));
@@ -219,5 +237,5 @@ public sealed partial class ToolHud : CanvasLayer
 
     private readonly record struct Shown(
         ToolKind Tool, float Radius, byte Material, ushort Block, byte Orientation, RejectReason Hint, bool Waiting, RejectReason Refusal,
-        AimedShip? Ship, ShipModeToggleResult? Toggle);
+        AimedShip? Ship, ShipModeToggleResult? Toggle, int StockCount, string StockName);
 }

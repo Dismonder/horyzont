@@ -6,6 +6,7 @@ using Horyzont.Client.Space;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.World;
 using Horyzont.Game.Frames;
+using Horyzont.Game.Planet.Rendering;
 using Horyzont.Game.Planet.Sky;
 
 namespace Horyzont.Game.Client.Sky;
@@ -25,8 +26,7 @@ public sealed partial class ClientDayNight : Node, IClientSessionListener
     private readonly bool _render;
     private ClientRuntime? _runtime;
     private SunLight? _sun;
-    private Godot.Environment? _environment;
-    private ProceduralSkyMaterial? _sky;
+    private PlanetSky? _sky;
     private PlanetParams? _planet;
     private int _tickRate = 60;
     private ulong _tick;
@@ -78,15 +78,8 @@ public sealed partial class ClientDayNight : Node, IClientSessionListener
         AddChild(_sun);
         if (_render)
         {
-            _sky = new ProceduralSkyMaterial();
-            _environment = new Godot.Environment
-            {
-                BackgroundMode = Godot.Environment.BGMode.Sky,
-                Sky = new Godot.Sky { SkyMaterial = _sky },
-                AmbientLightSource = Godot.Environment.AmbientSource.Sky,
-                TonemapMode = Godot.Environment.ToneMapper.Filmic,
-            };
-            AddChild(new WorldEnvironment { Name = "Environment", Environment = _environment });
+            _sky = new PlanetSky();
+            AddChild(new WorldEnvironment { Name = "Environment", Environment = _sky.Environment });
         }
 
         _runtime.AddListener(this);
@@ -138,17 +131,9 @@ public sealed partial class ClientDayNight : Node, IClientSessionListener
         var sun = DayNightCycle.SunDirection(_tick, _tickRate, SunCycleSeconds);
         var elevation = System.Numerics.Vector3.Dot(sun, up);
         Daylight = Mathf.SmoothStep(-0.12f, 0.2f, elevation);
-        if (_environment is null || _sky is null)
-        {
-            return;
-        }
-
-        var altitude = length - planet.RadiusMeters;
-        var atmosphere = 1f - Mathf.SmoothStep(planet.AtmosphereHeightMeters * 0.5f, planet.AtmosphereHeightMeters, altitude);
-        var skyEnergy = Mathf.Lerp(0.02f, 1f, Daylight) * atmosphere;
-        _environment.BackgroundEnergyMultiplier = skyEnergy;
-        _environment.AmbientLightEnergy = Mathf.Lerp(0.04f, 1f, Daylight);
         _sun!.LightEnergy = 1.4f * Daylight;
-        _environment.SkyRotation = new Basis(new Quaternion(Vector3.Up, FrameNodes.PlanetSpaceOf(planet.Id).ToGodotDirection(up))).GetEuler();
+        _sun.LightColor = new Color(1f, 0.6f, 0.36f).Lerp(new Color(1f, 0.97f, 0.92f), Mathf.SmoothStep(0f, 0.35f, elevation));
+        var space = FrameNodes.PlanetSpaceOf(planet.Id);
+        _sky?.Update(space.ToGodotDirection(up), space.ToGodotDirection(sun), length - planet.RadiusMeters, planet);
     }
 }
