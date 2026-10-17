@@ -566,6 +566,14 @@ Proponowane odstępstwa rozgrywki: pomijanie pustego nagrobka, kilka nagrobków 
 Po każdym etapie wykonawca dopisuje commit, wyniki testów, werdykt Opus i rozstrzygnięcia DO USTALENIA.
 Nie oznaczać testów, integracji foteli ani oceny wyglądu jako wykonanych wyłącznie na podstawie tego planu.
 
+### Etap A (realizacja 2026-10-17, Sonnet 5.5)
+
+**A0. Baza i rezerwacje.**
+
+- Commit bazy: `dad18fa` (merge `origin/pakiet/k6-34-zagrozenia-i-kombinezon` do gałęzi K6-35). Obecne w bazie: `UndoLog.SetVitals`, blob 2 v3 (`PlayerVitals.Suit`), op 42, `ProtocolVersion` = 19.
+- Pin skrótu: `DeathHashFixture.Pin` = `1459890191863420218`, liczony na własnej zamrożonej fiksturze przed jakąkolwiek zmianą kodu Core pakietu (`DeathHashTests.NoNewState_PreservesPreviousHash`). Zamrożony korpus terenu i `DeterminismTests.cs` względem `1026730` bez zmian.
+- „Niesprawdzone” z Kontekstu: (1) `QuickStackIntent` wybiera wyłącznie `ContainerKind.Chest` (`FunctionalBlockRules.ResolveQuickStack`, indeks `OfKind(Chest)`): sprawdzone, nagrobek nie jest jego celem; (2) rejestr komend konsoli serwera istnieje (`Horyzont.Server/Console/ConsoleCommandProcessor.cs`): komenda administratora dla op 46 należy do etapu C3; (3) miejsce wysyłki migawek względem faz ticka leży w projekcie `Horyzont.Server`: sprawdzenie należy do C3 (blokuje C3, nie A); (4) `WorldState.FrameExists` przyjmuje ramę budowli także dla bytów, więc zakaz ramy innej niż planeta (D12) egzekwuje applier op 38 i builder świata, nie model.
+
 ## Przegląd planu (Opus 5.5)
 
 Data: 2026-10-16. Podstawa: plan Codexa (gpt-6.1-sol), worktree `k6-34` (tylko odczyt, bez gita, bez budowania i testów). Werdykt: **GO z poprawkami** (16 poprawek; 3 istotne dla poprawności: P1–P3).
