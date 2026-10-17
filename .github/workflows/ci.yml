@@ -28,7 +28,8 @@ jobs:
         # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).
         # os: [windows-latest, ubuntu-latest]
         os: [windows-latest]
-    runs-on: [self-hosted, Windows, X64]
+    # Public repo: GitHub-hosted runners are free, and this keeps the self-hosted runner free for the Godot jobs.
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -68,6 +69,8 @@ jobs:
           # - os: ubuntu-latest
           #   editor-artifact: engine-linux-editor
           #   editor: godot.linuxbsd.editor.double.x86_64.mono
+    # Public repo: never run fork pull requests on the self-hosted runner (it is the owner's PC).
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 45
     permissions:
@@ -212,6 +215,7 @@ jobs:
           name: generator-report-${{ runner.os }}-editor
           path: generator-report/*.json
           if-no-files-found: error
+          retention-days: 14
 
       - name: Upload engine test results
         if: always()
@@ -220,6 +224,7 @@ jobs:
           name: engine-tests-${{ runner.os }}
           path: game/TestResults/*.trx
           if-no-files-found: ignore
+          retention-days: 14
 
   generator-consistency:
     # Linux CI off until a free Linux runner exists (owner decision 2026-10-09, self-hosted Windows only).

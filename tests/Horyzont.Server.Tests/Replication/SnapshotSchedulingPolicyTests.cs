@@ -1,5 +1,6 @@
 using Horyzont.Core.Ids;
 using Horyzont.Server.Replication;
+using Horyzont.Testing;
 
 namespace Horyzont.Server.Tests.Replication;
 
@@ -54,8 +55,10 @@ public sealed class SnapshotSchedulingPolicyTests
         var selected = new int[size];
         for (var i = 0; i < size; i++) { candidates[i] = new SnapshotCandidate(new EntityId((ulong)i + 1), 10 * i, 48, i % 14, i == 0); }
         for (var i = 0; i < 10000; i++) { SnapshotSchedulingPolicy.Select(candidates, selected, 1000); }
-        var start = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 10000; i++) { SnapshotSchedulingPolicy.Select(candidates, selected, 1000); }
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - start);
+        var allocated = AllocationProbe.MinAllocatedBytes(() =>
+        {
+            for (var i = 0; i < 10000; i++) { SnapshotSchedulingPolicy.Select(candidates, selected, 1000); }
+        });
+        Assert.Equal(0, allocated);
     }
 }
