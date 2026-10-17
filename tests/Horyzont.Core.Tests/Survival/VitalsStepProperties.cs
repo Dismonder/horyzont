@@ -74,7 +74,7 @@ public sealed class VitalsStepProperties
     {
         Kit.ForAll(CaseGen, Check, SequenceCases);
 
-        // The generator must reach the interesting states: an exhausted player, damage that hits the floor, a player at the maxima, and above all the way
+        // The generator must reach the interesting states: an exhausted player, damage that kills, a player at the maxima, and above all the way
         // back from exhaustion (the point of D16). Measured on 200 cases of 200 steps (40000 steps): about 21000 exhausted steps, 5700 at the floor, 2100 at
         // full stamina and 90 recoveries. The thresholds sit at about a quarter of that, a margin for the random cases, and are never lowered below what
         // proves that the states are reached.
@@ -127,7 +127,7 @@ public sealed class VitalsStepProperties
             Assert.True(vitals.IsValid, $"invalid vitals {vitals}");
             Assert.Equal(_rules.BaseHealth + c.Bonus.Health, result.HealthMax);
             Assert.Equal(_rules.BaseStamina + c.Bonus.Stamina, result.StaminaMax);
-            Assert.InRange(vitals.Health, _rules.MinHealthWithoutDeath, result.HealthMax);
+            Assert.InRange(vitals.Health, 0f, result.HealthMax);
             Assert.InRange(vitals.Stamina, 0f, result.StaminaMax);
 
             // Stamina 0 is always exhausted; an exhausted player has less than the recovery line (a small margin for float rounding on the line itself).
@@ -136,7 +136,7 @@ public sealed class VitalsStepProperties
             if (coverage is not null)
             {
                 coverage.ExhaustedSteps += vitals.Exhausted ? 1 : 0;
-                coverage.HealthAtFloor += vitals.Health <= _rules.MinHealthWithoutDeath ? 1 : 0;
+                coverage.HealthAtFloor += vitals.Health <= 0f ? 1 : 0;
                 coverage.StaminaAtMax += vitals.Stamina >= result.StaminaMax ? 1 : 0;
                 coverage.RecoveredFromExhaustion += before.Exhausted && !vitals.Exhausted ? 1 : 0;
             }

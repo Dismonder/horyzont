@@ -11,8 +11,9 @@ public static class VitalsStep
     /// Advances the vitals by one tick, in this order: (1) the maxima from the food bonus; (2) the stamina cost of sprinting, jumping and tools, or,
     /// without a cost this tick and once <see cref="VitalsRules.StaminaRegenDelayTicks"/> ticks have passed since <see cref="VitalsTickInput.LastStaminaCost"/>
     /// (at once when it is <c>Tick(0)</c>), the regeneration (x1.5 while <paramref name="now"/> is before <see cref="PlayerVitals.RestedUntil"/>); (3) the health regeneration; (4) the damage; (5) both values are clamped
-    /// to the maxima and health to at least <see cref="VitalsRules.MinHealthWithoutDeath"/>; (6) stamina 0 exhausts, and an exhausted player recovers at
-    /// <see cref="VitalsRules.ExhaustedRecoverFraction"/> of the maximum.
+    /// to the maxima and to at least 0 (health 0 is a death, K6-35 D7); (6) stamina 0 exhausts, and an exhausted player recovers at
+    /// <see cref="VitalsRules.ExhaustedRecoverFraction"/> of the maximum. A player that already has health 0 is left as it is (no regeneration, no cost, no damage) until the operation
+    /// of its death resets the vitals.
     /// </summary>
     /// <param name="current">The vitals before the tick.</param>
     /// <param name="input">What happened during the tick.</param>
@@ -34,25 +35,31 @@ public static class VitalsStep
         var health = float.IsFinite(current.Health) ? current.Health : healthMax;
         var stamina = float.IsFinite(current.Stamina) ? current.Stamina : staminaMax;
 
-        // (2) The cost of this tick, or the regeneration when nothing was spent now and the delay since the last cost is over.
-        var extra = Usable(input.ExtraStaminaCost);
-        var spent = input.Sprinting || input.Jumped || extra > 0f;
-        if (spent)
+        // A body at zero health waits for the operation of its death (K6-35 D7): steps 2 to 4 are skipped, so it neither regenerates nor spends stamina nor takes damage, and
+        // nothing here can revive it. The clamps and the exhaustion below still hold.
+        var waitingForDeath = float.IsFinite(current.Health) && current.Health <= 0f;
+        if (!waitingForDeath)
         {
-            stamina -= (input.Sprinting ? rules.SprintStaminaPerSecond / tickRate : 0f) + (input.Jumped ? rules.JumpStamina : 0f) + extra;
-        }
-        else if (DelayOver(input.LastStaminaCost, now, rules.StaminaRegenDelayTicks))
-        {
-            var perTick = rules.StaminaRegenPerSecond / tickRate;
-            stamina += now < current.RestedUntil ? perTick * (1f + rules.RestStaminaRegenBonus) : perTick;
+            // (2) The cost of this tick, or the regeneration when nothing was spent now and the delay since the last cost is over.
+            var extra = Usable(input.ExtraStaminaCost);
+            var spent = input.Sprinting || input.Jumped || extra > 0f;
+            if (spent)
+            {
+                stamina -= (input.Sprinting ? rules.SprintStaminaPerSecond / tickRate : 0f) + (input.Jumped ? rules.JumpStamina : 0f) + extra;
+            }
+            else if (DelayOver(input.LastStaminaCost, now, rules.StaminaRegenDelayTicks))
+            {
+                var perTick = rules.StaminaRegenPerSecond / tickRate;
+                stamina += now < current.RestedUntil ? perTick * (1f + rules.RestStaminaRegenBonus) : perTick;
+            }
+
+            // (3) The health regeneration, (4) the damage.
+            health += (rules.BaseHealthRegenPerSecond + Usable(bonus.HealthRegenPerSecond)) / tickRate;
+            health -= Usable(input.Damage);
         }
 
-        // (3) The health regeneration, (4) the damage.
-        health += (rules.BaseHealthRegenPerSecond + Usable(bonus.HealthRegenPerSecond)) / tickRate;
-        health -= Usable(input.Damage);
-
-        // (5) The clamps: both values to the maxima, stamina to 0 and health to the floor that stands until death exists (K6-35).
-        health = MathF.Max(MathF.Min(health, healthMax), rules.MinHealthWithoutDeath);
+        // (5) The clamps: both values to the maxima, both to 0 from below; health 0 is a death (K6-35 D7).
+        health = MathF.Max(MathF.Min(health, healthMax), 0f);
         stamina = MathF.Max(MathF.Min(stamina, staminaMax), 0f);
 
         // (6) Stamina 0 exhausts; an exhausted player recovers at the fraction of the maximum.

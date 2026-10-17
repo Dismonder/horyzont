@@ -36,9 +36,6 @@ public sealed record VitalsRules
     /// <summary>The exhausted player recovers when stamina reaches this fraction of the maximum.</summary>
     public float ExhaustedRecoverFraction { get; init; } = 0.2f;
 
-    /// <summary>Health stays at least this high until death exists (K6-35).</summary>
-    public float MinHealthWithoutDeath { get; init; } = 1f;
-
     /// <summary>The same food can be eaten again when no more than this fraction of its time remains.</summary>
     public double FoodRepeatFraction { get; init; } = 0.2;
 

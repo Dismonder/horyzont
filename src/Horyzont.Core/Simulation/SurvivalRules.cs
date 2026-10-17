@@ -61,7 +61,7 @@ internal sealed class SurvivalRules(
                     }
 
                     var anyTarget = CheckContainer(player, move.To.Container, allowChests: true, out var anyContainer, content.HasHazards);
-                    return anyTarget == RejectReason.None && anyContainer!.Kind == ContainerKind.StationOutput ? RejectReason.InvalidParameters : anyTarget;
+                    return anyTarget == RejectReason.None && anyContainer!.Kind is ContainerKind.StationOutput or ContainerKind.Tombstone ? RejectReason.InvalidParameters : anyTarget;
                 }
 
                 var target = CheckSlot(player, move.To.SlotRef, allowChests: true, out var targetContainer, content.HasHazards);
@@ -70,8 +70,8 @@ internal sealed class SurvivalRules(
                     return target;
                 }
 
-                // The output of a station is taken from, never put into (K6-32 D17).
-                if (targetContainer!.Kind == ContainerKind.StationOutput)
+                // The output of a station is taken from, never put into (K6-32 D17); so is a tombstone (K6-35 D13).
+                if (targetContainer!.Kind is ContainerKind.StationOutput or ContainerKind.Tombstone)
                 {
                     return RejectReason.InvalidParameters;
                 }
@@ -96,6 +96,11 @@ internal sealed class SurvivalRules(
                 if (!state.Containers.TryGet(takeAll.Container, out var chest))
                 {
                     return RejectReason.ContainerLocked;
+                }
+
+                if (TombstoneRecovery.IsTombstone(chest))
+                {
+                    return CheckTombstone(player, chest);
                 }
 
                 if (!IsBlockContainer(chest))
@@ -141,6 +146,19 @@ internal sealed class SurvivalRules(
     internal void Commit() => _ledger.Commit();
 
     private RejectReason ResolveMove(ItemMoveIntent move, out Operation operation)
+    {
+        var reason = ResolveMoveCore(move, out operation);
+
+        // What empties a tombstone takes it away in the same operation (K6-35 D13).
+        if (reason == RejectReason.None)
+        {
+            operation = TombstoneRecovery.CompleteRemoval(state, operation);
+        }
+
+        return reason;
+    }
+
+    private RejectReason ResolveMoveCore(ItemMoveIntent move, out Operation operation)
     {
         operation = null!;
         GetContainer(move.From.Container, out var sourceContainer);
@@ -205,7 +223,8 @@ internal sealed class SurvivalRules(
             return RejectReason.None;
         }
 
-        if (sourceContainer.Kind == ContainerKind.StationOutput || move.Count != source.Count)
+        // A swap also puts an item into the container it takes from: not with the output of a station, and not with a tombstone (K6-35 D13).
+        if (sourceContainer.Kind is ContainerKind.StationOutput or ContainerKind.Tombstone || move.Count != source.Count)
         {
             return RejectReason.InvalidParameters;
         }
@@ -464,6 +483,12 @@ internal sealed class SurvivalRules(
             return allowChests ? CheckBlockContainer(player, container) : RejectReason.ContainerLocked;
         }
 
+        // A tombstone of the player, in reach; the container of any other persistent entity is locked until the package that owns its rule adds one (K6-35 D13).
+        if (TombstoneRecovery.IsTombstone(container))
+        {
+            return allowChests ? CheckTombstone(player, container) : RejectReason.ContainerLocked;
+        }
+
         if (container.Owner != player || container.Host.Kind != ContainerHostKind.Player || container.Host.PlayerId != player)
         {
             return RejectReason.ContainerLocked;
@@ -502,6 +527,19 @@ internal sealed class SurvivalRules(
 
         return ContainerReach.TryDistanceFromEye(state, rules, player, new EntityId(chest.Host.Id), chest.Host.Cell, out var meters)
             && meters <= rules.ContainerKeepRangeMeters
+            ? RejectReason.None
+            : RejectReason.OutOfReach;
+    }
+
+    /// <summary>The tombstone of the player (owned and private), with the eye within <see cref="GameRules.ContainerKeepRangeMeters"/> of its entity (D13); nobody else may use it.</summary>
+    private RejectReason CheckTombstone(PlayerId player, Container tombstone)
+    {
+        if (tombstone.Access != ContainerAccess.Private || tombstone.Owner != player)
+        {
+            return RejectReason.ContainerLocked;
+        }
+
+        return ContainerReach.TryDistanceToEntity(state, rules, player, new EntityId(tombstone.Host.Id), out var meters) && meters <= rules.ContainerKeepRangeMeters
             ? RejectReason.None
             : RejectReason.OutOfReach;
     }

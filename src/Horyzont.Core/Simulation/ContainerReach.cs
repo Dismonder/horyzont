@@ -41,6 +41,27 @@ public static class ContainerReach
         return true;
     }
 
+    /// <summary>Measures the distance from the eye of <paramref name="player"/> to a persistent entity, such as a tombstone (K6-35 D13), on the planet both stand on.</summary>
+    /// <param name="state">World state.</param>
+    /// <param name="rules">Game rules (eye height).</param>
+    /// <param name="player">The player.</param>
+    /// <param name="entity">The persistent entity.</param>
+    /// <param name="meters">The distance when the method returns true.</param>
+    /// <returns>False when the player or the entity is unknown, or they are not on the same planet.</returns>
+    public static bool TryDistanceToEntity(WorldState state, GameRules rules, PlayerId player, EntityId entity, out float meters)
+    {
+        meters = 0f;
+        if (!state.Players.TryGet(player, out var playerState) || !TryGetEye(state, rules, playerState, out var playerPlanet, out var eye)
+            || !state.PersistentEntities.TryGet(entity, out var persistent) || persistent.Frame.Kind != FrameKind.Planet
+            || persistent.Frame.Id != playerPlanet.Value)
+        {
+            return false;
+        }
+
+        meters = Vector3.Distance(eye, persistent.Position);
+        return true;
+    }
+
     /// <summary>The centre of <paramref name="cell"/> in the frame of the planet the construct stands on (K6-32 D13); the same centre the reach measure above uses.</summary>
     /// <param name="state">World state.</param>
     /// <param name="construct">Construct holding the block.</param>
