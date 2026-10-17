@@ -3,15 +3,17 @@ using System.Globalization;
 using Godot;
 
 using Horyzont.Client.Inventory;
+using Horyzont.Core.Content;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
+using Horyzont.Core.Survival;
 
 using ToolHud = Horyzont.Game.Client.Tools.ToolHud;
 
 namespace Horyzont.Game.Client.Inventory;
 
 /// <summary>
-/// The inventory screen (Tab or I): the 8 by 5 backpack grid, the hotbar under it and a greyed "coming soon" equipment panel. It is a
+/// The inventory screen (Tab or I): the 8 by 5 backpack grid, the hotbar under it and the equipment panel with the suit (K6-34; greyed "coming soon" while the world has no hazards). It is a
 /// full-screen layer that takes every click, so the game below sees neither the mouse nor the tools while it is open.
 /// </summary>
 public sealed partial class InventoryScreen : CanvasLayer
@@ -24,13 +26,17 @@ public sealed partial class InventoryScreen : CanvasLayer
     private readonly InventoryNode _node;
     private readonly List<SlotView> _bag = [];
     private readonly List<SlotView> _hotbar = [];
+    private static readonly string[] _captionKeys = ["EQ_HEAD", "EQ_TORSO", "EQ_LEGS", "EQ_BACKPACK", "EQ_MODULE", "EQ_MODULE", "EQ_MODULE"];
+
     private readonly List<SlotView> _equipment = [];
+    private readonly List<Label> _equipmentCaptions = [];
     private readonly ItemTooltip _tooltip = new();
     private Label? _title;
     private Label? _bagTitle;
     private Label? _hotbarTitle;
     private Label? _equipmentTitle;
     private Label? _soon;
+    private SuitPanel? _suitPanel;
     private Label? _help;
     private Label? _refusal;
     private Button? _discard;
@@ -66,8 +72,17 @@ public sealed partial class InventoryScreen : CanvasLayer
     /// <summary>Gets the slots of the hotbar row, in slot order.</summary>
     public IReadOnlyList<SlotView> HotbarSlots => _hotbar;
 
-    /// <summary>Gets the greyed equipment placeholders.</summary>
+    /// <summary>Gets the equipment slots (greyed placeholders while the world has no hazards).</summary>
     public IReadOnlyList<SlotView> EquipmentViews => _equipment;
+
+    /// <summary>Gets the captions under the equipment slots (K6-34).</summary>
+    public IReadOnlyList<Label> EquipmentCaptions => _equipmentCaptions;
+
+    /// <summary>Gets the suit rows of the equipment panel (K6-34); null before the screen entered the tree.</summary>
+    public SuitPanel? Suit => _suitPanel;
+
+    /// <summary>Gets the label that says the equipment is coming soon; hidden while the equipment works.</summary>
+    public Label? SoonLabel => _soon;
 
     /// <summary>Gets the panel of the open chest; null before the screen entered the tree.</summary>
     public ChestPanel? Chest => _chestPanel;
@@ -180,10 +195,20 @@ public sealed partial class InventoryScreen : CanvasLayer
         equipmentBox.AddChild(equipmentGrid);
         for (var i = 0; i < EquipmentSlots; i++)
         {
-            var slot = NewSlot(equipmentGrid, $"Eq{i}");
+            var cell = new VBoxContainer { Name = $"EqCell{i}" };
+            cell.AddThemeConstantOverride("separation", 0);
+            equipmentGrid.AddChild(cell);
+            var slot = NewSlot(cell, $"Eq{i}");
             slot.Set(ItemStack.Empty, default, -1, selected: false, dim: false, disabled: true);
             _equipment.Add(slot);
+            var caption = new Label { Name = $"EqCaption{i}", HorizontalAlignment = HorizontalAlignment.Center };
+            HudTheme.StyleLabel(caption, 11, HudTheme.Muted);
+            cell.AddChild(caption);
+            _equipmentCaptions.Add(caption);
         }
+
+        _suitPanel = new SuitPanel { Visible = false };
+        equipmentBox.AddChild(_suitPanel);
 
         _soon = new Label { HorizontalAlignment = HorizontalAlignment.Center };
         HudTheme.StyleLabel(_soon, 15, HudTheme.AccentTool);
@@ -279,6 +304,12 @@ public sealed partial class InventoryScreen : CanvasLayer
             _handView.Position = mouse - new Vector2(SlotView.Side / 2f, SlotView.Side / 2f);
         }
 
+        if (_suitPanel is { Visible: true })
+        {
+            UpdateSuitPanel(); // the values move with message 44, not with the version of the screen
+        }
+
+        _chestPanel?.UpdateTime();
         UpdateTooltip(mouse, force: false);
     }
 
@@ -349,7 +380,7 @@ public sealed partial class InventoryScreen : CanvasLayer
         _bagTitle!.Text = Tr("INV_BAG");
         _hotbarTitle!.Text = Tr("INV_HOTBAR");
         _equipmentTitle!.Text = Tr("INV_EQUIPMENT");
-        _soon!.Text = Tr("INV_SOON");
+        FillEquipment(held, interaction);
         _help!.Text = Tr("INV_HELP");
         _discard!.Text = Tr("INV_DISCARD");
         _discard.Visible = interaction.CanDiscard && !interaction.AwaitingDiscardConfirmation;
@@ -387,6 +418,61 @@ public sealed partial class InventoryScreen : CanvasLayer
         else
         {
             _handView!.Visible = false;
+        }
+    }
+
+    // K6-34: with hazards the seven slots work and show the suit; the backpack slot takes nothing yet and is dimmed. Without hazards they stay greyed placeholders.
+    private void FillEquipment(HeldStack? held, InventoryInteraction interaction)
+    {
+        var container = _node.Inventory.Equipment;
+        var enabled = interaction.EquipmentEnabled && container is not null;
+        _soon!.Visible = !enabled;
+        _soon.Text = Tr("INV_SOON");
+        _suitPanel!.Visible = enabled;
+        if (!enabled)
+        {
+            for (var i = 0; i < _equipment.Count; i++)
+            {
+                _equipment[i].Ref = default;
+                _equipment[i].Set(ItemStack.Empty, default, -1, selected: false, dim: false, disabled: true);
+                _equipmentCaptions[i].Text = string.Empty;
+            }
+
+            return;
+        }
+
+        for (var i = 0; i < _equipment.Count; i++)
+        {
+            var slotRef = new SlotRef(container!.Id, (ushort)i);
+            var stack = container.Get(i);
+            var visual = stack.IsEmpty ? default : _node.VisualOf(stack.Type);
+            var backpack = EquipmentLayout.SlotKind(i) == EquipmentSlot.Backpack;
+            var dim = backpack || interaction.IsPending(slotRef) || held?.Source == slotRef;
+            _equipment[i].Ref = slotRef;
+            _equipment[i].Set(stack, visual, -1, selected: false, dim, disabled: backpack);
+            _equipmentCaptions[i].Text = Tr(_captionKeys[i]);
+        }
+
+        UpdateSuitPanel(force: true);
+    }
+
+    private void UpdateSuitPanel(bool force = false)
+    {
+        if (_suitPanel is null || _node.SuitLoadout is not { } loadout)
+        {
+            return;
+        }
+
+        // Before the first message 44 the suit is the fresh one, full (D4). Once it came, the capacity is the server's, the same the HUD shows (review C-D, P3-2, P3-3);
+        // the drain is the local loadout's.
+        var stats = loadout.Compute();
+        if (_node.Vitals is { HasState: true } vitals)
+        {
+            _suitPanel.Apply(vitals.Suit, new SuitStats(vitals.SuitCapacity, stats.Drain), force);
+        }
+        else
+        {
+            _suitPanel.Apply(stats.Capacity, stats, force);
         }
     }
 

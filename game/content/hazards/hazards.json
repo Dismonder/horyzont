@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "profiles": [
+    { "key": "core:temperate",
+      "cold": { "day": 0, "night": 0.25 },
+      "zones": [ { "minHeight": 150, "scale": { "cold": 2 } } ] },
+    { "key": "core:barren_moon",
+      "cold": { "day": 0, "night": 0.4 },
+      "heat": { "day": 0.3, "night": 0 },
+      "radiation": { "day": 0.3, "night": 0 },
+      "vacuum": { "day": 0.5, "night": 0.5 } },
+    { "key": "core:toxic",
+      "heat": { "day": 0.3, "night": 0 },
+      "toxins": { "day": 0.4, "night": 0.4 } },
+    { "key": "core:frozen",
+      "cold": { "day": 0.5, "night": 1.0 },
+      "radiation": { "day": 0.15, "night": 0 } },
+    { "key": "core:space",
+      "cold": { "day": 0.3, "night": 0.3 },
+      "radiation": { "day": 0.3, "night": 0.3 },
+      "vacuum": { "day": 0.5, "night": 0.5 } }
+  ],
+  "bodies": [
+    { "body": 0, "profile": "core:temperate" },
+    { "body": 1, "profile": "core:barren_moon" },
+    { "body": 2, "profile": "core:toxic" },
+    { "body": 3, "profile": "core:frozen" }
+  ],
+  "defaultProfile": "core:temperate",
+  "spaceProfile": "core:space",
+  "oxygenGenerator": { "fuel": "core:fuel_cell", "secondsPerCell": 300 }
+}

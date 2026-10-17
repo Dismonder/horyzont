@@ -18,6 +18,19 @@
     { "key": "core:multitool_t2", "category": "tool", "flags": ["tool"], "toolTier": 2, "visual": { "glyph": "M2", "color": "#4FD1C5", "clientTool": "terrain" } },
     { "key": "core:berries", "category": "food", "flags": ["food"], "food": { "health": 10, "stamina": 20, "regen": 0.5, "durationSeconds": 600 }, "visual": { "glyph": "Be", "color": "#B03A5B" } },
     { "key": "core:berry_jam", "category": "food", "flags": ["food"], "food": { "health": 25, "stamina": 35, "regen": 1.0, "durationSeconds": 1200 }, "visual": { "glyph": "Ja", "color": "#8E2A4A" } },
-    { "key": "core:herbal_broth", "category": "food", "flags": ["food"], "food": { "health": 15, "stamina": 45, "regen": 1.5, "durationSeconds": 900 }, "visual": { "glyph": "Hb", "color": "#6FAE5B" } }
+    { "key": "core:herbal_broth", "category": "food", "flags": ["food"], "food": { "health": 15, "stamina": 45, "regen": 1.5, "durationSeconds": 900 }, "visual": { "glyph": "Hb", "color": "#6FAE5B" } },
+    { "key": "core:heat_cell", "category": "component", "suitRefill": { "resource": "heating", "amount": 40 }, "visual": { "glyph": "Hc", "color": "#F08A3C" } },
+    { "key": "core:coolant_cell", "category": "component", "suitRefill": { "resource": "cooling", "amount": 40 }, "visual": { "glyph": "Cc", "color": "#5BC0EB" } },
+    { "key": "core:filter_cartridge", "category": "component", "suitRefill": { "resource": "filter", "amount": 40 }, "visual": { "glyph": "Fl", "color": "#7CC96B" } },
+    { "key": "core:shield_cell", "category": "component", "suitRefill": { "resource": "shield", "amount": 40 }, "visual": { "glyph": "Sh", "color": "#A66FE0" } },
+    { "key": "core:oxygen_canister", "category": "component", "suitRefill": { "resource": "oxygen", "amount": 50 }, "visual": { "glyph": "O2", "color": "#F2F4F7" } },
+    { "key": "core:module_o2_tank", "category": "armor", "flags": ["armor"], "equipmentSlot": "module",
+      "suitModule": { "effects": [ { "resource": "oxygen", "capacity": 100, "drain": 1.0 } ] }, "visual": { "glyph": "Tk", "color": "#DDE3EA" } },
+    { "key": "core:module_thermal", "category": "armor", "flags": ["armor"], "equipmentSlot": "module",
+      "suitModule": { "effects": [ { "resource": "heating", "capacity": 0, "drain": 0.6 }, { "resource": "cooling", "capacity": 0, "drain": 0.6 } ] }, "visual": { "glyph": "Th", "color": "#E8905B" } },
+    { "key": "core:module_filter", "category": "armor", "flags": ["armor"], "equipmentSlot": "module",
+      "suitModule": { "effects": [ { "resource": "filter", "capacity": 50, "drain": 0.8 } ] }, "visual": { "glyph": "Mf", "color": "#6DBF6B" } },
+    { "key": "core:module_shielding", "category": "armor", "flags": ["armor"], "equipmentSlot": "module",
+      "suitModule": { "effects": [ { "resource": "shield", "capacity": 0, "drain": 0.5 } ] }, "visual": { "glyph": "Ms", "color": "#9A62D6" } }
   ]
 }

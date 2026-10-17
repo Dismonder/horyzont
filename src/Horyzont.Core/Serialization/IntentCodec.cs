@@ -32,6 +32,7 @@ public static class IntentCodec
         TakeAll = 23,
         Craft = 24,
         Eat = 25,
+        SuitRefill = 26,
         PropHit = 27,
         BlockInteract = 28,
         BlockConfig = 29,
@@ -198,6 +199,13 @@ public static class IntentCodec
                 w.WriteByte(CurrentFormatVersion);
                 w.WriteVarUInt(eat.Container.Value);
                 w.WriteVarUInt(eat.Slot);
+                break;
+
+            case SuitRefillIntent refill:
+                w.WriteByte((byte)IntentCode.SuitRefill);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(refill.Container.Value);
+                w.WriteVarUInt(refill.Slot);
                 break;
 
             case QuickStackIntent:
@@ -412,6 +420,10 @@ public static class IntentCodec
             case IntentCode.Eat:
                 var eatContainer = new ContainerId(r.ReadVarUInt());
                 return new EatIntent(eatContainer, r.ReadVarUInt16());
+
+            case IntentCode.SuitRefill:
+                var refillContainer = new ContainerId(r.ReadVarUInt());
+                return new SuitRefillIntent(refillContainer, r.ReadVarUInt16());
 
             case IntentCode.QuickStack:
                 return new QuickStackIntent();

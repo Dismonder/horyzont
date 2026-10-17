@@ -90,6 +90,14 @@ public sealed class BlockInteraction
                 }
 
                 return BlockInteractionResult.NothingToInteract;
+            case BlockPromptKind.OpenGenerator:
+                if (_entities.TryGet(prompt.Construct, prompt.Cell, out var generatorState) && generatorState is OxygenGeneratorBlockState generator)
+                {
+                    _chests.Open(generator.Input, prompt.Construct, prompt.Cell);
+                    return BlockInteractionResult.ChestRequested;
+                }
+
+                return BlockInteractionResult.NothingToInteract;
             case BlockPromptKind.OpenStation:
                 var station = new BlockRef(prompt.Construct, prompt.Cell);
                 if (StationKinds.IsTimed(prompt.Station))
@@ -141,6 +149,7 @@ public sealed class BlockInteraction
         {
             BlockFunctionKind.Station => StationPrompt(construct.Id, hit.Cell, function.Station),
             BlockFunctionKind.Chest => ChestPrompt(construct.Id, hit.Cell),
+            BlockFunctionKind.OxygenGenerator => GeneratorPrompt(construct.Id, hit.Cell),
             BlockFunctionKind.Bed => BedPrompt(construct.Id, hit.Cell),
             BlockFunctionKind.Door => block.FunctionState == 0 ? BlockPromptKind.OpenDoor : BlockPromptKind.CloseDoor,
             BlockFunctionKind.Light => block.FunctionState == 0 ? BlockPromptKind.SwitchLightOn : BlockPromptKind.SwitchLightOff,
@@ -163,6 +172,10 @@ public sealed class BlockInteraction
             ? BlockPromptKind.OpenStation
             : null;
     }
+
+    // Like a chest: without the replicated state the container of the input is unknown.
+    private BlockPromptKind? GeneratorPrompt(EntityId construct, CellPos cell) =>
+        _entities.TryGet(construct, cell, out var state) && state is OxygenGeneratorBlockState ? BlockPromptKind.OpenGenerator : null;
 
     private BlockPromptKind? ChestPrompt(EntityId construct, CellPos cell)
     {

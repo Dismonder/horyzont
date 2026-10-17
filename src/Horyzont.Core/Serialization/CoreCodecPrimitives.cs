@@ -334,8 +334,22 @@ internal static class CoreCodecPrimitives
                 }
 
                 break;
+            case OxygenGeneratorBlockState generator:
+                w.WriteByte((byte)BlockEntityKind.OxygenGenerator);
+                w.WriteVarUInt(generator.Input.Value);
+                if (generator.Started is { } burning)
+                {
+                    w.WriteByte(1);
+                    w.WriteVarUInt(burning.Value);
+                }
+                else
+                {
+                    w.WriteByte(0);
+                }
+
+                break;
             default:
-                throw new ArgumentException($"A block state of format 1 is a chest, a bed or a station, not {state?.GetType().Name ?? "null"}.", nameof(state));
+                throw new ArgumentException($"A block state of format 1 is a chest, a bed, a station or an oxygen generator, not {state?.GetType().Name ?? "null"}.", nameof(state));
         }
     }
 
@@ -367,6 +381,15 @@ internal static class CoreCodecPrimitives
                 }
 
                 return new StationBlockState(input, output, recipe, started);
+            case (byte)BlockEntityKind.OxygenGenerator:
+                var generatorInput = new ContainerId(r.ReadVarUInt());
+                byte generatorFlags = r.ReadByte();
+                if (generatorFlags > 1)
+                {
+                    throw new ProtocolViolationException($"Unknown oxygen generator flags {generatorFlags}.");
+                }
+
+                return new OxygenGeneratorBlockState(generatorInput, generatorFlags == 1 ? new Tick(r.ReadVarUInt()) : null);
             default:
                 throw new ProtocolViolationException($"Unknown or reserved block state kind {kind}.");
         }

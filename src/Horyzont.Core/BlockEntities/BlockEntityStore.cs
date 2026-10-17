@@ -13,6 +13,7 @@ public sealed class BlockEntityStore
     private readonly Dictionary<BlockRef, BlockEntityState> _lookup = [];
     private readonly Dictionary<EntityId, int> _perConstruct = [];
     private readonly Dictionary<EntityId, int> _stationsPerConstruct = [];
+    private readonly List<BlockRef> _generators = [];
 
     internal BlockEntityStore(ChangeTracker tracker)
     {
@@ -37,6 +38,9 @@ public sealed class BlockEntityStore
     /// <param name="construct">The construct.</param>
     /// <returns>The count.</returns>
     public int StationsOf(EntityId construct) => _stationsPerConstruct.GetValueOrDefault(construct);
+
+    /// <summary>The blocks with the state of an oxygen generator (K6-34), in the order of <see cref="BlockRef"/>; kept in step with <see cref="Set"/>, <see cref="Load"/> and <see cref="Remove"/>.</summary>
+    public IReadOnlyList<BlockRef> Generators => _generators;
 
     /// <summary>Looks up the state of a block.</summary>
     /// <param name="key">Construct and cell.</param>
@@ -64,6 +68,7 @@ public sealed class BlockEntityStore
 
         CountStation(key.Construct, previous, -1);
         CountStation(key.Construct, state, 1);
+        IndexGenerator(key, previous, state);
         _tracker.MarkBlockEntity(key);
         return previous;
     }
@@ -75,6 +80,7 @@ public sealed class BlockEntityStore
         _lookup.Add(key, state);
         _perConstruct[key.Construct] = _perConstruct.GetValueOrDefault(key.Construct) + 1;
         CountStation(key.Construct, state, 1);
+        IndexGenerator(key, null, state);
     }
 
     /// <summary>Removes a state and marks it changed.</summary>
@@ -98,8 +104,29 @@ public sealed class BlockEntityStore
         }
 
         CountStation(key.Construct, previous, -1);
+        IndexGenerator(key, previous, null);
         _tracker.MarkBlockEntity(key);
         return previous;
+    }
+
+    private void IndexGenerator(BlockRef key, BlockEntityState? previous, BlockEntityState? current)
+    {
+        var was = previous is OxygenGeneratorBlockState;
+        var now = current is OxygenGeneratorBlockState;
+        if (was == now)
+        {
+            return;
+        }
+
+        var at = _generators.BinarySearch(key);
+        if (now)
+        {
+            _generators.Insert(~at, key);
+        }
+        else
+        {
+            _generators.RemoveAt(at);
+        }
     }
 
     private void CountStation(EntityId construct, BlockEntityState? state, int delta)

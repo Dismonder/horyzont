@@ -307,7 +307,7 @@ public sealed class WorldStateBuilder
             LoadBlockEntity(state, record);
         }
 
-        // A station container hosted by a block needs the station state that points at it (the other direction is checked in LoadBlockEntity).
+        // A station container hosted by a block needs the station or generator state that points at it (the other direction is checked in LoadBlockEntity).
         foreach (var kind in new[] { ContainerKind.StationInput, ContainerKind.StationOutput })
         {
             var stationContainers = state.Containers.OfKind(kind);
@@ -315,11 +315,10 @@ public sealed class WorldStateBuilder
             {
                 var container = stationContainers[i];
                 if (container.Host.Kind != ContainerHostKind.ConstructBlock
-                    || !(state.BlockEntities.TryGet(new BlockRef(new EntityId(container.Host.Id), container.Host.Cell), out var entity)
-                        && entity is StationBlockState stationState
-                        && (kind == ContainerKind.StationInput ? stationState.Input : stationState.Output) == container.Id))
+                    || !state.BlockEntities.TryGet(new BlockRef(new EntityId(container.Host.Id), container.Host.Cell), out var entity)
+                    || !IsStateContainer(entity, kind, container.Id))
                 {
-                    throw new InvalidDataException($"Station container {container.Id.Value} has no station state on its host block.");
+                    throw new InvalidDataException($"Station container {container.Id.Value} has no station or generator state on its host block.");
                 }
             }
         }
@@ -575,12 +574,28 @@ public sealed class WorldStateBuilder
                 }
 
                 break;
+            case OxygenGeneratorBlockState generator:
+                if (!state.Containers.TryGet(generator.Input, out var generatorInput) || generatorInput.Kind != ContainerKind.StationInput
+                    || generatorInput.Host != ContainerHost.ConstructBlock(record.Construct, record.Cell))
+                {
+                    throw new InvalidDataException($"The oxygen generator at {record.Cell} of construct {record.Construct.Value} has no input container hosted by the block.");
+                }
+
+                break;
             default:
                 throw new InvalidDataException($"Block state kind {record.State.Kind} is not supported.");
         }
 
         state.BlockEntities.Load(key, record.State);
     }
+
+    /// <summary>Whether a station or generator state points at the container: a station at its input and output, a generator (K6-34, D12) at its input only.</summary>
+    private static bool IsStateContainer(BlockEntityState entity, ContainerKind kind, ContainerId id) => entity switch
+    {
+        StationBlockState station => (kind == ContainerKind.StationInput ? station.Input : station.Output) == id,
+        OxygenGeneratorBlockState generator => kind == ContainerKind.StationInput && generator.Input == id,
+        _ => false,
+    };
 
     private static void LoadProgress(WorldState state, PlayerProgressRecord record)
     {

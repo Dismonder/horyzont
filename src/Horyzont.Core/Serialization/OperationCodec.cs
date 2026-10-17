@@ -3,6 +3,7 @@ using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Progress;
 using Horyzont.Core.Protocol;
+using Horyzont.Core.Survival;
 using Horyzont.Core.World.Constructs;
 
 namespace Horyzont.Core.Serialization;
@@ -211,6 +212,25 @@ public static class OperationCodec
                 CoreCodecPrimitives.WriteFoodSlots(w, food.Slots);
                 break;
 
+            case SuitRefillOp refill:
+                if (refill.Resource is < SuitResource.Heating or > SuitResource.Oxygen)
+                {
+                    throw new ArgumentException($"A suit resource is 1 to 5, not {(byte)refill.Resource}.", nameof(op));
+                }
+
+                if (refill.Amount is 0 or > (ushort)ProtocolConstants.MaxSuitValue || refill.Capacity is 0 or > (ushort)ProtocolConstants.MaxSuitValue)
+                {
+                    throw new ArgumentException($"A suit refill amount and capacity are 1 to {ProtocolConstants.MaxSuitValue}.", nameof(op));
+                }
+
+                w.WriteByte((byte)OperationKind.SuitRefill);
+                w.WriteByte(CurrentFormatVersion);
+                w.WriteVarUInt(refill.Player.Value);
+                w.WriteByte((byte)refill.Resource);
+                w.WriteVarUInt(refill.Amount);
+                w.WriteVarUInt(refill.Capacity);
+                break;
+
             case ProgressKeyGrantOp grant:
                 if (string.IsNullOrEmpty(grant.Key))
                 {
@@ -393,7 +413,7 @@ public static class OperationCodec
             || (kindByte >= (byte)OperationKind.Compound && kindByte <= (byte)OperationKind.ContainerConfigure)
             || kindByte is (byte)OperationKind.BlockEntitySet or (byte)OperationKind.ItemDiscover or (byte)OperationKind.RespawnPointSet
                 or (byte)OperationKind.ProgressKeyGrant or (byte)OperationKind.PropRegrow or (byte)OperationKind.PropHarvest
-                or (byte)OperationKind.BlockFunctionStateSet or (byte)OperationKind.FoodSet;
+                or (byte)OperationKind.BlockFunctionStateSet or (byte)OperationKind.FoodSet or (byte)OperationKind.SuitRefill;
         if (!known)
         {
             throw new ProtocolViolationException($"Unknown operation kind {kindByte}.");
@@ -492,6 +512,18 @@ public static class OperationCodec
             case OperationKind.FoodSet:
                 var foodPlayer = new PlayerId(r.ReadVarUInt());
                 return new FoodSetOp(foodPlayer, CoreCodecPrimitives.ReadFoodSlots(ref r));
+
+            case OperationKind.SuitRefill:
+                var refillPlayer = new PlayerId(r.ReadVarUInt());
+                var refillResource = (SuitResource)CoreCodecPrimitives.ReadEnumByte(ref r, (byte)SuitResource.Heating, (byte)SuitResource.Oxygen, "suit resource");
+                ushort refillAmount = r.ReadVarUInt16();
+                ushort refillCapacity = r.ReadVarUInt16();
+                if (refillAmount is 0 or > (ushort)ProtocolConstants.MaxSuitValue || refillCapacity is 0 or > (ushort)ProtocolConstants.MaxSuitValue)
+                {
+                    throw new ProtocolViolationException($"A suit refill amount and capacity are 1 to {ProtocolConstants.MaxSuitValue}.");
+                }
+
+                return new SuitRefillOp(refillPlayer, refillResource, refillAmount, refillCapacity);
 
             case OperationKind.ProgressKeyGrant:
                 var grantKey = r.ReadString(ProtocolConstants.MaxRegistryKeyBytes);

@@ -54,6 +54,15 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
     /// <summary>Gets the containers of the player.</summary>
     public ClientInventory Inventory { get; private set; } = null!;
 
+    /// <summary>Gets or sets the vitals of the local player, whose suit the equipment screen shows (K6-34); null shows the base values.</summary>
+    public Horyzont.Client.Survival.ClientVitals? Vitals { get; set; }
+
+    /// <summary>Gets the capacity and the drain of the suit as worn (K6-34); null before the node is initialized.</summary>
+    public Horyzont.Client.Survival.ClientSuitLoadout? SuitLoadout { get; private set; }
+
+    /// <summary>Gets or sets the time an oxygen generator still runs, for the panel of its input (K6-34); null in a world without hazards.</summary>
+    public Horyzont.Client.Survival.ClientGeneratorTime? GeneratorTime { get; set; }
+
     /// <summary>Gets the hotbar selection.</summary>
     public HotbarSelection Selection { get; } = new();
 
@@ -152,6 +161,7 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
         Visuals = visuals;
         ToolMap = visuals.ToolMap();
         Inventory = new ClientInventory(content.Items, requestState, loggers.CreateLogger<ClientInventory>());
+        SuitLoadout = new Horyzont.Client.Survival.ClientSuitLoadout(Inventory);
         Chests = new ChestSession(Inventory, sender, send ?? (static _ => { }), loggers.CreateLogger<ChestSession>());
         var rules = new GameRules();
         Progress = new ClientProgress();
@@ -160,6 +170,7 @@ public sealed partial class InventoryNode : Node, IClientSessionListener
         Stations = new StationSession(
             Inventory, _stationView, content, sender, send ?? (static _ => { }), (out ulong tick) => _serverTick(out tick), rules,
             loggers.CreateLogger<StationSession>());
+        Stations.IsInputOwnedElsewhere = id => Chests.Container == id && (Chests.IsOpen || Chests.IsOpening); // the input of an oxygen generator is shown by the chest panel
         Interaction = new InventoryInteraction(Inventory, sender, loggers.CreateLogger<InventoryInteraction>(), Chests, Stations);
         Inventory.Changed += Refresh;
         Chests.Changed += Refresh;

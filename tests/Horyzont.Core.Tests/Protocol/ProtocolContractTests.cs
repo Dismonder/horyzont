@@ -2,6 +2,7 @@ using System.Numerics;
 
 using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Checkpoints;
+using Horyzont.Core.Content;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
@@ -9,6 +10,7 @@ using Horyzont.Core.Operations;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Protocol.Messages;
 using Horyzont.Core.Serialization;
+using Horyzont.Core.Survival;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Terrain;
@@ -35,7 +37,7 @@ public sealed class ProtocolContractTests
             (OperationKind.ShipModeSet, 20), (OperationKind.ShipFuelAdd, 21), (OperationKind.MarkerSet, 22), (OperationKind.MarkerRemove, 23),
             (OperationKind.Compound, 30), (OperationKind.ItemTransfer, 31), (OperationKind.ItemSwap, 32), (OperationKind.ItemCreate, 33),
             (OperationKind.ItemDestroy, 34), (OperationKind.ContainerCreate, 35),
-            (OperationKind.ContainerRemove, 36), (OperationKind.ContainerConfigure, 37), (OperationKind.BlockEntitySet, 40), (OperationKind.FoodSet, 41), (OperationKind.ItemDiscover, 43), (OperationKind.RespawnPointSet, 44), (OperationKind.ProgressKeyGrant, 45),
+            (OperationKind.ContainerRemove, 36), (OperationKind.ContainerConfigure, 37), (OperationKind.BlockEntitySet, 40), (OperationKind.FoodSet, 41), (OperationKind.SuitRefill, 42), (OperationKind.ItemDiscover, 43), (OperationKind.RespawnPointSet, 44), (OperationKind.ProgressKeyGrant, 45),
             (OperationKind.PropRegrow, 47), (OperationKind.PropHarvest, 48), (OperationKind.BlockFunctionStateSet, 49));
         AssertValues((RejectReason.None, 0), (RejectReason.UnknownPlayer, 1), (RejectReason.PlayerOffline, 2), (RejectReason.RateLimited, 3),
             (RejectReason.InvalidParameters, 4), (RejectReason.RayOriginMismatch, 5), (RejectReason.NoHit, 6), (RejectReason.OutOfReach, 7),
@@ -84,6 +86,15 @@ public sealed class ProtocolContractTests
         AssertValues((ContainerAccess.Shared, 1), (ContainerAccess.Private, 2));
         AssertValues((BlockEntityKind.Chest, 1), (BlockEntityKind.Bed, 2), (BlockEntityKind.Station, 3), (BlockEntityKind.Teleport, 4),
             (BlockEntityKind.OxygenGenerator, 5), (BlockEntityKind.Planter, 6), (BlockEntityKind.CargoHold, 7));
+        AssertValues((EquipmentSlot.None, 0), (EquipmentSlot.Helmet, 1), (EquipmentSlot.Suit, 2), (EquipmentSlot.Backpack, 3), (EquipmentSlot.Module, 4),
+            (EquipmentSlot.Legs, 5));
+        AssertValues((BlockFunctionKind.None, 0), (BlockFunctionKind.Cockpit, 1), (BlockFunctionKind.Seat, 2), (BlockFunctionKind.Engine, 3),
+            (BlockFunctionKind.Stabilizer, 4), (BlockFunctionKind.FuelTank, 5), (BlockFunctionKind.Cargo, 6), (BlockFunctionKind.LandingGear, 7),
+            (BlockFunctionKind.PulseDrive, 8), (BlockFunctionKind.Door, 9), (BlockFunctionKind.RefuelStation, 10), (BlockFunctionKind.Chest, 11),
+            (BlockFunctionKind.Bed, 12), (BlockFunctionKind.Light, 13), (BlockFunctionKind.Station, 14), (BlockFunctionKind.StationUpgrade, 15),
+            (BlockFunctionKind.OxygenGenerator, 16));
+        AssertValues((HazardKind.Cold, 1), (HazardKind.Heat, 2), (HazardKind.Toxins, 3), (HazardKind.Radiation, 4), (HazardKind.Vacuum, 5));
+        AssertValues((SuitResource.Heating, 1), (SuitResource.Cooling, 2), (SuitResource.Filter, 3), (SuitResource.Shield, 4), (SuitResource.Oxygen, 5));
         AssertValues((BlockInteractAction.Toggle, 1), (BlockInteractAction.Sleep, 2), (BlockInteractAction.SetRespawn, 3));
         AssertValues((BlockConfigKind.TeleportName, 1), (BlockConfigKind.ContainerAccess, 2));
         AssertValues((TerrainShape.Sphere, 1));
@@ -96,7 +107,7 @@ public sealed class ProtocolContractTests
     }
 
     /// <summary>
-    /// K2-10 adds reject reason 21 (and raised the protocol version from 1 to 2; K2-11 raises it to 3, K6-29W to 14, K6-30 to 15, K6-31 to 16, K6-32 to 17, K6-33 to 18, see <see cref="ProtocolVersion_MatchesDocumentedMergeValue"/>).
+    /// K2-10 adds reject reason 21 (and raised the protocol version from 1 to 2; K2-11 raises it to 3, K6-29W to 14, K6-30 to 15, K6-31 to 16, K6-32 to 17, K6-33 to 18, K6-34 to 19, see <see cref="ProtocolVersion_MatchesDocumentedMergeValue"/>).
     /// </summary>
     [Fact]
     public void RejectReason_ServerReadOnly_RoundTrips()
@@ -153,19 +164,20 @@ public sealed class ProtocolContractTests
     /// K6-31 adds operations 47, 48, intent 27, reject reason 53 and message 45 after K6-30 (main 15): 16.
     /// K6-32 adds operations 43, 45, station state 3, intent 24, reject reasons 44 to 46, message 48, blob 22 version 2 and blob 25 after K6-31 (main 16): 17.
     /// K6-33 adds operation 41, intent 25, reject reason 49, message 44, the food tail of message 48, blob 22 version 3 and blob 2 version 2 after K6-32 (main 17): 18.
+    /// K6-34 adds operation 42, intent 26, the oxygen generator state 5 (operation 40, message 46), the suit tail of message 44 and blob 2 version 3 after K6-33 (main 18): 19.
     /// A rebase onto a newer main updates this value, the constant and the package plan together.
     /// </summary>
     [Fact]
     public void ProtocolVersion_MatchesDocumentedMergeValue()
     {
-        Assert.Equal(18, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(19, ProtocolConstants.ProtocolVersion);
         Assert.Equal(0x3F, ProtocolConstants.InputButtonsMask);
     }
 
     [Fact]
     public void Constants_GoldenValues()
     {
-        Assert.Equal(18, ProtocolConstants.ProtocolVersion);
+        Assert.Equal(19, ProtocolConstants.ProtocolVersion);
         Assert.Equal(262144, ProtocolConstants.MaxReliableMessageBytes);
         Assert.Equal(1150, ProtocolConstants.MaxUnreliableMessageBytes);
         Assert.Equal(32, ProtocolConstants.MaxDisplayNameBytes);

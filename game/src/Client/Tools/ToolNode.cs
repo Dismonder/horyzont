@@ -66,6 +66,12 @@ public sealed partial class ToolNode : Node, IClientSessionListener
     /// <summary>Gets or sets the inventory whose selected hotbar slot decides the tool and whose open screen blocks the input; null without one.</summary>
     public InventoryNode? Inventory { get; set; }
 
+    /// <summary>Gets or sets the vitals of the local player; with <see cref="SuitEnabled"/> a press with a suit refill in the selected slot refills the suit (K6-34).</summary>
+    public Horyzont.Client.Survival.ClientVitals? Vitals { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether the world has hazards, so the suit refill from the hotbar is active (K6-34).</summary>
+    public bool SuitEnabled { get; set; }
+
     /// <summary>Gets or sets where the input of each tick comes from (the keyboard and mouse reader; tests script it).</summary>
     public IToolInputSource InputSource { get; set; } = new NoToolInput();
 
@@ -240,6 +246,11 @@ public sealed partial class ToolNode : Node, IClientSessionListener
         {
             // K6-33 D21: with food in the selected slot and no tool, a fresh press eats it (a prop under the crosshair has priority in the controller).
             Controller.Food = new Horyzont.Client.Survival.FoodUse(eater.Inventory, eater.Selection, eater.ToolMap, eater.Progress, eater.TryGetServerTick, tickRate: _rules.TickRate);
+        }
+
+        if (Inventory is { } refiller && Vitals is { } vitals && SuitEnabled)
+        {
+            Controller.SuitRefill = new Horyzont.Client.Survival.SuitRefillUse(refiller.Inventory, refiller.Selection, refiller.ToolMap, vitals);
         }
 
         Controller.Props = Inventory is { } held && PropStates is { } propStates && PropSource is { } propSource && PropContent is { Props.Count: > 0 } propContent

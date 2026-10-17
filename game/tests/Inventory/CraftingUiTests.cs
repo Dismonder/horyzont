@@ -178,8 +178,9 @@ public class CraftingUiTests
         var screen = rig.Node.GetNode<InventoryScreen>("InventoryScreen");
         AssertThat(rig.Node.IsOpen).IsTrue();
         AssertThat(screen.Crafting!.Visible).IsTrue();
-        AssertThat(screen.Crafting.RowCount).IsEqual(1); // the tool of the second tier
-        screen.Crafting.PressMake(0);
+        var keys = Enumerable.Range(0, screen.Crafting.RowCount).Select(screen.Crafting.RecipeKey).ToList();
+        AssertThat(keys).Contains("core:multitool_t2"); // the tool of the second tier; the suit parts that use an iron ingot may share the list
+        screen.Crafting.PressMake(keys.IndexOf("core:multitool_t2"));
 
         AssertThat(rig.Sender.Intents.OfType<CraftIntent>().Single()).IsEqual(new CraftIntent("core:multitool_t2", 1, _station));
 

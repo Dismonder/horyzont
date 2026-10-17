@@ -71,6 +71,9 @@ public enum OperationKind : byte
     /// <summary><see cref="FoodSetOp"/> (K6-33).</summary>
     FoodSet = 41,
 
+    /// <summary><see cref="SuitRefillOp"/> (K6-34).</summary>
+    SuitRefill = 42,
+
     /// <summary><see cref="ProgressKeyGrantOp"/> (K6-32).</summary>
     ProgressKeyGrant = 45,
 

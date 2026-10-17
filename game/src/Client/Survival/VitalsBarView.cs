@@ -8,12 +8,19 @@ namespace Horyzont.Game.Client.Survival;
 internal sealed partial class VitalsBarView : Control
 {
     private readonly Color _color;
+    private readonly float _width;
+    private readonly float _height;
     private float _value;
     private float _max = 1f;
     private bool _pulsing;
     private float _pulse = 1f;
 
-    public VitalsBarView(Color color) => _color = color;
+    public VitalsBarView(Color color, float width = VitalsHud.BarWidth, float height = VitalsHud.BarHeight)
+    {
+        _color = color;
+        _width = width;
+        _height = height;
+    }
 
     public string Text { get; private set; } = string.Empty;
 
@@ -21,7 +28,7 @@ internal sealed partial class VitalsBarView : Control
 
     public override void _Ready()
     {
-        CustomMinimumSize = new Vector2(VitalsHud.BarWidth, VitalsHud.BarHeight);
+        CustomMinimumSize = new Vector2(_width, _height);
         MouseFilter = MouseFilterEnum.Ignore;
     }
 
@@ -46,18 +53,18 @@ internal sealed partial class VitalsBarView : Control
 
     public override void _Draw()
     {
-        var rect = new Rect2(Vector2.Zero, new Vector2(VitalsHud.BarWidth, VitalsHud.BarHeight));
+        var rect = new Rect2(Vector2.Zero, new Vector2(_width, _height));
         DrawStyleBox(HudTheme.Panel(margin: 0f), rect);
         var fraction = Math.Clamp(_value / _max, 0f, 1f);
         if (fraction > 0f)
         {
-            var fill = new Rect2(new Vector2(2f, 2f), new Vector2((VitalsHud.BarWidth - 4f) * fraction, VitalsHud.BarHeight - 4f));
+            var fill = new Rect2(new Vector2(2f, 2f), new Vector2((_width - 4f) * fraction, _height - 4f));
             DrawRect(fill, new Color(_color.R, _color.G, _color.B, _color.A * _pulse));
         }
 
         var font = ThemeDB.FallbackFont;
-        var size = 13;
+        var size = _height < 20f ? 11 : 13;
         var width = font.GetStringSize(Text, HorizontalAlignment.Left, -1, size).X;
-        DrawString(font, new Vector2((VitalsHud.BarWidth - width) * 0.5f, (VitalsHud.BarHeight * 0.5f) + (size * 0.36f)), Text, HorizontalAlignment.Left, -1, size, HudTheme.Text);
+        DrawString(font, new Vector2((_width - width) * 0.5f, (_height * 0.5f) + (size * 0.36f)), Text, HorizontalAlignment.Left, -1, size, HudTheme.Text);
     }
 }

@@ -17,4 +17,7 @@ public enum EquipmentSlot : byte
 
     /// <summary>Suit module.</summary>
     Module = 4,
+
+    /// <summary>Legs (K6-34).</summary>
+    Legs = 5,
 }

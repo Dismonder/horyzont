@@ -50,4 +50,7 @@ public enum BlockFunctionKind : byte
 
     /// <summary>An upgrade of a station (a workbench level) when it stands within the upgrade range (K6-32).</summary>
     StationUpgrade = 15,
+
+    /// <summary>An oxygen generator: protects against vacuum within its range while a fuel cell burns (K6-34).</summary>
+    OxygenGenerator = 16,
 }

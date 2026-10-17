@@ -10,6 +10,7 @@ using Horyzont.Core.Progress;
 using Horyzont.Core.Props;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Serialization;
+using Horyzont.Core.Survival;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Ships;
@@ -125,7 +126,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
     private static bool IsComponent(Operation operation) =>
         operation is ItemTransferOp or ItemSwapOp or ItemCreateOp or ItemDestroyOp or ContainerCreateOp or ContainerRemoveOp
             or ContainerConfigureOp or BlockEntitySetOp or RespawnPointSetOp or BlockFunctionStateSetOp or ItemDiscoverOp or ProgressKeyGrantOp
-            or PropHarvestOp or PropRegrowOp or FoodSetOp;
+            or PropHarvestOp or PropRegrowOp or FoodSetOp or SuitRefillOp;
 
     private void BeginOperation()
     {
@@ -527,6 +528,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         ProgressKeyGrantOp op => ApplyProgressKeyGrant(op),
         RespawnPointSetOp op => ApplyRespawnPointSet(op),
         FoodSetOp op => ApplyFoodSet(op),
+        SuitRefillOp op => ApplySuitRefill(op),
         BlockFunctionStateSetOp op => ApplyFunctionState(op),
         PropHarvestOp op => ApplyPropHarvest(op),
         PropRegrowOp op => ApplyPropRegrow(op),
@@ -849,7 +851,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 return "the block differs from the expected type";
             }
 
-            if (existing is StationBlockState)
+            if (existing is StationBlockState or OxygenGeneratorBlockState)
             {
                 _stationCells.Add(key);
             }
@@ -900,6 +902,15 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
                 if (existing is null && state.BlockEntities.StationsOf(op.Construct) >= ProtocolConstants.MaxTimedStationsPerConstruct)
                 {
                     return "too many stations with time in the construct";
+                }
+
+                _stationCells.Add(key);
+                break;
+            case OxygenGeneratorBlockState generator:
+                if (!state.Containers.TryGet(generator.Input, out var generatorInput) || generatorInput.Kind != ContainerKind.StationInput
+                    || generatorInput.Host != ContainerHost.ConstructBlock(op.Construct, op.Cell))
+                {
+                    return "the input is not a station input hosted by this block";
                 }
 
                 _stationCells.Add(key);
@@ -986,6 +997,39 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
         state.Progress.TryGet(op.Player, out var existing);
         var updated = existing is null ? new PlayerProgress(op.Player, null, null, slots) : existing with { Food = slots };
         _undo.SetProgress(state, op.Player, updated.IsEmpty ? null : updated);
+        return null;
+    }
+
+    /// <summary>
+    /// Adds to a suit resource (K6-34, D6): <c>max(value, min(value + amount, capacity))</c>, so a value above the capacity (a module taken off after the validation) is never
+    /// lowered. A player without vitals or without a suit keeps them as they are: a fresh suit is full anyway. The applier knows neither the modules nor the content (ZASADY 4).
+    /// </summary>
+    private string? ApplySuitRefill(SuitRefillOp op)
+    {
+        if (!state.Players.TryGet(op.Player, out var player))
+        {
+            return "player unknown";
+        }
+
+        if (op.Resource is < SuitResource.Heating or > SuitResource.Oxygen)
+        {
+            return "suit resource invalid";
+        }
+
+        if (op.Amount is 0 or > (ushort)ProtocolConstants.MaxSuitValue || op.Capacity is 0 or > (ushort)ProtocolConstants.MaxSuitValue)
+        {
+            return "amount or capacity out of range";
+        }
+
+        if (player.Vitals is not { Suit: { } suit } vitals)
+        {
+            return null;
+        }
+
+        var value = suit[op.Resource];
+        var next = MathF.Max(value, MathF.Min(value + op.Amount, op.Capacity));
+        _undo.SetVitals(player, vitals with { Suit = suit.With(op.Resource, next) });
+        state.Players.MarkChanged(op.Player);
         return null;
     }
 
@@ -1077,11 +1121,24 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             var cell = _stationCells[i];
             state.Containers.TryGetOfBlock(cell.Construct, cell.Cell, ContainerKind.StationInput, out var input);
             state.Containers.TryGetOfBlock(cell.Construct, cell.Cell, ContainerKind.StationOutput, out var output);
-            if (state.BlockEntities.TryGet(cell, out var entity) && entity is StationBlockState station)
+            state.BlockEntities.TryGet(cell, out var entity);
+            if (entity is StationBlockState station)
             {
                 if (input is null || output is null || input.Id != station.Input || output.Id != station.Output)
                 {
                     return "a station state needs its two containers";
+                }
+            }
+            else if (entity is OxygenGeneratorBlockState generator)
+            {
+                if (input is null || input.Id != generator.Input)
+                {
+                    return "a generator state needs its input container";
+                }
+
+                if (output is not null)
+                {
+                    return "a generator has no output container";
                 }
             }
             else if (input is not null || output is not null)

@@ -81,6 +81,11 @@ public sealed class StationSession : IClientSessionListener
     /// <summary>Raised whenever something the panel shows changed.</summary>
     public event Action? Changed;
 
+    /// <summary>
+    /// Gets or sets a test for a station input that another session follows (the input of an oxygen generator is the container of the chest panel, K6-34); such a state is not dropped here.
+    /// </summary>
+    public Func<ContainerId, bool>? IsInputOwnedElsewhere { get; set; }
+
     /// <summary>Gets a value indicating whether both containers arrived and the panel is open.</summary>
     public bool IsOpen => _phase == Phase.Open;
 
@@ -257,8 +262,12 @@ public sealed class StationSession : IClientSessionListener
         var ours = container.Id == (container.Kind == ContainerKind.StationInput ? _input : _output);
         if (_phase == Phase.Closed || !ours)
         {
-            // A state that arrives after the panel was closed (or for another station): not followed any more.
-            _inventory.Forget(container.Id);
+            // A state that arrives after the panel was closed (or for another station): not followed any more, unless another session follows it.
+            if (container.Kind != ContainerKind.StationInput || IsInputOwnedElsewhere?.Invoke(container.Id) != true)
+            {
+                _inventory.Forget(container.Id);
+            }
+
             return;
         }
 

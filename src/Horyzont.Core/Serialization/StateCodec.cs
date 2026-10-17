@@ -8,6 +8,7 @@ using Horyzont.Core.Operations;
 using Horyzont.Core.Progress;
 using Horyzont.Core.Protocol;
 using Horyzont.Core.Space;
+using Horyzont.Core.Survival;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Blocks;
 using Horyzont.Core.World.Constructs;
@@ -24,8 +25,8 @@ public static class StateCodec
     /// <summary>Blob 22 is written in version 3 (K6-33: food); versions 1 (K6-30) and 2 (K6-32: discoveries) are still read.</summary>
     private const byte PlayerProgressVersion = 3;
 
-    /// <summary>Blob 2 is written in version 2 (K6-33: the vitals after the record); version 1 is still read.</summary>
-    private const byte PlayerBlobVersion = 2;
+    /// <summary>Blob 2 is written in version 3 (K6-34: the suit after the vitals); versions 1 and 2 (K6-33: the vitals after the record) are still read.</summary>
+    private const byte PlayerBlobVersion = 3;
 
     /// <summary>Length of a <see cref="BlobKind.ShipState"/> blob.</summary>
     public const int ShipStateBlobLength = 39;
@@ -348,8 +349,9 @@ public static class StateCodec
     }
 
     /// <summary>
-    /// Encodes a player record as a SQLite blob, always in version 2 (K6-33): the bytes of version 1, then a flag byte (bit 0 the vitals follow, bit 1
-    /// exhausted, which needs bit 0) and, with bit 0, float32 health, float32 stamina and a varuint tick the rested bonus ends at (0 for none).
+    /// Encodes a player record as a SQLite blob, always in version 3 (K6-34): the bytes of version 1, then a flag byte (bit 0 the vitals follow, bit 1
+    /// exhausted, which needs bit 0, bit 2 the suit follows, which needs bit 0) and, with bit 0, float32 health, float32 stamina and a varuint tick the rested
+    /// bonus ends at (0 for none), then, with bit 2, five float32 of the suit (heating, cooling, filter, shield, oxygen).
     /// </summary>
     /// <param name="p">Record.</param>
     /// <returns>The blob.</returns>
@@ -358,7 +360,7 @@ public static class StateCodec
         ArgumentNullException.ThrowIfNull(p);
         if (p.Vitals is { IsValid: false })
         {
-            throw new ArgumentException("The vitals must be finite and within 0 to the largest vital value.", nameof(p));
+            throw new ArgumentException("The vitals and the suit must be finite and within 0 to the largest value.", nameof(p));
         }
 
         var w = new ByteWriter();
@@ -371,12 +373,21 @@ public static class StateCodec
             return w.WrittenSpan.ToArray();
         }
 
-        w.WriteByte((byte)(vitals.Exhausted ? 3 : 1));
+        w.WriteByte((byte)((vitals.Exhausted ? 3 : 1) | (vitals.Suit is null ? 0 : 4)));
 
         // -0 equals 0 and passes the validity check; the bytes of the value stay canonical.
         w.WriteSingle(vitals.Health == 0f ? 0f : vitals.Health);
         w.WriteSingle(vitals.Stamina == 0f ? 0f : vitals.Stamina);
         w.WriteVarUInt(vitals.RestedUntil.Value);
+        if (vitals.Suit is { } suit)
+        {
+            w.WriteSingle(suit.Heating == 0f ? 0f : suit.Heating);
+            w.WriteSingle(suit.Cooling == 0f ? 0f : suit.Cooling);
+            w.WriteSingle(suit.Filter == 0f ? 0f : suit.Filter);
+            w.WriteSingle(suit.Shield == 0f ? 0f : suit.Shield);
+            w.WriteSingle(suit.Oxygen == 0f ? 0f : suit.Oxygen);
+        }
+
         return w.WrittenSpan.ToArray();
     }
 
@@ -391,17 +402,18 @@ public static class StateCodec
         var result = ReadPlayer(ref r);
         if (version >= 2)
         {
-            result = result with { Vitals = ReadVitals(ref r) };
+            result = result with { Vitals = ReadVitals(ref r, version) };
         }
 
         r.EnsureEnd();
         return result;
     }
 
-    private static PlayerVitals? ReadVitals(ref ByteReader r)
+    private static PlayerVitals? ReadVitals(ref ByteReader r, byte version)
     {
         byte flags = r.ReadByte();
-        if ((flags & ~3) != 0 || (flags & 3) == 2)
+        var known = version >= 3 ? 7 : 3;
+        if ((flags & ~known) != 0 || (flags & 3) == 2 || (flags & 5) == 4)
         {
             throw new ProtocolViolationException($"Unknown or inconsistent player vitals flags {flags}.");
         }
@@ -412,9 +424,14 @@ public static class StateCodec
         }
 
         var vitals = new PlayerVitals(r.ReadSingle(), r.ReadSingle(), new Tick(r.ReadVarUInt()), (flags & 2) != 0);
+        if ((flags & 4) != 0)
+        {
+            vitals = vitals with { Suit = new SuitResources(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle()) };
+        }
+
         if (!vitals.IsValid)
         {
-            throw new ProtocolViolationException("The vitals are not finite or outside 0 to the largest vital value.");
+            throw new ProtocolViolationException("The vitals or the suit are not finite or outside 0 to the largest value.");
         }
 
         return vitals;

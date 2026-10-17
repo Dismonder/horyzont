@@ -198,6 +198,22 @@ public sealed class StationSessionTests
     }
 
     [Fact]
+    public void StationInputOfNobody_IsForgotten_UnlessAnotherSessionOwnsIt()
+    {
+        var rig = new Rig();
+        var stray = new ContainerId(77);
+        var owned = new ContainerId(78);
+        rig.Session.IsInputOwnedElsewhere = id => id == owned;
+
+        // A station input that no station asked for is dropped; the input of an oxygen generator belongs to the chest session (K6-34) and stays.
+        rig.Fixture.Inventory.OnMessage(new ContainerState(stray, RejectReason.None, ContainerKind.StationInput, ContainerAccess.Shared, 2, 1, []));
+        rig.Fixture.Inventory.OnMessage(new ContainerState(owned, RejectReason.None, ContainerKind.StationInput, ContainerAccess.Shared, 2, 1, []));
+
+        Assert.False(rig.Fixture.Inventory.TryGetContainer(stray, out _));
+        Assert.True(rig.Fixture.Inventory.TryGetContainer(owned, out _));
+    }
+
+    [Fact]
     public void SelectRecipe_OfAnotherStationKindOrClosed_SendsNothing()
     {
         var rig = new Rig();

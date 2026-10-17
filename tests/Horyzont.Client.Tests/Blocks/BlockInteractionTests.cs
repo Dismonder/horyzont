@@ -72,9 +72,9 @@ public sealed class BlockInteractionTests
 
     private sealed class Rig
     {
-        public Rig(bool crafting = false)
+        public Rig(bool crafting = false, bool hazards = false)
         {
-            State = crafting ? WorldFactory.CreateWithCrafting(players: 2) : WorldFactory.CreateWithFunctionalBlocks(players: 2);
+            State = hazards ? WorldFactory.CreateWithHazards(players: 2) : crafting ? WorldFactory.CreateWithCrafting(players: 2) : WorldFactory.CreateWithFunctionalBlocks(players: 2);
             Sim = new ServerSimulation(State, new FakeTerrainService(), new InMemoryJournal(), new GameRules(), NullLogger<ServerSimulation>.Instance);
             Pending = new PendingIntentTracker(NoEditPrediction.Instance, NullLogger<PendingIntentTracker>.Instance);
             Inventory = new InventoryFixture();
@@ -85,7 +85,7 @@ public sealed class BlockInteractionTests
                 Inventory.Inventory, Entities, SurvivalContentFactory.CreateTestWithRecipes(), Sender, Sent.Add, ReadTick, new GameRules(),
                 NullLogger<StationSession>.Instance);
             Interaction = new BlockInteraction(
-                new StateWorldView(State), Sender, Pending, crafting ? CraftingBlocks.ContentFor(State) : FunctionalBlocks.ContentFor(State), Entities, Chests,
+                new StateWorldView(State), Sender, Pending, hazards ? HazardBlocks.ContentFor(State) : crafting ? CraftingBlocks.ContentFor(State) : FunctionalBlocks.ContentFor(State), Entities, Chests,
                 _me, new GameRules(), Crafting, Stations);
         }
 
@@ -157,6 +157,28 @@ public sealed class BlockInteractionTests
         Assert.Equal(StationKind.Furnace, rig.Stations.Kind);
         Assert.Empty(rig.Sender.Intents);
         Assert.False(rig.Crafting.IsStationOpen);
+    }
+
+    [Fact]
+    public void AimGenerator_PromptOpenGenerator_OpensTheInputLikeAChest()
+    {
+        var rig = new Rig(hazards: true);
+        rig.PlaceBlock(HazardBlocks.GeneratorType, _stationCell);
+        var aim = Rig.AimAt(_stationCell);
+
+        // Without the replicated state the input of the generator is unknown: no prompt, like a chest.
+        rig.Interaction.Observe(aim);
+        Assert.Null(rig.Interaction.Prompt);
+        Assert.Equal(BlockInteractionResult.NothingToInteract, rig.Interaction.Interact(aim, 5));
+
+        rig.Replicate(_stationCell, new OxygenGeneratorBlockState(new ContainerId(20), null));
+        rig.Interaction.Observe(aim);
+
+        Assert.Equal(new BlockPrompt(BlockPromptKind.OpenGenerator, FunctionalBlocks.Construct, _stationCell, StationKind.Hands), rig.Interaction.Prompt);
+        Assert.Equal(BlockInteractionResult.ChestRequested, rig.Interaction.Interact(aim, 5));
+        Assert.Equal([new ContainerSubscribe(new ContainerId(20))], rig.Sent);
+        Assert.True(rig.Chests.IsOpening);
+        Assert.Empty(rig.Sender.Intents);
     }
 
     [Theory]

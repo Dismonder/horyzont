@@ -4,6 +4,7 @@ using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Progress;
+using Horyzont.Core.Survival;
 using Horyzont.Core.Tests.BlockEntities;
 using Horyzont.Core.Tests.Crafting;
 using Horyzont.Core.Tests.Items;
@@ -40,6 +41,13 @@ public sealed class SurvivalHashTests
 
     /// <summary>Hash of <see cref="WorldWithCrafting"/> recorded at commit ffd89bb (start of K6-33, before the food slots and the vitals).</summary>
     private const ulong WorldWithCraftingHashBeforeFood = 2493131761482920173UL;
+
+    /// <summary>Hash of <see cref="WorldWithFood"/> recorded at commit 8641631 (start of K6-34, before the suit resources and the oxygen generator).</summary>
+    private const ulong WorldWithFoodHashBeforeHazards = 3312466309173170596UL;
+
+    [Fact]
+    public void WorldWithFoodWithoutHazards_HashUnchanged() =>
+        Assert.Equal(WorldWithFoodHashBeforeHazards, StateHasher.Hash(WorldWithFood()));
 
     [Fact]
     public void WorldWithCraftingWithoutFood_HashUnchanged() =>
@@ -164,6 +172,77 @@ public sealed class SurvivalHashTests
 
         Assert.NotNull(a.Blocks.Sim.PlayerOf(FoodWorld.Player1).Vitals);
         Assert.Null(b.Blocks.Sim.PlayerOf(FoodWorld.Player1).Vitals);
+        Assert.Equal(StateHasher.Hash(b.State), StateHasher.Hash(a.State));
+    }
+
+    [Fact]
+    public void Generator_AddsToBlockEntitiesSubsection()
+    {
+        // A generator is a block state like the others (the subsection 0x42, D12): a world with one is another world than the same one without, and two equal ones agree.
+        var without = new HazardWorld();
+        var a = new HazardWorld();
+        var b = new HazardWorld();
+        Assert.Equal(StateHasher.Hash(without.State), StateHasher.Hash(a.State));
+
+        a.SetUpGenerator(HazardWorld.GeneratorCell);
+        b.SetUpGenerator(HazardWorld.GeneratorCell);
+
+        Assert.NotEqual(StateHasher.Hash(without.State), StateHasher.Hash(a.State));
+        Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(b.State));
+
+        // Another cell, another input container or a second generator is another world.
+        var moved = new HazardWorld();
+        moved.SetUpGenerator(HazardWorld.GeneratorCell2);
+        var two = new HazardWorld();
+        two.SetUpGenerator(HazardWorld.GeneratorCell);
+        two.SetUpGenerator(HazardWorld.GeneratorCell2);
+        var hashes = new[] { a, moved, two }.Select(x => StateHasher.Hash(x.State)).ToList();
+        Assert.Equal(hashes.Count, hashes.Distinct().Count());
+
+        // The input of the generator is a container of the survival section: items in it change the hash as well.
+        var fed = new HazardWorld();
+        var input = fed.SetUpGenerator(HazardWorld.GeneratorCell);
+        var empty = StateHasher.Hash(fed.State);
+        fed.FeedGenerator(input, 0, 1);
+        Assert.NotEqual(empty, StateHasher.Hash(fed.State));
+    }
+
+    [Fact]
+    public void GeneratorStarted_ChangesHash()
+    {
+        var starts = new Tick?[] { null, new Tick(100), new Tick(101), new Tick(0) };
+        var hashes = starts.Select(started =>
+        {
+            var f = new HazardWorld();
+            f.SetUpGenerator(HazardWorld.GeneratorCell, started);
+            return StateHasher.Hash(f.State);
+        }).ToList();
+
+        // Idle, started at 100, 101 and 0 are four states: a flag and a tick, not the tick alone.
+        Assert.Equal(starts.Length, hashes.Distinct().Count());
+        var again = new HazardWorld();
+        again.SetUpGenerator(HazardWorld.GeneratorCell, new Tick(100));
+        Assert.Equal(hashes[1], StateHasher.Hash(again.State));
+    }
+
+    [Fact]
+    public void SuitResources_DoNotChangeHash()
+    {
+        var a = new HazardWorld();
+        var b = new HazardWorld();
+        Assert.Equal(StateHasher.Hash(a.State), StateHasher.Hash(b.State));
+
+        // Online: the suit is outside the hash, like the rest of the vitals and the pose.
+        a.SetSuit(HazardWorld.Player1, new SuitResources(10f, 20f, 30f, 40f, 50f));
+        Assert.Equal(StateHasher.Hash(b.State), StateHasher.Hash(a.State));
+        a.SetSuit(HazardWorld.Player1, new SuitResources(0f, 0f, 0f, 0f, 0f));
+        Assert.Equal(StateHasher.Hash(b.State), StateHasher.Hash(a.State));
+
+        // Different suits, identical journal operations: only the suit values differ.
+        a.SetSuit(HazardWorld.Player1, new SuitResources(10f, 10f, 10f, 10f, 10f));
+        b.SetSuit(HazardWorld.Player1, new SuitResources(50f, 50f, 50f, 50f, 50f));
+        a.Apply(HazardWorld.Refill(HazardWorld.Player1, SuitResource.Oxygen, 10, 100));
+        b.Apply(HazardWorld.Refill(HazardWorld.Player1, SuitResource.Oxygen, 10, 100));
         Assert.Equal(StateHasher.Hash(b.State), StateHasher.Hash(a.State));
     }
 
@@ -521,6 +600,21 @@ public sealed class SurvivalHashTests
         f.SetUpStation(CraftingFixture.StationCell, "t:a", new Tick(100));
         f.Apply(CraftingFixture.Discover(CraftingFixture.Player2, CraftingFixture.Gem));
         f.Apply(CraftingFixture.Grant("test:boss"));
+        return f.State;
+    }
+
+    /// <summary>
+    /// The K6-33 world of the food tests (the K6-32 world of <see cref="WorldWithCrafting"/> over the food registry): the bed with the respawn point of
+    /// player 1, a station in work, a discovery of player 2, a progress key and berries in the food slot 0 of player 1. No suit, no oxygen generator.
+    /// </summary>
+    private static WorldState WorldWithFood()
+    {
+        var f = new CraftingFixture(new FoodWorld(players: 2).Blocks);
+        f.Blocks.SetUpBed(FunctionalBlocks.BedCell, FunctionalBlockFixture.Player1);
+        f.SetUpStation(CraftingFixture.StationCell, "t:a", new Tick(100));
+        f.Apply(CraftingFixture.Discover(CraftingFixture.Player2, CraftingFixture.Gem));
+        f.Apply(CraftingFixture.Grant("test:boss"));
+        f.Apply(FoodWorld.Set(FoodWorld.Player1, FoodWorld.Slot(FoodWorld.Berries, 100)));
         return f.State;
     }
 

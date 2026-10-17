@@ -56,6 +56,50 @@ public sealed class ChestSessionTests
     }
 
     [Fact]
+    public void ShiftClick_FromTheEquipment_GoesToTheBag_NotToTheOpenGenerator()
+    {
+        var rig = new Rig();
+        rig.Interaction.EquipmentEnabled = true;
+        rig.Fixture.State(new ContainerId(3), ContainerKind.Equipment, 7, 1, (4, InventoryFixture.Gem, 1));
+        rig.Chests.Open(_chestId, _construct, _cell);
+        rig.Fixture.Inventory.OnMessage(new ContainerState(_chestId, RejectReason.None, ContainerKind.StationInput, ContainerAccess.Shared, 2, 1, []));
+
+        // A worn module must not be sent into the input of the generator that is open: it would block the dismantling (review C-D, P3-11).
+        Assert.Equal(InteractionOutcome.Sent, rig.Interaction.ShiftClick(new SlotRef(new ContainerId(3), 4)));
+
+        var move = Assert.IsType<ItemMoveIntent>(Assert.Single(rig.Fixture.Sender.Intents));
+        Assert.Equal(ItemMoveTarget.AnyIn(InventoryFixture.BagId), move.To);
+    }
+
+    [Fact]
+    public void Open_InputOfAGenerator_Opened()
+    {
+        var rig = new Rig().Watch();
+        rig.Chests.Open(_chestId, _construct, _cell);
+
+        // The input of an oxygen generator (K6-34 D20) is a station input hosted by the block: the panel of the chest shows it when it is the one that was asked for.
+        rig.Fixture.Inventory.OnMessage(new ContainerState(_chestId, RejectReason.None, ContainerKind.StationInput, ContainerAccess.Shared, 2, 1, []));
+
+        Assert.True(rig.Chests.IsOpen);
+        Assert.Equal(1, rig.Opened);
+        Assert.True(rig.Fixture.Inventory.TryGetContainer(_chestId, out _));
+    }
+
+    [Fact]
+    public void StationInputOfAnotherBlock_NotTaken_NotForgotten()
+    {
+        var rig = new Rig().Watch();
+        rig.Chests.Open(_chestId, _construct, _cell);
+        var other = new ContainerId(11);
+
+        // The input of a station with time belongs to the station session: the chest session neither opens on it nor drops it from the inventory.
+        rig.Fixture.Inventory.OnMessage(new ContainerState(other, RejectReason.None, ContainerKind.StationInput, ContainerAccess.Shared, 2, 1, []));
+
+        Assert.True(rig.Chests.IsOpening);
+        Assert.True(rig.Fixture.Inventory.TryGetContainer(other, out _));
+    }
+
+    [Fact]
     public void Open_StateStored_Opened()
     {
         var rig = new Rig().Watch();

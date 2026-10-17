@@ -142,6 +142,12 @@ public sealed record GameRules
     public int StationSettleEveryTicks { get; init; } = 10;
 
     /// <summary>
+    /// The intensity of the hazards of the world (K6-34 D9, DO USTALENIA-3): a factor of the rates at which the hazards drain the suit, not of the damage at zero. Used between 0.5 and 2; a value outside is
+    /// clamped where it is used (<see cref="Horyzont.Core.Survival.HazardField"/>). K6-39 moves it to the settings of the world.
+    /// </summary>
+    public float HazardIntensity { get; init; } = 1f;
+
+    /// <summary>
     /// Most stations with time (furnace, refinery) in one construct: the state of each is in message 46, whose size is limited to
     /// <c>ProtocolConstants.MaxReliableMessageBytes</c> (K6-32, review A1 note a). Placing one more is <c>InvalidParameters</c>. A value above
     /// <see cref="ProtocolConstants.MaxTimedStationsPerConstruct"/> is refused (review B1, 7): the limit protects the protocol format.

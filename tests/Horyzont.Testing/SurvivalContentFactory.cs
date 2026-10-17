@@ -57,6 +57,18 @@ public static class SurvivalContentFactory
     /// </summary>
     public static IReadOnlyList<string> FoodItemKeys { get; } = [.. ItemKeys, BerriesKey, JamKey, BrothKey, BreadKey];
 
+    public const string HeatCellKey = "test:heat_cell";
+    public const string OxygenCanisterKey = "test:oxygen_canister";
+    public const string TankModuleKey = "test:module_o2_tank";
+    public const string ThermalModuleKey = "test:module_thermal";
+    public const string FuelPackKey = "test:fuel_pack";
+
+    /// <summary>
+    /// <see cref="FoodItemKeys"/> and five types of K6-34 (ids 9..13): a heat cell and an oxygen canister (suit refills), an oxygen tank and a thermal module (suit modules) and the
+    /// fuel of the oxygen generator. Their statistics are in <c>HazardTestContent</c> of the Core tests (the loader reads them in step B3).
+    /// </summary>
+    public static IReadOnlyList<string> HazardItemKeys { get; } = [.. FoodItemKeys, HeatCellKey, OxygenCanisterKey, TankModuleKey, ThermalModuleKey, FuelPackKey];
+
     /// <summary>Parses the test content.</summary>
     public static SurvivalContent CreateTest() => ContentLoader.Parse(ItemsJson, YieldsJson, StartJson);
 
@@ -66,6 +78,98 @@ public static class SurvivalContentFactory
     /// </summary>
     /// <returns>The content.</returns>
     public static SurvivalContent CreateTestWithFood() => ContentLoader.Parse(FoodItemsJson, YieldsJson, FoodStartJson);
+
+    /// <summary>
+    /// The content of <see cref="CreateTestWithFood"/> plus the five items of <see cref="HazardItemKeys"/> (K6-34) and the hazards of D24 read through the loader: a heat cell (40 heating), an oxygen canister (50 oxygen),
+    /// a tank module (+100 oxygen), a thermal module (heating and cooling drain x0.6) and the fuel pack that burns for 10 seconds in the generator; the profiles are those of the game (body 0 the temperate one, 1 the moon,
+    /// 2 toxic, 3 frozen, space), the default is the temperate one. The start kit also hands out the five items (bag slots 34 to 38) so that a joined player has them.
+    /// </summary>
+    /// <param name="homeProfile">The profile of body 0 (the home planet), e.g. <c>core:barren_moon</c> to make the home planet a moon with a vacuum.</param>
+    /// <returns>The content.</returns>
+    public static SurvivalContent CreateTestWithHazards(string homeProfile = "core:temperate") =>
+        ContentLoader.Parse(HazardItemsJson, YieldsJson, HazardStartJson, null, null, HazardsJson(homeProfile));
+
+    private const string HazardStartJson = """
+        {
+          "containers": { "playerBag": 40, "hotbar": 10, "equipment": 7 },
+          "items": [
+            { "item": "test:tool", "count": 1, "container": "hotbar", "slot": 0 },
+            { "item": "test:gem", "count": 3, "container": "hotbar", "slot": 1 },
+            { "item": "test:berries", "count": 1, "container": "playerBag", "slot": 30 },
+            { "item": "test:jam", "count": 1, "container": "playerBag", "slot": 31 },
+            { "item": "test:broth", "count": 1, "container": "playerBag", "slot": 32 },
+            { "item": "test:bread", "count": 1, "container": "playerBag", "slot": 33 },
+            { "item": "test:heat_cell", "count": 2, "container": "playerBag", "slot": 34 },
+            { "item": "test:oxygen_canister", "count": 2, "container": "playerBag", "slot": 35 },
+            { "item": "test:module_o2_tank", "count": 1, "container": "playerBag", "slot": 36 },
+            { "item": "test:module_thermal", "count": 1, "container": "playerBag", "slot": 37 },
+            { "item": "test:fuel_pack", "count": 4, "container": "playerBag", "slot": 38 }
+          ]
+        }
+        """;
+
+    private const string HazardItemsJson = """
+        {
+          "items": [
+            { "key": "test:tool", "category": "tool", "flags": ["tool"], "toolTier": 1, "visual": { "glyph": "T" } },
+            { "key": "test:gem", "category": "component", "maxStack": 5, "maxStackOverride": true },
+            { "key": "test:stone", "category": "resource", "flags": ["bulk"] },
+            { "key": "test:soil", "category": "resource", "flags": ["bulk"] },
+            { "key": "test:berries", "category": "food", "flags": ["food"], "maxStack": 20, "maxStackOverride": true,
+              "food": { "health": 10, "stamina": 20, "regen": 0.5, "durationSeconds": 600 } },
+            { "key": "test:jam", "category": "food", "flags": ["food"], "maxStack": 20, "maxStackOverride": true,
+              "food": { "health": 25, "stamina": 35, "regen": 1.0, "durationSeconds": 1200 } },
+            { "key": "test:broth", "category": "food", "flags": ["food"], "maxStack": 20, "maxStackOverride": true,
+              "food": { "health": 15, "stamina": 0, "regen": 1.5, "durationSeconds": 900 } },
+            { "key": "test:bread", "category": "food", "flags": ["food"], "maxStack": 20, "maxStackOverride": true,
+              "food": { "health": 20, "stamina": 10, "regen": 0.25, "durationSeconds": 1800 } },
+            { "key": "test:heat_cell", "category": "component", "suitRefill": { "resource": "heating", "amount": 40 } },
+            { "key": "test:oxygen_canister", "category": "component", "suitRefill": { "resource": "oxygen", "amount": 50 } },
+            { "key": "test:module_o2_tank", "category": "armor", "flags": ["armor"], "equipmentSlot": "module",
+              "suitModule": { "effects": [ { "resource": "oxygen", "capacity": 100, "drain": 1.0 } ] } },
+            { "key": "test:module_thermal", "category": "armor", "flags": ["armor"], "equipmentSlot": "module",
+              "suitModule": { "effects": [ { "resource": "heating", "capacity": 0, "drain": 0.6 }, { "resource": "cooling", "capacity": 0, "drain": 0.6 } ] } },
+            { "key": "test:fuel_pack", "category": "component" }
+          ]
+        }
+        """;
+
+    private static string HazardsJson(string homeProfile) => HazardsTemplate.Replace("HOME_PROFILE", homeProfile, StringComparison.Ordinal);
+
+    private const string HazardsTemplate = """
+        {
+          "formatVersion": 1,
+          "profiles": [
+            { "key": "core:temperate",
+              "cold": { "day": 0, "night": 0.25 },
+              "zones": [ { "minHeight": 150, "scale": { "cold": 2 } } ] },
+            { "key": "core:barren_moon",
+              "cold": { "day": 0, "night": 0.4 },
+              "heat": { "day": 0.3, "night": 0 },
+              "radiation": { "day": 0.3, "night": 0 },
+              "vacuum": { "day": 0.5, "night": 0.5 } },
+            { "key": "core:toxic",
+              "heat": { "day": 0.3, "night": 0 },
+              "toxins": { "day": 0.4, "night": 0.4 } },
+            { "key": "core:frozen",
+              "cold": { "day": 0.5, "night": 1.0 },
+              "radiation": { "day": 0.15, "night": 0 } },
+            { "key": "core:space",
+              "cold": { "day": 0.3, "night": 0.3 },
+              "radiation": { "day": 0.3, "night": 0.3 },
+              "vacuum": { "day": 0.5, "night": 0.5 } }
+          ],
+          "bodies": [
+            { "body": 0, "profile": "HOME_PROFILE" },
+            { "body": 1, "profile": "core:barren_moon" },
+            { "body": 2, "profile": "core:toxic" },
+            { "body": 3, "profile": "core:frozen" }
+          ],
+          "defaultProfile": "core:temperate",
+          "spaceProfile": "core:space",
+          "oxygenGenerator": { "fuel": "test:fuel_pack", "secondsPerCell": 10 }
+        }
+        """;
 
     // The loader wants a source for every item; the foods come from the start kit here (the Core and server tests create worlds without applying it).
     private const string FoodStartJson = """

@@ -127,8 +127,8 @@ public sealed class StateCodecEdgeCaseTests
     [InlineData(3)]
     public void DecodeBlob_WithUnknownFormatVersion_ThrowsProtocolViolation(int which)
     {
-        // The player blob (which = 1) has a version 2 since K6-33, so its first unknown version is 3.
-        foreach (var version in which == 1 ? new byte[] { 0, 3, 0xFF } : new byte[] { 0, 2, 0xFF })
+        // The player blob (which = 1) has a version 3 since K6-34, so its first unknown version is 4.
+        foreach (var version in which == 1 ? new byte[] { 0, 4, 0xFF } : new byte[] { 0, 2, 0xFF })
         {
             var blob = AllBlobs()[which].ToArray();
             blob[1] = version;
