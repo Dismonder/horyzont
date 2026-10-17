@@ -1,5 +1,6 @@
 using GdUnit4;
 
+using Horyzont.Client.Settings;
 using Horyzont.Game.Boot;
 using Horyzont.Game.Logging;
 using Horyzont.Server;
@@ -209,5 +210,57 @@ public class RotatingLogFileTests
         var text = File.ReadAllText(Path.Combine(dir, "game.log"));
         AssertThat(text.Contains("hello state", StringComparison.Ordinal) && text.Contains("boom", StringComparison.Ordinal)).IsTrue();
         AssertThat(text.Contains("filtered out", StringComparison.Ordinal)).IsFalse();
+    }
+
+    [TestCase]
+    public void Parse_GraphicsOptions_AreNullWhenAbsent()
+    {
+        var options = LaunchOptions.Parse(["--solo"]);
+
+        AssertThat(options.Upscale).IsNull();
+        AssertThat(options.RenderScale).IsNull();
+        AssertThat(options.FsrSharpness).IsNull();
+    }
+
+    [TestCase]
+    public void Parse_GraphicsOptions_AreReadInEveryMode()
+    {
+        string[][] modes = [["--solo"], ["--host"], ["--connect", "127.0.0.1:27015"], ["--server", "--config", "server.json"]];
+        foreach (var mode in modes)
+        {
+            var options = LaunchOptions.Parse([.. mode, "--upscale", "fsr2", "--render-scale", "0.67", "--fsr-sharpness", "1.5"]);
+
+            AssertThat(options.Upscale).IsEqual(UpscaleMode.Fsr2);
+            AssertThat(options.RenderScale).IsEqual(0.67f);
+            AssertThat(options.FsrSharpness).IsEqual(1.5f);
+        }
+    }
+
+    [TestCase]
+    public void Parse_Upscale_ReadsAllNames()
+    {
+        AssertThat(LaunchOptions.Parse(["--solo", "--upscale", "off"]).Upscale).IsEqual(UpscaleMode.Off);
+        AssertThat(LaunchOptions.Parse(["--solo", "--upscale", "fsr1"]).Upscale).IsEqual(UpscaleMode.Fsr1);
+        AssertThat(LaunchOptions.Parse(["--solo", "--upscale", "FSR2"]).Upscale).IsEqual(UpscaleMode.Fsr2);
+    }
+
+    [TestCase]
+    public void Parse_BadGraphicsValues_Throw()
+    {
+        string[][] bad =
+        [
+            ["--solo", "--upscale", "fsr3"],
+            ["--solo", "--upscale"],
+            ["--solo", "--render-scale", "0.4"],
+            ["--solo", "--render-scale", "1.1"],
+            ["--solo", "--render-scale", "abc"],
+            ["--solo", "--render-scale", "NaN"],
+            ["--solo", "--fsr-sharpness", "-0.1"],
+            ["--solo", "--fsr-sharpness", "2.5"],
+        ];
+        foreach (var args in bad)
+        {
+            AssertThrown(() => LaunchOptions.Parse(args)).IsInstanceOf<ArgumentException>();
+        }
     }
 }

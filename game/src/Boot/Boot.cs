@@ -3,6 +3,7 @@ using Godot;
 using Horyzont.Client.Steam;
 using Horyzont.Client.UI;
 using Horyzont.Game.Logging;
+using Horyzont.Game.Settings;
 using Horyzont.Game.UI;
 using Horyzont.Server;
 
@@ -21,7 +22,8 @@ public partial class Boot : Node
     private const string Usage =
         "Horyzont modes (after --; without a mode the menu opens): --solo [--world <id>] [--dev-speed <1-64>] [--screenshot <png> [--screenshot-after <s>]] | --host [--world <id>] [--port 27015] [--bind <ipv4>] [--password <text>] | --connect <host:port> [--password <text>] [--dev]"
         + " | +connect_lobby <id> [--password <text>] (Steam) | --host/--connect [--steam] [--steam-app-id <id>] [--lobby-visibility private|friends|public]"
-        + " | --server --config <server.json> [--data-dir <dir>] [--restore-latest-backup] [--dev] | --write-default-config <path>";
+        + " | --server --config <server.json> [--data-dir <dir>] [--restore-latest-backup] [--dev] | --write-default-config <path>"
+        + " | any mode: [--upscale off|fsr1|fsr2] [--render-scale <0.5-1.0>] [--fsr-sharpness <0-2>] (override user://graphics.cfg for this run)";
 
     private ILoggerFactory? _loggers;
 
@@ -95,6 +97,7 @@ public partial class Boot : Node
         var userDir = ProjectSettings.GlobalizePath("user://");
         var executableDir = Path.GetDirectoryName(OS.GetExecutablePath()) ?? ".";
         _loggers = CreateLoggers(new LaunchOptions { Mode = ServerProcessMode.Solo }, userDir, executableDir);
+        ViewportUpscaling.ApplyAtStart(GetViewport(), null, _loggers.CreateLogger("Horyzont.Graphics"));
         var env = new GameEnvironment
         {
             Time = TimeProvider.System,
@@ -149,6 +152,11 @@ public partial class Boot : Node
         var userDir = ProjectSettings.GlobalizePath("user://");
         var executableDir = Path.GetDirectoryName(OS.GetExecutablePath()) ?? ".";
         _loggers = CreateLoggers(launch, userDir, executableDir);
+        if (launch.Mode != ServerProcessMode.DedicatedServer && DisplayServer.GetName() != "headless")
+        {
+            ViewportUpscaling.ApplyAtStart(GetViewport(), launch, _loggers.CreateLogger("Horyzont.Graphics"));
+        }
+
         var env = new GameEnvironment
         {
             Time = TimeProvider.System,
