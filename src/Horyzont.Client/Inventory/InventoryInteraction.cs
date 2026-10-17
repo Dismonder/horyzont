@@ -111,7 +111,7 @@ public sealed class InventoryInteraction : IClientSessionListener
 
     /// <summary>
     /// Shift click: moves the whole stack to any free place of the other container: from the bag or the hotbar to the open chest or the
-    /// input of the open station (K6-32), or to the other of the two without one; from a chest or a station to the bag.
+    /// input of the open station (K6-32), or to the other of the two without one; from a chest, a station or the equipment to the bag (a worn module never goes into an open generator, review C-D P3-11).
     /// </summary>
     /// <param name="slot">The slot under the cursor.</param>
     /// <returns>What happened.</returns>
@@ -125,7 +125,7 @@ public sealed class InventoryInteraction : IClientSessionListener
         var stack = container.Get(slot.Slot);
         var other = container.Kind switch
         {
-            ContainerKind.Chest or ContainerKind.StationInput or ContainerKind.StationOutput => _inventory.Bag,
+            ContainerKind.Chest or ContainerKind.StationInput or ContainerKind.StationOutput or ContainerKind.Equipment => _inventory.Bag,
             _ when Chests?.OpenContainer is { } chest => chest,
             _ when Stations?.Input is { } input => input,
             ContainerKind.PlayerBag => _inventory.Hotbar,

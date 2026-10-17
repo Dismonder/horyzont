@@ -56,6 +56,22 @@ public sealed class ChestSessionTests
     }
 
     [Fact]
+    public void ShiftClick_FromTheEquipment_GoesToTheBag_NotToTheOpenGenerator()
+    {
+        var rig = new Rig();
+        rig.Interaction.EquipmentEnabled = true;
+        rig.Fixture.State(new ContainerId(3), ContainerKind.Equipment, 7, 1, (4, InventoryFixture.Gem, 1));
+        rig.Chests.Open(_chestId, _construct, _cell);
+        rig.Fixture.Inventory.OnMessage(new ContainerState(_chestId, RejectReason.None, ContainerKind.StationInput, ContainerAccess.Shared, 2, 1, []));
+
+        // A worn module must not be sent into the input of the generator that is open: it would block the dismantling (review C-D, P3-11).
+        Assert.Equal(InteractionOutcome.Sent, rig.Interaction.ShiftClick(new SlotRef(new ContainerId(3), 4)));
+
+        var move = Assert.IsType<ItemMoveIntent>(Assert.Single(rig.Fixture.Sender.Intents));
+        Assert.Equal(ItemMoveTarget.AnyIn(InventoryFixture.BagId), move.To);
+    }
+
+    [Fact]
     public void Open_InputOfAGenerator_Opened()
     {
         var rig = new Rig().Watch();

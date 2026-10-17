@@ -31,7 +31,8 @@ public sealed partial class GameComposition
         player.ExhaustedCheck = () => vitals.Exhausted;
 
         // K6-34: a world with hazards has a suit: the equipment slots work, the hotbar refills the suit and the HUD shows it.
-        var hazards = SurvivalContentLoader.Load().HasHazards;
+        var content = SurvivalContentLoader.Load(); // once: every call parses the whole content (review C-D, P3-10)
+        var hazards = content.HasHazards;
         foreach (var tools in new[] { Tools, RemoteTools })
         {
             if (tools is not null)
@@ -46,7 +47,7 @@ public sealed partial class GameComposition
             worn.Interaction.EquipmentEnabled = hazards;
             worn.Vitals = vitals;
             worn.GeneratorTime = hazards && (Tools ?? RemoteTools)?.BlockEntities is { } entities
-                ? new ClientGeneratorTime(worn.Inventory, entities, SurvivalContentLoader.Load().Hazards, GameServerHooks.TickRate)
+                ? new ClientGeneratorTime(worn.Inventory, entities, content.Hazards, GameServerHooks.TickRate)
                 : null;
         }
 

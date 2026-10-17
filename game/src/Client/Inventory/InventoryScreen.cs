@@ -6,6 +6,7 @@ using Horyzont.Client.Inventory;
 using Horyzont.Core.Content;
 using Horyzont.Core.Intents;
 using Horyzont.Core.Items;
+using Horyzont.Core.Survival;
 
 using ToolHud = Horyzont.Game.Client.Tools.ToolHud;
 
@@ -452,18 +453,27 @@ public sealed partial class InventoryScreen : CanvasLayer
             _equipmentCaptions[i].Text = Tr(_captionKeys[i]);
         }
 
-        UpdateSuitPanel();
+        UpdateSuitPanel(force: true);
     }
 
-    private void UpdateSuitPanel()
+    private void UpdateSuitPanel(bool force = false)
     {
         if (_suitPanel is null || _node.SuitLoadout is not { } loadout)
         {
             return;
         }
 
-        var values = _node.Vitals is { HasState: true } vitals ? vitals.Suit : default;
-        _suitPanel.Apply(values, loadout.Compute());
+        // Before the first message 44 the suit is the fresh one, full (D4). Once it came, the capacity is the server's, the same the HUD shows (review C-D, P3-2, P3-3);
+        // the drain is the local loadout's.
+        var stats = loadout.Compute();
+        if (_node.Vitals is { HasState: true } vitals)
+        {
+            _suitPanel.Apply(vitals.Suit, new SuitStats(vitals.SuitCapacity, stats.Drain), force);
+        }
+        else
+        {
+            _suitPanel.Apply(stats.Capacity, stats, force);
+        }
     }
 
     private void FillSlots(List<SlotView> views, ClientContainer? container, HeldStack? held, InventoryInteraction interaction, bool numbered)

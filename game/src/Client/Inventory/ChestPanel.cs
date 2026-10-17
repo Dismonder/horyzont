@@ -21,6 +21,7 @@ public sealed partial class ChestPanel : PanelContainer
     private Label? _access;
     private Label? _time;
     private bool _generator;
+    private long _shownSeconds = -1;
     private GridContainer? _grid;
     private Button? _takeAll;
     private Button? _quickStack;
@@ -143,13 +144,15 @@ public sealed partial class ChestPanel : PanelContainer
         _access.Text = _generator ? string.Empty : Tr(isPrivate ? "INV_CHEST_PRIVATE" : "INV_CHEST_SHARED");
         _takeAll!.Text = Tr("INV_TAKE_ALL");
         _quickStack!.Text = Tr("INV_QUICK_STACK");
+        _quickStack.Visible = !_generator; // quick stacking sends to the chests nearby, nothing to do with a generator (review C-D, P3-11)
         _accessSwitch!.Text = Tr(isPrivate ? "INV_ACCESS_TO_SHARED" : "INV_ACCESS_TO_PRIVATE");
         _accessSwitch.Visible = !_generator && _node.Chests.CanConfigureAccess;
-        UpdateTime();
+        UpdateTime(force: true);
     }
 
     /// <summary>Refreshes the time line of a generator; the time moves with the tick of the server, not with the version of the screen.</summary>
-    public void UpdateTime()
+    /// <param name="force">Set the text even when the second is the same (the panel was rebuilt, the language may have changed).</param>
+    public void UpdateTime(bool force = false)
     {
         if (_time is null)
         {
@@ -162,9 +165,19 @@ public sealed partial class ChestPanel : PanelContainer
         {
             _time.Visible = false;
             _time.Text = string.Empty;
+            _shownSeconds = -1;
             return;
         }
 
+        // The text moves by whole seconds: build it only then (review C-D, P3-4).
+        var rate = (ulong)Horyzont.Server.GameServerHooks.TickRate;
+        var seconds = (long)((ticks / rate) + (ticks % rate == 0 ? 0UL : 1UL));
+        if (!force && _time.Visible && seconds == _shownSeconds)
+        {
+            return;
+        }
+
+        _shownSeconds = seconds;
         _time.Text = string.Concat(Tr("HUD_GENERATOR_REMAINING"), " ", SuitHudText.GeneratorRemaining(ticks, Horyzont.Server.GameServerHooks.TickRate));
         _time.Visible = true;
     }

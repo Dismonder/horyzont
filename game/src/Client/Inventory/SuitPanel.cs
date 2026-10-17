@@ -15,6 +15,9 @@ public sealed partial class SuitPanel : VBoxContainer
 
     private readonly Label[] _rows = new Label[5];
     private Label? _title;
+    private SuitResources _shownValues;
+    private SuitStats _shownStats;
+    private bool _shown;
 
     /// <summary>Gets the number of resource rows.</summary>
     public int RowCount => _rows.Length;
@@ -43,16 +46,20 @@ public sealed partial class SuitPanel : VBoxContainer
         }
     }
 
-    /// <summary>Shows the values; sets the texts (cheap, called when the screen rebuilds).</summary>
+    /// <summary>Shows the values; sets the texts only when the numbers changed (the screen asks every frame, review C-D P3-4).</summary>
     /// <param name="values">The value of each resource.</param>
     /// <param name="stats">The capacity and the drain of the suit as worn.</param>
-    public void Apply(in SuitResources values, in SuitStats stats)
+    /// <param name="force">Set the texts even when the numbers are the same (the screen rebuilt, the language may have changed).</param>
+    public void Apply(in SuitResources values, in SuitStats stats, bool force = false)
     {
-        if (_title is null)
+        if (_title is null || (!force && _shown && _shownValues == values && _shownStats == stats))
         {
             return;
         }
 
+        _shown = true;
+        _shownValues = values;
+        _shownStats = stats;
         _title.Text = $"{Tr("SUIT_PANEL_TITLE")}  ({Tr("SUIT_DRAIN")})";
         for (var i = 0; i < _rows.Length; i++)
         {
