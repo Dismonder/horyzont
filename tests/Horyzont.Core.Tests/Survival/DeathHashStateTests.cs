@@ -121,6 +121,67 @@ public sealed class DeathHashStateTests
         Assert.NotEqual(withTombstone, StateHasher.Hash(other));
     }
 
+    [Fact]
+    public void Tombstone_ChangesTheHash_EveryFieldOfTheEntity()
+    {
+        // K6-35 review A, P3-5: each field of the record is hashed, not only the position.
+        var reference = DeathHashFixture.Create();
+        var entity = reference.EntityIds.PeekNext();
+        var container = reference.ContainerIds.PeekNext();
+        var baseCreate = new PersistentEntityCreateOp(
+            entity, PersistentEntityKind.Tombstone, FrameRef.Of(new PlanetId(1)), 0, new Vector3(1f, 4000f, 0f), Quaternion.Identity, new PlayerId(1));
+        PersistentEntityCreateOp[] variants =
+        [
+            baseCreate,
+            baseCreate with { Owner = new PlayerId(2) },
+            baseCreate with { Rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, 0.5f) },
+            baseCreate with { ParentSeq = 1 },
+            baseCreate with { Position = new Vector3(1f, 4000f, 0.5f) },
+            baseCreate with { EntityKind = PersistentEntityKind.DroppedItem },
+        ];
+
+        var seen = new HashSet<ulong>();
+        foreach (var create in variants)
+        {
+            var state = DeathHashFixture.Create();
+            var kind = create.EntityKind == PersistentEntityKind.Tombstone ? ContainerKind.Tombstone : ContainerKind.DroppedItem;
+            Simulation(state).ApplyServerOperation(new CompoundOp(
+            [
+                create,
+                new ContainerCreateOp(container, kind, ContainerHost.PersistentEntity(entity), create.Owner, ContainerAccess.Private, 1),
+            ]));
+            Assert.True(seen.Add(StateHasher.Hash(state)), $"{create} hashes like another variant");
+        }
+
+        Assert.Equal(variants.Length, seen.Count);
+    }
+
+    [Fact]
+    public void Tombstone_ChangesTheHash_TheFrameOfTheEntity()
+    {
+        // The frozen fixture has one planet; the frame needs two.
+        var seen = new HashSet<ulong>();
+        foreach (var planet in new[] { 1u, 2u })
+        {
+            var state = WorldState.CreateNew(
+                DeathHashFixture.Id, 77,
+                [new PlanetParams(new PlanetId(1), new SystemId(1), 11, "core:test/1"), new PlanetParams(new PlanetId(2), new SystemId(1), 12, "core:test/1")],
+                ["hash:stone"], ["hash_stone"], ["hash:a"]);
+            var sim = Simulation(state);
+            var join = sim.PreparePlayerJoin(new PlatformIdentity(IdentityPlatform.Dev, 901), "hash1");
+            sim.ApplyServerOperation(join);
+            var entity = state.EntityIds.PeekNext();
+            sim.ApplyServerOperation(new CompoundOp(
+            [
+                new PersistentEntityCreateOp(entity, PersistentEntityKind.Tombstone, FrameRef.Of(new PlanetId(planet)), 0, new Vector3(1f, 4000f, 0f), Quaternion.Identity, join.Player),
+                new ContainerCreateOp(state.ContainerIds.PeekNext(), ContainerKind.Tombstone, ContainerHost.PersistentEntity(entity), join.Player, ContainerAccess.Private, 1),
+            ]));
+            seen.Add(StateHasher.Hash(state));
+        }
+
+        Assert.Equal(2, seen.Count);
+    }
+
     private static CompoundOp Tombstone(EntityId entity, ContainerId container, Vector3 position) => new(
     [
         new PersistentEntityCreateOp(entity, PersistentEntityKind.Tombstone, FrameRef.Of(new PlanetId(1)), 0, position, Quaternion.Identity, new PlayerId(1)),

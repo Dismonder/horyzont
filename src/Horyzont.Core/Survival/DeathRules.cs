@@ -22,8 +22,8 @@ public static class DeathRules
         _ => throw new ArgumentOutOfRangeException(nameof(penalty), penalty, "Unknown death penalty."),
     };
 
-    /// <summary>True when the vitals say the player is dead: health 0. A player without vitals is a fresh body and alive (D7).</summary>
+    /// <summary>True when the vitals say the player is dead: a finite health of 0 or below. A player without vitals is a fresh body and alive (D7), and so is a non-finite value, which the vitals step treats as a fresh maximum (review A, P3-4).</summary>
     /// <param name="vitals">The vitals of the player.</param>
     /// <returns>Whether the player waits for the operation of the death.</returns>
-    public static bool IsDead(PlayerVitals? vitals) => vitals is { Health: <= 0f };
+    public static bool IsDead(PlayerVitals? vitals) => vitals is { Health: var health } && float.IsFinite(health) && health <= 0f;
 }

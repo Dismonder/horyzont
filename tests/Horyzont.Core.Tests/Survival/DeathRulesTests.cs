@@ -227,6 +227,10 @@ public sealed class DeathRulesTests
         Assert.False(DeathRules.IsDead(null));
         Assert.False(DeathRules.IsDead(new PlayerVitals(1f, 0f, default, false)));
         Assert.True(DeathRules.IsDead(new PlayerVitals(0f, 50f, default, false)));
+
+        // Review A, P3-4: a value the vitals step reads as a fresh maximum is not a death.
+        Assert.False(DeathRules.IsDead(new PlayerVitals(float.NegativeInfinity, 50f, default, false)));
+        Assert.False(DeathRules.IsDead(new PlayerVitals(float.NaN, 50f, default, false)));
     }
 
     private static int Count(Container container)

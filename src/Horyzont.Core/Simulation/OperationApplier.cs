@@ -962,6 +962,12 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             return "size or access invalid";
         }
 
+        if (container.Host.Kind == ContainerHostKind.PersistentEntity)
+        {
+            // K6-35 review A, P2-2: a tombstone stays private and sized by its builder (the world builder rejects anything else); K6-36 adds its own rule for dropped items.
+            return "a container of a persistent entity cannot be reconfigured";
+        }
+
         if (op.Size == container.Size && op.Access == container.Access)
         {
             return "size and access are unchanged";
@@ -1470,7 +1476,7 @@ internal sealed class OperationApplier(WorldState state, ITerrainService terrain
             player.Seat = op.SeatCell;
             if (op.ResetVitals)
             {
-                UndoLog.ClearVitals(player);
+                player.Vitals = null; // the one thing of a death with no undo: the reparent is the last component and every condition was checked first (K6-35 D5, D6)
             }
 
             state.Players.MarkChanged(player.Player);

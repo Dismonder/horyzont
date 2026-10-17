@@ -38,12 +38,15 @@ public sealed class RespawnPointsTests
 
     private static RespawnContext Context(FunctionalBlockFixture f, params bool[] safe) => new(f.State, Player1, safe, _start);
 
-    /// <summary>Feet beside the bed on one side: the centre of the bed cell moved one cell along the axis, down to the floor of the cell, then composed with the pose of the construct.</summary>
+    /// <summary>
+    /// Feet beside the bed on one side: the centre of the bed cell moved one cell along the axis (composed with the pose of the construct), then half a cell down along the planet up
+    /// (K6-35 review A, P3-6; the planet up here is +Y, the construct stands at the top of the planet).
+    /// </summary>
     private static Vector3 Expected(Quaternion rotation, Vector3 side)
     {
         var cell = FunctionalBlocks.BedCell;
-        var local = new Vector3(cell.X + 0.5f, cell.Y + 0.5f, cell.Z + 0.5f) + side - new Vector3(0f, 0.5f, 0f);
-        return _origin + Vector3.Transform(local, rotation);
+        var local = new Vector3(cell.X + 0.5f, cell.Y + 0.5f, cell.Z + 0.5f) + side;
+        return _origin + Vector3.Transform(local, rotation) - new Vector3(0f, 0.5f, 0f);
     }
 
     private static readonly Vector3[] _sides = [Vector3.UnitX, -Vector3.UnitX, Vector3.UnitZ, -Vector3.UnitZ];
@@ -146,6 +149,39 @@ public sealed class RespawnPointsTests
         var chosen = RespawnPoints.Resolve(Context(f, true, true, true, true));
         Assert.Equal(RespawnSource.Bed, chosen.Source);
         Assert.Equal(candidates[0], chosen.Pose);
+    }
+
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(30f)]
+    [InlineData(90f)]
+    public void Candidates_BodyRotation_UpIsThePlanetUpAndFacesTheBed(float degrees)
+    {
+        // K6-35 review A, P2-3: the body is not left as the identity; its up is the radial direction at the candidate and its forward points at the bed.
+        var rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, degrees * MathF.PI / 180f);
+        var f = BedWorld(rotation);
+        var candidates = new List<RespawnPose>();
+        Assert.True(RespawnPoints.TryGetBedCandidates(f.State, Player1, candidates));
+        Assert.NotEmpty(candidates);
+
+        var cell = FunctionalBlocks.BedCell;
+        var bedCentre = _origin + Vector3.Transform(new Vector3(cell.X + 0.5f, cell.Y + 0.5f, cell.Z + 0.5f), rotation);
+        foreach (var candidate in candidates)
+        {
+            var up = Vector3.Normalize(candidate.Position);
+            Assert.True(Vector3.Distance(Vector3.Transform(Vector3.UnitY, candidate.Rotation), up) < 1e-3f, $"up of {candidate.Position}");
+            Assert.True(Math.Abs(candidate.Rotation.Length() - 1f) < 1e-4f);
+
+            var toBed = bedCentre - candidate.Position;
+            toBed -= up * Vector3.Dot(toBed, up);
+            if (toBed.Length() < 0.1f)
+            {
+                continue; // straight above the bed: no horizontal direction to face
+            }
+
+            var forward = Vector3.Transform(-Vector3.UnitZ, candidate.Rotation);
+            Assert.True(Vector3.Dot(Vector3.Normalize(toBed), forward) > 0.999f, $"forward of {candidate.Position}");
+        }
     }
 
     [Fact]

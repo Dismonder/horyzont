@@ -18,13 +18,19 @@ internal static class TombstoneRecovery
 
     /// <summary>
     /// Appends <c>ContainerRemoveOp</c> and <c>PersistentEntityRemoveOp</c> for every tombstone that the transfers of the operation empty. The operation is returned unchanged when it
-    /// empties none (or when the two more components would not fit a compound, which leaves an empty tombstone that a later take-all removes).
+    /// empties none (or when the two more components would not fit a compound; that case is unreachable: a tombstone holds at most 256 slots, so a move is one transfer plus two components and a take-all fits too).
     /// </summary>
     /// <param name="state">World state, before the operation.</param>
     /// <param name="operation">A transfer or a compound of transfers built by a resolver.</param>
     /// <returns>The operation, completed.</returns>
     internal static Operation CompleteRemoval(WorldState state, Operation operation)
     {
+        // A move or take-all that touches no tombstone is the common case: decide that without allocating (review A, P3-3).
+        if (!TakesFromTombstone(state, operation))
+        {
+            return operation;
+        }
+
         var parts = operation is CompoundOp compound ? compound.Components : [operation];
         List<ContainerId>? emptied = null;
         for (var i = 0; i < parts.Count; i++)
@@ -56,6 +62,27 @@ internal static class TombstoneRecovery
         }
 
         return new CompoundOp(all.ToArray());
+    }
+
+    private static bool TakesFromTombstone(WorldState state, Operation operation)
+    {
+        if (operation is ItemTransferOp single)
+        {
+            return state.Containers.TryGet(single.From.Container, out var source) && IsTombstone(source);
+        }
+
+        if (operation is CompoundOp compound)
+        {
+            for (var i = 0; i < compound.Components.Count; i++)
+            {
+                if (compound.Components[i] is ItemTransferOp transfer && state.Containers.TryGet(transfer.From.Container, out var source) && IsTombstone(source))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /// <summary>True when the transfers out of the container leave every slot empty.</summary>

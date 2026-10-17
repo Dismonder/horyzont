@@ -3,6 +3,7 @@ using System.Numerics;
 using Horyzont.Core.Ids;
 using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
+using Horyzont.Core.Protocol;
 using Horyzont.Core.Survival;
 using Horyzont.Core.World;
 
@@ -71,6 +72,12 @@ public static class DeathOperationBuilder
         // The last component, the only one without undo (D6): the body appears at the respawn with the next counter and fresh vitals (D5).
         components.Add(new EntityReparentOp(
             body.Entity, FrameRef.Of(respawn.Pose.Planet), body.ParentSeq + 1, respawn.Pose.Position, respawn.Pose.Rotation, Vector3.Zero, null, ResetVitals: true));
+        if (components.Count > ProtocolConstants.MaxCompoundComponents)
+        {
+            // Not reachable with today's containers (3 x 256 slots give at most 3 tombstones); a larger player container must split the death, not leave a death that is refused for ever.
+            throw new InvalidOperationException($"The death of a player would need {components.Count} components, the limit of a compound is {ProtocolConstants.MaxCompoundComponents}.");
+        }
+
         return components.Count == 1 ? components[0] : new CompoundOp(components.ToArray());
     }
 }

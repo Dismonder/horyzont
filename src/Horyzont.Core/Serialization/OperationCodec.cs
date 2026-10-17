@@ -288,6 +288,12 @@ public static class OperationCodec
                 break;
 
             case EntityReparentOp er:
+                if (er.ResetVitals)
+                {
+                    // Format 2 (K6-35 B2) is the only place for the reset; until then a silent drop would let a replay revive the old vitals.
+                    throw new ArgumentException("EntityReparentOp v2 (ResetVitals) has no codec before K6-35 B2.", nameof(op));
+                }
+
                 w.WriteByte((byte)OperationKind.EntityReparent);
                 w.WriteByte(CurrentFormatVersion);
                 w.WriteVarUInt(er.Entity.Value);

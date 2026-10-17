@@ -143,12 +143,6 @@ internal sealed class UndoLog
         state.ReplaceSettings(settings);
     }
 
-    /// <summary>
-    /// Sets the vitals of a player to none, the writer behind <c>EntityReparentOp.ResetVitals</c> (K6-35 D5). It is the one thing of a death that has no undo: the reparent that
-    /// calls it is the last, irreversible component and every condition of it was checked before any other component (D6).
-    /// </summary>
-    internal static void ClearVitals(PlayerState player) => player.Vitals = null;
-
     /// <summary>The id of the index-th persistent entity the operation created or removed, for the checkpoint marks.</summary>
     internal EntityId EntityAt(int index) => _persistent[index].Entity;
 

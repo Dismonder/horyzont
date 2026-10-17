@@ -5,6 +5,7 @@ using Horyzont.Core.Items;
 using Horyzont.Core.Operations;
 using Horyzont.Core.Simulation;
 using Horyzont.Core.World;
+using Horyzont.Core.World.Constructs;
 using Horyzont.Testing;
 
 using Microsoft.Extensions.Logging.Abstractions;
@@ -153,6 +154,37 @@ public sealed class DeathCompoundTests
         w.Hazard.AssertFails(new PersistentEntityRemoveOp(create.Entity));
         w.Hazard.AssertFails(new CompoundOp([create with { Entity = create.Entity }, container with { Id = new ContainerId(container.Id.Value + 1) }]));
         w.Hazard.AssertFails(new PersistentEntityRemoveOp(new EntityId(create.Entity.Value + 40)));
+    }
+
+    [Fact]
+    public void Configure_TombstoneContainer_Refused()
+    {
+        // K6-35 review A, P2-2: the applier must not allow a state the world builder rejects (a shared tombstone).
+        var w = Armed();
+        var parts = TombstoneParts(w);
+        var container = ((ContainerCreateOp)parts[1]).Id;
+        w.Apply(new CompoundOp(parts));
+        var hash = w.Hash();
+        var version = w.Container(container).Version;
+
+        w.Hazard.AssertFails(new ContainerConfigureOp(container, 2, ContainerAccess.Shared));
+        w.Hazard.AssertFails(new ContainerConfigureOp(container, 5, ContainerAccess.Private));
+
+        Assert.Equal(hash, w.Hash());
+        Assert.Equal(version, w.Container(container).Version);
+        Assert.Equal(ContainerAccess.Private, w.Container(container).Access);
+    }
+
+    [Fact]
+    public void Reparent_AfterTerrainOrConstructEdit_RejectedStructurally()
+    {
+        // D6: a compound with the reparent holds no terrain edit and no construct edit (each of them is irreversible and must be last itself).
+        var w = Armed();
+        var reparent = Reparent(w);
+        var cell = new CellPos(0, 0, 0);
+
+        AssertStructure(w, new CompoundOp([new BlockSetOp(Horyzont.Testing.FunctionalBlocks.Construct, cell, default(BlockState)), reparent]), 0);
+        AssertStructure(w, new CompoundOp([new TerrainEditOp(WorldFactory.HomePlanet, TerrainShape.Sphere, new Vector3(0f, 4000f, 0f), 0.5f, TerrainEditMode.Remove, 0), reparent]), 0);
     }
 
     [Fact]

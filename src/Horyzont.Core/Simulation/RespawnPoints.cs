@@ -3,6 +3,7 @@ using System.Numerics;
 using Horyzont.Core.BlockEntities;
 using Horyzont.Core.Frames;
 using Horyzont.Core.Ids;
+using Horyzont.Core.Motion;
 using Horyzont.Core.World;
 using Horyzont.Core.World.Constructs;
 using Horyzont.Core.World.Ships;
@@ -48,6 +49,7 @@ public static class RespawnPoints
 {
     // A building tilted more than 120 degrees from the planet up is upside down; a side is dropped when it points more than 45 degrees below the horizon.
     private const double MinUprightDot = -0.5;
+    private const double CellHalf = 0.5;
     private static readonly double _maxDownDot = Math.Sqrt(0.5);
 
     // The sides of the bed cell in the axes of the construct, in the fixed order of the candidates: +X, -X, +Z, -Z.
@@ -114,14 +116,34 @@ public static class RespawnPoints
                 continue;
             }
 
-            var feet = FrameMath.TransformPoint(pose, new Vector3D(bed.Cell.X + 0.5 + side.X, bed.Cell.Y, bed.Cell.Z + 0.5 + side.Z));
-            if (FrameMath.TryVectorToFloat(feet, out var position))
+            // The feet stand half a cell below the centre of the neighbouring cell, along the planet down (a cell is one metre; the bed is one cell), not along the Y axis
+            // of the construct. The body is turned to the bed with its up along the planet up (the convention of SurfaceFrame, K6-35 review A, P2-3 and P3-6).
+            var neighbour = FrameMath.TransformPoint(pose, new Vector3D(bed.Cell.X + 0.5 + side.X, bed.Cell.Y + 0.5, bed.Cell.Z + 0.5 + side.Z));
+            var feet = neighbour - (up * CellHalf);
+            if (FrameMath.TryVectorToFloat(feet, out var position) && FrameMath.TryVectorToFloat(Vector3D.Normalize(feet), out var upDirection))
             {
-                candidates.Add(new RespawnPose(planet, position, Quaternion.Identity));
+                var towardsBed = FrameMath.TryVectorToFloat(centre - feet, out var toBed) ? toBed : Vector3.Zero;
+                candidates.Add(new RespawnPose(planet, position, SurfaceFrame.FromYaw(Vector3.Normalize(upDirection), YawToward(upDirection, towardsBed))));
             }
         }
 
         return candidates.Count > 0;
+    }
+
+    // The yaw (SurfaceFrame convention) that turns the forward of the body towards a direction; 0 when the direction is vertical.
+    private static float YawToward(Vector3 up, Vector3 direction)
+    {
+        var upUnit = Vector3.Normalize(up);
+        var tangent = direction - (upUnit * Vector3.Dot(direction, upUnit));
+        var length = tangent.Length();
+        if (!(length > 1e-4f) || !float.IsFinite(length))
+        {
+            return 0f;
+        }
+
+        tangent /= length;
+        var reference = SurfaceFrame.Reference(upUnit);
+        return MathF.Atan2(Vector3.Dot(upUnit, Vector3.Cross(reference, tangent)), Vector3.Dot(reference, tangent));
     }
 
     /// <summary>Chooses the first safe candidate of the bed, otherwise the start of the world.</summary>
