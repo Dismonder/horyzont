@@ -22,9 +22,12 @@ internal sealed class UndoLog
     private readonly List<ProgressRecordUndo> _progress = [];
     private readonly List<VitalsRecordUndo> _vitals = [];
     private readonly List<PropRecordUndo> _props = [];
+    private readonly List<PersistentEntityUndo> _persistent = [];
+    private readonly List<WorldSettings> _settings = [];
     private readonly List<string> _keys = [];
     private readonly List<Step> _steps = [];
     private ulong _nextContainerId;
+    private ulong _nextEntityId;
 
     internal int SlotCount => _slots.Count;
 
@@ -33,6 +36,12 @@ internal sealed class UndoLog
     internal IReadOnlyList<Container> Removed => _removed;
 
     internal int ConfiguredCount => _configured.Count;
+
+    /// <summary>Gets the number of persistent entities the operation created or removed (K6-35).</summary>
+    internal int EntityCount => _persistent.Count;
+
+    /// <summary>Gets a value indicating whether the operation replaced the settings of the world (K6-35).</summary>
+    internal bool SettingsChanged => _settings.Count > 0;
 
     internal void Begin(WorldState state)
     {
@@ -44,9 +53,12 @@ internal sealed class UndoLog
         _progress.Clear();
         _vitals.Clear();
         _props.Clear();
+        _persistent.Clear();
+        _settings.Clear();
         _keys.Clear();
         _steps.Clear();
         _nextContainerId = state.ContainerIds.NextValue;
+        _nextEntityId = state.EntityIds.NextValue;
     }
 
     /// <summary>Writes a slot and remembers its previous content.</summary>
@@ -106,6 +118,39 @@ internal sealed class UndoLog
         _vitals.Add(new VitalsRecordUndo(player, player.Vitals));
         player.Vitals = value;
     }
+
+    /// <summary>Adds a persistent entity, remembering that it was not there (K6-35, operation 38); the caller checked the id and marked it used.</summary>
+    internal void AddEntity(WorldState state, PersistentEntity entity)
+    {
+        state.PersistentEntities.Add(entity);
+        _steps.Add(new Step(StepKind.Entity, _persistent.Count));
+        _persistent.Add(new PersistentEntityUndo(entity.Id, null));
+    }
+
+    /// <summary>Removes a persistent entity, remembering it (K6-35, operation 39); the caller checked that it exists.</summary>
+    internal void RemoveEntity(WorldState state, PersistentEntity entity)
+    {
+        state.PersistentEntities.Remove(entity.Id);
+        _steps.Add(new Step(StepKind.Entity, _persistent.Count));
+        _persistent.Add(new PersistentEntityUndo(entity.Id, entity));
+    }
+
+    /// <summary>Replaces the settings of the world, remembering the previous ones (K6-35, operation 46).</summary>
+    internal void SetSettings(WorldState state, WorldSettings settings)
+    {
+        _steps.Add(new Step(StepKind.Settings, _settings.Count));
+        _settings.Add(state.Settings);
+        state.ReplaceSettings(settings);
+    }
+
+    /// <summary>
+    /// Sets the vitals of a player to none, the writer behind <c>EntityReparentOp.ResetVitals</c> (K6-35 D5). It is the one thing of a death that has no undo: the reparent that
+    /// calls it is the last, irreversible component and every condition of it was checked before any other component (D6).
+    /// </summary>
+    internal static void ClearVitals(PlayerState player) => player.Vitals = null;
+
+    /// <summary>The id of the index-th persistent entity the operation created or removed, for the checkpoint marks.</summary>
+    internal EntityId EntityAt(int index) => _persistent[index].Entity;
 
     /// <summary>Adds a prop to the harvested set, remembering that it was not there.</summary>
     internal void SetHarvested(WorldState state, PlanetId planet, PropId prop, Tick tick)
@@ -183,6 +228,21 @@ internal sealed class UndoLog
                 case StepKind.ProgressKey:
                     state.ProgressKeys.Remove(_keys[step.Index]);
                     break;
+                case StepKind.Entity:
+                    var persistent = _persistent[step.Index];
+                    if (persistent.Previous is null)
+                    {
+                        state.PersistentEntities.Remove(persistent.Entity);
+                    }
+                    else
+                    {
+                        state.PersistentEntities.Add(persistent.Previous);
+                    }
+
+                    break;
+                case StepKind.Settings:
+                    state.ReplaceSettings(_settings[step.Index]);
+                    break;
                 case StepKind.Vitals:
                     var vitals = _vitals[step.Index];
                     vitals.Player.Vitals = vitals.Previous;
@@ -203,6 +263,7 @@ internal sealed class UndoLog
         }
 
         state.ContainerIds.Restore(_nextContainerId);
+        state.EntityIds.Restore(_nextEntityId);
         _slots.Clear();
         _created.Clear();
         _removed.Clear();
@@ -211,6 +272,8 @@ internal sealed class UndoLog
         _progress.Clear();
         _vitals.Clear();
         _props.Clear();
+        _persistent.Clear();
+        _settings.Clear();
         _keys.Clear();
         _steps.Clear();
     }
@@ -226,6 +289,8 @@ internal sealed class UndoLog
         Prop,
         ProgressKey,
         Vitals,
+        Entity,
+        Settings,
     }
 
     private readonly record struct Step(StepKind Kind, int Index);
@@ -239,6 +304,8 @@ internal sealed class UndoLog
     private readonly record struct ProgressRecordUndo(PlayerId Player, PlayerProgress? Previous);
 
     private readonly record struct VitalsRecordUndo(PlayerState Player, PlayerVitals? Previous);
+
+    private readonly record struct PersistentEntityUndo(EntityId Entity, PersistentEntity? Previous);
 
     private readonly record struct PropRecordUndo(PlanetId Planet, PropId Prop, Tick? PreviousTick);
 }

@@ -695,15 +695,11 @@ public sealed class WorldState
         return false;
     }
 
-    /// <summary>Replaces the settings and marks them changed for the next checkpoint.</summary>
-    internal void SetSettings(WorldSettings settings)
-    {
-        Settings = settings;
-        _tracker.MarkSettings();
-    }
+    /// <summary>Replaces the settings (operation 46 or its undo, and the world loader). The applier marks them changed when the operation is accepted.</summary>
+    internal void ReplaceSettings(WorldSettings settings) => Settings = settings;
 
-    /// <summary>Replaces the settings without marking them changed (world loader).</summary>
-    internal void LoadSettings(WorldSettings settings) => Settings = settings;
+    /// <summary>Marks the settings changed for the next checkpoint.</summary>
+    internal void MarkSettingsChanged() => _tracker.MarkSettings();
 
     internal void SetLastOpId(OpId id) => LastOpId = id;
 

@@ -28,19 +28,27 @@ public sealed class DeathHashStateTests
     [Fact]
     public void DefaultSettings_DoNotChangeTheHash()
     {
-        var state = DeathHashFixture.Create();
-        var sim = Simulation(state);
-        var hash = StateHasher.Hash(state);
+        // Every operation raises LastOpId, which is hashed, so compare two worlds with the same number of operations: one that never left the defaults and one that
+        // went to other settings and back.
+        var control = DeathHashFixture.Create();
+        Simulation(control).ApplyServerOperation(new WorldSettingsSetOp(WorldSettings.Default));
+        Simulation(control).ApplyServerOperation(new WorldSettingsSetOp(WorldSettings.Default));
 
-        sim.ApplyServerOperation(new WorldSettingsSetOp(WorldSettings.Default));
+        var back = DeathHashFixture.Create();
+        Simulation(back).ApplyServerOperation(new WorldSettingsSetOp(new WorldSettings { DeathPenalty = DeathPenalty.Hard, FreeFuel = true }));
+        Simulation(back).ApplyServerOperation(new WorldSettingsSetOp(WorldSettings.Default));
 
-        Assert.Equal(hash, StateHasher.Hash(state));
+        Assert.True(back.Settings.IsDefault);
+        Assert.Equal(StateHasher.Hash(control), StateHasher.Hash(back));
     }
 
     [Fact]
     public void NonDefaultSettings_ChangeTheHash_EachField()
     {
-        var baseHash = StateHasher.Hash(DeathHashFixture.Create());
+        // The control has the same number of operations as the others, so only the settings can make a difference.
+        var control = DeathHashFixture.Create();
+        Simulation(control).ApplyServerOperation(new WorldSettingsSetOp(WorldSettings.Default));
+        var baseHash = StateHasher.Hash(control);
         WorldSettings[] changes =
         [
             new() { DeathPenalty = DeathPenalty.Mild },

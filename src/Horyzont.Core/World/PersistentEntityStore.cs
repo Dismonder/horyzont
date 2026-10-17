@@ -36,12 +36,11 @@ public sealed class PersistentEntityStore
     /// <returns>The entities; empty when the owner has none.</returns>
     public IReadOnlyList<PersistentEntity> OwnedBy(PlayerId owner) => _byOwner.TryGetValue(owner, out var list) ? list : _none;
 
-    /// <summary>Adds an entity and marks it changed.</summary>
-    internal void Add(PersistentEntity entity)
-    {
-        Load(entity);
-        _tracker.MarkPersistentEntity(entity.Id);
-    }
+    /// <summary>Adds an entity (operation 38 or undo of operation 39). The caller marks it changed when the operation is accepted, so a refused operation leaves no mark.</summary>
+    internal void Add(PersistentEntity entity) => Load(entity);
+
+    /// <summary>Marks an entity changed for the next checkpoint (also when it was removed).</summary>
+    internal void MarkChanged(EntityId id) => _tracker.MarkPersistentEntity(id);
 
     /// <summary>Adds an entity without marking it changed (world loader).</summary>
     internal void Load(PersistentEntity entity)
@@ -61,7 +60,7 @@ public sealed class PersistentEntityStore
         Insert(owned, entity);
     }
 
-    /// <summary>Removes an entity and marks it changed.</summary>
+    /// <summary>Removes an entity (operation 39 or undo of operation 38); see <see cref="Add"/> for the marks.</summary>
     internal bool Remove(EntityId id)
     {
         if (!_byId.Remove(id, out var entity))
@@ -77,7 +76,6 @@ public sealed class PersistentEntityStore
             _byOwner.Remove(entity.Owner);
         }
 
-        _tracker.MarkPersistentEntity(id);
         return true;
     }
 
